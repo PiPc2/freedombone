@@ -5729,7 +5729,7 @@ mkdir /home/bitmsg/.config/PyBitmessage
 editor /home/bitmsg/.config/PyBitmessage/keys.dat
 #+END_SRC
 
-Add the following:
+Add the following, changing /apipassword/ to some long random string:
 
 #+BEGIN_SRC: bash
 [bitmessagesettings]
@@ -5770,6 +5770,12 @@ sendoutgoingconnections = True
 willinglysendtomobile = False
 maxpayloadlengthkb = 256
 daemon = true
+apienabled = true
+apiport = 8442
+apiinterface = 127.0.0.1
+apiusername = bitmsg
+maxpayloadlengthkb = 256
+apipassword = change_this_password
 #+END_SRC
 
 Save and exit. Then enable the daemon and run it.
@@ -5797,6 +5803,164 @@ cd PyBitmessage
 make install
 pybitmessage
 #+END_SRC
+
+*** Connect Bitmessage to Email
+
+It may be convenient to have any Bitmessages addressed to you which arrive at the BBB to be transfered to your email, so that you can check for messages on mobile devices or on computers where installing a Bitmessage client isn't an available option. This transference will take place on the BBB itself, so will not involve transmitting any plaintext over the local network or internet.  To do this first you'll need to set up a receiving Bitmessage address by editing /home/bitmsg/.config/PyBitmessage/keys.dat and adding the details for your address, which could be coppied from another machine (such as a laptop running a Bitmessage client).
+
+It will look something like:
+
+#+BEGIN_SRC: bash
+[BM-address]
+label = myusername@mydomainname.com
+enabled = true
+decoy = false
+noncetrialsperbyte = 640
+payloadlengthextrabytes = 14000
+privsigningkey = ...
+privencryptionkey = ...
+lastpubkeysendtime = ...
+#+END_SRC
+
+Note that it's particularly important that /label/ be set to your email address.  This is how the system will know that when a bitmessage arrives which account to transfer it to.
+
+You should also make sure that /apipassword/ is set to some long random string.
+
+Save and close /keys.dat/, then restart the Bitmessage daemon.
+
+#+BEGIN_SRC: bash
+service pybitmessage restart
+#+END_SRC
+
+The restart will take 30 seconds or so.  Next install the Bitmessage to email gateway.
+
+#+BEGIN_SRC: bash
+cd /usr/share
+git clone https://github.com/bashrc/bitmessage-email-gateway
+chown -R bitmsg:bitmsg bitmessage-email-gateway
+cd bitmessage-email-gateway
+mkdir /home/bitmsg/Maildir
+mkdir /home/bitmsg/Maildir/new
+chown -R bitmsg:bitmsg /home/bitmsg
+#+END_SRC
+
+Substitute /mydomainname.com/ for your domain name (the main one used for email).
+
+#+BEGIN_SRC: bash
+sed 's/godark.ca/mydomainname.com/g' bitmessage-gateway.py > bitmessage-gateway.py
+#+END_SRC
+
+Change the user to /bitmsg/
+
+#+BEGIN_SRC: bash
+sed 's#your_user/MailDir#bitmsg/Maildir#g' bitmessage-gateway.py > bitmessage-gateway.py
+#+END_SRC
+
+Change the logging location.
+
+#+BEGIN_SRC: bash
+sed 's#/var/log/bitmessage-gateway.log#/home/bitmsg/gateway.log#g'
+bitmessage-gateway.py > bitmessage-gateway.py
+#+END_SRC
+
+Change the API username.
+
+#+BEGIN_SRC: bash
+sed 's/bmapi/bitmsg/g' bitmessage-gateway.py > bitmessage-gateway.py
+#+END_SRC
+
+Find out what the API password is:
+
+#+BEGIN_SRC: bash
+grep "apipassword" /home/bitmsg/.config/PyBitmessage/keys.dat | awk -F ' ' '{print $3}'
+#+END_SRC
+
+Then change it with:
+
+#+BEGIN_SRC: bash
+sed "s/'password' : ''/'password' : 'bitmessage_api_password'/g" bitmessage-gateway.py > bitmessage-gateway.py
+#+END_SRC
+
+Now create the daemon.
+
+#+BEGIN_SRC: bash
+editor /etc/init.d/bitmessage-gateway
+#+END_SRC
+
+Add the following text:
+
+#+BEGIN_SRC: bash
+#!/bin/bash
+# /etc/init.d/bitmessage-gateway
+
+### BEGIN INIT INFO
+# Provides:          bitmessage-gateway
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts a gateway between bitmessage and email
+# Description:
+### END INIT INFO
+
+# Author: Bob Mottram <bob@robotics.uk.to>
+
+#Settings
+SERVICE='bitmessage-gateway'
+LOGFILE='/dev/null'
+COMMAND="python bitmessage-gateway.py > $LOGFILE"
+USERNAME='bitmsg'
+NICELEVEL=19 # from 0-19 the bigger the number, the less the impact on system resources
+HISTORY=1024
+BMG_LOCATION="/usr/share/bitmessage-email-gateway"
+INVOCATION="nice -n ${NICELEVEL} ${COMMAND}"
+PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/sbin:/usr/sbin:/bin:/usr/share/bitmessage-email-gateway'
+
+
+bmg_start() {
+echo "Starting $SERVICE..."
+cd ${BMG_LOCATION}
+su --command "screen -h ${HISTORY} -dmS ${SERVICE} ${INVOCATION}" $USERNAME
+}
+
+
+bmg_stop() {
+echo "Stopping $SERVICE"
+su --command "screen -p 0 -S ${SERVICE} -X stuff "'^C'"" $USERNAME
+}
+
+
+#Start-Stop here
+case "$1" in
+  start)
+    bmg_start
+    ;;
+  stop)
+    bmg_stop
+    ;;
+  restart)
+    bmg_stop
+    sleep 5s
+    bmg_start
+    ;;
+    *)
+  echo "Usage: $0 {start|stop|restart}"
+  exit 1
+  ;;
+esac
+
+exit 0
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chmod +x /etc/init.d/bitmessage-gateway
+update-rc.d bitmessage-gateway defaults
+service bitmessage-gateway start
+#+END_SRC
+
+From a Bitmessage client you should now be able to send a message to your Bitmessage address and have it eventually appear as an email in your inbox.
 
 ** Overcome restrictive environments
 
