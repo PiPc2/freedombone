@@ -1013,26 +1013,80 @@ If you get errors during the /configure/ stage then you may need to reboot so th
 editor /usr/bin/updatedate
 #+END_SRC
 
-Add the following:
+Add the following, changing /username@mydomainname.com/ to your email address:
 
 #+BEGIN_SRC: bash
 #!/bin/bash
 
 TIMESOURCE=google.com
+TIMESOURCE2=www.ptb.de
 LOGFILE=/var/log/tlsdate.log
+TIMEOUT=5
+EMAIL=username@mydomainname.com
+
+# File which contains the previous date as a number
+BEFORE_DATE_FILE=/var/log/tlsdateprevious.txt
+
+# File which contains the previous date as a string
+BEFORE_FULLDATE_FILE=/var/log/tlsdate.txt
+
 DATE_BEFORE=$(date)
-YEAR_BEFORE=$(echo $DATE_BEFORE | awk -F ' ' '{print $6}')
-/usr/bin/timeout 3 tlsdate -l -t -H $TIMESOURCE -p 443
+BEFORE=$(date -d "$Y-$M-$D" '+%s')
+
+# If the date was previously set
+if [[ -f "$BEFORE_DATE_FILE" ]]; then
+    BEFORE_FILE=$(cat $BEFORE_DATE_FILE)
+    BEFORE_FULLDATE=$(cat $BEFORE_FULLDATE_FILE)
+
+	# is the date going backwards?
+    if (( BEFORE_FILE > BEFORE )); then
+        echo -n "Date went backwards between tlsdate updates. " \
+			>> $LOGFILE
+		echo -n "$BEFORE_FILE > $BEFORE, " >> $LOGFILE
+		echo "$BEFORE_FULLDATE > $DATE_BEFORE" >> $LOGFILE
+
+		# Send a warning email
+		echo $(tail $LOGFILE -n 2) | mail -s "tlsdate anomaly" $EMAIL
+
+		# Try another time source
+		TIMESOURCE=$TIMESOURCE2
+    fi
+fi
+
+# Set the date
+/usr/bin/timeout $TIMEOUT tlsdate -l -t -H $TIMESOURCE -p 443 >> $LOGFILE
+
 DATE_AFTER=$(date)
-YEAR_AFTER=$(echo $DATE_AFTER | awk -F ' ' '{print $6}')
-if [ "$YEAR_AFTER" -lt "$YEAR_BEFORE" ]; then
+AFTER=$(date -d "$Y-$M-$D" '+%s')
+
+# After setting the date did it go backwards?
+if (( AFTER < BEFORE )); then
 	echo "Incorrect date: $DATE_BEFORE -> $DATE_AFTER" >> $LOGFILE
-	date -s "DATE_BEFORE"
+
+	# Send a warning email
+	echo $(tail $LOGFILE -n 2) | mail -s "tlsdate anomaly" $EMAIL
+
+	# Try resetting the date from another time source
+	/usr/bin/timeout $TIMEOUT tlsdate -l -t -H $TIMESOURCE2 -p 443 >> $LOGFILE
+    DATE_AFTER=$(date)
+    AFTER=$(date -d "$Y-$M-$D" '+%s')
 else
 	echo -n $TIMESOURCE >> $LOGFILE
+	if [[ -f "$BEFORE_DATE_FILE" ]]; then
+		echo -n " " >> $LOGFILE
+		echo -n $BEFORE_FILE >> $LOGFILE
+	fi
+	echo -n " " >> $LOGFILE
+	echo -n $BEFORE >> $LOGFILE
+	echo -n " " >> $LOGFILE
+	echo -n $AFTER >> $LOGFILE
 	echo -n " " >> $LOGFILE
 	echo $DATE_AFTER >> $LOGFILE
 fi
+
+# Log the last date
+echo "$AFTER" > $BEFORE_DATE_FILE
+echo "$DATE_AFTER" > $BEFORE_FULLDATE_FILE
 #+END_SRC
 
 Save and exit.
