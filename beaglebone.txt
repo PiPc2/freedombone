@@ -4226,7 +4226,7 @@ Make sure that the database gets backed up.  By using cron if anything goes wron
 editor /etc/cron.daily/backup
 #+END_SRC
 
-Enter the following, replacing /myusername@mydomainname.com/ with your email address.
+Enter the following, replacing /myusername@mydomainname.com/ with your email address and the mysql root password as appropriate.
 
 #+BEGIN_SRC: bash
 #!/bin/sh
@@ -4242,44 +4242,57 @@ service apache2 stop
 # Save to a temporary file first so that it can be checked for non-zero size
 TEMPFILE=/tmp/friendicared.sql
 
-# Backup the database
+# Backup the Friendica database
+DAILYFILE=/var/backups/friendica_daily.sql
 mysqldump --password=$MYSQL_PASSWORD friendica > $TEMPFILE
 FILESIZE=$(stat -c%s $TEMPFILE)
 if [ "$FILESIZE" -eq "0" ]; then
-    # restart the web server
-    service apache2 start
+    if [ -f $DAILYFILE ]; then
+        cp $DAILYFILE $TEMPFILE
 
-	# Send a warning email
-	echo "Unable to create a backup of the Friendica database" | mail -s "Friendica backup" $EMAIL
+        # try to restore yesterday's database
+        mysql -D friendica -o < $DAILYFILE
 
-    exit 1
+        # Send a warning email
+        echo "Unable to create a backup of the Friendica database. Attempted to restore from yesterday's backup." | mail -s "Friendica backup" $EMAIL
+	else
+        # Send a warning email
+        echo "Unable to create a backup of the Friendica database." | mail -s "Friendica backup" $EMAIL
+    fi
+else
+    chmod 600 $TEMPFILE
+    mv $TEMPFILE $DAILYFILE
+
+    # Make the backup readable only by root
+    chmod 600 $DAILYFILE
 fi
 
-chmod 600 $TEMPFILE
-mv $TEMPFILE /var/backups/friendica_daily.sql
 
-# Make the backup readable only by root
-chmod 600 /var/backups/friendica_daily.sql
-
-# Backup the database
+# Backup the Red Matrix database
+DAILYFILE=/var/backups/redmatrix_daily.sql
 #mysqldump --password=$MYSQL_PASSWORD redmatrix > $TEMPFILE
-
 #FILESIZE=$(stat -c%s $TEMPFILE)
 #if [ "$FILESIZE" -eq "0" ]; then
-#    # restart the web server
-#    service apache2 start
+#    if [ -f $DAILYFILE ]; then
+#        cp $DAILYFILE $TEMPFILE
 
-#	# Send a warning email
-#	echo "Unable to create a backup of the Red Matrix database" | mail -s "Red Matrix backup" $EMAIL
+#        # try to restore yesterday's database
+#        mysql -D redmatrix -o < $DAILYFILE
 
-#    exit 2
+#        # Send a warning email
+#        echo "Unable to create a backup of the Red Matrix database. Attempted to restore from yesterday's backup" | mail -s "Red Matrix backup" $EMAIL
+#	else
+#        # Send a warning email
+#        echo "Unable to create a backup of the Red Matrix database." | mail -s "Red Matrix backup" $EMAIL
+#    fi
+#else
+#    chmod 600 $TEMPFILE
+#    mv $TEMPFILE $DAILYFILE
+
+#    # Make the backup readable only by root
+#    chmod 600 $DAILYFILE
 #fi
 
-#chmod 600 $TEMPFILE
-#mv $TEMPFILE /var/backups/redmatrix_daily.sql
-
-# Make the backup readable only by root
-#chmod 600 /var/backups/redmatrix_daily.sql
 
 # restart the web server
 service apache2 start
