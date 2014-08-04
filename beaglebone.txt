@@ -1254,7 +1254,6 @@ iptables -A INPUT -p tcp --destination-port 6665:6669 -j DROP
 iptables -A INPUT -p tcp --destination-port 4000 -j DROP
 iptables -A INPUT -p tcp --destination-port 119 -j DROP
 iptables -A INPUT -p tcp --destination-port 137 -j DROP
-iptables -A INPUT -p tcp --destination-port 3306 -j DROP
 iptables -A INPUT -p tcp --destination-port 4242 -j DROP
 iptables -A INPUT -p tcp --destination-port 9050 -j DROP
 iptables -A INPUT -p tcp --destination-port 3000 -j DROP
@@ -3320,7 +3319,7 @@ Install it.
 
 #+BEGIN_SRC: bash
 tar -xzvf ircd-hybrid-8.1.17.tgz
-cd ircd-hybrid-*
+cd ircd-hybrid-8.1.17
 ./configure --prefix=/usr/local/ircd --enable-openssl
 make
 make install
@@ -3365,7 +3364,12 @@ chmod 600 /usr/local/ircd/etc/ircd.conf
 Now create an init script.
 
 #+BEGIN_SRC: bash
-adduser --disabled-login irc
+adduser irc
+#+END_SRC
+
+Make the password some long random string.
+
+#+BEGIN_SRC: bash
 editor /usr/bin/runircd
 #+END_SRC
 
@@ -3374,7 +3378,7 @@ Add the following:
 #+BEGIN_SRC: bash
 #!/bin/sh
 USERNAME=irc
-COMMAND="cd /usr/local/ircd; ircd > /usr/local/ircd/ircd.log"
+COMMAND="cd /usr/local/ircd/bin; ircd > /usr/local/ircd/ircd.log"
 su -l $USERNAME -c '$COMMAND'
 #+END_SRC
 
@@ -7260,17 +7264,17 @@ mysqldump -u root -p --all-databases --events > /var/backups/databasebackup.sql
 To restore yesterday's friendica backup:
 
 #+BEGIN_SRC: bash
-mysql -D friendica -o < /var/backups/friendica_daily.sql
+mysql -u root -p friendica -o < /var/backups/friendica_daily.sql
 #+END_SRC
 
 To restore yesterday's Red Matrix backup:
 
 #+BEGIN_SRC: bash
-mysql -D redmatrix -o < /var/backups/redmatrix_daily.sql
+mysql -u root -p redmatrix -o < /var/backups/redmatrix_daily.sql
 #+END_SRC
-*** Removing mysql server
+*** Removing and reinstalling mysql server
 
-If you manage to screw up sql server completely then it can be fully deleted with:
+Sometimes the mysql database may get completely messed up, and running /service mysql start/ may always fail with nothing reported in the logs.  So if you manage to get into that unfortinate situation then you can fully remove mysql and reinstall it as follows:
 
 #+BEGIN_SRC: bash
 ps aux | grep mysql
@@ -7280,8 +7284,41 @@ and use /kill -9 <pid>/ to kill all mysql processes.
 
 #+BEGIN_SRC: bash
 apt-get remove --purge mysql\*
+rm -rf /etc/mysql
+rm -rf /var/lib/mysql
 apt-get clean
 updatedb
+#+END_SRC
+
+Reinstall mysql:
+
+#+BEGIN_SRC: bash
+apt-get install mysql-server php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt php5-fpm php5-cgi php-apc
+#+END_SRC
+
+Then to recreate the Friendica and webmail databases:
+
+#+BEGIN_SRC: bash
+mysql -p
+create database friendica;
+CREATE USER 'friendicaadmin'@'localhost' IDENTIFIED BY 'myfriendicapassword';
+GRANT ALL PRIVILEGES ON friendica.* TO 'friendicaadmin'@'localhost';
+create database roundcubemail;
+CREATE USER 'roundcube'@'localhost' IDENTIFIED BY 'roundcubepassword';
+GRANT ALL PRIVILEGES ON roundcubemail.* TO 'roundcube'@'localhost';
+quit
+mysql -u root -p friendica -o < /var/backups/friendica_daily.sql
+#+END_SRC
+
+And if you previously had Red Matrix installed:
+
+#+BEGIN_SRC: bash
+mysql -p
+create database redmatrix;
+CREATE USER 'redmatrixadmin'@'localhost' IDENTIFIED BY 'myredmatrixpassword';
+GRANT ALL PRIVILEGES ON redmatrix.* TO 'redmatrixadmin'@'localhost';
+quit
+mysql -u root -p redmatrix -o < /var/backups/redmatrix_daily.sql
 #+END_SRC
 ** Regenerating SSL certificates
 If a security vulnerability arrises which requires you to regenerate your SSL certificates, such as [[http://filippo.io/Heartbleed]["heartbleed"]], then this can be done as follows:
