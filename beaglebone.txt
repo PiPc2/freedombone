@@ -7124,6 +7124,87 @@ service cron restart
 
 This will delete all pasted content once per day.
 
+** Database maintenance
+
+#+BEGIN_VERSE
+/To be ready to fail is to be prepared for success./
+
+-- Jose Bergamin
+#+END_VERSE
+
+Ideally the system should be as close to "/install and forget/" as possible, but sometimes mysql databases can become corrupted. To handle that situation we can set up a script to monitor the databases and automatically try to repair them, and if the repair fails then to roll back to the previous day's backup, so that at most you may have lost one day of social media updates, rather than losing everything.
+
+#+BEGIN_SRC: bash
+editor /usr/bin/repairdatabase
+#+END_SRC
+
+Add the following, using your mysql root password and entering your email address.
+
+#+BEGIN_SRC: bash
+#!/bin/bash
+
+DATABASE=$1
+EMAIL=myusername@mydomainname.com
+
+MYSQL_ROOT_PASSWORD=mysqlrootpassword
+TEMPFILE=/tmp/repairdatabase_$DATABASE
+
+umask 0077
+
+# check the database
+mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE
+
+# Attempt to repair the database if it contains errors
+if grep -q "Error" "$TEMPFILE"; then
+    mysqlcheck -u root --password=$MYSQL_ROOT_PASSWORD --auto-repair $DATABASE
+else
+    # No errors were found, so exit
+    rm -f $TEMPFILE
+    exit 0
+fi
+rm -f $TEMPFILE
+
+# Check the database again
+mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE
+
+# If it still contains errors then restore from backup
+if grep -q "Error" "$TEMPFILE"; then
+    mysql -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE -o < /var/backups/$DATABASE_daily.sql
+
+    # Send a warning email
+    echo "$DATABASE database corruption within could not be repaired. Restored from backup." $EMAIL
+    rm -f $TEMPFILE
+
+    exit 1
+fi
+rm -f $TEMPFILE
+
+exit 0
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chmod 600 /usr/bin/repairdatabase
+editor /etc/cron.hourly/repair
+#+END_SRC
+
+Add the following. If you're using Red Matrix then uncomment that line.
+
+#+BEGIN_SRC: bash
+#!/bin/bash
+
+repairdatabase friendica
+#repairdatabase redmatrix
+repairdatabase roundcubemail
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chmod +x /etc/cron.hourly/repair
+#+END_SRC
+
 ** Install Tripwire
 
 #+BEGIN_VERSE
