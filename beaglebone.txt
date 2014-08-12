@@ -3302,198 +3302,271 @@ Now visit your blog and follow the setup instructions, which are quite minimal. 
 
 IRC is not an especially secure system.  For instance, even with the best encryption it's easily possible to imagine IRC-specific cribs which could be used by cryptanalytic systems.  However, we'll try to implement it in a manner which will at least give the surveillance aparatus something to ponder over.
 
-Because hybrid doesn't support OpenSSL by default, you have to do a manual patch to get it working.
-
 #+BEGIN_SRC: bash
+adduser ircserver
 cd ~/build
-mkdir hybrid
-cd hybrid
-apt-get update
-apt-get install build-essential openssl libssl-dev debhelper dpatch docbook-to-man flex bison libpcre3-dev screen
-apt-get source ircd-hybrid
+wget http://freedombone.uk.to/ircd-hybrid-8.1.20.tgz
 #+END_SRC
 
-To enable SSL
+Verify the download.
 
 #+BEGIN_SRC: bash
-editor ircd-hybrid-*/debian/rules
+sha256sum ircd-hybrid-8.1.20.tgz
+5570be89fa76b2712d7f08d6c828d613d201daed8c1064be7245fe10bdffa228
 #+END_SRC
 
-At the top add:
+Download Anope.
 
 #+BEGIN_SRC: bash
-USE_OPENSSL = 1
+wget http://freedombone.uk.to/anope-2.0.1-source.tar.gz
 #+END_SRC
 
-So the file should looks like:
+And verify it.
 
 #+BEGIN_SRC: bash
-# ...
-# Some useful stuff to edit here.
-# Beware: TOPICLEN may not exceed 390.
-NICKLEN = 15
-TOPICLEN = 350
-MAXCLIENTS = 200
-USE_OPENSSL = 1
-8# ...
+sha256sum anope-2.0.1-source.tar.gz
+539f603adc4f982e3a5ffd175ecb007aadc619a692409b3e9e1f7f15fb1288e6
 #+END_SRC
 
-Save and exit, then rebuild the deb-file and install it:
+Then compile and install them.
 
 #+BEGIN_SRC: bash
-cd ircd-hybrid-*
-dpkg-buildpackage -rfakeroot -uc -b
-cd ..
-dpkg -i ircd-hybrid_*.deb
+apt-get install libssl-dev cmake
+tar -xvf ircd-hybrid-8.1.20.tgz
+tar -xvf anope-2.0.1-source.tar.gz
+cd ~/build/ircd-hybrid-8.1.20
+./configure -prefix="/home/ircserver/ircd"
+make
+make install
+cd ~/build/anope-2.0.1-source
+./Config
 #+END_SRC
 
-Edit connect, listen and operator settings:
+Answer the questions as follows:
 
 #+BEGIN_SRC: bash
-editor /etc/ircd-hybrid/ircd.conf
+In what directory do you want the binaries to be installed?
+/home/ircserver/services
+
+Create it?
+y
+
+Where do you want the data files to be installed?
+/home/ircserver/services
+
+Which group should all Services data files be owned by?
+ircserver
+
+What should the default umask for data files be (in octal)?
+007
+
+Would you like to build a debug version of Anope?
+n
+
+Would you like to utilize run-cc.pl?
+n
+
+Do you want to build using precompiled headers?
+n
+
+If you need no extra include directories.
+NONE
+
+Are there any extra arguments you wish to pass to CMake?
+NONE
 #+END_SRC
 
-Edit the connect section.  Set *name* to the name of your server, and set a description.
-
-#+BEGIN_SRC: c
-connect {
-        /* name: the name of the server */
-        name = "myircdomainname.com";
-Set a *network_name* and *network_desc*.
-        /* host: the host or IP to connect to.  If a hostname is used it
-         * must match the reverse dns of the server.
-         */
-        host = "127.0.0.1";
-#+END_SRC
-
-Set max_clients to 20.
-
-#+BEGIN_SRC: c
-        /* passwords: the passwords we send (OLD C:) and accept (OLD N:).
-         * The remote server will have these passwords reversed.
-         */
-        send_password = "password";
-        accept_password = "password";
-#+END_SRC
-
-Within the admin section set your *name* and *email*.
-
-Enable compression.
-
-#+BEGIN_SRC: c
-        /* compressed: controls whether traffic is compressed via ziplinks.
-         * By default this is disabled
-         */
-        compressed = yes;
-};
-#+END_SRC
-
-Within the *listen* section set host to your fixed IP address (in the earlier sections it was 192.168.1.60).
-
-#+BEGIN_SRC: c
-/* listen {}: contain information about the ports ircd listens on (OLD P:) */
-listen {
-/* port: the specific port to listen on. if no host is specified
- * before, it will listen on all available IPs.
- *
- * ports are seperated via a comma, a range may be specified using ".."
- */
-
-/* port: listen on all available IPs, ports 6665 to 6669 */
-host = "127.0.0.1";
-port = 6665 .. 6669;
-
-/* sslport: ports to accept ONLY ssl connections on */
-flags = ssl;
-port = 6697
-};
-#+END_SRC
-
-Generate a password for the IRC operator using mkpasswd tool.
+Then build and install Anope.
 
 #+BEGIN_SRC: bash
-mkpasswd -Hmd5
+cd build
+make
+make install
+cd /home/ircserver/ircd/etc
+cp reference.conf ircd.conf
 #+END_SRC
 
-Search for operator block and change it to look like this, including the password which you just generated:
+Create some ssl certificates:
 
-#+BEGIN_SRC: c
-# ...
-operator {
-/* name: the name of the oper */
-name = "root";
-
-/* user: the user@host required for this operator. CIDR is not
- * supported. multiple user="" lines are supported.
- */
-user = "*@*";
-
-/* password: the password required to oper. By default this will
- * need to be encrypted using '/usr/bin/mkpasswd'.
- * WARNING: Please do not mix up the 'mkpasswd' program from
- * /usr/sbin with this one. If you are root, typing 'mkpasswd'
- * will run that one instead and you will receive a strange error.
- *
- * MD5 is supported. If you want to use it, use mkpasswd -Hmd5.
- */
-password = "#MD5 PASSWORD HERE#";
-# ...
+#+BEGIN_SRC: bash
+mkdir /home/ircserver/ircd/ssl
+openssl genrsa -out /home/ircserver/ircd/ssl/ircd.key 4096
+openssl req -new -x509 -key /home/ircserver/ircd/ssl/ircd.key -out /home/ircserver/ircd/ssl/ircd.pem -days 3650
 #+END_SRC
 
-Within the *auth* section set user = "*@192.168.1.60" - or whatever the fixed IP address of the BBB is on your network.
+You will be asked for some details. The next step will take a few minutes to gather entropy, so go and do something else.
+
+#+BEGIN_SRC: bash
+openssl dhparam -out /home/ircserver/ircd/ssl/dhparam.pem 1024
+#+END_SRC
+
+Now alter the permissions on the files so that they're accessible to the /ircserver/ user:
+
+#+BEGIN_SRC: bash
+chmod 600 /home/ircserver/ircd/ssl/ircd.key
+chmod 600 /home/ircserver/ircd/ssl/ircd.pem
+chmod 600 /home/ircserver/ircd/ssl/dhparam.pem
+chown -R ircserver:ircserver /home/ircserver/ircd
+chown -R ircserver:ircserver /home/ircserver/services
+#+END_SRC
+
+Now edit the configuration:
+
+#+BEGIN_SRC: bash
+editor /home/ircserver/ircd/etc/ircd.conf
+#+END_SRC
+
+Comment out:
+
+#+BEGIN_SRC: bash
+// havent_read_conf = 1;
+// flags = need_ident;
+#+END_SRC
+
+Uncomment and change the following lines:
+
+#+BEGIN_SRC: bash
+rsa_private_key_file = "/home/ircserver/ircd/ssl/ircd.key";
+ssl_certificate_file = "/home/ircserver/ircd/ssl/ircd.pem";
+ssl_dh_param_file = "/home/ircserver/ircd/ssl/dhparam.pem";
+#+END_SRC
+
+Above the ssl parameters set *network_name* to your domain name.
+
+Uncomment:
+
+#+BEGIN_SRC: bash
+ssl_server_method = tldv1, sslv3;
+#+END_SRC
+
+Within the *operator* section (line 424):
+
+#+BEGIN_SRC: bash
+name = "myusername";
+user = "*@192.168.1.*";
+password = "mypassword";
+encrypted = no;
+#+END_SRC
+
+Within the *connect* section (line 555):
+
+#+BEGIN_SRC: bash
+name = "mydomainname.com";
+host = "192.168.1.60";
+vhost = "192.168.1.60";
+send_password = "mysendacceptpassword";
+accept_password = "mysendacceptpassword";
+#+END_SRC
+
+And within the *service* section:
+
+#+BEGIN_SRC: bash
+name = "mydomainname.com";
+#+END_SRC
+
+Within the serverinfo section change *name*, *network_name* and *network_desc* to a name and description for your IRC server. To avoid confusion you could make the name and network name the same as your domain name.
+
+Change *max_clients* to 20, or a number which is sufficient for the number of simultaneous users you expect.
 
 Save and exit.
 
-#+BEGIN_SRC: c
-service ircd-hybrid restart
+#+BEGIN_SRC: bash
+cd /home/ircserver/services/conf
+cp example.conf services.conf
+editor services.conf
 #+END_SRC
 
-Now open ports 6665 to 6669 on your internet router/firewall.
+Set the following, replacing /operatorpassword/ with a password which will be used to manage your IRC channels, /mydomainname.com/ with your domain name and /myusername/ with your username:
 
-After connecting to IRC server you should see something like this:
+Within the *module* section set *name* to "hybrid".
+
+Within the *uplink* section set *password* to the /sendacceptpassword/.
+
+Uncomment *#oper* and *name* underneath it, and change the name to your username.
+
+Save and exit, then create a daemon.
 
 #+BEGIN_SRC: bash
-23:50 -!- - hybrid7.debian.local Message of the Day -
-23:50 -!- -         _,met$$$$$gg.       ircd-hybrid 7.2.2
-23:50 -!- -      ,g$$$$$$$$$$$$$$$P.    -----------------
-23:50 -!- -    ,g$$P""       """Y$$.".
-23:50 -!- -   ,$$P'              `$$$.  If you are seeing this, you have
-23:50 -!- - ',$$P       ,ggs.     `$$b: installed the ircd-hybrid package and
-23:50 -!- - `d$$'     ,$P"'   .    $$$  you are now connected to your new IRC
-23:50 -!- -  $$P      d$'     ,    $$P  server -- congratulations.
-23:50 -!- -  $$:      $$.   -    ,d$$'
-23:50 -!- -  $$;      Y$b._   _,d$P'    Since you have just installed the
-23:50 -!- -  Y$$.    `.`"Y$$$$P"'       package, there are some things you
-23:50 -!- -  `$$b      "-.__            should do before going any further:
-23:50 -!- -   `Y$$b
-23:50 -!- -    `Y$$.                    1. Edit /etc/ircd-hybrid/ircd.conf to
-23:50 -!- -      `$$b.                  suit your needs. Beware some options have
-23:50 -!- -        `Y$$b.               been removed or moved into other blocks in
-23:50 -!- -          `"Y$b._            the configuration file since
-23:50 -!- -             `""""           ircd-hybrid 7.0.3.
-23:50 -!- -
-23:50 -!- -                             2. Edit /etc/ircd-hybrid/ircd.motd (this
-23:50 -!- -                             MOTD) to suit your needs. You are free
-23:50 -!- -                             to use this Debian swirl under the
-23:50 -!- -                             Debian Open Use Logo License. :)
-23:50 -!- -
-23:50 -!- -                             3. Restart the server using invoke-rc.d
-23:50 -!- -                             ircd-hybrid restart.
-23:50 -!- -
-23:50 -!- End of /MOTD command.
+editor /etc/init.d/ircd-hybrid
 #+END_SRC
 
-If necessary you can change the message of the day with:
+Add the following:
 
 #+BEGIN_SRC: bash
-editor /etc/ircd-hybrid/ircd.motd
+#!/bin/bash
+# /etc/init.d/ircd-hybrid
+
+### BEGIN INIT INFO
+# Provides:          ircd-hybrid
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: starts irc server
+# Description:       starts irc server
+### END INIT INFO
+
+# Author: Bob Mottram <bob@robotics.uk.to>
+
+#Settings
+SERVICE='ircd-hybrid'
+COMMAND='ircd'
+USER='ircserver'
+NICELEVEL=19 # from 0-19 the bigger the number, the less the impact on system resources
+HISTORY=1024
+INVOCATION="nice -n ${NICELEVEL} ${COMMAND}"
+PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/sbin:/usr/sbin:/bin:/home/ircserver/ircd/sbin:/home/ircserver/ircd/bin'
+
+
+irc_start() {
+echo "Starting $SERVICE..."
+cd /home/$USER/ircd
+su --command "bin/$COMMAND" $USER
+su --command "/home/$USER/services/bin/services" $USER
+}
+
+
+irc_stop() {
+echo "Stopping $SERVICE"
+killall -15 $COMMAND
+killall -15 $USER
+}
+
+
+#Start-Stop here
+case "$1" in
+  start)
+    irc_start
+    ;;
+  stop)
+    irc_stop
+    ;;
+  restart)
+    irc_stop
+    sleep 10s
+    irc_start
+    ;;
+    *)
+  echo "Usage: $0 {start|stop|restart}"
+  exit 1
+  ;;
+esac
+
+exit 0
 #+END_SRC
 
-The restart the irc server.
+Save and exit, then start the daemon.
 
 #+BEGIN_SRC: bash
+chmod +x /etc/init.d/ircd-hybrid
+update-rc.d ircd-hybrid defaults
 service ircd-hybrid start
 #+END_SRC
+
+NOTE: to debug anope
+su - ircserver
+cd ~/services/bin
+./services -debug -nofork
 
 *** Channel management
 
@@ -7519,10 +7592,18 @@ chown prosody:prosody /etc/ssl/certs/xmpp.crt
 And regenerate the IRC server keys:
 
 #+BEGIN_SRC: bash
-openssl genrsa -out /etc/ircd-hybrid/key/ircd.key 4096
-openssl req -new -x509 -key /etc/ircd-hybrid/key/ircd.key -out /etc/ircd-hybrid/key/ircd.pem -days 3650
-chmod 600 /etc/ircd-hybrid/key/ircd.key
-chmod 600 /etc/ircd-hybrid/key/ircd.pem
+openssl genrsa -out /home/ircserver/ircd/ssl/ircd.key 4096
+openssl req -new -x509 -key /home/ircserver/ircd/ssl/ircd.key -out /home/ircserver/ircd/ssl/ircd.pem -days 3650
+openssl dhparam -out /home/ircserver/ircd/ssl/dhparam.pem 1024
+#+END_SRC
+
+This will take a few minutes to gather entropy.
+
+#+BEGIN_SRC: bash
+chmod 600 /home/ircserver/ircd/ssl/ircd.key
+chmod 600 /home/ircserver/ircd/ssl/ircd.pem
+chmod 600 /home/ircserver/ircd/ssl/dhparam.pem
+chown -R ircserver:ircserver /home/ircserver/ircd/ssl
 #+END_SRC
 
 Regenerate email certificate.
