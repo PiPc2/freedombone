@@ -8358,6 +8358,232 @@ a2ensite $HOSTNAME
 service apache2 restart
 #+END_SRC
 
+** Subsonic
+
+Subsonic looks ok as a media server, but the deb file downloadable from soureforge seems to be not quite free - i.e. to have a built in licensing antifeature. There is a fully free version with the antifeature removed, but currently the debian build fails.
+
+#+BEGIN_SRC
+apt-get install openjdk-7-jre openjdk-7-jdk lintian maven
+adduser subsonic
+mkdir ~/build
+cd ~/build
+git clone https://github.com/EugeneKay/subsonic.git
+cd subsonic
+git checkout release
+mvn package
+mvn -P full -pl subsonic-booter -am install
+mvn -P full -pl subsonic-installer-debian/ -am install
+dpkg -i ./subsonic-installer-debian/target/subsonic-*.deb
+editor /etc/default/subsonic
+#+END_SRC
+
+Settings should look like the following:
+
+#+BEGIN_SRC: bash
+SUBSONIC_ARGS="--port=4040 --max-memory=100"
+SUBSONIC_USER=subsonic
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chown -R subsonic:subsonic /var/subsonic
+service subsonic restart
+#+END_SRC
+
+Edit your Apache configuration.
+
+#+BEGIN_SRC: bash
+export HOSTNAME=mydomainname.com
+editor /etc/apache2/sites-available/$HOSTNAME
+#+END_SRC
+
+Add the following, replacing /mysubsonicdomainname.com/ with your subsonic domain name and /myusername@mydomainname.com/ with your email address.
+
+#+BEGIN_SRC: bash
+<VirtualHost *:80>
+    ServerAdmin myusername@mydomainname.com
+    ServerName mysubsonicdomainname.com
+
+    ProxyRequests Off
+    ProxyPreserveHost Off
+
+    <Location />
+        ProxyPass  http://localhost:4040/
+        ProxyPassReverse  http://localhost:4040/
+    </Location>
+
+    RewriteEngine on
+    RewriteOptions inherit
+
+    ErrorLog ${APACHE_LOG_DIR}/paste_error.log
+
+    # Possible values include: debug, info, notice, warn, error, crit,
+    # alert, emerg.
+    LogLevel error
+
+    CustomLog ${APACHE_LOG_DIR}/paste.log combined
+</VirtualHost>
+
+
+<IfModule mod_ssl.c>
+<VirtualHost *:443>
+    ServerAdmin myusername@mydomainname.com
+    ServerName mysubsonicdomainname.com
+
+    ProxyRequests Off
+    ProxyPreserveHost Off
+
+    <Location />
+        ProxyPass  http://localhost:4040/
+        ProxyPassReverse  http://localhost:4040/
+    </Location>
+
+    RewriteEngine on
+    RewriteOptions inherit
+
+    DocumentRoot /var/www/mysubsonicdomainname.com/htdocs
+    <Directory />
+        Options FollowSymLinks
+        AllowOverride All
+    </Directory>
+    <Directory /var/www/mysubsonicdomainname.com/htdocs/>
+        Options All
+        AllowOverride All
+        Order allow,deny
+        allow from all
+        LimitRequestBody 5120000
+    </Directory>
+
+    # Don't serve .php~ or .php# files created by emacs
+    <Files ~ "(^#.*#|~|\.sw[op])$">
+        Order allow,deny
+        Deny from all
+    </Files>
+
+    <IfModule headers_module>
+        Header set X-Content-Type-Options nosniff
+        Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate, private"
+        Header set Pragma no-cache
+    </IfModule>
+
+    <Files .htaccess>
+      deny from all
+    </Files>
+
+    ScriptAlias /cgi-bin/ /usr/lib/cgi-bin/
+    <Directory "/usr/lib/cgi-bin">
+        AllowOverride All
+        Options +ExecCGI -MultiViews +SymLinksIfOwnerMatch
+        Order allow,deny
+        Allow from all
+        LimitRequestBody 512000
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+
+    # Possible values include: debug, info, notice, warn, error, crit,
+    # alert, emerg.
+    LogLevel error
+
+    CustomLog ${APACHE_LOG_DIR}/ssl_access.log combined
+
+    #   SSL Engine Switch:
+    #   Enable/Disable SSL for this virtual host.
+    SSLEngine on
+
+	SSLCertificateFile    /etc/ssl/certs/mysubsonicdomainname.com.crt
+	SSLCertificateKeyFile /etc/ssl/private/mysubsonicdomainname.com.key
+
+    # Options based on bettercrypto.org
+    SSLProtocol All -SSLv2 -SSLv3
+    SSLHonorCipherOrder On
+    SSLCompression off
+    SSLCipherSuite EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA
+
+    # Add six earth month HSTS header for all users ...
+    Header add Strict-Transport-Security "max-age=15768000"
+    # If you want to protect all subdomains , use the following header
+    # ALL subdomains HAVE TO support https if you use this !
+    # Strict-Transport-Security: max-age=15768000 ; includeSubDomains
+
+    #   SSL Engine Options:
+    #   Set various options for the SSL engine.
+    #   o FakeBasicAuth:
+    #     Translate the client X.509 into a Basic Authorisation.  This means that
+    #     the standard Auth/DBMAuth methods can be used for access control.  The
+    #     user name is the `one line' version of the client's X.509 certificate.
+    #     Note that no password is obtained from the user. Every entry in the user
+    #     file needs this password: `xxj31ZMTZzkVA'.
+    #   o ExportCertData:
+    #     This exports two additional environment variables: SSL_CLIENT_CERT and
+    #     SSL_SERVER_CERT. These contain the PEM-encoded certificates of the
+    #     server (always existing) and the client (only existing when client
+    #     authentication is used). This can be used to import the certificates
+    #     into CGI scripts.
+    #   o StdEnvVars:
+    #     This exports the standard SSL/TLS related `SSL_*' environment variables.
+    #     Per default this exportation is switched off for performance reasons,
+    #     because the extraction step is an expensive operation and is usually
+    #     useless for serving static content. So one usually enables the
+    #     exportation for CGI and SSI requests only.
+    #   o StrictRequire:
+    #     This denies access when "SSLRequireSSL" or "SSLRequire" applied even
+    #     under a "Satisfy any" situation, i.e. when it applies access is denied
+    #     and no other module can change it.
+    #   o OptRenegotiate:
+    #     This enables optimized SSL connection renegotiation handling when SSL
+    #     directives are used in per-directory context.
+    #SSLOptions +FakeBasicAuth +ExportCertData +StrictRequire
+    <FilesMatch "\.(cgi|shtml|phtml|php)$">
+        SSLOptions +StdEnvVars
+    </FilesMatch>
+    <Directory /usr/lib/cgi-bin>
+        SSLOptions +StdEnvVars
+    </Directory>
+
+    #   SSL Protocol Adjustments:
+    #   The safe and default but still SSL/TLS standard compliant shutdown
+    #   approach is that mod_ssl sends the close notify alert but doesn't wait for
+    #   the close notify alert from client. When you need a different shutdown
+    #   approach you can use one of the following variables:
+    #   o ssl-unclean-shutdown:
+    #     This forces an unclean shutdown when the connection is closed, i.e. no
+    #     SSL close notify alert is send or allowed to received.  This violates
+    #     the SSL/TLS standard but is needed for some brain-dead browsers. Use
+    #     this when you receive I/O errors because of the standard approach where
+    #     mod_ssl sends the close notify alert.
+    #   o ssl-accurate-shutdown:
+    #     This forces an accurate shutdown when the connection is closed, i.e. a
+    #     SSL close notify alert is send and mod_ssl waits for the close notify
+    #     alert of the client. This is 100% SSL/TLS standard compliant, but in
+    #     practice often causes hanging connections with brain-dead browsers. Use
+    #     this only for browsers where you know that their SSL implementation
+    #     works correctly.
+    #   Notice: Most problems of broken clients are also related to the HTTP
+    #   keep-alive facility, so you usually additionally want to disable
+    #   keep-alive for those clients, too. Use variable "nokeepalive" for this.
+    #   Similarly, one has to force some clients to use HTTP/1.0 to workaround
+    #   their broken HTTP/1.1 implementation. Use variables "downgrade-1.0" and
+    #   "force-response-1.0" for this.
+    BrowserMatch "MSIE [2-6]" \
+        nokeepalive ssl-unclean-shutdown \
+        downgrade-1.0 force-response-1.0
+    # MSIE 7 and newer should be able to use keepalive
+    BrowserMatch "MSIE [17-9]" ssl-unclean-shutdown
+
+</VirtualHost>
+</IfModule>
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+makecert mysubsonicdomainname.com
+a2ensite mysubsonicdomainname.com
+service apache2 restart
+#+END_SRC
+
 * Related projects
 
   * [[https://freedomboxfoundation.org/][Freedombox]]
