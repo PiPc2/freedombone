@@ -1209,8 +1209,8 @@ Set the following properties:
 TCP_PORTS="1,7,9,11,15,79,109,110,111,119,138,139,512,513,514,515,540,635,1080,1524,2000,2001,3000,4000,4001,5742,6000,6001,6667,12345,12346,20034,27665,30303,32771,32772,32773,32774,31337,40421,40425,49724,54320"
 UDP_PORTS="1,7,9,66,67,68,69,111,137,138,161,162,474,513,517,518,635,640,641,666,700,2049,3000,31335,27444,34555,32770,32771,32772,32773,32774,31337,54321"
 
-ADVANCED_EXCLUDE_TCP="113,139,70,80,443,587,143,6697,993,5060,5061,25,465,22,5222,5223,5269,5280,5281,8444"
-ADVANCED_EXCLUDE_UDP="520,138,137,67,70,80,443,143,6697,993, 5060,5061,25,465,22,5222,5223,5269,5280,5281,8444"
+ADVANCED_EXCLUDE_TCP="113,139,70,80,443,587,143,6697,993,5060,5061,25,465,22,4040,5222,5223,5269,5280,5281,8444"
+ADVANCED_EXCLUDE_UDP="520,138,137,67,70,80,443,143,6697,993, 5060,5061,25,465,22,4040,5222,5223,5269,5280,5281,8444"
 
 SCAN_TRIGGER="2"
 
@@ -1338,6 +1338,10 @@ iptables -A INPUT -p tcp --dport 70 -m limit --limit 3/minute --limit-burst 1 -j
 # Limit IMAP connections
 iptables -A INPUT -p tcp --dport 143 -m limit --limit 3/minute --limit-burst 1 -j ACCEPT
 iptables -A INPUT -p tcp --dport 993 -m limit --limit 3/minute --limit-burst 1 -j ACCEPT
+
+# Limit Subsonic connections
+iptables -A INPUT -p tcp --dport 4040 -m limit --limit 10/minute --limit-burst 1 -j ACCEPT
+iptables -A INPUT -p udp --dport 4040 -m limit --limit 10/minute --limit-burst 1 -j ACCEPT
 
 # Limit SIP connections
 iptables -A INPUT -p tcp --dport 5060:5061 -m limit --limit 3/minute --limit-burst 1 -j ACCEPT
@@ -2351,16 +2355,16 @@ Search for MaxClients and replace the value with 6. As an example the settings s
 
 #+BEGIN_SRC: bash
 Timeout 30
-KeepAlive On
+KeepAlive Off
 MaxKeepAliveRequests 5
 KeepAliveTimeout 10
 
 <IfModule mpm_prefork_module>
-    StartServers           1
-    MinSpareServers        1
-    MaxSpareServers        3
-    MaxClients            10
-    MaxRequestsPerChild 3000
+    StartServers          3
+    MinSpareServers       3
+    MaxSpareServers       5
+    MaxClients           10
+    MaxRequestsPerChild   0
 </IfModule>
 
 <IfModule mpm_worker_module>
@@ -7228,6 +7232,275 @@ service cron restart
 
 This will delete all pasted content once per day.
 
+** Subsonic music server
+
+#+BEGIN_VERSE
+/Where words fail, music speaks./
+
+-- Hans Christian Andersen
+#+END_VERSE
+
+*** Introduction
+Owncloud is probably the easiest way to handle your media, but Subsonic is another alternative and has a mobile app which can be used to conveniently play your music.  Unless you particularly prefer Subsonic it's probably better to stick with Owncloud and skip this section.
+
+The method of installing Subsonic described here is not ideal, but works. The main issue is that the Debian package supplied from sourceforge contains a licensing [[https://www.fsf.org/blogs/community/antifeatures][antifeature]], which needs to be removed in order to achieve a fully free system.
+*** Installing the Server
+For this you will need a new subdomain (or your own domain), so see [[Setting up a web site]] for details of how to do that.
+
+#+BEGIN_SRC: bash
+apt-get install openjdk-7-jre openjdk-7-jdk lintian maven libav-tools
+adduser subsonic
+mkdir ~/build
+cd ~/build
+wget http://freedombone.uk.to/subsonic-4.9.deb
+sha256sum subsonic-4.9.deb
+064c2a7e69d47715ce230f3dfcacdc627c18f6466e0fe48952f133ce06be698d
+dpkg -i subsonic-4.9.deb
+#+END_SRC
+
+Now we remove the antifeature by compiling from source and then overwriting the relevant files.
+
+#+BEGIN_SRC: bash
+git clone https://github.com/EugeneKay/subsonic.git
+cd subsonic
+git checkout release
+mvn package
+mvn -P full -pl subsonic-booter -am install
+mvn -P full -pl subsonic-installer-debian/ -am install
+cp ~/build/subsonic/subsonic-booter/target/subsonic-booter-jar-with-dependencies.jar /usr/share/subsonic/
+cp ~/build/subsonic/subsonic-main/target/subsonic.war /usr/share/subsonic/subsonic.war
+cp ~/build/subsonic/subsonic-booter/src/main/script/subsonic.sh /usr/share/subsonic/subsonic.sh
+editor /etc/default/subsonic
+#+END_SRC
+
+Settings should look like the following.
+
+#+BEGIN_SRC: bash
+SUBSONIC_ARGS="--max-memory=100"
+SUBSONIC_USER=subsonic
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chown -R subsonic:subsonic /var/subsonic
+mkdir /var/music
+chown -R subsonic:subsonic /var/music
+service subsonic restart
+#+END_SRC
+
+Edit your Apache configuration.
+
+#+BEGIN_SRC: bash
+export HOSTNAME=mysubsonicdomainname.com
+editor /etc/apache2/sites-available/$HOSTNAME
+#+END_SRC
+
+Add the following, replacing /mysubsonicdomainname.com/ with your subsonic domain name and /myusername@mydomainname.com/ with your email address.
+
+#+BEGIN_SRC: bash
+<VirtualHost *:80>
+    ServerName mysubsonicdomainname.com
+    Redirect permanent / https://mysubsonicdomainname.com/
+</VirtualHost>
+
+<IfModule mod_ssl.c>
+<VirtualHost *:443>
+    ServerAdmin myusername@mydomainname.com
+    ServerName mysubsonicdomainname.com
+
+    ProxyRequests Off
+    ProxyPreserveHost Off
+
+    <Location />
+        ProxyPass  http://localhost:4040/
+        ProxyPassReverse  http://localhost:4040/
+    </Location>
+
+    RewriteEngine on
+    RewriteOptions inherit
+
+    DocumentRoot /var/www/mysubsonicdomainname.com/htdocs
+    <Directory />
+        Options FollowSymLinks
+        AllowOverride All
+    </Directory>
+    <Directory /var/www/mysubsonicdomainname.com/htdocs/>
+        Options All
+        AllowOverride All
+        Order allow,deny
+        allow from all
+        LimitRequestBody 5120000
+    </Directory>
+
+    # Don't serve .php~ or .php# files created by emacs
+    <Files ~ "(^#.*#|~|\.sw[op])$">
+        Order allow,deny
+        Deny from all
+    </Files>
+
+    <IfModule headers_module>
+        Header set X-Content-Type-Options nosniff
+        Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate, private"
+        Header set Pragma no-cache
+    </IfModule>
+
+    <Files .htaccess>
+      deny from all
+    </Files>
+
+    ScriptAlias /cgi-bin/ /usr/lib/cgi-bin/
+    <Directory "/usr/lib/cgi-bin">
+        AllowOverride All
+        Options +ExecCGI -MultiViews +SymLinksIfOwnerMatch
+        Order allow,deny
+        Allow from all
+        LimitRequestBody 512000
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+
+    # Possible values include: debug, info, notice, warn, error, crit,
+    # alert, emerg.
+    LogLevel error
+
+    CustomLog ${APACHE_LOG_DIR}/ssl_access.log combined
+
+    #   SSL Engine Switch:
+    #   Enable/Disable SSL for this virtual host.
+    SSLEngine on
+
+	SSLCertificateFile    /etc/ssl/certs/mysubsonicdomainname.com.crt
+	SSLCertificateKeyFile /etc/ssl/private/mysubsonicdomainname.com.key
+
+    # Options based on bettercrypto.org
+    SSLProtocol All -SSLv2 -SSLv3
+    SSLHonorCipherOrder On
+    SSLCompression off
+    SSLCipherSuite EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA
+
+    # Add six earth month HSTS header for all users ...
+    Header add Strict-Transport-Security "max-age=15768000"
+    # If you want to protect all subdomains , use the following header
+    # ALL subdomains HAVE TO support https if you use this !
+    # Strict-Transport-Security: max-age=15768000 ; includeSubDomains
+
+    #   SSL Engine Options:
+    #   Set various options for the SSL engine.
+    #   o FakeBasicAuth:
+    #     Translate the client X.509 into a Basic Authorisation.  This means that
+    #     the standard Auth/DBMAuth methods can be used for access control.  The
+    #     user name is the `one line' version of the client's X.509 certificate.
+    #     Note that no password is obtained from the user. Every entry in the user
+    #     file needs this password: `xxj31ZMTZzkVA'.
+    #   o ExportCertData:
+    #     This exports two additional environment variables: SSL_CLIENT_CERT and
+    #     SSL_SERVER_CERT. These contain the PEM-encoded certificates of the
+    #     server (always existing) and the client (only existing when client
+    #     authentication is used). This can be used to import the certificates
+    #     into CGI scripts.
+    #   o StdEnvVars:
+    #     This exports the standard SSL/TLS related `SSL_*' environment variables.
+    #     Per default this exportation is switched off for performance reasons,
+    #     because the extraction step is an expensive operation and is usually
+    #     useless for serving static content. So one usually enables the
+    #     exportation for CGI and SSI requests only.
+    #   o StrictRequire:
+    #     This denies access when "SSLRequireSSL" or "SSLRequire" applied even
+    #     under a "Satisfy any" situation, i.e. when it applies access is denied
+    #     and no other module can change it.
+    #   o OptRenegotiate:
+    #     This enables optimized SSL connection renegotiation handling when SSL
+    #     directives are used in per-directory context.
+    #SSLOptions +FakeBasicAuth +ExportCertData +StrictRequire
+    <FilesMatch "\.(cgi|shtml|phtml|php)$">
+        SSLOptions +StdEnvVars
+    </FilesMatch>
+    <Directory /usr/lib/cgi-bin>
+        SSLOptions +StdEnvVars
+    </Directory>
+
+    #   SSL Protocol Adjustments:
+    #   The safe and default but still SSL/TLS standard compliant shutdown
+    #   approach is that mod_ssl sends the close notify alert but doesn't wait for
+    #   the close notify alert from client. When you need a different shutdown
+    #   approach you can use one of the following variables:
+    #   o ssl-unclean-shutdown:
+    #     This forces an unclean shutdown when the connection is closed, i.e. no
+    #     SSL close notify alert is send or allowed to received.  This violates
+    #     the SSL/TLS standard but is needed for some brain-dead browsers. Use
+    #     this when you receive I/O errors because of the standard approach where
+    #     mod_ssl sends the close notify alert.
+    #   o ssl-accurate-shutdown:
+    #     This forces an accurate shutdown when the connection is closed, i.e. a
+    #     SSL close notify alert is send and mod_ssl waits for the close notify
+    #     alert of the client. This is 100% SSL/TLS standard compliant, but in
+    #     practice often causes hanging connections with brain-dead browsers. Use
+    #     this only for browsers where you know that their SSL implementation
+    #     works correctly.
+    #   Notice: Most problems of broken clients are also related to the HTTP
+    #   keep-alive facility, so you usually additionally want to disable
+    #   keep-alive for those clients, too. Use variable "nokeepalive" for this.
+    #   Similarly, one has to force some clients to use HTTP/1.0 to workaround
+    #   their broken HTTP/1.1 implementation. Use variables "downgrade-1.0" and
+    #   "force-response-1.0" for this.
+    BrowserMatch "MSIE [2-6]" \
+        nokeepalive ssl-unclean-shutdown \
+        downgrade-1.0 force-response-1.0
+    # MSIE 7 and newer should be able to use keepalive
+    BrowserMatch "MSIE [17-9]" ssl-unclean-shutdown
+
+</VirtualHost>
+</IfModule>
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+makecert mysubsonicdomainname.com
+a2ensite mysubsonicdomainname.com
+service apache2 restart
+#+END_SRC
+*** Configuration
+Open a browser and go to your subsonic domain name. Log in with username /admin/ and password /admin/, then change your administrator password.
+
+Within the settings click on /users/ and add a user.  Give your user access to everything by ticking all the checkboxes.  You can then log out and log back in as the user.
+
+Click /settings/ and select /transcoding/. Change the transcoding settings to the following:
+
+| Name           | Convert from                                      | Convert to | Step 1                                                                                                                                   |
+|----------------+---------------------------------------------------+------------+------------------------------------------------------------------------------------------------------------------------------------------|
+| mp3 audio      | ogg oga aac m4a flac wav wma aif aiff ape mpc shn | mp3        | avconv -i %s -b %bk -q 0 -loglevel error -f mp3 -                                                                                        |
+| flv/h264 video | avi mpg mpeg mp4 m4v mkv mov wmv ogv divx m2ts    | flv        | avconv -ss %o -i %s -async 1 -b %bk -s %wx%h -c:a libmp3lame -ar 44100 -ac 2 -v debug -f flv -c:v libx264 -preset superfast -threads 0 - |
+
+| Downsample command          | avconv -i %s -b %bk -v 0 -f mp3 -                                                                                                                   |
+| HTTP Live Streaming command | avconv -ss %0 -t %d -i %s -async 1 -b %bk -s %wx%h -ar 44100 -ac 2 -v 0 -f mpegts -vcodec libx264 -preset superfast -acodec libmp3lame -threads 0 - |
+
+Then save.
+
+Open port 4040 on your internet router and forward it to the BBB.
+
+*** Adding your music
+The easiest way to add your music is to obtain a large capacity USB stick, copy your music onto it, plug it into the front of the BBB and then mount it as a drive.
+
+So with the USB stick plugged in and logged into the BBB as root via ssh:
+
+#+BEGIN_SRC: bash
+mount /dev/sda /var/music
+chown -R subsonic:subsonic /var/music
+#+END_SRC
+
+Then within a browser go to your Subsonic domain name, select *settings*, then *Media folders* then *Scan media folders now*. Depending upon how much music you have this could take a while, so don't be too impatient.
+*** Android App
+Within [[https://f-droid.org/][F-Droid]] search for *Dsub* and install it.
+
+Open the app, then press on the Dsub icon (top left) and select *settings*, followed by *servers*. Select one of the unused servers then set the name to your domain name, the server address to https://mysubsonicdomainname.com (the domain name you used for subsonic) and your username and password for the Subsonic user which you created earlier.  Press on *test server* to check the internet connection to the BBB.
+
+Remove any other servers (including the demo) by pressing on them then selecting *remove server*.
+
+You can then press *back* a few times to return to the main Dsub menu and press *recently added*. If your media library has been scanned (as in the earlier "adding your music" step) then you should see tracks appear.  Press on one, then press the play button.
+
+Other proprietary Subsonic mobile apps are available, but are not recommended. Anything proprietary could contain backdoors, malware or other nasties which merely assist the surveillance apparatus.
 ** Database maintenance
 
 #+BEGIN_VERSE
@@ -7496,6 +7769,7 @@ The following ports on your internet router/firewall should be forwarded to the 
 | XMPP (server) |       5269 |
 | XMPP (BOSH)   | 5280..5281 |
 | Bitmessage    |       8444 |
+| Subsonic      |       4040 |
 
 * Hints and Tips
 ** Example configurations
@@ -8355,232 +8629,6 @@ a2enmod proxy_connect
 a2enmod proxy_http
 a2enmod proxy_balancer
 a2ensite $HOSTNAME
-service apache2 restart
-#+END_SRC
-
-** Subsonic
-
-Subsonic looks ok as a media server, but the deb file downloadable from soureforge seems to be not quite free - i.e. to have a built in licensing antifeature. There is a fully free version with the antifeature removed, but currently the debian build fails.
-
-#+BEGIN_SRC
-apt-get install openjdk-7-jre openjdk-7-jdk lintian maven
-adduser subsonic
-mkdir ~/build
-cd ~/build
-git clone https://github.com/EugeneKay/subsonic.git
-cd subsonic
-git checkout release
-mvn package
-mvn -P full -pl subsonic-booter -am install
-mvn -P full -pl subsonic-installer-debian/ -am install
-dpkg -i ./subsonic-installer-debian/target/subsonic-*.deb
-editor /etc/default/subsonic
-#+END_SRC
-
-Settings should look like the following:
-
-#+BEGIN_SRC: bash
-SUBSONIC_ARGS="--port=4040 --max-memory=100"
-SUBSONIC_USER=subsonic
-#+END_SRC
-
-Save and exit.
-
-#+BEGIN_SRC: bash
-chown -R subsonic:subsonic /var/subsonic
-service subsonic restart
-#+END_SRC
-
-Edit your Apache configuration.
-
-#+BEGIN_SRC: bash
-export HOSTNAME=mydomainname.com
-editor /etc/apache2/sites-available/$HOSTNAME
-#+END_SRC
-
-Add the following, replacing /mysubsonicdomainname.com/ with your subsonic domain name and /myusername@mydomainname.com/ with your email address.
-
-#+BEGIN_SRC: bash
-<VirtualHost *:80>
-    ServerAdmin myusername@mydomainname.com
-    ServerName mysubsonicdomainname.com
-
-    ProxyRequests Off
-    ProxyPreserveHost Off
-
-    <Location />
-        ProxyPass  http://localhost:4040/
-        ProxyPassReverse  http://localhost:4040/
-    </Location>
-
-    RewriteEngine on
-    RewriteOptions inherit
-
-    ErrorLog ${APACHE_LOG_DIR}/paste_error.log
-
-    # Possible values include: debug, info, notice, warn, error, crit,
-    # alert, emerg.
-    LogLevel error
-
-    CustomLog ${APACHE_LOG_DIR}/paste.log combined
-</VirtualHost>
-
-
-<IfModule mod_ssl.c>
-<VirtualHost *:443>
-    ServerAdmin myusername@mydomainname.com
-    ServerName mysubsonicdomainname.com
-
-    ProxyRequests Off
-    ProxyPreserveHost Off
-
-    <Location />
-        ProxyPass  http://localhost:4040/
-        ProxyPassReverse  http://localhost:4040/
-    </Location>
-
-    RewriteEngine on
-    RewriteOptions inherit
-
-    DocumentRoot /var/www/mysubsonicdomainname.com/htdocs
-    <Directory />
-        Options FollowSymLinks
-        AllowOverride All
-    </Directory>
-    <Directory /var/www/mysubsonicdomainname.com/htdocs/>
-        Options All
-        AllowOverride All
-        Order allow,deny
-        allow from all
-        LimitRequestBody 5120000
-    </Directory>
-
-    # Don't serve .php~ or .php# files created by emacs
-    <Files ~ "(^#.*#|~|\.sw[op])$">
-        Order allow,deny
-        Deny from all
-    </Files>
-
-    <IfModule headers_module>
-        Header set X-Content-Type-Options nosniff
-        Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate, private"
-        Header set Pragma no-cache
-    </IfModule>
-
-    <Files .htaccess>
-      deny from all
-    </Files>
-
-    ScriptAlias /cgi-bin/ /usr/lib/cgi-bin/
-    <Directory "/usr/lib/cgi-bin">
-        AllowOverride All
-        Options +ExecCGI -MultiViews +SymLinksIfOwnerMatch
-        Order allow,deny
-        Allow from all
-        LimitRequestBody 512000
-    </Directory>
-
-    ErrorLog ${APACHE_LOG_DIR}/error.log
-
-    # Possible values include: debug, info, notice, warn, error, crit,
-    # alert, emerg.
-    LogLevel error
-
-    CustomLog ${APACHE_LOG_DIR}/ssl_access.log combined
-
-    #   SSL Engine Switch:
-    #   Enable/Disable SSL for this virtual host.
-    SSLEngine on
-
-	SSLCertificateFile    /etc/ssl/certs/mysubsonicdomainname.com.crt
-	SSLCertificateKeyFile /etc/ssl/private/mysubsonicdomainname.com.key
-
-    # Options based on bettercrypto.org
-    SSLProtocol All -SSLv2 -SSLv3
-    SSLHonorCipherOrder On
-    SSLCompression off
-    SSLCipherSuite EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA
-
-    # Add six earth month HSTS header for all users ...
-    Header add Strict-Transport-Security "max-age=15768000"
-    # If you want to protect all subdomains , use the following header
-    # ALL subdomains HAVE TO support https if you use this !
-    # Strict-Transport-Security: max-age=15768000 ; includeSubDomains
-
-    #   SSL Engine Options:
-    #   Set various options for the SSL engine.
-    #   o FakeBasicAuth:
-    #     Translate the client X.509 into a Basic Authorisation.  This means that
-    #     the standard Auth/DBMAuth methods can be used for access control.  The
-    #     user name is the `one line' version of the client's X.509 certificate.
-    #     Note that no password is obtained from the user. Every entry in the user
-    #     file needs this password: `xxj31ZMTZzkVA'.
-    #   o ExportCertData:
-    #     This exports two additional environment variables: SSL_CLIENT_CERT and
-    #     SSL_SERVER_CERT. These contain the PEM-encoded certificates of the
-    #     server (always existing) and the client (only existing when client
-    #     authentication is used). This can be used to import the certificates
-    #     into CGI scripts.
-    #   o StdEnvVars:
-    #     This exports the standard SSL/TLS related `SSL_*' environment variables.
-    #     Per default this exportation is switched off for performance reasons,
-    #     because the extraction step is an expensive operation and is usually
-    #     useless for serving static content. So one usually enables the
-    #     exportation for CGI and SSI requests only.
-    #   o StrictRequire:
-    #     This denies access when "SSLRequireSSL" or "SSLRequire" applied even
-    #     under a "Satisfy any" situation, i.e. when it applies access is denied
-    #     and no other module can change it.
-    #   o OptRenegotiate:
-    #     This enables optimized SSL connection renegotiation handling when SSL
-    #     directives are used in per-directory context.
-    #SSLOptions +FakeBasicAuth +ExportCertData +StrictRequire
-    <FilesMatch "\.(cgi|shtml|phtml|php)$">
-        SSLOptions +StdEnvVars
-    </FilesMatch>
-    <Directory /usr/lib/cgi-bin>
-        SSLOptions +StdEnvVars
-    </Directory>
-
-    #   SSL Protocol Adjustments:
-    #   The safe and default but still SSL/TLS standard compliant shutdown
-    #   approach is that mod_ssl sends the close notify alert but doesn't wait for
-    #   the close notify alert from client. When you need a different shutdown
-    #   approach you can use one of the following variables:
-    #   o ssl-unclean-shutdown:
-    #     This forces an unclean shutdown when the connection is closed, i.e. no
-    #     SSL close notify alert is send or allowed to received.  This violates
-    #     the SSL/TLS standard but is needed for some brain-dead browsers. Use
-    #     this when you receive I/O errors because of the standard approach where
-    #     mod_ssl sends the close notify alert.
-    #   o ssl-accurate-shutdown:
-    #     This forces an accurate shutdown when the connection is closed, i.e. a
-    #     SSL close notify alert is send and mod_ssl waits for the close notify
-    #     alert of the client. This is 100% SSL/TLS standard compliant, but in
-    #     practice often causes hanging connections with brain-dead browsers. Use
-    #     this only for browsers where you know that their SSL implementation
-    #     works correctly.
-    #   Notice: Most problems of broken clients are also related to the HTTP
-    #   keep-alive facility, so you usually additionally want to disable
-    #   keep-alive for those clients, too. Use variable "nokeepalive" for this.
-    #   Similarly, one has to force some clients to use HTTP/1.0 to workaround
-    #   their broken HTTP/1.1 implementation. Use variables "downgrade-1.0" and
-    #   "force-response-1.0" for this.
-    BrowserMatch "MSIE [2-6]" \
-        nokeepalive ssl-unclean-shutdown \
-        downgrade-1.0 force-response-1.0
-    # MSIE 7 and newer should be able to use keepalive
-    BrowserMatch "MSIE [17-9]" ssl-unclean-shutdown
-
-</VirtualHost>
-</IfModule>
-#+END_SRC
-
-Save and exit.
-
-#+BEGIN_SRC: bash
-makecert mysubsonicdomainname.com
-a2ensite mysubsonicdomainname.com
 service apache2 restart
 #+END_SRC
 
