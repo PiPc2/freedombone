@@ -874,6 +874,146 @@ and check that some number of bits are set within a 4096 bit sized key:
 debug2: bits set: */4096
 #+END_SRC
 
+** Install CPU limiter
+
+#+BEGIN_VERSE
+/On every side, and at every hour of the day, we came up against the relentless limitations of pioneer life./
+
+-- Anna Howard Shaw
+#+END_VERSE
+
+Some process may consume a lot of CPU power and cause the system to become unresponsive or to crash.  To avoid that it's possible to limit the maximum percentage of the CPU which processes can use. We can whitelist some editors and tools that are commonly used and which have an initial CPU spike (such as Emacs loading its configuration files), with everything else being subject to a CPU limit if usage goes above a threshold percentage for more than one second.
+
+#+BEGIN_SRC: bash
+apt-get install cpulimit gawk
+#+END_SRC
+
+Create a script which can be run as a daemon.
+
+#+BEGIN_SRC: bash
+editor /usr/bin/cpulimit_daemon.sh
+#+END_SRC
+
+Add the following:
+
+#+BEGIN_SRC: bash
+#!/bin/bash
+# ==============================================================
+# CPU limit daemon - set PID's max. percentage CPU consumptions
+# ==============================================================
+
+# Variables
+CPU_LIMIT=20            # Maximum percentage CPU consumption by each PID
+DAEMON_INTERVAL=1       # Daemon check interval in seconds
+BLACK_PROCESSES_LIST=   # Limit only processes defined in this variable. If variable is empty (default) all violating processes are limited.
+WHITE_PROCESSES_LIST="cron|top|emacs|vi|vim|nano"   # Limit all processes except processes defined in this variable. If variable is empty (default) all violating processes are limited.
+
+# Check if one of the variables BLACK_PROCESSES_LIST or WHITE_PROCESSES_LIST is defined.
+if [[ -n "$BLACK_PROCESSES_LIST" &&  -n "$WHITE_PROCESSES_LIST" ]] ; then    # If both variables are defined then error is produced.
+   echo "At least one or both of the variables BLACK_PROCESSES_LIST or WHITE_PROCESSES_LIST must be empty."
+   exit 1
+elif [[ -n "$BLACK_PROCESSES_LIST" ]] ; then                                 # If this variable is non-empty then set NEW_PIDS_COMMAND variable to bellow command
+   NEW_PIDS_COMMAND="top -b -n1 -c | grep -E '$BLACK_PROCESSES_LIST' | gawk '\$9>CPU_LIMIT {print \$1}' CPU_LIMIT=$CPU_LIMIT"
+elif [[ -n "$WHITE_PROCESSES_LIST" ]] ; then                                 # If this variable is non-empty then set NEW_PIDS_COMMAND variable to bellow command
+   NEW_PIDS_COMMAND="top -b -n1 -c | gawk 'NR>6' | grep -E -v '$WHITE_PROCESSES_LIST' | gawk '\$9>CPU_LIMIT {print \$1}' CPU_LIMIT=$CPU_LIMIT"
+else
+   NEW_PIDS_COMMAND="top -b -n1 -c | gawk 'NR>6 && \$9>CPU_LIMIT {print \$1}' CPU_LIMIT=$CPU_LIMIT"
+fi
+
+# Search and limit violating PIDs
+while sleep $DAEMON_INTERVAL
+do
+   NEW_PIDS=$(eval "$NEW_PIDS_COMMAND")                                                                    # Violating PIDs
+   LIMITED_PIDS=$(ps -eo args | gawk '$1=="cpulimit" {print $3}')                                          # Already limited PIDs
+   QUEUE_PIDS=$(comm -23 <(echo "$NEW_PIDS" | sort -u) <(echo "$LIMITED_PIDS" | sort -u) | grep -v '^$')   # PIDs in queue
+
+   # These can be uncommented for debugging purposes
+#   echo "DAEMON_INTERVAL: " $DAEMON_INTERVAL
+#   echo "CPU_LIMI: " $CPU_LIMIT
+#   echo "NEW_PIDS: " $NEW_PIDS
+#   echo "LIMITED_PIDS: " $LIMITED_PIDS
+#   echo "QUEUE_PIDS: " $QUEUE_PIDS
+
+   for i in $QUEUE_PIDS
+   do
+       cpulimit -p $i -l $CPU_LIMIT -z &   # Limit new violating processes
+   done
+done
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chmod +x /usr/bin/cpulimit_daemon.sh
+editor /etc/init.d/cpulimit
+#+END_SRC
+
+Add the following:
+
+#+BEGIN_SRC: bash
+#!/bin/sh
+# /etc/init.d/cpulimit
+
+### BEGIN INIT INFO
+# Provides:          cpulimit
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Limits CPU use by processes
+# Description:       Limits CPU use by processes
+### END INIT INFO
+
+# Author: Bob Mottram <bob@robotics.uk.to>
+
+set -e
+
+case "$1" in
+start)
+if [ $(ps -eo pid,args | gawk '$3=="/usr/bin/cpulimit_daemon.sh"  {print $1}' | wc -l) -eq 0 ]; then
+    nohup /usr/bin/cpulimit_daemon.sh >/dev/null 2>&1 &
+    ps -eo pid,args | gawk '$3=="/usr/bin/cpulimit_daemon.sh"  {print}' | wc -l | gawk '{ if ($1 == 1) print " * cpulimit daemon started successfully"; else print " * cpulimit daemon can not be started" }'
+else
+    echo " * cpulimit daemon can't be started, because it is already running"
+fi
+;;
+stop)
+CPULIMIT_DAEMON=$(ps -eo pid,args | gawk '$3=="/usr/bin/cpulimit_daemon.sh"  {print $1}' | wc -l)
+CPULIMIT_INSTANCE=$(ps -eo pid,args | gawk '$2=="cpulimit" {print $1}' | wc -l)
+CPULIMIT_ALL=$((CPULIMIT_DAEMON + CPULIMIT_INSTANCE))
+if [ $CPULIMIT_ALL -gt 0 ]; then
+    if [ $CPULIMIT_DAEMON -gt 0 ]; then
+        ps -eo pid,args | gawk '$3=="/usr/bin/cpulimit_daemon.sh"  {print $1}' | xargs kill -9   # kill cpulimit daemon
+    fi
+
+    if [ $CPULIMIT_INSTANCE -gt 0 ]; then
+        ps -eo pid,args | gawk '$2=="cpulimit" {print $1}' | xargs kill -9                    # release cpulimited process to normal priority
+    fi
+    ps -eo pid,args | gawk '$3=="/usr/bin/cpulimit_daemon.sh"  {print}' | wc -l | gawk '{ if ($1 == 1) print " * cpulimit daemon can not be stopped"; else print " * cpulimit daemon stopped successfully" }'
+else
+    echo " * cpulimit daemon can't be stopped, because it is not running"
+fi
+;;
+restart)
+$0 stop
+sleep 3
+$0 start
+;;
+status)
+ps -eo pid,args | gawk '$3=="/usr/bin/cpulimit_daemon.sh"  {print}' | wc -l | gawk '{ if ($1 == 1) print " * cpulimit daemon is running"; else print " * cpulimit daemon is not running" }'
+;;
+esac
+exit 0
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chmod +x /etc/init.d/cpulimit
+update-rc.d cpulimit defaults
+service cpulimit start
+#+END_SRC
+
 ** Getting onto the web
 Create a subdomain on [[http://freedns.afraid.org][freeDNS]].  You may need to click on "/subdomains/" a couple of times.  FreeDNS is preferred because it is one of the few domain name providers which supports genuinely free (as in beer) accounts.  So if your budget is tiny or non-existent you can still participate as a first class citizen of the internet.  If you do have money to spend there is also a premium option.
 
