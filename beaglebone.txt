@@ -903,7 +903,7 @@ Add the following:
 # ==============================================================
 
 # Variables
-CPU_LIMIT=30            # Maximum percentage CPU consumption by each PID
+CPU_LIMIT=50            # Maximum percentage CPU consumption by each PID
 DAEMON_INTERVAL=1       # Daemon check interval in seconds
 BLACK_PROCESSES_LIST=   # Limit only processes defined in this variable. If variable is empty (default) all violating processes are limited.
 WHITE_PROCESSES_LIST="cron|top|emacs|vi|vim|nano"   # Limit all processes except processes defined in this variable. If variable is empty (default) all violating processes are limited.
@@ -2484,63 +2484,15 @@ Here cron is used so that if we stop one of the relevant processes and then rest
 -- Tim Berners-Lee
 #+END_VERSE
 
-Edit the apache configuration so that it doesn't run out of memory if there are a lot of connections.
+First install nginx and some scripts for easily enabling and disabling the web sites which we will create.
 
 #+BEGIN_SRC: bash
-su
-editor /etc/apache2/apache2.conf
-#+END_SRC
-
-Search for MaxClients and replace the value with 6. As an example the settings should look something like this:
-
-#+BEGIN_SRC: bash
-Timeout 30
-KeepAlive On
-MaxKeepAliveRequests 5
-KeepAliveTimeout 10
-
-<IfModule mpm_prefork_module>
-    StartServers          3
-    MinSpareServers       3
-    MaxSpareServers       5
-    MaxClients           10
-    MaxRequestsPerChild   0
-</IfModule>
-
-<IfModule mpm_worker_module>
-    StartServers          1
-    MinSpareThreads       5
-    MaxSpareThreads      15
-    ThreadLimit          25
-    ThreadsPerChild       5
-    MaxClients           25
-    MaxRequestsPerChild 200
-</IfModule>
-
-<IfModule mpm_event_module>
-    StartServers          1
-    MinSpareThreads       5
-    MaxSpareThreads      15
-    ThreadLimit          25
-    ThreadsPerChild       5
-    MaxClients           25
-    MaxRequestsPerChild 200
-</IfModule>
-#+END_SRC
-
-Also append the following:
-
-#+BEGIN_SRC: bash
-ServerSignature Off
-ServerTokens Prod
-#+END_SRC
-
-Then save and exit.  Install some extra security.
-
-#+BEGIN_SRC: bash
-apt-get install libapache2-modsecurity
-apt-get install libapache2-mod-evasive
-#+END_SRC
+apt-get install nginx php5-fpm git
+cd ~/build
+git clone https://github.com/perusio/nginx_ensite
+cd ~/build/nginx_ensite
+cp nginx_* /usr/sbin
+#+END_VERSE
 
 In the examples below replace /mydomainname.com/ with your own domain name.
 
@@ -2548,228 +2500,59 @@ In the examples below replace /mydomainname.com/ with your own domain name.
 export HOSTNAME=mydomainname.com
 mkdir /var/www/$HOSTNAME
 mkdir /var/www/$HOSTNAME/htdocs
-editor /etc/apache2/sites-available/$HOSTNAME
+editor /etc/nginx/sites-available/$HOSTNAME
 #+END_SRC
 
-The Apache configuration for the site should look something like the following.  Replace /mydonainname.com/ with the site domain name.
+The configuration for the site should look something like the following.  Replace /mydonainname.com/ with the site domain name.
 
 #+BEGIN_SRC: bash
-<VirtualHost *:80>
-	ServerAdmin myusername@mydomainname.com
-	ServerName mydomainname.com
+server {
+    listen 80;
+    root /var/www/mydomainname.com/htdocs;
+    index index.html index.htm;
+    server_name mydomainname.com;
 
-	DocumentRoot /var/www/mydomainname.com/htdocs
-	<Directory />
-		Options FollowSymLinks
-		AllowOverride All
-	</Directory>
-	<Directory /var/www/mydomainname.com/htdocs/>
-		Options All
-		AllowOverride All
-		Order allow,deny
-		allow from all
-        LimitRequestBody 512000
-	</Directory>
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
 
-	# Don't serve .php~ or .php# files created by emacs
-	<Files ~ "(^#.*#|~|\.sw[op])$">
-		Order allow,deny
-		Deny from all
-	</Files>
+server {
+    listen 443;
+    root /var/www/mydomainname.com/htdocs;
+    index index.html index.htm;
+    server_name mydomainname.com;
 
-	<IfModule headers_module>
-		Header set X-Content-Type-Options nosniff
-		Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate, private"
-		Header set Pragma no-cache
-	</IfModule>
+    ssl on;
+    ssl_certificate /etc/ssl/certs/mydomainname.com.crt;
+    ssl_certificate_key /etc/ssl/private/mydomainname.com.key;
 
-	<Files .htaccess>
-	  deny from all
-	</Files>
+    ssl_session_timeout 5m;
+    ssl_prefer_server_ciphers on;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive
+    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';
+    add_header Strict-Transport-Security max-age=15768000; # six months
+    # use this only if all subdomains support HTTPS!
+    # add_header Strict-Transport-Security "max-age=15768000; includeSubDomains";
 
-	ScriptAlias /cgi-bin/ /usr/lib/cgi-bin/
-	<Directory "/usr/lib/cgi-bin">
-		AllowOverride All
-		Options +ExecCGI -MultiViews +SymLinksIfOwnerMatch
-		Order allow,deny
-		Allow from all
-        LimitRequestBody 512000
-	</Directory>
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+#+END_SRC
 
-	ErrorLog ${APACHE_LOG_DIR}/error.log
+Save and exit. Then change the domain name.
 
-	# Possible values include: debug, info, notice, warn, error, crit,
-	# alert, emerg.
-	LogLevel error
-
-	CustomLog ${APACHE_LOG_DIR}/access.log combined
-</VirtualHost>
-
-<IfModule mod_ssl.c>
-<VirtualHost *:443>
-	ServerAdmin myusername@mydomainname.com
-	ServerName mydomainname.com
-
-	DocumentRoot /var/www/mydomainname.com/htdocs
-	<Directory />
-		Options FollowSymLinks
-		AllowOverride All
-	</Directory>
-	<Directory /var/www/mydomainname.com/htdocs/>
-		Options All
-		AllowOverride All
-		Order allow,deny
-		allow from all
-        LimitRequestBody 512000
-	</Directory>
-
-	# Don't serve .php~ or .php# files created by emacs
-	<Files ~ "(^#.*#|~|\.sw[op])$">
-		Order allow,deny
-		Deny from all
-	</Files>
-
-	<IfModule headers_module>
-		Header set X-Content-Type-Options nosniff
-		Header set Cache-Control "max-age=0, no-cache, no-store, must-revalidate, private"
-		Header set Pragma no-cache
-	</IfModule>
-
-	<Files .htaccess>
-	  deny from all
-	</Files>
-
-	ScriptAlias /cgi-bin/ /usr/lib/cgi-bin/
-	<Directory "/usr/lib/cgi-bin">
-		AllowOverride All
-		Options +ExecCGI -MultiViews +SymLinksIfOwnerMatch
-		Order allow,deny
-		Allow from all
-        LimitRequestBody 512000
-	</Directory>
-
-	ErrorLog ${APACHE_LOG_DIR}/error.log
-
-	# Possible values include: debug, info, notice, warn, error, crit,
-	# alert, emerg.
-	LogLevel error
-
-	CustomLog ${APACHE_LOG_DIR}/ssl_access.log combined
-
-	#   SSL Engine Switch:
-	#   Enable/Disable SSL for this virtual host.
-	SSLEngine on
-
-	#   A self-signed certificate
-	SSLCertificateFile    /etc/ssl/certs/mydomainname.com.crt
-	SSLCertificateKeyFile /etc/ssl/private/mydomainname.com.key
-
-    # Options based on bettercrypto.org
-    SSLProtocol All -SSLv2 -SSLv3
-    SSLHonorCipherOrder On
-    SSLCompression off
-    SSLCipherSuite EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA
-
-    # Add six earth month HSTS header for all users ...
-    Header add Strict-Transport-Security "max-age=15768000"
-    # If you want to protect all subdomains , use the following header
-    # ALL subdomains HAVE TO support https if you use this !
-    # Strict-Transport-Security: max-age=15768000 ; includeSubDomains
-
-	#   SSL Engine Options:
-	#   Set various options for the SSL engine.
-	#   o FakeBasicAuth:
-	#     Translate the client X.509 into a Basic Authorisation.  This means that
-	#     the standard Auth/DBMAuth methods can be used for access control.  The
-	#     user name is the `one line' version of the client's X.509 certificate.
-	#     Note that no password is obtained from the user. Every entry in the user
-	#     file needs this password: `xxj31ZMTZzkVA'.
-	#   o ExportCertData:
-	#     This exports two additional environment variables: SSL_CLIENT_CERT and
-	#     SSL_SERVER_CERT. These contain the PEM-encoded certificates of the
-	#     server (always existing) and the client (only existing when client
-	#     authentication is used). This can be used to import the certificates
-	#     into CGI scripts.
-	#   o StdEnvVars:
-	#     This exports the standard SSL/TLS related `SSL_*' environment variables.
-	#     Per default this exportation is switched off for performance reasons,
-	#     because the extraction step is an expensive operation and is usually
-	#     useless for serving static content. So one usually enables the
-	#     exportation for CGI and SSI requests only.
-	#   o StrictRequire:
-	#     This denies access when "SSLRequireSSL" or "SSLRequire" applied even
-	#     under a "Satisfy any" situation, i.e. when it applies access is denied
-	#     and no other module can change it.
-	#   o OptRenegotiate:
-	#     This enables optimized SSL connection renegotiation handling when SSL
-	#     directives are used in per-directory context.
-	#SSLOptions +FakeBasicAuth +ExportCertData +StrictRequire
-	<FilesMatch "\.(cgi|shtml|phtml|php)$">
-		SSLOptions +StdEnvVars
-	</FilesMatch>
-	<Directory /usr/lib/cgi-bin>
-		SSLOptions +StdEnvVars
-	</Directory>
-
-	#   SSL Protocol Adjustments:
-	#   The safe and default but still SSL/TLS standard compliant shutdown
-	#   approach is that mod_ssl sends the close notify alert but doesn't wait for
-	#   the close notify alert from client. When you need a different shutdown
-	#   approach you can use one of the following variables:
-	#   o ssl-unclean-shutdown:
-	#     This forces an unclean shutdown when the connection is closed, i.e. no
-	#     SSL close notify alert is send or allowed to received.  This violates
-	#     the SSL/TLS standard but is needed for some brain-dead browsers. Use
-	#     this when you receive I/O errors because of the standard approach where
-	#     mod_ssl sends the close notify alert.
-	#   o ssl-accurate-shutdown:
-	#     This forces an accurate shutdown when the connection is closed, i.e. a
-	#     SSL close notify alert is send and mod_ssl waits for the close notify
-	#     alert of the client. This is 100% SSL/TLS standard compliant, but in
-	#     practice often causes hanging connections with brain-dead browsers. Use
-	#     this only for browsers where you know that their SSL implementation
-	#     works correctly.
-	#   Notice: Most problems of broken clients are also related to the HTTP
-	#   keep-alive facility, so you usually additionally want to disable
-	#   keep-alive for those clients, too. Use variable "nokeepalive" for this.
-	#   Similarly, one has to force some clients to use HTTP/1.0 to workaround
-	#   their broken HTTP/1.1 implementation. Use variables "downgrade-1.0" and
-	#   "force-response-1.0" for this.
-	BrowserMatch "MSIE [2-6]" \
-		nokeepalive ssl-unclean-shutdown \
-		downgrade-1.0 force-response-1.0
-	# MSIE 7 and newer should be able to use keepalive
-	BrowserMatch "MSIE [17-9]" ssl-unclean-shutdown
-
-</VirtualHost>
-</IfModule>
+#+BEGIN_SRC: bash
+sed "s/mydomainname.com/$HOSTNAME/g" /etc/nginx/sites-available/$HOSTNAME > /tmp/website
+cp -f /tmp/website /etc/nginx/sites-available/$HOSTNAME
 #+END_SRC
 
 Then to enable the site:
 
 #+BEGIN_SRC: bash
-a2ensite
-a2dissite default
-a2dissite default-ssl
-a2enmod rewrite
-a2enmod headers
-#+END_SRC
-
-Ensure that "NameVirtualHost *:443" is added to /etc/apache2/ports.conf. It should look something like the following:
-
-#+BEGIN_SRC: bash
-NameVirtualHost *:80
-Listen 80
-
-<IfModule mod_ssl.c>
-	NameVirtualHost *:443
-    Listen 443
-</IfModule>
-
-<IfModule mod_gnutls.c>
-    NameVirtualHost *:443
-    Listen 443
-</IfModule>
+nginx_dissite default
+nginx_ensite $HOSTNAME
 #+END_SRC
 
 Create a self-signed certificate. The passphrase isn't important and will be removed, so make it easy (such as "password").
@@ -2786,7 +2569,7 @@ Enter the following:
 HOSTNAME=$1
 
 openssl genrsa -des3 -out $HOSTNAME.key 1024
-openssl req -new -x509 -nodes -sha1 -days 3650 -key $HOSTNAME.key -out $HOSTNAME.crt
+openssl req -new -x509 -nodes -days 3650 -key $HOSTNAME.key -out $HOSTNAME.crt
 openssl rsa -in $HOSTNAME.key -out $HOSTNAME.new.key
 cp $HOSTNAME.new.key $HOSTNAME.key
 rm $HOSTNAME.new.key
@@ -2794,15 +2577,14 @@ cp $HOSTNAME.key /etc/ssl/private
 chmod 400 /etc/ssl/private/$HOSTNAME.key
 cp $HOSTNAME.crt /etc/ssl/certs
 shred -zu $HOSTNAME.key $HOSTNAME.crt
-a2enmod ssl
-service apache2 restart
+/etc/init.d/nginx reload
 #+END_SRC
 
 Save and exit.
 
 #+BEGIN_SRC: bash
 chmod +x /usr/bin/makecert
-makecert mydomainname.com
+makecert $HOSTNAME
 #+END_SRC
 
 Enter some trivial password for the key file, such as "password".  The password will be removed as part of the /makecert/ script which you just created.  Note that leaving a password on the key file would mean that after a power cycle the Apache server will not be able to boot properly (it would wait indefinitely for a password to be manually entered) and would look as if it had crashed.
@@ -2812,7 +2594,7 @@ If all has gone well then there should be no warnings or errors after you run th
 Also limit the amount of memory which any php scripts can use.
 
 #+BEGIN_SRC: bash
-editor /etc/php5/apache2/php.ini
+editor /etc/php5/fpm/php.ini
 #+END_SRC
 
 Set the following:
