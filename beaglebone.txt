@@ -2508,9 +2508,10 @@ The configuration for the site should look something like the following.  Replac
 #+BEGIN_SRC: bash
 server {
     listen 80;
-    root /var/www/mydomainname.com/htdocs;
-    index index.html index.htm;
     server_name mydomainname.com;
+    root /var/www/mydomainname.com/htdocs;
+    error_log /var/www/mydomainname.com/error.log;
+    index index.html index.htm index.php;
 
     # Uncomment this if you need to redirect HTTP to HTTPS
     #rewrite ^ https://$server_name$request_uri? permanent;
@@ -2518,13 +2519,24 @@ server {
     location / {
         try_files $uri $uri/ /index.html;
     }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/var/run/php5-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+    }
 }
 
 server {
-    listen 443;
+    listen 443 ssl;
     root /var/www/mydomainname.com/htdocs;
-    index index.html index.htm;
     server_name mydomainname.com;
+    error_log /var/www/mydomainname.com/error_ssl.log;
+    index index.html index.htm index.php;
+    charset utf-8;
+    client_max_body_size 20m;
+    client_body_buffer_size 128k;
 
     ssl on;
     ssl_certificate /etc/ssl/certs/mydomainname.com.crt;
@@ -2538,8 +2550,61 @@ server {
     # use this only if all subdomains support HTTPS!
     # add_header Strict-Transport-Security "max-age=15768000; includeSubDomains";
 
+    # rewrite to front controller as default rule
     location / {
-        try_files $uri $uri/ /index.html;
+        rewrite ^/(.*) /index.php?q=$uri&$args last;
+    }
+
+    # make sure webfinger and other well known services aren't blocked
+    # by denying dot files and rewrite request to the front controller
+    location ^~ /.well-known/ {
+        allow all;
+        rewrite ^/(.*) /index.php?q=$uri&$args last;
+    }
+
+    # statically serve these file types when possible
+    # otherwise fall back to front controller
+    # allow browser to cache them
+    # added .htm for advanced source code editor library
+    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {
+        expires 30d;
+        try_files $uri /index.php?q=$uri&$args;
+    }
+
+    # block these file types
+    location ~* \.(tpl|md|tgz|log|out)$ {
+        deny all;
+    }
+
+    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000
+    # or a unix socket
+    location ~* \.php$ {
+        # Zero-day exploit defense.
+        # http://forum.nginx.org/read.php?2,88845,page=3
+        # Won't work properly (404 error) if the file is not stored on this
+        # server, which is entirely possible with php-fpm/php-fcgi.
+        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on
+        # another machine. And then cross your fingers that you won't get hacked.
+        try_files $uri =404;
+        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        # With php5-cgi alone:
+        # fastcgi_pass 127.0.0.1:9000;
+        # With php5-fpm:
+        fastcgi_pass unix:/var/run/php5-fpm.sock;
+        include fastcgi_params;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+
+    # deny access to all dot files
+    location ~ /\. {
+        deny all;
+    }
+
+    #deny access to store
+    location ~ /store {
+        deny all;
     }
 }
 #+END_SRC
@@ -2606,7 +2671,18 @@ Set the following:
 memory_limit = 32M
 #+END_SRC
 
+Also set:
+
+#+BEGIN_SRC: bash
+cgi.fix_pathinfo=0
+#+END_SRC
+
 Save and exit.  Also edit */etc/php5/cli/php.ini* and set /memory_limit/ to the same value.  This should prevent any rogue scripts from crashing the system.
+
+#+BEGIN_SRC: bash
+service php5-fpm restart
+service nginx restart
+#+END_SRC
 
 ** Accessing your Email
 
@@ -2850,32 +2926,30 @@ rm /var/www/$HOSTNAME/htdocs/mail/.htaccess
 Edit your web site configuration.
 
 #+BEGIN_SRC: bash
-editor /etc/apache2/sites-available/$HOSTNAME
+editor /etc/nginx/sites-available/$HOSTNAME
 #+END_SRC
 
 Within the 80 VirtualHost section add the following:
 
 #+BEGIN_SRC: bash
-  <Directory /var/www/mydomainname.com/htdocs/mail>
-    deny from all
-  </Directory>
+    location /mail/ {
+        deny all;
+    }
 #+END_SRC
 
 Within the 443 VirtualHost section add the following:
 
 #+BEGIN_SRC: bash
-  <Directory /var/www/mydomainname.com/htdocs/mail>
-    Options Indexes FollowSymLinks MultiViews
-    AllowOverride All
-    Order allow,deny
-    allow from all
-  </Directory>
+    location /mail/ {
+        autoindex on;
+        allow all;
+    }
 #+END_SRC
 
 Save and exit, then restart Apache.
 
 #+BEGIN_SRC: bash
-service apache2 restart
+service nginx restart
 #+END_SRC
 
 Now with a browser visit https://mydomainname.com/mail/installer. Scroll down and click "next".  Give your webmail site a product name.
@@ -4282,7 +4356,7 @@ MYSQL_PASSWORD=<mysql root password>
 umask 0077
 
 # stop the web server to avoid any changes to the databases during backup
-service apache2 stop
+service nginx stop
 
 # Save to a temporary file first so that it can be checked for non-zero size
 TEMPFILE=/tmp/friendicared.sql
@@ -4366,7 +4440,7 @@ DAILYFILE=/var/backups/redmatrix_daily.sql
 
 
 # restart the web server
-service apache2 start
+service nginx start
 
 exit 0
 #+END_SRC
@@ -5408,61 +5482,110 @@ Owncloud will allow you to upload and download files, share photos, collaborativ
 Install some dependencies:
 
 #+BEGIN_SRC: bash
-apt-get install apache2 php5 php5-gd php-xml-parser php5-intl
+apt-get install php5 php5-gd php-xml-parser php5-intl
 apt-get install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl
 #+END_SRC
 
-It's very important that /mod_php5/ and not /mod_php5filter/ be installed.  If you have /mod_php5filter/ installed then Owncloud will always fail to install.
+You will need to create a new subdomain, so see [[Setting up a web site]] for details of how to do that.
 
 #+BEGIN_SRC: bash
-a2dismod php5filter
-apt-get install libapache2-mod-php5
+export HOSTNAME=myowncloudcomainname.com
+editor /etc/nginx/sites-available/$HOSTNAME
 #+END_SRC
 
-Ensure that the size of files which may be uploaded or downloaded is large enough.
+Delete all existing contents, then add the following:
 
 #+BEGIN_SRC: bash
-editor /etc/php5/apache2/php.ini
+server {
+    listen 80;
+    server_name myownclouddomainname.com;
+    rewrite ^ https://$server_name$request_uri? permanent;
+}
+
+server {
+    listen 443 ssl;
+    root /var/www/myownclouddomainname.com/htdocs;
+    server_name myownclouddomainname.com;
+
+    ssl on;
+    ssl_certificate /etc/ssl/certs/myownclouddomainname.com.crt;
+    ssl_certificate_key /etc/ssl/private/myownclouddomainname.com.key;
+
+    ssl_session_timeout 5m;
+    ssl_prefer_server_ciphers on;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive
+    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';
+    add_header Strict-Transport-Security max-age=15768000; # six months
+    # use this only if all subdomains support HTTPS!
+    # add_header Strict-Transport-Security "max-age=15768000; includeSubDomains";
+
+    # make sure webfinger and other well known services aren't blocked
+    # by denying dot files and rewrite request to the front controller
+    location ^~ /.well-known/ {
+        allow all;
+        rewrite ^/(.*) /index.php?q=$uri&$args last;
+    }
+
+    client_max_body_size 10G; # set max upload size
+    client_body_buffer_size 128k;
+    fastcgi_buffers 64 4K;
+
+    rewrite ^/caldav(.*)$ /remote.php/caldav$1 redirect;
+    rewrite ^/carddav(.*)$ /remote.php/carddav$1 redirect;
+    rewrite ^/webdav(.*)$ /remote.php/webdav$1 redirect;
+
+    index index.php;
+    error_page 403 /core/templates/403.php;
+    error_page 404 /core/templates/404.php;
+
+    location = /robots.txt {
+        allow all;
+        log_not_found off;
+        access_log off;
+    }
+
+    location ~ ^/(data|config|\.ht|db_structure\.xml|README) {
+        deny all;
+    }
+
+    location / {
+        # The following 2 rules are only needed with webfinger
+        rewrite ^/.well-known/host-meta /public.php?service=host-meta last;
+        rewrite ^/.well-known/host-meta.json /public.php?service=host-meta-json last;
+
+        rewrite ^/.well-known/carddav /remote.php/carddav/ redirect;
+        rewrite ^/.well-known/caldav /remote.php/caldav/ redirect;
+
+        rewrite ^(/core/doc/[^\/]+/)$ $1/index.html;
+
+        try_files $uri $uri/ index.php;
+    }
+
+    location ~ ^(.+?\.php)(/.*)?$ {
+        try_files $1 =404;
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/var/run/php5-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$1;
+        fastcgi_param PATH_INFO $2;
+        fastcgi_param HTTPS on;
+    }
+
+    # Optional: set long EXPIRES header on static assets
+    location ~* ^.+\.(jpg|jpeg|gif|bmp|ico|png|css|js|swf)$ {
+        expires 30d;
+        # Optional: Don't log access to assets
+        access_log off;
+    }
+}
 #+END_SRC
 
-Set the following:
+Save and exit. Then change the domain name.
 
 #+BEGIN_SRC: bash
-upload_max_filesize = 512M
-post_max_size = 512M
-#+END_SRC
-
-Save and exit, then edit your Apache configuration.
-
-#+BEGIN_SRC: bash
-export HOSTNAME=mydomainname.com
-editor /etc/apache2/sites-available/$HOSTNAME
-#+END_SRC
-
-And add the following, to the 443 VirtualHost section.  Really we only will want to be using Owncloud with HTTPS to ensure some level of security and avoidance of dragnet surveillance.
-
-#+BEGIN_SRC: bash
-  <Directory /var/www/mydomainname.com/htdocs/owncloud>
-    Options Indexes FollowSymLinks MultiViews
-    AllowOverride All
-    Order allow,deny
-    allow from all
-    LimitRequestBody 536870912
-  </Directory>
-#+END_SRC
-
-To ensure that nobody logs in insecurely add the following to the 80 VirtualHost section.
-
-#+BEGIN_SRC: bash
-  <Directory /var/www/mydomainname.com/htdocs/owncloud>
-    deny from all
-  </Directory>
-#+END_SRC
-
-Save and exit, then restart apache.
-
-#+BEGIN_SRC: bash
-service apache2 restart
+sed "s/myownclouddomainname.com/$HOSTNAME/g" /etc/nginx/sites-available/$HOSTNAME > /tmp/website
+cp -f /tmp/website /etc/nginx/sites-available/$HOSTNAME
 #+END_SRC
 
 Download owncloud.
@@ -5483,39 +5606,22 @@ sha256sum owncloud.tar.bz2
 Extract the archive.  This may take a couple of minutes, so don't be alarmed that the system has crashed.
 
 #+BEGIN_SRC: bash
-export HOSTNAME=mydomainname.com
 tar -xjf owncloud.tar.bz2
 #+END_SRC
 
 The extraction will take a few minutes. Move the extracted files to your site and set file permissions.
 
 #+BEGIN_SRC: bash
-cp -r owncloud /var/www/$HOSTNAME/htdocs
+cp -r owncloud/* /var/www/$HOSTNAME/htdocs
 #+END_SRC
 
 The copying also takes a few minutes. Then change the file permissions.
 
 #+BEGIN_SRC: bash
-chown -R www-data:www-data /var/www/$HOSTNAME/htdocs/owncloud/apps
-chown -R www-data:www-data /var/www/$HOSTNAME/htdocs/owncloud/config
-chown www-data:www-data /var/www/$HOSTNAME/htdocs/owncloud
+chown -R www-data:www-data /var/www/$HOSTNAME/htdocs/apps
+chown -R www-data:www-data /var/www/$HOSTNAME/htdocs/config
+chown www-data:www-data /var/www/$HOSTNAME/htdocs
 #+END_SRC
-
-Edit the htaccess file for Owncloud.
-
-#+BEGIN_SRC: bash
-editor /var/www/$HOSTNAME/htdocs/owncloud/.htaccess
-#+END_SRC
-
-Set the following.
-
-#+BEGIN_SRC: bash
-php_value upload_max_filesize 512M
-php_value post_max_size 512M
-php_value memory_limit 32M
-#+END_SRC
-
-Save and exit.
 
 With a web browser visit your domain (mydomainname.com/owncloud) and enter an administrator username and password.
 
@@ -8147,22 +8253,28 @@ cp /etc/ssl/private/$HOSTNAME.new.key /etc/ssl/private/$HOSTNAME.key
 shred -zu /etc/ssl/private/$HOSTNAME.new.key
 #+END_SRC
 
-Edit your Apache configuration file.
+Create a bundled certificate which joins the certificate and chain file together.
 
 #+BEGIN_SRC: bash
-editor /etc/apache2/sites-available/$HOSTNAME
+cat /etc/ssl/certs/$HOSTNAME.crt /etc/ssl/chains/startssl-sub.class1.server.ca.pem > /etc/ssl/certs/$HOSTNAME.bundle.crt
 #+END_SRC
 
-Add the following to the section which starts with *<VirtualHost *:443>*
+Edit your configuration file.
 
 #+BEGIN_SRC: bash
-	SSLCertificateChainFile /etc/ssl/chains/startssl-sub.class1.server.ca.pem
+editor /etc/nginx/sites-available/$HOSTNAME
 #+END_SRC
 
-Save and exit, then restart apache.
+Add the following to the section which starts with *listen 443*
 
 #+BEGIN_SRC: bash
-service apache2 restart
+    ssl_certificate /etc/ssl/certs/mydomainname.com_bundle.crt;
+#+END_SRC
+
+Save and exit, then restart the web server.
+
+#+BEGIN_SRC: bash
+service nginx restart
 #+END_SRC
 
 Now visit your web site at https://mydomainname.com and you should notice that there is no certificate warning displayed.  You will now be able to install systems which don't allow the use of self-signed certificates, such as [[https://redmatrix.me/&JS=1][Red Matrix]].
