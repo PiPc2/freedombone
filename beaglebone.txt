@@ -1617,6 +1617,62 @@ and
 ip6tables -L
 #+END_SRC
 
+** Make SSL/TLS certificates
+
+For email, web server and other services we will be using SSL/TLS certificates, so create a script which makes this easy to do with a single command.
+
+#+BEGIN_SRC: bash
+editor /usr/bin/makecert
+#+END_SRC
+
+Enter the following.  You can change the country code and location if you wish, but that's not essential.
+
+#+BEGIN_SRC: bash
+#!/bin/bash
+
+HOSTNAME=$1
+COUNTRY_CODE="US"
+AREA="Free Speech Zone"
+LOCATION="Freedomville"
+ORGANISATION="Freedombone"
+UNIT="Freedombone Unit"
+
+if ! which openssl > /dev/null ;then
+    echo "$0: openssl is not installed, exiting" 1>&2
+    exit 1
+fi
+
+openssl req \
+  -x509 -nodes -days 3650 \
+  -sha256 \
+  -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME" \
+  -newkey rsa:2048 \
+  -keyout /etc/ssl/private/$HOSTNAME.key \
+  -out /etc/ssl/certs/$HOSTNAME.crt
+
+openssl dhparam -check -text -5 1024 -out /etc/ssl/certs/$HOSTNAME.dhparam
+
+chmod 400 /etc/ssl/private/$HOSTNAME.key
+chmod 640 /etc/ssl/certs/$HOSTNAME.crt
+chmod 640 /etc/ssl/certs/$HOSTNAME.dhparam
+/etc/init.d/nginx reload
+
+# add the public certificate to a separate directory
+# so that we can redistribute it easily
+if [ ! -d /etc/ssl/mycerts ]; then
+  mkdir /etc/ssl/mycerts
+fi
+cp /etc/ssl/certs/$HOSTNAME.crt /etc/ssl/mycerts
+# Create a bundle of your certificates
+cat /etc/ssl/mycerts/*.crt > /etc/ssl/freedombone-bundle.crt
+tar -czvf /etc/ssl/freedombone-certs.tar.gz /etc/ssl/mycerts/*.crt
+#+END_SRC
+
+Save and exit.
+
+#+BEGIN_SRC: bash
+chmod +x /usr/bin/makecert
+#+END_SRC
 ** Install Email
 
 #+BEGIN_VERSE
@@ -1681,100 +1737,12 @@ set START=yes then save and exit.
 
 #+BEGIN_SRC: bash
 /etc/init.d/saslauthd start
-editor /usr/bin/exim-gencert
-#+END_SRC
-
-Add the following:
-
-#+BEGIN_SRC: bash
-#!/bin/sh -e
-
-if [ -n "$EX4DEBUG" ]; then
-  echo "now debugging $0 $@"
-  set -x
-fi
-
-DIR=/etc/exim4
-CERT=$DIR/exim.crt
-KEY=$DIR/exim.key
-
-# This exim binary was built with GnuTLS which does not support dhparams
-# from a file. See /usr/share/doc/exim4-base/README.Debian.gz
-#DH=$DIR/exim.dhparam
-
-if ! which openssl > /dev/null ;then
-    echo "$0: openssl is not installed, exiting" 1>&2
-    exit 1
-fi
-
-# valid for ten years
-DAYS=3650
-
-if [ "$1" != "--force" ] && [ -f $CERT ] && [ -f $KEY ]; then
-  echo "[*] $CERT and $KEY exists!"
-  echo "    Use \"$0 --force\" to force generation!"
-  exit 0
-fi
-
-if [ "$1" = "--force" ]; then
-  shift
-fi
-
-#SSLEAY=/tmp/exim.ssleay.$$.cnf
-SSLEAY="$(tempfile -m600 -pexi)"
-cat > $SSLEAY <<EOM
-RANDFILE = $HOME/.rnd
-[ req ]
-default_bits = 4096
-default_keyfile = exim.key
-distinguished_name = req_distinguished_name
-[ req_distinguished_name ]
-countryName = Country Code (2 letters)
-countryName_default = GB
-countryName_min = 2
-countryName_max = 2
-stateOrProvinceName = State or Province Name (full name)
-localityName = Locality Name (eg, city)
-organizationName = Organization Name (eg, company; recommended)
-organizationName_max = 64
-organizationalUnitName = Organizational Unit Name (eg, section)
-organizationalUnitName_max = 64
-commonName = Server name (eg. ssl.domain.tld; required!!!)
-commonName_max = 64
-emailAddress = Email Address
-emailAddress_max = 40
-EOM
-
-echo "[*] Creating a self signed SSL certificate for Exim!"
-echo "    This may be sufficient to establish encrypted connections but for"
-echo "    secure identification you need to buy a real certificate!"
-echo "    "
-echo "    Please enter the hostname of your MTA at the Common Name (CN) prompt!"
-echo "    "
-
-openssl req -config $SSLEAY -x509 -sha256 -newkey rsa:4096 -keyout $KEY -out $CERT -days $DAYS -nodes
-#see README.Debian.gz*# openssl dhparam -check -text -5 512 -out $DH
-rm -f $SSLEAY
-
-chown root:Debian-exim $KEY $CERT $DH
-chmod 640 $KEY $CERT $DH
-
-echo "[*] Done generating self signed certificates for exim!"
-echo "    Refer to the documentation and example configuration files"
-echo "    over at /usr/share/doc/exim4-base/ for an idea on how to enable TLS"
-echo "    support in your mail transfer agent."
-#+END_SRC
-
-Save and exit
-
-#+BEGIN_SRC: bash
-chmod +x /usr/bin/exim-gencert
-exim-gencert --force
-#+END_SRC
-
-This will generate the certificate used for email authentication.  You will be asked for various details, the most important of which is the server name, which should be your domain name.
-
-#+BEGIN_SRC: bash
+makecert exim
+mv /etc/ssl/private/exim.key /etc/exim4
+mv /etc/ssl/certs/exim.crt /etc/exim4
+mv /etc/ssl/certs/exim.dhparam /etc/exim4
+chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
 editor /etc/exim4/exim4.conf.template
 #+END_SRC
 
@@ -2627,61 +2595,6 @@ Then to enable the site:
 #+BEGIN_SRC: bash
 nginx_dissite default
 nginx_ensite $HOSTNAME
-#+END_SRC
-
-Create a self-signed certificate. The passphrase isn't important and will be removed, so make it easy (such as "password").
-
-#+BEGIN_SRC: bash
-editor /usr/bin/makecert
-#+END_SRC
-
-Enter the following, changing the country code and location as needed:
-
-#+BEGIN_SRC: bash
-#!/bin/bash
-
-HOSTNAME=$1
-COUNTRY_CODE="US"
-AREA="Free Speech Zone"
-LOCATION="Freedomville"
-ORGANISATION="Freedombone"
-UNIT="Freedombone Unit"
-
-if ! which openssl > /dev/null ;then
-    echo "$0: openssl is not installed, exiting" 1>&2
-    exit 1
-fi
-
-openssl req \
-  -x509 -nodes -days 3650 \
-  -sha256 \
-  -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME" \
-  -newkey rsa:2048 \
-  -keyout /etc/ssl/private/$HOSTNAME.key \
-  -out /etc/ssl/certs/$HOSTNAME.crt
-
-openssl dhparam -check -text -5 1024 -out /etc/ssl/certs/$HOSTNAME.dhparam
-
-chmod 400 /etc/ssl/private/$HOSTNAME.key
-chmod 640 /etc/ssl/certs/$HOSTNAME.crt
-chmod 640 /etc/ssl/certs/$HOSTNAME.dhparam
-/etc/init.d/nginx reload
-
-# add the public certificate to a separate directory
-# so that we can redistribute it easily
-if [ ! -d /etc/ssl/mycerts ]; then
-  mkdir /etc/ssl/mycerts
-fi
-cp /etc/ssl/certs/$HOSTNAME.crt /etc/ssl/mycerts
-# Create a bundle of your certificates
-cat /etc/ssl/mycerts/*.crt > /etc/ssl/freedombone-bundle.crt
-tar -czvf /etc/ssl/freedombone-certs.tar.gz /etc/ssl/mycerts/*.crt
-#+END_SRC
-
-Save and exit.
-
-#+BEGIN_SRC: bash
-chmod +x /usr/bin/makecert
 makecert $HOSTNAME
 #+END_SRC
 
@@ -7861,7 +7774,12 @@ chown -R ircserver:ircserver /home/ircserver/ircd/ssl
 Regenerate email certificate.
 
 #+BEGIN_SRC: bash
-exim-gencert --force
+makecert exim
+mv /etc/ssl/private/exim.key /etc/exim4
+mv /etc/ssl/certs/exim.crt /etc/exim4
+mv /etc/ssl/certs/exim.dhparam /etc/exim4
+chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
 #+END_SRC
 
 As an added precaution you may wish to regenerate your ssh host keys:
