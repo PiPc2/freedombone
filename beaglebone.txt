@@ -43,7 +43,7 @@ As Eben Moglen noted in his now famous [[https://www.youtube.com/watch?v=QOEMv0S
 ** After it's installed will it need a lot of maintenance?
 So long as the hardware is ok the amount of maintenance needed should be very small.  Unlike on Windows based systems you don't need to defragment drives or mess about with anti-virus programs.  I ran a similar Sheevaplug system between 2010 and 2013 with only occasional software updates or reboots, and uptime was probably 99% or better.
 ** Is it secure?
-Nothing is totally secure or infallible.  You could have the most secure technology and yet still use easy to guess passwords.  In general any software described as "uncrackable" or "guaranteed secure" is likely to be bogus and should be treated with suspicion.  No matter what the hype may claim, all software has bugs so it's really a question of whether your communications are more secure or less secure.  Using something like Freedombone will be likely to increase your degree of communications security to a level which is above average.
+Nothing is totally secure or infallible.  You could have the most secure technology and yet still use easy to guess passwords.  In general any software described as "uncrackable", "guaranteed secure" or "NSA-proof" is likely to be bogus and should be treated with suspicion.  No matter what the hype may claim, all software has bugs so it's really a question of whether your communications are more secure or less secure.  Using something like Freedombone will be likely to increase your degree of communications security to a level which is above average.
 
 This system will not defend you from an attacker who is actively trying to block or corrupt your communications, but I assume that doesn't apply in the majority of cases.  Another thing to be aware of is that running a FreedomBone could make you more vulnerable to traffic analysis, since the server is associated with your home address and isn't a giant aggregation of users somewhere in the cloud.  You need to weigh this alongside the additional legal protection which owning the server and having it in your own home gives you.
 
@@ -2645,6 +2645,11 @@ LOCATION="Freedomville"
 ORGANISATION="Freedombone"
 UNIT="Freedombone Unit"
 
+if ! which openssl > /dev/null ;then
+    echo "$0: openssl is not installed, exiting" 1>&2
+    exit 1
+fi
+
 openssl req \
   -x509 -nodes -days 3650 \
   -sha256 \
@@ -2912,7 +2917,7 @@ su
 Install dependencies.
 
 #+BEGIN_SRC: bash
-apt-get install mysql-server libapache2-mod-authz-unixgroup
+apt-get install mysql-server
 #+END_SRC
 
 Create a mysql database, specifying a password which should be a long random string generated with a password manager such as KeepassX.
@@ -2974,7 +2979,7 @@ Within the 443 VirtualHost section add the following:
     }
 #+END_SRC
 
-Save and exit, then restart Apache.
+Save and exit, then restart the web server.
 
 #+BEGIN_SRC: bash
 service nginx restart
@@ -4221,31 +4226,27 @@ Go back to the initial screen and then using the menu you can add contacts and b
 *** Friendica
 **** Installation
 
-See [[Setting up a web site]] for details of how to update the Apache configuration for your Friendica site.  You should have a separate domain name specifically to run Friendica on.  It can't be installed in a subdirectory on a domain used for something else.
+See [[Setting up a web site]] for details of how to update a web server configuration for your Friendica site.  You should have a separate domain name specifically to run Friendica on.  It can't be installed in a subdirectory on a domain used for something else.
 
-Edit your Apache configuration and disable the port 80 (HTTP) version of the site.  We only want to log into Friendica via HTTPS, so to prevent anyone from accidentally logging in insecurely:
+Edit your web server configuration:
 
 #+BEGIN_SRC: bash
-editor /etc/apache2/sites-available/myfriendicadomainname.com
+editor /etc/nginx/sites-available/myfriendicadomainname.com
 #+END_SRC
 
-Replace the section which begins with *<VirtualHost *:80>* with the following, replacing /myusername@mydomainname.com/ with your email address and /myfriendicadomainname.com/ with your Friendica domain name:
+Replace the section which begins with "listen 80" with the following:
 
 #+BEGIN_SRC: bash
-<VirtualHost *:80>
-	ServerAdmin myusername@mydomainname.com
-	ServerName myfriendicadomainname.com
-
-    RewriteEngine On
-    RewriteCond %{HTTPS} off
-    RewriteRule (.*) https://%{HTTP_HOST}%{REQUEST_URI}
-</VirtualHost>
+server {
+    listen 80;
+    rewrite ^ https://$server_name$request_uri? permanent;
+}
 #+END_SRC
 
-Save and exit, then restart the apache server.
+Save and exit, then restart the web server.
 
 #+BEGIN_SRC: bash
-service apache2 restart
+service nginx restart
 #+END_SRC
 
 Now install some dependencies.
@@ -4254,7 +4255,7 @@ Now install some dependencies.
 apt-get install mysql-server php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt php5-fpm php5-cgi php-apc
 #+END_SRC
 
-Enter an admin password for MySQL.
+If you are installing /mysql-server/ for the first time then enter an admin password.
 
 Reduce the memory use of mysql by using the "small" configuration.
 
@@ -4312,9 +4313,7 @@ Now visit the URL of your site and you should be taken through the rest of the i
 | Database Login Password | myfriendicapassword |
 | Database Name           | friendica           |
 
-When installation is complete if you already have an exported account which you wish to import then visit https://myfriendicadomain.com/uimport, rather than registering a new user.  If you get an error when trying to import an account then try increasing the value of LimitRequestBody within your apache configuration and restart the apache2 service.
-
-If you have trouble with "allow override" ensure that "AllowOverride" is set to "all" in your Apache settings for the site (within /etc/apache2/sites-available) and then restart the apache2 service.
+When installation is complete if you already have an exported account which you wish to import then visit https://myfriendicadomain.com/uimport, rather than registering a new user.
 
 Install the poller.
 
@@ -7943,7 +7942,7 @@ You can obtain a free "official" (as in recognised by default by web browsers) S
 
 When creating a SSL certificate it's important that the private key (the private component of the public/private pair in [[https://en.wikipedia.org/wiki/Public-key_cryptography][public key cryptography]]) be generated on the BBB /and remain there/.  Don't generate the private key via the StartSSL certificate wizard because this means that potentially they may retain a copy of it which could then be exfiltrated either via [[https://en.wikipedia.org/wiki/Lavabit][Lavabit]] style methodology, "implants", compromised sysadmins or other "side channel" methods.  So that the private key isn't broadcast on the internet we can instead generate a certificate request, which is really just a request for authorisation of a public key.
 
-Firstly you should have an Apache web site configutaion ready to go. See [[Setting up a web site]] for details.
+Firstly you should have a web server site configuration ready to go. See [[Setting up a web site]] for details.
 
 Within StartSSL under the validations wizard validate your domain, which means sending an email to it and confirming a code.
 
