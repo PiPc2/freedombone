@@ -9,6 +9,17 @@ INSTALL_DIR=/root/build
 
 export DEBIAN_FRONTEND=noninteractive
 
+function argument_checks {
+  if [ ! $DOMAIN_NAME ]; then
+	  echo "Please specify your domain name"
+	  exit
+  fi
+  if [ ! $MY_USERNAME ]; then
+	  echo "Please specify your username"
+	  exit
+  fi
+}
+
 function initial_setup {
   apt-get -y update
   apt-get -y dist-upgrade
@@ -685,6 +696,7 @@ function folders_for_email_addresses {
   chmod +x /usr/bin/emailrule
 }
 
+argument_checks
 initial_setup
 install_editor
 enable_backports
