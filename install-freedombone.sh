@@ -697,10 +697,10 @@ function folders_for_email_addresses {
 }
 
 argument_checks
+remove_proprietary_repos
 initial_setup
 install_editor
 enable_backports
-remove_proprietary_repos
 update_the_kernel
 enable_zram
 hardware_random_number_generator
