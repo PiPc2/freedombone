@@ -279,10 +279,6 @@ function time_synchronisation {
   update-rc.d tlsdate defaults
 }
 
-function defend_against_port_scanning {
-  apt-get -y install portsentry
-}
-
 function configure_firewall {
   iptables -P INPUT ACCEPT
   ip6tables -P INPUT ACCEPT
@@ -726,7 +722,6 @@ configure_ssh
 regenerate_ssh_keys
 set_your_domain_name
 time_synchronisation
-defend_against_port_scanning
 configure_firewall
 configure_firewall_for_ssh
 configure_firewall_for_email
