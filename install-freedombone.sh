@@ -3,6 +3,7 @@
 
 DOMAIN_NAME=$1
 MY_USERNAME=$2
+SSH_PORT=2222
 
 # Directory where source code is downloaded and compiled
 INSTALL_DIR=/root/build
@@ -123,6 +124,7 @@ function hardware_random_number_generator
 }
 
 function configure_ssh {
+  sed -i 's/Port 22/Port $SSH_PORT/g' /etc/ssh/sshd_config
   sed -i 's/PermitRootLogin without-password/PermitRootLogin no/g' /etc/ssh/sshd_config
   sed -i 's/X11Forwarding yes/X11Forwarding no/g' /etc/ssh/sshd_config
   sed -i 's/ServerKeyBits 1024/ServerKeyBits 4096/g' /etc/ssh/sshd_config
