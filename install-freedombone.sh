@@ -286,8 +286,11 @@ function configure_firewall {
   ip6tables -P INPUT DROP
 }
 
+function configure_firewall_for_ssh {
+  iptables -A INPUT -i eth0 -p tcp --dport $SSH_PORT -j ACCEPT
+}
+
 function configure_firewall_for_email {
-  iptables -A INPUT -i eth0 -p tcp --dport 22 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 25 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 587 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 465 -j ACCEPT
@@ -717,6 +720,7 @@ set_your_domain_name
 time_synchronisation
 defend_against_port_scanning
 configure_firewall
+configure_firewall_for_ssh
 configure_firewall_for_email
 save_firewall_settings
 configure_internet_protocol
