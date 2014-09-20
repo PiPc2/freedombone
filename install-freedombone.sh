@@ -295,7 +295,12 @@ function configure_firewall_for_email {
 }
 
 function save_firewall_settings {
-	# TODO
+  iptables-save > /etc/firewall.conf
+  ip6tables-save > /etc/firewall6.conf
+  printf '#!/bin/sh\n' > /etc/network/if-up.d/iptables
+  printf 'iptables-restore < /etc/firewall.conf\n' >> /etc/network/if-up.d/iptables
+  printf 'ip6tables-restore < /etc/firewall6.conf\n' >> /etc/network/if-up.d/iptables
+  chmod +x /etc/network/if-up.d/iptables
 }
 
 function configure_internet_protocol {
