@@ -6,6 +6,8 @@ MY_USERNAME=$2
 # Directory where source code is downloaded and compiled
 INSTALL_DIR=/root/build
 
+export DEBIAN_FRONTEND=noninteractive
+
 function initial_setup {
   apt-get -y update
   apt-get -y dist-upgrade
@@ -525,6 +527,27 @@ function spam_filtering {
   service cron restart
 }
 
+function configure_imap {
+  apt-get -y install dovecot-common dovecot-imapd
+  makecert dovecot
+  chown root:dovecot /etc/ssl/certs/dovecot.crt
+  chown root:dovecot /etc/ssl/private/dovecot.key
+  chown root:dovecot /etc/ssl/private/dovecot.dhparams
+
+  sed -i 's|#ssl = yes|ssl = yes|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|ssl_cert = </etc/dovecot/dovecot.pem|ssl_cert = </etc/ssl/certs/dovecot.crt|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|ssl_key = </etc/dovecot/private/dovecot.pem|/etc/ssl/private/dovecot.key|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|#ssl_dh_parameters_length = 1024|ssl_dh_parameters_length = 1024|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's/#ssl_prefer_server_ciphers = no/ssl_prefer_server_ciphers = yes/g' /etc/dovecot/conf.d/10-ssl.conf
+  echo "ssl_cipher_list = 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA'" >> /etc/dovecot/conf.d/10-ssl.conf
+
+
+  sed -i 's/#listen = *, ::/listen = */g' /etc/dovecot/dovecot.conf
+  sed -i 's/#disable_plaintext_auth = yes/disable_plaintext_auth = no/g' /etc/dovecot/conf.d/10-auth.conf
+  sed -i 's/auth_mechanisms = plain/auth_mechanisms = plain login/g' /etc/dovecot/conf.d/10-auth.conf
+  sed -i 's|#   mail_location = maildir:~/Maildir|   mail_location = maildir:~/Maildir:LAYOUT=fs|g' /etc/dovecot/conf.d/10-mail.conf
+}
+
 initial_setup
 install_editor
 enable_backports
@@ -544,3 +567,4 @@ configure_internet_protocol
 script_to_make_self_signed_certificates
 configure_email
 spam_filtering
+configure_imap
