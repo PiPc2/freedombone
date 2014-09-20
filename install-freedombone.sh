@@ -62,7 +62,7 @@ function enable_zram {
   echo '    # get the number of CPUs' >> /etc/init.d/zram
   echo '    num_cpus=$(grep -c processor /proc/cpuinfo)' >> /etc/init.d/zram
   echo '    # if something goes wrong, assume we have 1' >> /etc/init.d/zram
-  echo '    [ \"$num_cpus\" != 0 ] || num_cpus=1' >> /etc/init.d/zram
+  echo '    [ "$num_cpus" != 0 ] || num_cpus=1' >> /etc/init.d/zram
   echo '    # set decremented number of CPUs' >> /etc/init.d/zram
   echo '    decr_num_cpus=$((num_cpus - 1))' >> /etc/init.d/zram
   echo '    # get the amount of memory in the machine' >> /etc/init.d/zram
@@ -90,7 +90,7 @@ function enable_zram {
   echo '    decr_num_cpus=$((num_cpus - 1))' >> /etc/init.d/zram
   echo '    # Switching off swap' >> /etc/init.d/zram
   echo '    for i in $(seq 0 $decr_num_cpus); do' >> /etc/init.d/zram
-  echo '    if [ \"$(grep /dev/zram$i /proc/swaps)\" != \"\" ]; then' >> /etc/init.d/zram
+  echo '    if [ "$(grep /dev/zram$i /proc/swaps)" != "" ]; then' >> /etc/init.d/zram
   echo '    swapoff /dev/zram$i' >> /etc/init.d/zram
   echo '    sleep 1' >> /etc/init.d/zram
   echo '    fi' >> /etc/init.d/zram
@@ -98,7 +98,7 @@ function enable_zram {
   echo '    sleep 1' >> /etc/init.d/zram
   echo '    rmmod zram' >> /etc/init.d/zram
   echo '}' >> /etc/init.d/zram
-  echo 'case \"$1\" in' >> /etc/init.d/zram
+  echo 'case "$1" in' >> /etc/init.d/zram
   echo '    start)' >> /etc/init.d/zram
   echo '        start' >> /etc/init.d/zram
   echo '        ;;' >> /etc/init.d/zram
@@ -111,7 +111,7 @@ function enable_zram {
   echo '        start' >> /etc/init.d/zram
   echo '        ;;' >> /etc/init.d/zram
   echo '    *)' >> /etc/init.d/zram
-  echo '        echo \"Usage: $0 {start|stop|restart}\"' >> /etc/init.d/zram
+  echo '        echo "Usage: $0 {start|stop|restart}"' >> /etc/init.d/zram
   echo '        RETVAL=1' >> /etc/init.d/zram
   echo 'esac' >> /etc/init.d/zram
   echo 'exit $RETVAL' >> /etc/init.d/zram
@@ -180,16 +180,16 @@ function time_synchronisation {
   echo 'BEFORE=$(date -d "$Y-$M-$D" "+%s")' >> /usr/bin/updatedate
   echo 'BACKWARDS_BETWEEN=0' >> /usr/bin/updatedate
   echo '# If the date was previously set' >> /usr/bin/updatedate
-  echo 'if [[ -f \"$BEFORE_DATE_FILE\" ]]; then' >> /usr/bin/updatedate
+  echo 'if [[ -f "$BEFORE_DATE_FILE" ]]; then' >> /usr/bin/updatedate
   echo '    BEFORE_FILE=$(cat $BEFORE_DATE_FILE)' >> /usr/bin/updatedate
   echo '    BEFORE_FULLDATE=$(cat $BEFORE_FULLDATE_FILE)' >> /usr/bin/updatedate
   echo '    # is the date going backwards?' >> /usr/bin/updatedate
   echo '    if (( BEFORE_FILE > BEFORE )); then' >> /usr/bin/updatedate
-  echo '        echo -n \"Date went backwards between tlsdate updates. \" >> $LOGFILE' >> /usr/bin/updatedate
-  echo '        echo -n \"$BEFORE_FILE > $BEFORE, \" >> $LOGFILE' >> /usr/bin/updatedate
-  echo '        echo \"$BEFORE_FULLDATE > $DATE_BEFORE\" >> $LOGFILE' >> /usr/bin/updatedate
+  echo '        echo -n "Date went backwards between tlsdate updates. " >> $LOGFILE' >> /usr/bin/updatedate
+  echo '        echo -n "$BEFORE_FILE > $BEFORE, " >> $LOGFILE' >> /usr/bin/updatedate
+  echo '        echo "$BEFORE_FULLDATE > $DATE_BEFORE" >> $LOGFILE' >> /usr/bin/updatedate
   echo '        # Send a warning email' > /usr/bin/updatedate
-  echo '        echo $(tail $LOGFILE -n 2) | mail -s \"tlsdate anomaly\" $EMAIL' >> /usr/bin/updatedate
+  echo '        echo $(tail $LOGFILE -n 2) | mail -s "tlsdate anomaly" $EMAIL' >> /usr/bin/updatedate
   echo '        # Try another time source' >> /usr/bin/updatedate
   echo '        TIMESOURCE=$TIMESOURCE2' >> /usr/bin/updatedate
   echo '        # try running without any parameters' >> /usr/bin/updatedate
@@ -203,24 +203,24 @@ function time_synchronisation {
   echo 'AFTER=$(date -d "$Y-$M-$D" '+%s')' >> /usr/bin/updatedate
   echo '# After setting the date did it go backwards?' >> /usr/bin/updatedate
   echo 'if (( AFTER < BEFORE )); then' >> /usr/bin/updatedate
-  echo '    echo \"Incorrect date: $DATE_BEFORE -> $DATE_AFTER\" >> $LOGFILE' >> /usr/bin/updatedate
+  echo '    echo "Incorrect date: $DATE_BEFORE -> $DATE_AFTER" >> $LOGFILE' >> /usr/bin/updatedate
   echo '    # Send a warning email' >> /usr/bin/updatedate
-  echo '    echo $(tail $LOGFILE -n 2) | mail -s \"tlsdate anomaly\" $EMAIL' >> /usr/bin/updatedate
+  echo '    echo $(tail $LOGFILE -n 2) | mail -s "tlsdate anomaly" $EMAIL' >> /usr/bin/updatedate
   echo '    # Try resetting the date from another time source' >> /usr/bin/updatedate
   echo '    /usr/bin/timeout $TIMEOUT tlsdate -l -t -H $TIMESOURCE2 -p 443 >> $LOGFILE' >> /usr/bin/updatedate
   echo '    DATE_AFTER=$(date)' >> /usr/bin/updatedate
   echo '    AFTER=$(date -d "$Y-$M-$D" "+%s")' >> /usr/bin/updatedate
   echo 'else' >> /usr/bin/updatedate
   echo '    echo -n $TIMESOURCE >> $LOGFILE' >> /usr/bin/updatedate
-  echo '    if [[ -f \"$BEFORE_DATE_FILE\" ]]; then' >> /usr/bin/updatedate
+  echo '    if [[ -f "$BEFORE_DATE_FILE" ]]; then' >> /usr/bin/updatedate
   echo '        echo -n " " >> $LOGFILE' >> /usr/bin/updatedate
   echo '        echo -n $BEFORE_FILE >> $LOGFILE' >> /usr/bin/updatedate
   echo '    fi' >> /usr/bin/updatedate
-  echo '    echo -n \" \" >> $LOGFILE' >> /usr/bin/updatedate
+  echo '    echo -n " " >> $LOGFILE' >> /usr/bin/updatedate
   echo '    echo -n $BEFORE >> $LOGFILE' >> /usr/bin/updatedate
-  echo '    echo -n \" \" >> $LOGFILE' >> /usr/bin/updatedate
+  echo '    echo -n " " >> $LOGFILE' >> /usr/bin/updatedate
   echo '    echo -n $AFTER >> $LOGFILE' >> /usr/bin/updatedate
-  echo '    echo -n \" \" >> $LOGFILE' >> /usr/bin/updatedate
+  echo '    echo -n " " >> $LOGFILE' >> /usr/bin/updatedate
   echo '    echo $DATE_AFTER >> $LOGFILE' >> /usr/bin/updatedate
   echo 'fi' >> /usr/bin/updatedate
   echo '# Log the last date' >> /usr/bin/updatedate
@@ -344,7 +344,7 @@ function script_to_make_self_signed_certificates {
   echo '    echo "$0: openssl is not installed, exiting" 1>&2' >> /usr/bin/makecert
   echo '    exit 1' >> /usr/bin/makecert
   echo 'fi' >> /usr/bin/makecert
-  echo 'openssl req -x509 -nodes -days 3650 -sha256 -subj \"/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME\" -newkey rsa:4096 -keyout /etc/ssl/private/$HOSTNAME.key -out /etc/ssl/certs/$HOSTNAME.crt' >> /usr/bin/makecert
+  echo 'openssl req -x509 -nodes -days 3650 -sha256 -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME" -newkey rsa:4096 -keyout /etc/ssl/private/$HOSTNAME.key -out /etc/ssl/certs/$HOSTNAME.crt' >> /usr/bin/makecert
   echo 'openssl dhparam -check -text -5 1024 -out /etc/ssl/certs/$HOSTNAME.dhparam' >> /usr/bin/makecert
   echo 'chmod 400 /etc/ssl/private/$HOSTNAME.key' >> /usr/bin/makecert
   echo 'chmod 640 /etc/ssl/certs/$HOSTNAME.crt' >> /usr/bin/makecert
@@ -487,7 +487,7 @@ function spam_filtering {
   echo 'for f in `ls $MAILDIR/cur`' >> /usr/bin/filterspam
   echo 'do' >> /usr/bin/filterspam
   echo '    spamc -L spam < "$MAILDIR/cur/$f" > /dev/null' >> /usr/bin/filterspam
-  echo '    rm \"$MAILDIR/cur/$f\"' >> /usr/bin/filterspam
+  echo '    rm "$MAILDIR/cur/$f"' >> /usr/bin/filterspam
   echo 'done' >> /usr/bin/filterspam
   echo 'for f in `ls $MAILDIR/new`' >> /usr/bin/filterspam
   echo 'do' >> /usr/bin/filterspam
@@ -569,10 +569,10 @@ function email_client {
   echo 'set editor="emacs"' >> /etc/Muttrc
   echo 'set header_cache="+.cache"' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
-  echo 'macro index S \"<tag-prefix><save-message>=.learn-spam<enter>\" \"move to learn-spam\"' >> /etc/Muttrc
-  echo 'macro pager S \"<save-message>=.learn-spam<enter>\" \"move to learn-spam\"' >> /etc/Muttrc
-  echo 'macro index H \"<tag-prefix><copy-message>=.learn-ham<enter>\" \"copy to learn-ham\"' >> /etc/Muttrc
-  echo 'macro pager H \"<copy-message>=.learn-ham<enter>\" \"copy to learn-ham\"' >> /etc/Muttrc
+  echo 'macro index S "<tag-prefix><save-message>=.learn-spam<enter>" "move to learn-spam"' >> /etc/Muttrc
+  echo 'macro pager S "<save-message>=.learn-spam<enter>" "move to learn-spam"' >> /etc/Muttrc
+  echo 'macro index H "<tag-prefix><copy-message>=.learn-ham<enter>" "copy to learn-ham"' >> /etc/Muttrc
+  echo 'macro pager H "<copy-message>=.learn-ham<enter>" "copy to learn-ham"' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# set up the sidebar' >> /etc/Muttrc
   echo 'set sidebar_width=12' >> /etc/Muttrc
@@ -605,22 +605,22 @@ function email_client {
   echo 'bind pager \Co sidebar-open' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# ctrl-b toggles sidebar visibility' >> /etc/Muttrc
-  echo "macro index,pager \Cb '<enter-command>toggle sidebar_visible<enter><redraw-screen>' \"toggle sidebar\"" >> /etc/Muttrc
+  echo "macro index,pager \Cb '<enter-command>toggle sidebar_visible<enter><redraw-screen>' 'toggle sidebar'" >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# esc-m Mark new messages as read' >> /etc/Muttrc
-  echo "macro index <esc>m \"T~N<enter>;WNT~O<enter>;WO\CT~T<enter>\" \"mark all messages read\"" >> /etc/Muttrc
+  echo 'macro index <esc>m "T~N<enter>;WNT~O<enter>;WO\CT~T<enter>" "mark all messages read"' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# Collapsing threads' >> /etc/Muttrc
-  echo "macro index [ \"<collapse-thread>\" \"collapse/uncollapse thread\"" >> /etc/Muttrc
-  echo "macro index ] \"<collapse-all>\"    \"collapse/uncollapse all threads\"" >> /etc/Muttrc
+  echo 'macro index [ "<collapse-thread>" "collapse/uncollapse thread"' >> /etc/Muttrc
+  echo 'macro index ] "<collapse-all>"    "collapse/uncollapse all threads"' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# threads containing new messages' >> /etc/Muttrc
-  echo "uncolor index \"~(~N)\"" >> /etc/Muttrc
-  echo "color index brightblue default \"~(~N)\"" >> /etc/Muttrc
+  echo 'uncolor index "~(~N)"' >> /etc/Muttrc
+  echo 'color index brightblue default "~(~N)"' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# new messages themselves' >> /etc/Muttrc
-  echo "uncolor index \"~N\"" >> /etc/Muttrc
-  echo "color index brightyellow default \"~N\"" >> /etc/Muttrc
+  echo 'uncolor index "~N"' >> /etc/Muttrc
+  echo 'color index brightyellow default "~N"' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# GPG/PGP integration' >> /etc/Muttrc
   echo '# this set the number of seconds to keep in memory the passphrase used to encrypt/sign' >> /etc/Muttrc
@@ -635,7 +635,7 @@ function email_client {
   echo '' >> /etc/Muttrc
   echo 'set alias_file=~/.mutt-alias' >> /etc/Muttrc
   echo 'source ~/.mutt-alias' >> /etc/Muttrc
-  echo "set query_command= \"abook --mutt-query '%s'\"" >> /etc/Muttrc
+  echo 'set query_command= "abook --mutt-query \"%s\""' >> /etc/Muttrc
   echo 'macro index,pager A "<pipe-message>abook --add-email-quiet<return>" "add the sender address to abook"' >> /etc/Muttrc
 
   cp -f /etc/Muttrc /home/$MY_USERNAME/.muttrc
