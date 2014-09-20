@@ -117,7 +117,7 @@ function enable_zram {
   update-rc.d zram defaults
 }
 
-function hardware_random_number_generator
+function hardware_random_number_generator {
   apt-get -y install rng-tools
   sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
   service rng-tools restart
