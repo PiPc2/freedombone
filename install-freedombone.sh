@@ -6,6 +6,7 @@ MY_USERNAME=$2
 
 SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
+USE_HWRNG="yes"
 
 # Directory where source code is downloaded and compiled
 INSTALL_DIR=/root/build
@@ -119,11 +120,15 @@ function enable_zram {
   update-rc.d zram defaults
 }
 
-function hardware_random_number_generator {
-  apt-get -y install rng-tools
-  sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
-  # TODO there should be a system restart at this point to enable /dev/hwrng
-  service rng-tools restart
+function random_number_generator {
+  if [ $USE_HWRNG == "yes" ]; then
+    apt-get -y install rng-tools
+    sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
+    # TODO there should be a system restart at this point to enable /dev/hwrng
+    service rng-tools restart
+  else
+	apt-get -y install haveged
+  fi
 }
 
 function configure_ssh {
@@ -716,7 +721,7 @@ install_editor
 enable_backports
 update_the_kernel
 enable_zram
-hardware_random_number_generator
+random_number_generator
 configure_ssh
 regenerate_ssh_keys
 set_your_domain_name
