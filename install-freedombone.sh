@@ -621,6 +621,70 @@ function email_client {
   chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.mutt-alias
 }
 
+function folders_for_mailing_lists {
+  echo "#!/bin/bash" > /usr/bin/mailinglistrule
+  echo "MYUSERNAME=$1" >> /usr/bin/mailinglistrule
+  echo "MAILINGLIST=$2" >> /usr/bin/mailinglistrule
+  echo "SUBJECTTAG=$3" >> /usr/bin/mailinglistrule
+  echo "MUTTRC=/home/$MYUSERNAME/.muttrc" >> /usr/bin/mailinglistrule
+  echo "PM=/home/$MYUSERNAME/.procmailrc" >> /usr/bin/mailinglistrule
+  echo "LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST" >> /usr/bin/mailinglistrule
+  echo "if [ ! -d \"$LISTDIR\" ]; then" >> /usr/bin/mailinglistrule
+  echo "  mkdir -m 700 $LISTDIR" >> /usr/bin/mailinglistrule
+  echo "  mkdir -m 700 $LISTDIR/tmp" >> /usr/bin/mailinglistrule
+  echo "  mkdir -m 700 $LISTDIR/new" >> /usr/bin/mailinglistrule
+  echo "  mkdir -m 700 $LISTDIR/cur" >> /usr/bin/mailinglistrule
+  echo "fi" >> /usr/bin/mailinglistrule
+  echo "chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR" >> /usr/bin/mailinglistrule
+  echo "echo \"\" >> $PM" >> /usr/bin/mailinglistrule
+  echo "echo \":0\" >> $PM" >> /usr/bin/mailinglistrule
+  echo "echo \"  * ^Subject:.*()\[$SUBJECTTAG\]\" >> $PM" >> /usr/bin/mailinglistrule
+  echo "echo \"$LISTDIR/new\" >> $PM" >> /usr/bin/mailinglistrule
+  echo "chown $MYUSERNAME:$MYUSERNAME $PM" >> /usr/bin/mailinglistrule
+  echo "if [ ! -f \"$MUTTRC\" ]; then" >> /usr/bin/mailinglistrule
+  echo "  cp /etc/Muttrc $MUTTRC" >> /usr/bin/mailinglistrule
+  echo "  chown $MYUSERNAME:$MYUSERNAME $MUTTRC" >> /usr/bin/mailinglistrule
+  echo "fi" >> /usr/bin/mailinglistrule
+  echo "PROCMAILLOG=/home/$MYUSERNAME/log" >> /usr/bin/mailinglistrule
+  echo "if [ ! -d $PROCMAILLOG ]; then" >> /usr/bin/mailinglistrule
+  echo "  mkdir $PROCMAILLOG" >> /usr/bin/mailinglistrule
+  echo "  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG" >> /usr/bin/mailinglistrule
+  echo "fi" >> /usr/bin/mailinglistrule
+  chmod +x /usr/bin/mailinglistrule
+}
+
+function folders_for_email_addresses {
+  echo "#!/bin/bash" > /usr/bin/emailrule
+  echo "MYUSERNAME=$1" >> /usr/bin/emailrule
+  echo "EMAILADDRESS=$2" >> /usr/bin/emailrule
+  echo "MAILINGLIST=$3" >> /usr/bin/emailrule
+  echo "MUTTRC=/home/$MYUSERNAME/.muttrc" >> /usr/bin/emailrule
+  echo "PM=/home/$MYUSERNAME/.procmailrc" >> /usr/bin/emailrule
+  echo "LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST" >> /usr/bin/emailrule
+  echo "if [ ! -d \"$LISTDIR\" ]; then" >> /usr/bin/emailrule
+  echo "  mkdir -m 700 $LISTDIR" >> /usr/bin/emailrule
+  echo "  mkdir -m 700 $LISTDIR/tmp" >> /usr/bin/emailrule
+  echo "  mkdir -m 700 $LISTDIR/new" >> /usr/bin/emailrule
+  echo "  mkdir -m 700 $LISTDIR/cur" >> /usr/bin/emailrule
+  echo "fi" >> /usr/bin/emailrule
+  echo "chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR" >> /usr/bin/emailrule
+  echo "echo \"\" >> $PM" >> /usr/bin/emailrule
+  echo "echo \":0\" >> $PM" >> /usr/bin/emailrule
+  echo "echo \"  * ^From: $EMAILADDRESS\" >> $PM" >> /usr/bin/emailrule
+  echo "echo \"$LISTDIR/new\" >> $PM" >> /usr/bin/emailrule
+  echo "chown $MYUSERNAME:$MYUSERNAME $PM" >> /usr/bin/emailrule
+  echo "if [ ! -f \"$MUTTRC\" ]; then" >> /usr/bin/emailrule
+  echo "  cp /etc/Muttrc $MUTTRC" >> /usr/bin/emailrule
+  echo "  chown $MYUSERNAME:$MYUSERNAME $MUTTRC" >> /usr/bin/emailrule
+  echo "fi" >> /usr/bin/emailrule
+  echo "PROCMAILLOG=/home/$MYUSERNAME/log" >> /usr/bin/emailrule
+  echo "if [ ! -d $PROCMAILLOG ]; then" >> /usr/bin/emailrule
+  echo "  mkdir $PROCMAILLOG" >> /usr/bin/emailrule
+  echo "  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG" >> /usr/bin/emailrule
+  echo "fi" >> /usr/bin/emailrule
+  chmod +x /usr/bin/emailrule
+}
+
 initial_setup
 install_editor
 enable_backports
@@ -643,3 +707,5 @@ spam_filtering
 configure_imap
 configure_gpg
 email_client
+folders_for_mailing_lists
+folders_for_email_addresses
