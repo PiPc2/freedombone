@@ -1,4 +1,5 @@
 #!/bin/bash
+# Freedombone install script intended for use with Debian Jessie
 
 DOMAIN_NAME=$1
 MY_USERNAME=$2
@@ -517,6 +518,10 @@ function configure_imap {
   sed -i 's|#   mail_location = maildir:~/Maildir|   mail_location = maildir:~/Maildir:LAYOUT=fs|g' /etc/dovecot/conf.d/10-mail.conf
 }
 
+function configure_gpg {
+  apt-get -y install gnupg
+}
+
 initial_setup
 install_editor
 enable_backports
@@ -537,3 +542,4 @@ script_to_make_self_signed_certificates
 configure_email
 spam_filtering
 configure_imap
+configure_gpg
