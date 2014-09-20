@@ -614,6 +614,11 @@ function email_client {
   echo "source ~/.mutt-alias" >> /etc/Muttrc
   echo "set query_command= \"abook --mutt-query '%s'\"" >> /etc/Muttrc
   echo "macro index,pager A \"<pipe-message>abook --add-email-quiet<return>\" \"add the sender address to abook\"" >> /etc/Muttrc
+
+  cp -f /etc/Muttrc /home/$MY_USERNAME/.muttrc
+  touch /home/$MY_USERNAME/.mutt-alias
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.muttrc
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.mutt-alias
 }
 
 initial_setup
