@@ -72,15 +72,15 @@ function enable_zram {
   echo '    modprobe zram num_devices=$num_cpus' >> /etc/init.d/zram
   echo '    # initialize the devices' >> /etc/init.d/zram
   echo '    for i in $(seq 0 $decr_num_cpus); do' >> /etc/init.d/zram
-  echo '    echo $((mem_total / num_cpus)) > /sys/block/zram$i/disksize' >> /etc/init.d/zram
+  echo '      echo $((mem_total / num_cpus)) > /sys/block/zram$i/disksize' >> /etc/init.d/zram
   echo '    done' >> /etc/init.d/zram
   echo '    # Creating swap filesystems' >> /etc/init.d/zram
   echo '    for i in $(seq 0 $decr_num_cpus); do' >> /etc/init.d/zram
-  echo '    mkswap /dev/zram$i' >> /etc/init.d/zram
+  echo '      mkswap /dev/zram$i' >> /etc/init.d/zram
   echo '    done' >> /etc/init.d/zram
   echo '    # Switch the swaps on' >> /etc/init.d/zram
   echo '    for i in $(seq 0 $decr_num_cpus); do' >> /etc/init.d/zram
-  echo '    swapon -p 100 /dev/zram$i' >> /etc/init.d/zram
+  echo '      swapon -p 100 /dev/zram$i' >> /etc/init.d/zram
   echo '    done' >> /etc/init.d/zram
   echo '}' >> /etc/init.d/zram
   echo 'stop() {' >> /etc/init.d/zram
@@ -90,10 +90,10 @@ function enable_zram {
   echo '    decr_num_cpus=$((num_cpus - 1))' >> /etc/init.d/zram
   echo '    # Switching off swap' >> /etc/init.d/zram
   echo '    for i in $(seq 0 $decr_num_cpus); do' >> /etc/init.d/zram
-  echo '    if [ "$(grep /dev/zram$i /proc/swaps)" != "" ]; then' >> /etc/init.d/zram
-  echo '    swapoff /dev/zram$i' >> /etc/init.d/zram
-  echo '    sleep 1' >> /etc/init.d/zram
-  echo '    fi' >> /etc/init.d/zram
+  echo '      if [ "$(grep /dev/zram$i /proc/swaps)" != "" ]; then' >> /etc/init.d/zram
+  echo '        swapoff /dev/zram$i' >> /etc/init.d/zram
+  echo '        sleep 1' >> /etc/init.d/zram
+  echo '      fi' >> /etc/init.d/zram
   echo '    done' >> /etc/init.d/zram
   echo '    sleep 1' >> /etc/init.d/zram
   echo '    rmmod zram' >> /etc/init.d/zram
