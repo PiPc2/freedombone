@@ -374,13 +374,155 @@ function configure_email {
   sed "s/START=no/START=yes/g" /etc/default/saslauthd > /tmp/saslauthd
   cp -f /tmp/saslauthd /etc/default/saslauthd
   /etc/init.d/saslauthd start
+
+  # make a tls certificate for email
   makecert exim
   mv /etc/ssl/private/exim.key /etc/exim4
   mv /etc/ssl/certs/exim.crt /etc/exim4
   mv /etc/ssl/certs/exim.dhparam /etc/exim4
   chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
   chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
-#editor /etc/exim4/exim4.conf.template
+
+  sed '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
+  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
+
+  sed '/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME = $DOMAIN_NAME\nMAIN_TLS_ENABLE = true' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
+  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
+
+  sed "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4 > /tmp/exim4
+  cp -f /tmp/exim4 /etc/default/exim4
+
+  sed '/03_exim4-config_tlsoptions/a\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
+  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
+
+  adduser $MY_USERNAME sasl
+  addgroup Debian-exim sasl
+  /etc/init.d/exim4 restart
+  mkdir -m 700 /etc/skel/Maildir
+  mkdir -m 700 /etc/skel/Maildir/Sent
+  mkdir -m 700 /etc/skel/Maildir/Sent/tmp
+  mkdir -m 700 /etc/skel/Maildir/Sent/cur
+  mkdir -m 700 /etc/skel/Maildir/Sent/new
+  mkdir -m 700 /etc/skel/Maildir/.learn-spam
+  mkdir -m 700 /etc/skel/Maildir/.learn-spam/cur
+  mkdir -m 700 /etc/skel/Maildir/.learn-spam/new
+  mkdir -m 700 /etc/skel/Maildir/.learn-spam/tmp
+  mkdir -m 700 /etc/skel/Maildir/.learn-ham
+  mkdir -m 700 /etc/skel/Maildir/.learn-ham/cur
+  mkdir -m 700 /etc/skel/Maildir/.learn-ham/new
+  mkdir -m 700 /etc/skel/Maildir/.learn-ham/tmp
+  ln -s /etc/skel/Maildir/.learn-spam /etc/skel/Maildir/spam
+  ln -s /etc/skel/Maildir/.learn-ham /etc/skel/Maildir/ham
+
+  if [ ! -d /home/$MY_USERNAME/Maildir ]; then
+    mkdir -m 700 /home/$MY_USERNAME/Maildir
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/cur
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/tmp
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/new
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/cur
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/tmp
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/new
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/cur
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/new
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/tmp
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/cur
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/new
+	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/tmp
+	ln -s /home/$MY_USERNAME/Maildir/.learn-spam /home/$MY_USERNAME/Maildir/spam
+	ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
+	chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
+  fi
+}
+
+function spam_filtering {
+  apt-get -y install spamassassin exim4-daemon-heavy
+  sed 's/ENABLED=0/ENABLED=1/g' /etc/default/spamassassin > /tmp/spamassassin
+  cp -f /tmp/spamassassin /etc/default/spamassassin
+  sed 's/# spamd_address = 127.0.0.1 783/spamd_address = 127.0.0.1 783/g' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
+  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
+  # This configuration is based on https://wiki.debian.org/DebianSpamAssassin
+  sed 's/local_parts = postmaster/local_parts = postmaster:abuse/g' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt > /tmp/30_exim4-config_check_rcpt
+  cp -f /tmp/30_exim4-config_check_rcpt /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
+  sed '/domains = +local_domains : +relay_to_domains/a\    set acl_m0 = rfcnames' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt > /tmp/30_exim4-config_check_rcpt
+  cp -f /tmp/30_exim4-config_check_rcpt /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
+  sed 's/accept/accept condition = ${if eq{$acl_m0}{rfcnames} {1}{0}}/g' /etc/exim4/conf.d/acl/40_exim4-config_check_data > /tmp/40_exim4-config_check_data
+  cp -f /tmp/40_exim4-config_check_data /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "warn  message = X-Spam-Score: $spam_score ($spam_bar)" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "      spam = nobody:true" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "warn  message = X-Spam-Flag: YES" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "      spam = nobody" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "warn  message = X-Spam-Report: $spam_report" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "      spam = nobody" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "# reject spam at high scores (> 12)" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "deny  message = This message scored $spam_score spam points." >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "      spam = nobody:true" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  echo "      condition = ${if >{$spam_score_int}{120}{1}{0}}" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  # procmail configuration
+  echo "MAILDIR=$HOME/Maildir" > /home/$MY_USERNAME/.procmailrc
+  echo "DEFAULT=$MAILDIR/" >> /home/$MY_USERNAME/.procmailrc
+  echo "LOGFILE=$HOME/log/procmail.log" >> /home/$MY_USERNAME/.procmailrc
+  echo "LOGABSTRACT=all" >> /home/$MY_USERNAME/.procmailrc
+  echo "# get spamassassin to check emails" >> /home/$MY_USERNAME/.procmailrc
+  echo ":0fw: .spamassassin.lock" >> /home/$MY_USERNAME/.procmailrc
+  echo "  * < 256000" >> /home/$MY_USERNAME/.procmailrc
+  echo "| spamc" >> /home/$MY_USERNAME/.procmailrc
+  echo "# strong spam are discarded" >> /home/$MY_USERNAME/.procmailrc
+  echo ":0" >> /home/$MY_USERNAME/.procmailrc
+  echo "  * ^X-Spam-Level: \*\*\*\*\*\*" >> /home/$MY_USERNAME/.procmailrc
+  echo "/dev/null" >> /home/$MY_USERNAME/.procmailrc
+  echo "# weak spam are kept just in case - clear this out every now and then" >> /home/$MY_USERNAME/.procmailrc
+  echo ":0" >> /home/$MY_USERNAME/.procmailrc
+  echo "  * ^X-Spam-Level: \*\*\*\*\*" >> /home/$MY_USERNAME/.procmailrc
+  echo ".0-spam/" >> /home/$MY_USERNAME/.procmailrc
+  echo "# otherwise, marginal spam goes here for revision" >> /home/$MY_USERNAME/.procmailrc
+  echo ":0" >> /home/$MY_USERNAME/.procmailrc
+  echo "  * ^X-Spam-Level: \*\*" >> /home/$MY_USERNAME/.procmailrc
+  echo ".spam/" >> /home/$MY_USERNAME/.procmailrc
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.procmailrc
+  # filtering scripts
+  echo "#!/bin/bash" > /usr/bin/filterspam
+  echo "USERNAME=$1" >> /usr/bin/filterspam
+  echo "MAILDIR=/home/$USERNAME/Maildir/.learn-spam" >> /usr/bin/filterspam
+  echo "if [ ! -d \"$MAILDIR\" ]; then" >> /usr/bin/filterspam
+  echo "    exit" >> /usr/bin/filterspam
+  echo "fi" >> /usr/bin/filterspam
+  echo "for f in `ls $MAILDIR/cur`" >> /usr/bin/filterspam
+  echo "do" >> /usr/bin/filterspam
+  echo "    spamc -L spam < \"$MAILDIR/cur/$f\" > /dev/null" >> /usr/bin/filterspam
+  echo "    rm \"$MAILDIR/cur/$f\"" >> /usr/bin/filterspam
+  echo "done" >> /usr/bin/filterspam
+  echo "for f in `ls $MAILDIR/new`" >> /usr/bin/filterspam
+  echo "do" >> /usr/bin/filterspam
+  echo "    spamc -L spam < \"$MAILDIR/new/$f\" > /dev/null" >> /usr/bin/filterspam
+  echo "    rm \"$MAILDIR/new/$f\"" >> /usr/bin/filterspam
+  echo "done" >> /usr/bin/filterspam
+
+  echo "#!/bin/bash" > /usr/bin/filterham
+  echo "USERNAME=$1" >> /usr/bin/filterham
+  echo "MAILDIR=/home/$USERNAME/Maildir/.learn-ham" >> /usr/bin/filterham
+  echo "if [ ! -d \"$MAILDIR\" ]; then" >> /usr/bin/filterham
+  echo "    exit" >> /usr/bin/filterham
+  echo "fi" >> /usr/bin/filterham
+  echo "for f in `ls $MAILDIR/cur`" >> /usr/bin/filterham
+  echo "do" >> /usr/bin/filterham
+  echo "    spamc -L ham < \"$MAILDIR/cur/$f\" > /dev/null" >> /usr/bin/filterham
+  echo "    rm \"$MAILDIR/cur/$f\"" >> /usr/bin/filterham
+  echo "done" >> /usr/bin/filterham
+  echo "for f in `ls $MAILDIR/new`" >> /usr/bin/filterham
+  echo "do" >> /usr/bin/filterham
+  echo "    spamc -L ham < \"$MAILDIR/new/$f\" > /dev/null" >> /usr/bin/filterham
+  echo "    rm \"$MAILDIR/new/$f\"" >> /usr/bin/filterham
+  echo "done" >> /usr/bin/filterham
+
+  echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterspam $MY_USERNAME" >> /etc/crontab
+  echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterham $MY_USERNAME" >> /etc/crontab
+  chmod 655 /usr/bin/filterspam /usr/bin/filterham
+  service spamassassin restart
+  service exim4 restart
+  service cron restart
 }
 
 initial_setup
@@ -401,3 +543,4 @@ save_firewall_settings
 configure_internet_protocol
 script_to_make_self_signed_certificates
 configure_email
+spam_filtering
