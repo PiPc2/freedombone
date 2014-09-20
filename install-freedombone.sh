@@ -122,11 +122,12 @@ function enable_zram {
 function hardware_random_number_generator {
   apt-get -y install rng-tools
   sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
+  # TODO there should be a system restart at this point to enable /dev/hwrng
   service rng-tools restart
 }
 
 function configure_ssh {
-  sed -i 's/Port 22/Port $SSH_PORT/g' /etc/ssh/sshd_config
+  sed -i "s/Port 22/Port $SSH_PORT/g" /etc/ssh/sshd_config
   sed -i 's/PermitRootLogin without-password/PermitRootLogin no/g' /etc/ssh/sshd_config
   sed -i 's/X11Forwarding yes/X11Forwarding no/g' /etc/ssh/sshd_config
   sed -i 's/ServerKeyBits 1024/ServerKeyBits 4096/g' /etc/ssh/sshd_config
