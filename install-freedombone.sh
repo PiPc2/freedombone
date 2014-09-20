@@ -492,6 +492,9 @@ function spam_filtering {
   echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterspam $MY_USERNAME" >> /etc/crontab
   echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterham $MY_USERNAME" >> /etc/crontab
   chmod 655 /usr/bin/filterspam /usr/bin/filterham
+  sed -i 's/# use_bayes 1/use_bayes 1/g' /etc/mail/spamassassin/local.cf
+  sed -i 's/# bayes_auto_learn 1/bayes_auto_learn 1/g' /etc/mail/spamassassin/local.cf
+
   service spamassassin restart
   service exim4 restart
   service cron restart
@@ -522,6 +525,97 @@ function configure_gpg {
   apt-get -y install gnupg
 }
 
+function email_client {
+  apt-get -y install mutt-patched lynx abook
+  if [ ! -d /home/$MY_USERNAME/.mutt ]; then
+    mkdir /home/$MY_USERNAME/.mutt
+  fi
+  echo "text/html; lynx -dump -width=78 -nolist %s | sed ‘s/^ //’; copiousoutput; needsterminal; nametemplate=%s.html" > /home/$MY_USERNAME/.mutt/mailcap
+  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.mutt
+
+
+  echo "set mbox_type=Maildir" >> /etc/Muttrc
+  echo "set folder=\"~/Maildir\"" >> /etc/Muttrc
+  echo "set mask=\"!^\\.[^.]\"" >> /etc/Muttrc
+  echo "set mbox=\"~/Maildir\"" >> /etc/Muttrc
+  echo "set record=\"+Sent\"" >> /etc/Muttrc
+  echo "set postponed=\"+Drafts\"" >> /etc/Muttrc
+  echo "set trash=\"+Trash\"" >> /etc/Muttrc
+  echo "set spoolfile=\"~/Maildir\"" >> /etc/Muttrc
+  echo "auto_view text/x-vcard text/html text/enriched" >> /etc/Muttrc
+  echo "set editor=\"emacs\"" >> /etc/Muttrc
+  echo "set header_cache=\"+.cache\"" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "macro index S \"<tag-prefix><save-message>=.learn-spam<enter>\" \"move to learn-spam\"" >> /etc/Muttrc
+  echo "macro pager S \"<save-message>=.learn-spam<enter>\" \"move to learn-spam\"" >> /etc/Muttrc
+  echo "macro index H \"<tag-prefix><copy-message>=.learn-ham<enter>\" \"copy to learn-ham\"" >> /etc/Muttrc
+  echo "macro pager H \"<copy-message>=.learn-ham<enter>\" \"copy to learn-ham\"" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# set up the sidebar" >> /etc/Muttrc
+  echo "set sidebar_width=12" >> /etc/Muttrc
+  echo "set sidebar_visible=yes" >> /etc/Muttrc
+  echo "set sidebar_delim='|'" >> /etc/Muttrc
+  echo "set sidebar_sort=yes" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "set rfc2047_parameters" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# Show inbox and sent items" >> /etc/Muttrc
+  echo "mailboxes = =Sent" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# Alter these colours as needed for maximum bling" >> /etc/Muttrc
+  echo "color sidebar_new yellow default" >> /etc/Muttrc
+  echo "color normal white default" >> /etc/Muttrc
+  echo "color hdrdefault brightcyan default" >> /etc/Muttrc
+  echo "color signature green default" >> /etc/Muttrc
+  echo "color attachment brightyellow default" >> /etc/Muttrc
+  echo "color quoted green default" >> /etc/Muttrc
+  echo "color quoted1 white default" >> /etc/Muttrc
+  echo "color tilde blue default" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# ctrl-n, ctrl-p to select next, prev folder" >> /etc/Muttrc
+  echo "# ctrl-o to open selected folder" >> /etc/Muttrc
+  echo "bind index \Cp sidebar-prev" >> /etc/Muttrc
+  echo "bind index \Cn sidebar-next" >> /etc/Muttrc
+  echo "bind index \Co sidebar-open" >> /etc/Muttrc
+  echo "bind pager \Cp sidebar-prev" >> /etc/Muttrc
+  echo "bind pager \Cn sidebar-next" >> /etc/Muttrc
+  echo "bind pager \Co sidebar-open" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# ctrl-b toggles sidebar visibility" >> /etc/Muttrc
+  echo "macro index,pager \Cb '<enter-command>toggle sidebar_visible<enter><redraw-screen>' \"toggle sidebar\"" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# esc-m Mark new messages as read" >> /etc/Muttrc
+  echo "macro index <esc>m \"T~N<enter>;WNT~O<enter>;WO\CT~T<enter>\" \"mark all messages read\"" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# Collapsing threads" >> /etc/Muttrc
+  echo "macro index [ \"<collapse-thread>\" \"collapse/uncollapse thread\"" >> /etc/Muttrc
+  echo "macro index ] \"<collapse-all>\"    \"collapse/uncollapse all threads\"" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# threads containing new messages" >> /etc/Muttrc
+  echo "uncolor index \"~(~N)\"" >> /etc/Muttrc
+  echo "color index brightblue default \"~(~N)\"" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# new messages themselves" >> /etc/Muttrc
+  echo "uncolor index \"~N\"" >> /etc/Muttrc
+  echo "color index brightyellow default \"~N\"" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# GPG/PGP integration" >> /etc/Muttrc
+  echo "# this set the number of seconds to keep in memory the passphrase used to encrypt/sign" >> /etc/Muttrc
+  echo "set pgp_timeout=60" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "# automatically sign and encrypt with PGP/MIME" >> /etc/Muttrc
+  echo "set pgp_autosign         # autosign all outgoing mails" >> /etc/Muttrc
+  echo "set pgp_replyencrypt     # autocrypt replies to crypted" >> /etc/Muttrc
+  echo "set pgp_replysign        # autosign replies to signed" >> /etc/Muttrc
+  echo "set pgp_auto_decode=yes  # decode attachments" >> /etc/Muttrc
+  echo "unset smime_is_default" >> /etc/Muttrc
+  echo "" >> /etc/Muttrc
+  echo "set alias_file=~/.mutt-alias" >> /etc/Muttrc
+  echo "source ~/.mutt-alias" >> /etc/Muttrc
+  echo "set query_command= \"abook --mutt-query '%s'\"" >> /etc/Muttrc
+  echo "macro index,pager A \"<pipe-message>abook --add-email-quiet<return>\" \"add the sender address to abook\"" >> /etc/Muttrc
+}
+
 initial_setup
 install_editor
 enable_backports
@@ -543,3 +637,4 @@ configure_email
 spam_filtering
 configure_imap
 configure_gpg
+email_client
