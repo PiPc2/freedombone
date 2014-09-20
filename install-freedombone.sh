@@ -23,8 +23,7 @@ function enable_backports {
 }
 
 function remove_proprietary_repos {
-  sed 's/ non-free//g' /etc/apt/sources.list > /tmp/sources.list
-  cp -f /tmp/sources.list /etc/apt/sources.list
+  sed -i 's/ non-free//g' /etc/apt/sources.list
 }
 
 function update_the_kernel {
@@ -107,24 +106,17 @@ function enable_zram {
 
 function hardware_random_number_generator
   apt-get -y install rng-tools
-  sed 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools > /tmp/rng-tools
-  cp -f /tmp/rng-tools /etc/default/rng-tools
+  sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
   service rng-tools restart
 }
 
 function configure_ssh {
-  sed 's/PermitRootLogin without-password/PermitRootLogin no/g' /etc/ssh/sshd_config > /tmp/sshd_config
-  cp -f /tmp/sshd_config /etc/ssh/sshd_config
-  sed 's/X11Forwarding yes/X11Forwarding no/g' /etc/ssh/sshd_config > /tmp/sshd_config
-  cp -f /tmp/sshd_config /etc/ssh/sshd_config
-  sed 's/ServerKeyBits 1024/ServerKeyBits 4096/g' /etc/ssh/sshd_config > /tmp/sshd_config
-  cp -f /tmp/sshd_config /etc/ssh/sshd_config
-  sed 's/TCPKeepAlive yes/TCPKeepAlive no/g' /etc/ssh/sshd_config > /tmp/sshd_config
-  cp -f /tmp/sshd_config /etc/ssh/sshd_config
-  sed 's|HostKey /etc/ssh/ssh_host_dsa_key|#HostKey /etc/ssh/ssh_host_dsa_key|g' /etc/ssh/sshd_config > /tmp/sshd_config
-  cp -f /tmp/sshd_config /etc/ssh/sshd_config
-  sed 's|HostKey /etc/ssh/ssh_host_ecdsa_key|#HostKey /etc/ssh/ssh_host_ecdsa_key|g' /etc/ssh/sshd_config > /tmp/sshd_config
-  cp -f /tmp/sshd_config /etc/ssh/sshd_config
+  sed -i 's/PermitRootLogin without-password/PermitRootLogin no/g' /etc/ssh/sshd_config
+  sed -i 's/X11Forwarding yes/X11Forwarding no/g' /etc/ssh/sshd_config
+  sed -i 's/ServerKeyBits 1024/ServerKeyBits 4096/g' /etc/ssh/sshd_config
+  sed -i 's/TCPKeepAlive yes/TCPKeepAlive no/g' /etc/ssh/sshd_config
+  sed -i 's|HostKey /etc/ssh/ssh_host_dsa_key|#HostKey /etc/ssh/ssh_host_dsa_key|g' /etc/ssh/sshd_config
+  sed -i 's|HostKey /etc/ssh/ssh_host_ecdsa_key|#HostKey /etc/ssh/ssh_host_ecdsa_key|g' /etc/ssh/sshd_config
   echo "ClientAliveInterval 60" >> /etc/ssh/sshd_config
   echo "ClientAliveCountMax 3" >> /etc/ssh/sshd_config
   echo "Ciphers aes256-ctr,aes128-ctr" >> /etc/ssh/sshd_config
@@ -293,26 +285,16 @@ function save_firewall_settings {
 }
 
 function configure_internet_protocol {
-  sed "s/#net.ipv4.tcp_syncookies=1/net.ipv4.tcp_syncookies=1/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 0/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv6.conf.all.accept_redirects = 0/net.ipv6.conf.all.accept_redirects = 0/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 0/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 0/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv6.conf.all.accept_source_route = 0/net.ipv6.conf.all.accept_source_route = 0/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv4.conf.default.rp_filter=1/net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv4.conf.all.rp_filter=1/net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=0/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
-  sed "s/#net.ipv6.conf.all.forwarding=1/net.ipv6.conf.all.forwarding=0/g" /etc/sysctl.conf > /tmp/sysctl.conf
-  cp -f /tmp/sysctl.conf /etc/sysctl.conf
+  sed -i "s/#net.ipv4.tcp_syncookies=1/net.ipv4.tcp_syncookies=1/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 0/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv6.conf.all.accept_redirects = 0/net.ipv6.conf.all.accept_redirects = 0/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 0/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 0/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv6.conf.all.accept_source_route = 0/net.ipv6.conf.all.accept_source_route = 0/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv4.conf.default.rp_filter=1/net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv4.conf.all.rp_filter=1/net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=0/g" /etc/sysctl.conf
+  sed -i "s/#net.ipv6.conf.all.forwarding=1/net.ipv6.conf.all.forwarding=0/g" /etc/sysctl.conf
   echo "# ignore pings" >> /etc/sysctl.conf
   echo "net.ipv4.icmp_echo_ignore_all = 1" >> /etc/sysctl.conf
   echo "net.ipv6.icmp_echo_ignore_all = 1" >> /etc/sysctl.conf
@@ -373,8 +355,7 @@ function configure_email {
   echo "dc_mailname_in_oh='true'" >> /etc/exim4/update-exim4.conf.conf
   echo "dc_localdelivery='maildir_home'" >> /etc/exim4/update-exim4.conf.conf
   update-exim4.conf
-  sed "s/START=no/START=yes/g" /etc/default/saslauthd > /tmp/saslauthd
-  cp -f /tmp/saslauthd /etc/default/saslauthd
+  sed -i "s/START=no/START=yes/g" /etc/default/saslauthd
   /etc/init.d/saslauthd start
 
   # make a tls certificate for email
@@ -385,17 +366,10 @@ function configure_email {
   chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
   chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
 
-  sed '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
-  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
-
-  sed '/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME = $DOMAIN_NAME\nMAIN_TLS_ENABLE = true' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
-  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
-
-  sed "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4 > /tmp/exim4
-  cp -f /tmp/exim4 /etc/default/exim4
-
-  sed '/03_exim4-config_tlsoptions/a\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
-  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
+  sed -i '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template
+  sed -i '/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME = $DOMAIN_NAME\nMAIN_TLS_ENABLE = true' /etc/exim4/exim4.conf.template
+  sed -i "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4
+  sed -i '/03_exim4-config_tlsoptions/a\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template
 
   adduser $MY_USERNAME sasl
   addgroup Debian-exim sasl
@@ -441,17 +415,12 @@ function configure_email {
 
 function spam_filtering {
   apt-get -y install spamassassin exim4-daemon-heavy
-  sed 's/ENABLED=0/ENABLED=1/g' /etc/default/spamassassin > /tmp/spamassassin
-  cp -f /tmp/spamassassin /etc/default/spamassassin
-  sed 's/# spamd_address = 127.0.0.1 783/spamd_address = 127.0.0.1 783/g' /etc/exim4/exim4.conf.template > /tmp/exim4.conf.template
-  cp -f /tmp/exim4.conf.template /etc/exim4/exim4.conf.template
+  sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/spamassassin
+  sed -i 's/# spamd_address = 127.0.0.1 783/spamd_address = 127.0.0.1 783/g' /etc/exim4/exim4.conf.template
   # This configuration is based on https://wiki.debian.org/DebianSpamAssassin
-  sed 's/local_parts = postmaster/local_parts = postmaster:abuse/g' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt > /tmp/30_exim4-config_check_rcpt
-  cp -f /tmp/30_exim4-config_check_rcpt /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
-  sed '/domains = +local_domains : +relay_to_domains/a\    set acl_m0 = rfcnames' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt > /tmp/30_exim4-config_check_rcpt
-  cp -f /tmp/30_exim4-config_check_rcpt /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
-  sed 's/accept/accept condition = ${if eq{$acl_m0}{rfcnames} {1}{0}}/g' /etc/exim4/conf.d/acl/40_exim4-config_check_data > /tmp/40_exim4-config_check_data
-  cp -f /tmp/40_exim4-config_check_data /etc/exim4/conf.d/acl/40_exim4-config_check_data
+  sed -i 's/local_parts = postmaster/local_parts = postmaster:abuse/g' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
+  sed -i '/domains = +local_domains : +relay_to_domains/a\    set acl_m0 = rfcnames' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
+  sed -i 's/accept/accept condition = ${if eq{$acl_m0}{rfcnames} {1}{0}}/g' /etc/exim4/conf.d/acl/40_exim4-config_check_data
   echo "warn  message = X-Spam-Score: $spam_score ($spam_bar)" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
   echo "      spam = nobody:true" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
   echo "warn  message = X-Spam-Flag: YES" >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
