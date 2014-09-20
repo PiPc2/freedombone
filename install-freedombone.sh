@@ -271,7 +271,7 @@ function time_synchronisation {
   update-rc.d tlsdate defaults
 }
 
-function defend_against_port_scanning
+function defend_against_port_scanning {
   apt-get -y install portsentry
 }
 
