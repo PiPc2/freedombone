@@ -442,6 +442,15 @@ function save_firewall_settings {
   chmod +x /etc/network/if-up.d/iptables
 }
 
+function configure_firewall_for_dns {
+  if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
+	  return
+  fi
+  iptables -A INPUT -i eth0 -p tcp --dport 53 -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_ftp' >> $COMPLETION_FILE
+}
+
 function configure_firewall_for_ftp {
   if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
 	  return
@@ -961,6 +970,7 @@ update_the_kernel
 enable_zram
 random_number_generator
 configure_firewall
+configure_firewall_for_dns
 configure_firewall_for_web
 configure_firewall_for_ftp
 configure_firewall_ephemeral_ports
