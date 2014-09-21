@@ -126,6 +126,8 @@ function random_number_generator {
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
     # TODO there should be a system restart at this point to enable /dev/hwrng
     service rng-tools restart
+	# Test that it works
+	cat /dev/hwrng | rngtest -c 1000
   else
 	apt-get -y install haveged
   fi
