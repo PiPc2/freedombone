@@ -430,7 +430,7 @@ function configure_firewall {
   ip6tables -X
   iptables -P INPUT DROP
   ip6tables -P INPUT DROP
-  iptables -A INPUT -i eth0 -i lo -j ACCEPT
+  iptables -A INPUT -i lo -j ACCEPT
   iptables -A INPUT -i eth0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
   echo 'configure_firewall' >> $COMPLETION_FILE
 }
