@@ -182,6 +182,12 @@ function configure_ssh {
   service ssh restart
   apt-get -y install fail2ban
   echo 'configure_ssh' >> $COMPLETION_FILE
+  echo ''
+  echo ''
+  echo '  *** Rebooting to initialise ssh settings and random number generator ***'
+  echo ''
+  echo "  ***              Reconnect via ssh on port $SSH_PORT                 ***"
+  echo ''
   reboot
 }
 
@@ -810,6 +816,17 @@ function folders_for_email_addresses {
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
 
+function install_final {
+  if grep -Fxq "install_final" $COMPLETION_FILE; then
+	  return
+  fi
+  echo 'install_final' >> $COMPLETION_FILE
+  echo ''
+  echo '  *** Freedombone installation is complete. Rebooting... ***'
+  echo ''
+  reboot
+}
+
 argument_checks
 remove_proprietary_repos
 initial_setup
@@ -834,5 +851,5 @@ configure_gpg
 email_client
 folders_for_mailing_lists
 folders_for_email_addresses
-
+install_final
 echo 'Freedombone installation is complete'
