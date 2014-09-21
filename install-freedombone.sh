@@ -219,12 +219,26 @@ function regenerate_ssh_keys {
   echo 'regenerate_ssh_keys' >> $COMPLETION_FILE
 }
 
+function configure_dns {
+  if grep -Fxq "configure_dns" $COMPLETION_FILE; then
+	  return
+  fi
+  if ! grep -Fxq "nameserver 213.73.91.35" /etc/resolv.conf; then
+    echo 'nameserver 213.73.91.35' >> /etc/resolv.conf
+  fi
+  if ! grep -Fxq "nameserver 85.214.20.141" /etc/resolv.conf; then
+    echo 'nameserver 85.214.20.141' >> /etc/resolv.conf
+  fi
+  echo 'configure_dns' >> $COMPLETION_FILE
+}
+
 function set_your_domain_name {
   if grep -Fxq "set_your_domain_name" $COMPLETION_FILE; then
 	  return
   fi
   echo "$DOMAIN_NAME" > /etc/hostname
   hostname $DOMAIN_NAME
+  sed -i "s/127.0.1.1       arm/127.0.1.1       $DOMAIN_NAME/g" /etc/hosts
   echo "127.0.1.1  $DOMAIN_NAME" >> /etc/hosts
   echo 'set_your_domain_name' >> $COMPLETION_FILE
 }
@@ -847,6 +861,7 @@ function install_final {
 
 argument_checks
 remove_proprietary_repos
+configure_dns
 initial_setup
 install_editor
 change_login_message
