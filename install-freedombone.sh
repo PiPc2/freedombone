@@ -399,6 +399,15 @@ function configure_firewall_for_ssh {
   echo 'configure_firewall_for_ssh' >> $COMPLETION_FILE
 }
 
+function configure_firewall_for_git {
+  if grep -Fxq "configure_firewall_for_git" $COMPLETION_FILE; then
+	  return
+  fi
+  iptables -A INPUT -i eth0 -p tcp --dport 9418 -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_git' >> $COMPLETION_FILE
+}
+
 function configure_firewall_for_email {
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
 	  return
@@ -870,6 +879,7 @@ update_the_kernel
 enable_zram
 random_number_generator
 configure_firewall
+configure_firewall_for_git
 configure_firewall_for_ssh
 configure_firewall_for_email
 set_your_domain_name
