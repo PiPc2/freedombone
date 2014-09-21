@@ -838,11 +838,11 @@ random_number_generator
 configure_firewall
 configure_firewall_for_ssh
 configure_firewall_for_email
-configure_ssh
-regenerate_ssh_keys
 set_your_domain_name
 time_synchronisation
 configure_internet_protocol
+configure_ssh
+regenerate_ssh_keys
 script_to_make_self_signed_certificates
 configure_email
 spam_filtering
