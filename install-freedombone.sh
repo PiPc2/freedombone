@@ -39,10 +39,10 @@ function change_login_message {
   echo "|                      |              |                   " >> /etc/motd
   echo "|--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-. " >> /etc/motd
   echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' " >> /etc/motd
-  echo "'    '    `--' `--' `-'`- `-' '  '  `-'`-'  `-' '  `- `--'" >> /etc/motd
-  echo "" >> /etc/motd
-  echo "                    Freedom in the Cloud" >> /etc/motd
-  echo "" >> /etc/motd
+  echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'" >> /etc/motd
+  echo '' >> /etc/motd
+  echo '                    Freedom in the Cloud' >> /etc/motd
+  echo '' >> /etc/motd
   echo 'change_login_message' >> $COMPLETION_FILE
 }
 
