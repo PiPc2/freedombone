@@ -1,6 +1,42 @@
 #!/bin/bash
 # Freedombone install script intended for use with Debian Jessie
 
+# cd ~/
+# wget http://freedombone.uk.to/debian-jessie-console-armhf-2014-08-13.tar.xz
+#
+# Verify it.
+#
+# sha256sum debian-jessie-console-armhf-2014-08-13.tar.xz
+# fc225cfb3c2dfad92cccafa97e92c3cd3db9d94f4771af8da364ef59609f43de
+#
+# Uncompress it.
+#
+# tar xJf debian-jessie-console-armhf-2014-08-13.tar.xz
+# cd debian-jessie-console-armhf-2014-08-13
+#
+# sudo apt-get install u-boot-tools dosfstools git-core kpartx wget parted
+# sudo ./setup_sdcard.sh --mmc /dev/sdX --dtb beaglebone
+#
+# When finished eject the micrtoSD then reinsert it
+#
+# sudo cp /media/$USER/BOOT/bbb-uEnv.txt /media/$USER/BOOT/uEnv.txt
+# sync
+#
+# Eject microSD, insert into BBB, attach USB cable between BBB and laptop.
+# On Ubuntu wait until you see the "connected" message.
+#
+# ssh-keygen -f "/home/$USER/.ssh/known_hosts" -R 192.168.7.2
+# ssh debian@192.168.7.2 (password "temppwd")
+# su (password "root")
+# passwd
+# adduser $MY_USERNAME
+# exit
+# exit (again)
+# scp install-freedombone.sh $MY_USERNAME@192.168.7.2:/home/$MY_USERNAME
+# ssh $MY_USERNAME@192.168.7.2
+# su
+# ./install-freedombone.sh [DOMAIN_NAME] [MY_USERNAME]
+
 DOMAIN_NAME=$1
 MY_USERNAME=$2
 
@@ -225,12 +261,10 @@ function configure_dns {
   if grep -Fxq "configure_dns" $COMPLETION_FILE; then
 	  return
   fi
-  if ! grep -Fxq "nameserver 213.73.91.35" /etc/resolv.conf; then
-    echo 'nameserver 213.73.91.35' >> /etc/resolv.conf
-  fi
-  if ! grep -Fxq "nameserver 85.214.20.141" /etc/resolv.conf; then
-    echo 'nameserver 85.214.20.141' >> /etc/resolv.conf
-  fi
+  echo 'domain localdomain' > /etc/resolv.conf
+  echo 'search localdomain' >> /etc/resolv.conf
+  echo 'nameserver 213.73.91.35' >> /etc/resolv.conf
+  echo 'nameserver 85.214.20.141' >> /etc/resolv.conf
   echo 'configure_dns' >> $COMPLETION_FILE
 }
 
