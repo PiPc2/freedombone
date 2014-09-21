@@ -186,7 +186,7 @@ function configure_ssh {
   echo ''
   echo '  *** Rebooting to initialise ssh settings and random number generator ***'
   echo ''
-  echo "  ***              Reconnect via ssh on port $SSH_PORT                 ***"
+  echo "  *** Reconnect via ssh on port $SSH_PORT, then run this script again  ***"
   echo ''
   reboot
 }
@@ -835,13 +835,13 @@ enable_backports
 update_the_kernel
 enable_zram
 random_number_generator
+configure_firewall
+configure_firewall_for_ssh
+configure_firewall_for_email
 configure_ssh
 regenerate_ssh_keys
 set_your_domain_name
 time_synchronisation
-configure_firewall
-configure_firewall_for_ssh
-configure_firewall_for_email
 configure_internet_protocol
 script_to_make_self_signed_certificates
 configure_email
