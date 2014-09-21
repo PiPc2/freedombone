@@ -157,10 +157,8 @@ function random_number_generator {
   if [ $USE_HWRNG == "yes" ]; then
     apt-get -y install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
-    # TODO there should be a system restart at this point to enable /dev/hwrng
-    service rng-tools restart
-	# Test that it works
-	cat /dev/hwrng | rngtest -c 1000
+    echo 'random_number_generator' >> $COMPLETION_FILE
+    reboot
   else
 	apt-get -y install haveged
   fi
@@ -346,11 +344,21 @@ function configure_firewall {
   echo 'configure_firewall' >> $COMPLETION_FILE
 }
 
+function save_firewall_settings {
+  iptables-save > /etc/firewall.conf
+  ip6tables-save > /etc/firewall6.conf
+  printf '#!/bin/sh\n' > /etc/network/if-up.d/iptables
+  printf 'iptables-restore < /etc/firewall.conf\n' >> /etc/network/if-up.d/iptables
+  printf 'ip6tables-restore < /etc/firewall6.conf\n' >> /etc/network/if-up.d/iptables
+  chmod +x /etc/network/if-up.d/iptables
+}
+
 function configure_firewall_for_ssh {
   if [ grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE ]; then
 	  return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport $SSH_PORT -j ACCEPT
+  save_firewall_settings
   echo 'configure_firewall_for_ssh' >> $COMPLETION_FILE
 }
 
@@ -362,16 +370,8 @@ function configure_firewall_for_email {
   iptables -A INPUT -i eth0 -p tcp --dport 587 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 465 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 993 -j ACCEPT
+  save_firewall_settings
   echo 'configure_firewall_for_email' >> $COMPLETION_FILE
-}
-
-function save_firewall_settings {
-  iptables-save > /etc/firewall.conf
-  ip6tables-save > /etc/firewall6.conf
-  printf '#!/bin/sh\n' > /etc/network/if-up.d/iptables
-  printf 'iptables-restore < /etc/firewall.conf\n' >> /etc/network/if-up.d/iptables
-  printf 'ip6tables-restore < /etc/firewall6.conf\n' >> /etc/network/if-up.d/iptables
-  chmod +x /etc/network/if-up.d/iptables
 }
 
 function configure_internet_protocol {
@@ -826,7 +826,6 @@ time_synchronisation
 configure_firewall
 configure_firewall_for_ssh
 configure_firewall_for_email
-save_firewall_settings
 configure_internet_protocol
 script_to_make_self_signed_certificates
 configure_email
