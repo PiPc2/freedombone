@@ -209,7 +209,7 @@ function time_synchronisation {
   if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install build-essential automake git pkg-config autoconf libtool libssl-dev
+  apt-get -y install build-essential automake git pkg-config autoconf libtool libssl-dev libevent-dev
   apt-get -y remove ntpdate
   mkdir $INSTALL_DIR
   cd $INSTALL_DIR
