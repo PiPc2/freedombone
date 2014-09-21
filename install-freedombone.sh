@@ -30,6 +30,22 @@ function argument_checks {
   fi
 }
 
+function change_login_message {
+  if grep -Fxq "change_login_message" $COMPLETION_FILE; then
+	  return
+  fi
+  echo '' > /etc/motd
+  echo ".---.                  .              .                   " >> /etc/motd
+  echo "|                      |              |                   " >> /etc/motd
+  echo "|--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-. " >> /etc/motd
+  echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' " >> /etc/motd
+  echo "'    '    `--' `--' `-'`- `-' '  '  `-'`-'  `-' '  `- `--'" >> /etc/motd
+  echo "" >> /etc/motd
+  echo "                    Freedom in the Cloud" >> /etc/motd
+  echo "" >> /etc/motd
+  echo 'change_login_message' >> $COMPLETION_FILE
+}
+
 function remove_proprietary_repos {
   if grep -Fxq "remove_proprietary_repos" $COMPLETION_FILE; then
 	  return
@@ -831,6 +847,7 @@ argument_checks
 remove_proprietary_repos
 initial_setup
 install_editor
+change_login_message
 enable_backports
 update_the_kernel
 enable_zram
