@@ -834,3 +834,5 @@ configure_gpg
 email_client
 folders_for_mailing_lists
 folders_for_email_addresses
+
+echo 'Freedombone installation is complete'
