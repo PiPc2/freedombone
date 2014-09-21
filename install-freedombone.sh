@@ -30,10 +30,18 @@
 # su (password "root")
 # passwd
 # adduser $MY_USERNAME
-# exit
-# exit (again)
-# scp install-freedombone.sh $MY_USERNAME@192.168.7.2:/home/$MY_USERNAME
-# ssh $MY_USERNAME@192.168.7.2
+# sed -i '/iface eth0 inet dhcp/a\iface eth0 inet static' /etc/network/interfaces
+# sed -i '/iface eth0 inet static/a\    dns-nameservers 213.73.91.35 85.214.20.141' /etc/network/interfaces
+# sed -i "/iface eth0 inet static/a\    gateway $MY_ROUTER_IP" /etc/network/interfaces
+# sed -i '/iface eth0 inet static/a\    netmask 255.255.255.0' /etc/network/interfaces
+# sed -i "/iface eth0 inet static/a\    address $MY_BBB_STATIC_IP" /etc/network/interfaces
+# sed -i '/iface usb0 inet static/,/    gateway 192.168.7.1/ s/^/#/' /etc/network/interfaces
+# shutdown now
+#
+# Connect BBB to router
+#
+# scp install-freedombone.sh $MY_USERNAME@$MY_BBB_STATIC_IP:/home/$MY_USERNAME
+# ssh $MY_USERNAME@$MY_BBB_STATIC_IP
 # su
 # ./install-freedombone.sh [DOMAIN_NAME] [MY_USERNAME]
 
