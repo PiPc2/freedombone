@@ -442,6 +442,16 @@ function save_firewall_settings {
   chmod +x /etc/network/if-up.d/iptables
 }
 
+function configure_firewall_for_web {
+  if grep -Fxq "configure_firewall_for_web" $COMPLETION_FILE; then
+	  return
+  fi
+  iptables -A INPUT -i eth0 -p tcp --dport 80 -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 443 -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_web' >> $COMPLETION_FILE
+}
+
 function configure_firewall_for_ssh {
   if grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE; then
 	  return
@@ -933,6 +943,7 @@ update_the_kernel
 enable_zram
 random_number_generator
 configure_firewall
+configure_firewall_for_web
 configure_firewall_for_git
 configure_firewall_for_ssh
 configure_firewall_for_email
