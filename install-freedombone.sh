@@ -157,8 +157,6 @@ function random_number_generator {
   if [ $USE_HWRNG == "yes" ]; then
     apt-get -y install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
-    echo 'random_number_generator' >> $COMPLETION_FILE
-    reboot
   else
 	apt-get -y install haveged
   fi
@@ -184,6 +182,7 @@ function configure_ssh {
   service ssh restart
   apt-get -y install fail2ban
   echo 'configure_ssh' >> $COMPLETION_FILE
+  reboot
 }
 
 function regenerate_ssh_keys {
