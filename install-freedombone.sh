@@ -24,6 +24,10 @@ function argument_checks {
   fi
 }
 
+function remove_proprietary_repos {
+  sed -i 's/ non-free//g' /etc/apt/sources.list
+}
+
 function initial_setup {
   apt-get -y update
   apt-get -y dist-upgrade
@@ -36,10 +40,6 @@ function install_editor {
 
 function enable_backports {
   echo "deb http://ftp.us.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
-}
-
-function remove_proprietary_repos {
-  sed -i 's/ non-free//g' /etc/apt/sources.list
 }
 
 function update_the_kernel {
