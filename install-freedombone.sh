@@ -247,16 +247,8 @@ function time_synchronisation {
   if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install build-essential automake git pkg-config autoconf libtool libssl-dev libevent-dev
+  apt-get -y install tlsdate
   apt-get -y remove ntpdate
-  mkdir $INSTALL_DIR
-  cd $INSTALL_DIR
-  git clone https://github.com/ioerror/tlsdate.git
-  cd $INSTALL_DIR/tlsdate
-  ./autogen.sh
-  ./configure
-  make
-  make install
 
   echo '#!/bin/bash' > /usr/bin/updatedate
   echo 'TIMESOURCE=google.com' >> /usr/bin/updatedate
