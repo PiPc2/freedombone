@@ -31,7 +31,7 @@ function argument_checks {
 }
 
 function remove_proprietary_repos {
-  if [ grep -Fxq "remove_proprietary_repos" $COMPLETION_FILE ]; then
+  if grep -Fxq "remove_proprietary_repos" $COMPLETION_FILE; then
 	  return
   fi
   sed -i 's/ non-free//g' /etc/apt/sources.list
@@ -39,7 +39,7 @@ function remove_proprietary_repos {
 }
 
 function initial_setup {
-  if [ grep -Fxq "initial_setup" $COMPLETION_FILE ]; then
+  if grep -Fxq "initial_setup" $COMPLETION_FILE; then
 	  return
   fi
   apt-get -y update
@@ -49,7 +49,7 @@ function initial_setup {
 }
 
 function install_editor {
-  if [ grep -Fxq "install_editor" $COMPLETION_FILE ]; then
+  if grep -Fxq "install_editor" $COMPLETION_FILE; then
 	  return
   fi
   update-alternatives --set editor /usr/bin/emacs24
@@ -57,7 +57,7 @@ function install_editor {
 }
 
 function enable_backports {
-  if [ grep -Fxq "enable_backports" $COMPLETION_FILE ]; then
+  if grep -Fxq "enable_backports" $COMPLETION_FILE; then
 	  return
   fi
   echo "deb http://ftp.us.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
@@ -65,7 +65,7 @@ function enable_backports {
 }
 
 function update_the_kernel {
-  if [ grep -Fxq "update_the_kernel" $COMPLETION_FILE ]; then
+  if grep -Fxq "update_the_kernel" $COMPLETION_FILE; then
 	  return
   fi
   cd /opt/scripts/tools
@@ -74,7 +74,7 @@ function update_the_kernel {
 }
 
 function enable_zram {
-  if [ grep -Fxq "enable_zram" $COMPLETION_FILE ]; then
+  if grep -Fxq "enable_zram" $COMPLETION_FILE; then
 	  return
   fi
   echo "options zram num_devices=1" >> /etc/modprobe.d/zram.conf
@@ -151,7 +151,7 @@ function enable_zram {
 }
 
 function random_number_generator {
-  if [ grep -Fxq "random_number_generator" $COMPLETION_FILE ]; then
+  if grep -Fxq "random_number_generator" $COMPLETION_FILE; then
 	  return
   fi
   if [ $USE_HWRNG == "yes" ]; then
@@ -166,7 +166,7 @@ function random_number_generator {
 }
 
 function configure_ssh {
-  if [ grep -Fxq "configure_ssh" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_ssh" $COMPLETION_FILE; then
 	  return
   fi
   sed -i "s/Port 22/Port $SSH_PORT/g" /etc/ssh/sshd_config
@@ -187,7 +187,7 @@ function configure_ssh {
 }
 
 function regenerate_ssh_keys {
-  if [ grep -Fxq "regenerate_ssh_keys" $COMPLETION_FILE ]; then
+  if grep -Fxq "regenerate_ssh_keys" $COMPLETION_FILE; then
 	  return
   fi
   rm -f /etc/ssh/ssh_host_*
@@ -197,7 +197,7 @@ function regenerate_ssh_keys {
 }
 
 function set_your_domain_name {
-  if [ grep -Fxq "set_your_domain_name" $COMPLETION_FILE ]; then
+  if grep -Fxq "set_your_domain_name" $COMPLETION_FILE; then
 	  return
   fi
   echo "$DOMAIN_NAME" > /etc/hostname
@@ -207,7 +207,7 @@ function set_your_domain_name {
 }
 
 function time_synchronisation {
-  if [ grep -Fxq "time_synchronisation" $COMPLETION_FILE ]; then
+  if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
 	  return
   fi
   apt-get -y install build-essential automake git pkg-config autoconf libtool libssl-dev
@@ -330,7 +330,7 @@ function time_synchronisation {
 }
 
 function configure_firewall {
-  if [ grep -Fxq "configure_firewall" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_firewall" $COMPLETION_FILE; then
 	  return
   fi
   iptables -P INPUT ACCEPT
@@ -354,7 +354,7 @@ function save_firewall_settings {
 }
 
 function configure_firewall_for_ssh {
-  if [ grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE; then
 	  return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport $SSH_PORT -j ACCEPT
@@ -363,7 +363,7 @@ function configure_firewall_for_ssh {
 }
 
 function configure_firewall_for_email {
-  if [ grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
 	  return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 25 -j ACCEPT
@@ -375,7 +375,7 @@ function configure_firewall_for_email {
 }
 
 function configure_internet_protocol {
-  if [ grep -Fxq "configure_internet_protocol" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_internet_protocol" $COMPLETION_FILE; then
 	  return
   fi
   sed -i "s/#net.ipv4.tcp_syncookies=1/net.ipv4.tcp_syncookies=1/g" /etc/sysctl.conf
@@ -403,7 +403,7 @@ function configure_internet_protocol {
 }
 
 function script_to_make_self_signed_certificates {
-  if [ grep -Fxq "script_to_make_self_signed_certificates" $COMPLETION_FILE ]; then
+  if grep -Fxq "script_to_make_self_signed_certificates" $COMPLETION_FILE; then
 	  return
   fi
   echo '#!/bin/bash' > /usr/bin/makecert
@@ -437,7 +437,7 @@ function script_to_make_self_signed_certificates {
 }
 
 function configure_email {
-  if [ grep -Fxq "configure_email" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_email" $COMPLETION_FILE; then
 	  return
   fi
   apt-get -y remove postfix
@@ -516,7 +516,7 @@ function configure_email {
 }
 
 function spam_filtering {
-  if [ grep -Fxq "spam_filtering" $COMPLETION_FILE ]; then
+  if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
 	  return
   fi
   apt-get -y install spamassassin exim4-daemon-heavy
@@ -606,7 +606,7 @@ function spam_filtering {
 }
 
 function configure_imap {
-  if [ grep -Fxq "configure_imap" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_imap" $COMPLETION_FILE; then
 	  return
   fi
   apt-get -y install dovecot-common dovecot-imapd
@@ -631,7 +631,7 @@ function configure_imap {
 }
 
 function configure_gpg {
-  if [ grep -Fxq "configure_gpg" $COMPLETION_FILE ]; then
+  if grep -Fxq "configure_gpg" $COMPLETION_FILE; then
 	  return
   fi
   apt-get -y install gnupg
@@ -639,7 +639,7 @@ function configure_gpg {
 }
 
 function email_client {
-  if [ grep -Fxq "email_client" $COMPLETION_FILE ]; then
+  if grep -Fxq "email_client" $COMPLETION_FILE; then
 	  return
   fi
   apt-get -y install mutt-patched lynx abook
@@ -740,7 +740,7 @@ function email_client {
 }
 
 function folders_for_mailing_lists {
-  if [ grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE ]; then
+  if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
 	  return
   fi
   echo '#!/bin/bash' > /usr/bin/mailinglistrule
@@ -776,7 +776,7 @@ function folders_for_mailing_lists {
 }
 
 function folders_for_email_addresses {
-  if [ grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE ]; then
+  if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
 	  return
   fi
   echo '#!/bin/bash' > /usr/bin/emailrule
