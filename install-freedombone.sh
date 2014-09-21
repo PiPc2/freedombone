@@ -13,6 +13,12 @@ INSTALL_DIR=/root/build
 
 export DEBIAN_FRONTEND=noninteractive
 
+# File which keeps track of what has already been installed
+COMPLETION_FILE=/root/freedombone-completed.txt
+if [ ! -f $COMPLETION_FILE ]; then
+	touch $COMPLETION_FILE
+fi
+
 function argument_checks {
   if [ ! $DOMAIN_NAME ]; then
 	  echo "Please specify your domain name"
@@ -25,29 +31,52 @@ function argument_checks {
 }
 
 function remove_proprietary_repos {
+  if [ grep -Fxq "remove_proprietary_repos" $COMPLETION_FILE ]; then
+	  return
+  fi
   sed -i 's/ non-free//g' /etc/apt/sources.list
+  echo 'remove_proprietary_repos' >> $COMPLETION_FILE
 }
 
 function initial_setup {
+  if [ grep -Fxq "initial_setup" $COMPLETION_FILE ]; then
+	  return
+  fi
   apt-get -y update
   apt-get -y dist-upgrade
   apt-get -y install ca-certificates emacs24
+  echo 'initial_setup' >> $COMPLETION_FILE
 }
 
 function install_editor {
+  if [ grep -Fxq "install_editor" $COMPLETION_FILE ]; then
+	  return
+  fi
   update-alternatives --set editor /usr/bin/emacs24
+  echo 'install_editor' >> $COMPLETION_FILE
 }
 
 function enable_backports {
+  if [ grep -Fxq "enable_backports" $COMPLETION_FILE ]; then
+	  return
+  fi
   echo "deb http://ftp.us.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
+  echo 'enable_backports' >> $COMPLETION_FILE
 }
 
 function update_the_kernel {
+  if [ grep -Fxq "update_the_kernel" $COMPLETION_FILE ]; then
+	  return
+  fi
   cd /opt/scripts/tools
   ./update_kernel.sh --kernel $KERNEL_VERSION
+  echo 'update_the_kernel' >> $COMPLETION_FILE
 }
 
 function enable_zram {
+  if [ grep -Fxq "enable_zram" $COMPLETION_FILE ]; then
+	  return
+  fi
   echo "options zram num_devices=1" >> /etc/modprobe.d/zram.conf
   echo '#!/bin/bash' > /etc/init.d/zram
   echo '### BEGIN INIT INFO' >> /etc/init.d/zram
@@ -118,9 +147,13 @@ function enable_zram {
   echo 'exit $RETVAL' >> /etc/init.d/zram
   chmod +x /etc/init.d/zram
   update-rc.d zram defaults
+  echo 'enable_zram' >> $COMPLETION_FILE
 }
 
 function random_number_generator {
+  if [ grep -Fxq "random_number_generator" $COMPLETION_FILE ]; then
+	  return
+  fi
   if [ $USE_HWRNG == "yes" ]; then
     apt-get -y install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
@@ -131,9 +164,13 @@ function random_number_generator {
   else
 	apt-get -y install haveged
   fi
+  echo 'random_number_generator' >> $COMPLETION_FILE
 }
 
 function configure_ssh {
+  if [ grep -Fxq "configure_ssh" $COMPLETION_FILE ]; then
+	  return
+  fi
   sed -i "s/Port 22/Port $SSH_PORT/g" /etc/ssh/sshd_config
   sed -i 's/PermitRootLogin without-password/PermitRootLogin no/g' /etc/ssh/sshd_config
   sed -i 's/X11Forwarding yes/X11Forwarding no/g' /etc/ssh/sshd_config
@@ -148,21 +185,33 @@ function configure_ssh {
   KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1' >> /etc/ssh/sshd_config
   service ssh restart
   apt-get -y install fail2ban
+  echo 'configure_ssh' >> $COMPLETION_FILE
 }
 
 function regenerate_ssh_keys {
+  if [ grep -Fxq "regenerate_ssh_keys" $COMPLETION_FILE ]; then
+	  return
+  fi
   rm -f /etc/ssh/ssh_host_*
   dpkg-reconfigure openssh-server
   service ssh restart
+  echo 'regenerate_ssh_keys' >> $COMPLETION_FILE
 }
 
 function set_your_domain_name {
+  if [ grep -Fxq "set_your_domain_name" $COMPLETION_FILE ]; then
+	  return
+  fi
   echo "$DOMAIN_NAME" > /etc/hostname
   hostname $DOMAIN_NAME
   echo "127.0.1.1  $DOMAIN_NAME" >> /etc/hosts
+  echo 'set_your_domain_name' >> $COMPLETION_FILE
 }
 
 function time_synchronisation {
+  if [ grep -Fxq "time_synchronisation" $COMPLETION_FILE ]; then
+	  return
+  fi
   apt-get -y install build-essential automake git pkg-config autoconf libtool libssl-dev
   apt-get -y remove ntpdate
   mkdir $INSTALL_DIR
@@ -279,9 +328,13 @@ function time_synchronisation {
   echo 'exit 0' >> /etc/init.d/tlsdate
   chmod +x /etc/init.d/tlsdate
   update-rc.d tlsdate defaults
+  echo 'time_synchronisation' >> $COMPLETION_FILE
 }
 
 function configure_firewall {
+  if [ grep -Fxq "configure_firewall" $COMPLETION_FILE ]; then
+	  return
+  fi
   iptables -P INPUT ACCEPT
   ip6tables -P INPUT ACCEPT
   iptables -F
@@ -290,17 +343,26 @@ function configure_firewall {
   ip6tables -X
   iptables -P INPUT DROP
   ip6tables -P INPUT DROP
+  echo 'configure_firewall' >> $COMPLETION_FILE
 }
 
 function configure_firewall_for_ssh {
+  if [ grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE ]; then
+	  return
+  fi
   iptables -A INPUT -i eth0 -p tcp --dport $SSH_PORT -j ACCEPT
+  echo 'configure_firewall_for_ssh' >> $COMPLETION_FILE
 }
 
 function configure_firewall_for_email {
+  if [ grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE ]; then
+	  return
+  fi
   iptables -A INPUT -i eth0 -p tcp --dport 25 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 587 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 465 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 993 -j ACCEPT
+  echo 'configure_firewall_for_email' >> $COMPLETION_FILE
 }
 
 function save_firewall_settings {
@@ -313,6 +375,9 @@ function save_firewall_settings {
 }
 
 function configure_internet_protocol {
+  if [ grep -Fxq "configure_internet_protocol" $COMPLETION_FILE ]; then
+	  return
+  fi
   sed -i "s/#net.ipv4.tcp_syncookies=1/net.ipv4.tcp_syncookies=1/g" /etc/sysctl.conf
   sed -i "s/#net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 0/g" /etc/sysctl.conf
   sed -i "s/#net.ipv6.conf.all.accept_redirects = 0/net.ipv6.conf.all.accept_redirects = 0/g" /etc/sysctl.conf
@@ -334,9 +399,13 @@ function configure_internet_protocol {
   echo 'net.ipv4.tcp_keepalive_probes = 9' >> /etc/sysctl.conf
   echo 'net.ipv4.tcp_keepalive_intvl = 75' >> /etc/sysctl.conf
   echo 'net.ipv4.tcp_keepalive_time = 7200' >> /etc/sysctl.conf
+  echo 'configure_internet_protocol' >> $COMPLETION_FILE
 }
 
 function script_to_make_self_signed_certificates {
+  if [ grep -Fxq "script_to_make_self_signed_certificates" $COMPLETION_FILE ]; then
+	  return
+  fi
   echo '#!/bin/bash' > /usr/bin/makecert
   echo 'HOSTNAME=$1' >> /usr/bin/makecert
   echo 'COUNTRY_CODE="US"' >> /usr/bin/makecert
@@ -364,9 +433,13 @@ function script_to_make_self_signed_certificates {
   echo 'cat /etc/ssl/mycerts/*.crt > /etc/ssl/freedombone-bundle.crt' >> /usr/bin/makecert
   echo 'tar -czvf /etc/ssl/freedombone-certs.tar.gz /etc/ssl/mycerts/*.crt' >> /usr/bin/makecert
   chmod +x /usr/bin/makecert
+  echo 'script_to_make_self_signed_certificates' >> $COMPLETION_FILE
 }
 
 function configure_email {
+  if [ grep -Fxq "configure_email" $COMPLETION_FILE ]; then
+	  return
+  fi
   apt-get -y remove postfix
   apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
   echo 'dc_eximconfig_configtype="internet"' > /etc/exim4/update-exim4.conf.conf
@@ -439,9 +512,13 @@ function configure_email {
 	ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
 	chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
   fi
+  echo 'configure_email' >> $COMPLETION_FILE
 }
 
 function spam_filtering {
+  if [ grep -Fxq "spam_filtering" $COMPLETION_FILE ]; then
+	  return
+  fi
   apt-get -y install spamassassin exim4-daemon-heavy
   sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/spamassassin
   sed -i 's/# spamd_address = 127.0.0.1 783/spamd_address = 127.0.0.1 783/g' /etc/exim4/exim4.conf.template
@@ -525,9 +602,13 @@ function spam_filtering {
   service spamassassin restart
   service exim4 restart
   service cron restart
+  echo 'spam_filtering' >> $COMPLETION_FILE
 }
 
 function configure_imap {
+  if [ grep -Fxq "configure_imap" $COMPLETION_FILE ]; then
+	  return
+  fi
   apt-get -y install dovecot-common dovecot-imapd
   makecert dovecot
   chown root:dovecot /etc/ssl/certs/dovecot.crt
@@ -546,13 +627,21 @@ function configure_imap {
   sed -i 's/#disable_plaintext_auth = yes/disable_plaintext_auth = no/g' /etc/dovecot/conf.d/10-auth.conf
   sed -i 's/auth_mechanisms = plain/auth_mechanisms = plain login/g' /etc/dovecot/conf.d/10-auth.conf
   sed -i 's|#   mail_location = maildir:~/Maildir|   mail_location = maildir:~/Maildir:LAYOUT=fs|g' /etc/dovecot/conf.d/10-mail.conf
+  echo 'configure_imap' >> $COMPLETION_FILE
 }
 
 function configure_gpg {
+  if [ grep -Fxq "configure_gpg" $COMPLETION_FILE ]; then
+	  return
+  fi
   apt-get -y install gnupg
+  echo 'configure_gpg' >> $COMPLETION_FILE
 }
 
 function email_client {
+  if [ grep -Fxq "email_client" $COMPLETION_FILE ]; then
+	  return
+  fi
   apt-get -y install mutt-patched lynx abook
   if [ ! -d /home/$MY_USERNAME/.mutt ]; then
     mkdir /home/$MY_USERNAME/.mutt
@@ -646,9 +735,14 @@ function email_client {
   touch /home/$MY_USERNAME/.mutt-alias
   chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.muttrc
   chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.mutt-alias
+
+  echo 'email_client' >> $COMPLETION_FILE
 }
 
 function folders_for_mailing_lists {
+  if [ grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE ]; then
+	  return
+  fi
   echo '#!/bin/bash' > /usr/bin/mailinglistrule
   echo 'MYUSERNAME=$1' >> /usr/bin/mailinglistrule
   echo 'MAILINGLIST=$2' >> /usr/bin/mailinglistrule
@@ -678,9 +772,13 @@ function folders_for_mailing_lists {
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
   chmod +x /usr/bin/mailinglistrule
+  echo 'folders_for_mailing_lists' >> $COMPLETION_FILE
 }
 
 function folders_for_email_addresses {
+  if [ grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE ]; then
+	  return
+  fi
   echo '#!/bin/bash' > /usr/bin/emailrule
   echo 'MYUSERNAME=$1' >> /usr/bin/emailrule
   echo 'EMAILADDRESS=$2' >> /usr/bin/emailrule
@@ -710,6 +808,7 @@ function folders_for_email_addresses {
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/emailrule
   echo 'fi' >> /usr/bin/emailrule
   chmod +x /usr/bin/emailrule
+  echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
 
 argument_checks
