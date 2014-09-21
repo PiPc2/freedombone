@@ -76,7 +76,9 @@ function enable_backports {
   if grep -Fxq "enable_backports" $COMPLETION_FILE; then
 	  return
   fi
-  echo "deb http://ftp.us.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
+  if ! grep -Fxq "deb http://ftp.us.debian.org/debian jessie-backports main" /etc/apt/sources.list; then
+    echo "deb http://ftp.us.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
+  fi
   echo 'enable_backports' >> $COMPLETION_FILE
 }
 
