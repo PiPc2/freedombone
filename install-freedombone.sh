@@ -455,8 +455,8 @@ function configure_firewall_for_web {
   if grep -Fxq "configure_firewall_for_web" $COMPLETION_FILE; then
 	  return
   fi
-  iptables -A INPUT -i eth0 -p tcp --dport 80 -j ACCEPT
-  iptables -A INPUT -i eth0 -p tcp --dport 443 -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 80 --sport 32768:61000 -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 443 --sport 32768:61000 -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_web' >> $COMPLETION_FILE
 }
