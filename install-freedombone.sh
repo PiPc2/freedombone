@@ -98,11 +98,27 @@ function remove_proprietary_repos {
   echo 'remove_proprietary_repos' >> $COMPLETION_FILE
 }
 
+function https_repos {
+  # The lack of https repos by default is I think a significant security
+  # problem, potentially allowing an adversary to modify package downloads,
+  # checksums or gpg public keys in transit and also to know what is installed
+  # on your system
+  # See http://forums.debian.net/viewtopic.php?f=10&t=74444
+  # https://wiki.debian.org/SecureApt
+  if grep -Fxq "https_repos" $COMPLETION_FILE; then
+	  return
+  fi
+  apt-get -y update
+  apt-get -y --force-yes install apt-transport-https
+  # Since at the present time this does not work it's commented out
+  #sed -i 's/http:/https:/g' /etc/apt/sources.list
+  echo 'https_repos' >> $COMPLETION_FILE
+}
+
 function initial_setup {
   if grep -Fxq "initial_setup" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y update
   apt-get -y dist-upgrade
   apt-get -y install ca-certificates emacs24
   echo 'initial_setup' >> $COMPLETION_FILE
@@ -907,6 +923,7 @@ function install_final {
 
 argument_checks
 remove_proprietary_repos
+https_repos
 configure_dns
 initial_setup
 install_editor
