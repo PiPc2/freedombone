@@ -119,6 +119,7 @@ function initial_setup {
   if grep -Fxq "initial_setup" $COMPLETION_FILE; then
 	  return
   fi
+  apt-get -y remove --purge apache*
   apt-get -y dist-upgrade
   apt-get -y install ca-certificates emacs24
   echo 'initial_setup' >> $COMPLETION_FILE
