@@ -109,8 +109,8 @@ function https_repos {
 	  return
   fi
   apt-get -y update
-  apt-get -y --force-yes install apt-transport-https
   # Since at the present time this does not work it's commented out
+  #apt-get -y --force-yes install apt-transport-https
   #sed -i 's/http:/https:/g' /etc/apt/sources.list
   echo 'https_repos' >> $COMPLETION_FILE
 }
