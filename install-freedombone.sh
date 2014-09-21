@@ -430,6 +430,7 @@ function configure_firewall_for_ssh {
   if grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE; then
 	  return
   fi
+  iptables -A INPUT -i eth0 -p tcp --dport 22 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport $SSH_PORT -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_ssh' >> $COMPLETION_FILE
