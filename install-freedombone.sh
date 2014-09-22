@@ -552,7 +552,9 @@ function script_to_make_self_signed_certificates {
   echo 'chmod 400 /etc/ssl/private/$HOSTNAME.key' >> /usr/bin/makecert
   echo 'chmod 640 /etc/ssl/certs/$HOSTNAME.crt' >> /usr/bin/makecert
   echo 'chmod 640 /etc/ssl/certs/$HOSTNAME.dhparam' >> /usr/bin/makecert
-  echo '/etc/init.d/nginx reload' >> /usr/bin/makecert
+  echo 'if [ -f /etc/init.d/nginx ]; then' >> /usr/bin/makecert
+  echo '  /etc/init.d/nginx reload' >> /usr/bin/makecert
+  echo 'fi'
   echo '# add the public certificate to a separate directory' >> /usr/bin/makecert
   echo '# so that we can redistribute it easily' >> /usr/bin/makecert
   echo 'if [ ! -d /etc/ssl/mycerts ]; then' >> /usr/bin/makecert
@@ -600,7 +602,9 @@ function configure_email {
   sed -i '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template
   sed -i "/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME = $DOMAIN_NAME\nMAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template
   sed -i "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4
-  sed -i '/03_exim4-config_tlsoptions/a\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template
+  if ! grep -Fxq "tls_on_connect_ports=465" /etc/exim4/exim4.conf.template; then
+    sed -i '/03_exim4-config_tlsoptions/a\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template
+  fi
 
   adduser $MY_USERNAME sasl
   addgroup Debian-exim sasl
