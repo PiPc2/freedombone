@@ -962,6 +962,10 @@ function install_final {
 }
 
 argument_checks
+configure_firewall
+configure_firewall_for_ssh
+configure_firewall_for_dns
+configure_firewall_for_web
 remove_proprietary_repos
 https_repos
 configure_dns
@@ -972,13 +976,9 @@ enable_backports
 update_the_kernel
 enable_zram
 random_number_generator
-configure_firewall
-configure_firewall_for_dns
-configure_firewall_for_web
 configure_firewall_for_ftp
 configure_firewall_ephemeral_ports
 configure_firewall_for_git
-configure_firewall_for_ssh
 configure_firewall_for_email
 set_your_domain_name
 time_synchronisation
