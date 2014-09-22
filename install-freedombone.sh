@@ -609,21 +609,23 @@ function configure_email {
   adduser $MY_USERNAME sasl
   addgroup Debian-exim sasl
   /etc/init.d/exim4 restart
-  mkdir -m 700 /etc/skel/Maildir
-  mkdir -m 700 /etc/skel/Maildir/Sent
-  mkdir -m 700 /etc/skel/Maildir/Sent/tmp
-  mkdir -m 700 /etc/skel/Maildir/Sent/cur
-  mkdir -m 700 /etc/skel/Maildir/Sent/new
-  mkdir -m 700 /etc/skel/Maildir/.learn-spam
-  mkdir -m 700 /etc/skel/Maildir/.learn-spam/cur
-  mkdir -m 700 /etc/skel/Maildir/.learn-spam/new
-  mkdir -m 700 /etc/skel/Maildir/.learn-spam/tmp
-  mkdir -m 700 /etc/skel/Maildir/.learn-ham
-  mkdir -m 700 /etc/skel/Maildir/.learn-ham/cur
-  mkdir -m 700 /etc/skel/Maildir/.learn-ham/new
-  mkdir -m 700 /etc/skel/Maildir/.learn-ham/tmp
-  ln -s /etc/skel/Maildir/.learn-spam /etc/skel/Maildir/spam
-  ln -s /etc/skel/Maildir/.learn-ham /etc/skel/Maildir/ham
+  if [ ! -d /etc/skel/Maildir ]; then
+    mkdir -m 700 /etc/skel/Maildir
+    mkdir -m 700 /etc/skel/Maildir/Sent
+    mkdir -m 700 /etc/skel/Maildir/Sent/tmp
+    mkdir -m 700 /etc/skel/Maildir/Sent/cur
+    mkdir -m 700 /etc/skel/Maildir/Sent/new
+    mkdir -m 700 /etc/skel/Maildir/.learn-spam
+    mkdir -m 700 /etc/skel/Maildir/.learn-spam/cur
+    mkdir -m 700 /etc/skel/Maildir/.learn-spam/new
+    mkdir -m 700 /etc/skel/Maildir/.learn-spam/tmp
+    mkdir -m 700 /etc/skel/Maildir/.learn-ham
+    mkdir -m 700 /etc/skel/Maildir/.learn-ham/cur
+    mkdir -m 700 /etc/skel/Maildir/.learn-ham/new
+    mkdir -m 700 /etc/skel/Maildir/.learn-ham/tmp
+    ln -s /etc/skel/Maildir/.learn-spam /etc/skel/Maildir/spam
+    ln -s /etc/skel/Maildir/.learn-ham /etc/skel/Maildir/ham
+  fi
 
   if [ ! -d /home/$MY_USERNAME/Maildir ]; then
     mkdir -m 700 /home/$MY_USERNAME/Maildir
