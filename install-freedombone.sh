@@ -573,7 +573,7 @@ function configure_email {
 	  return
   fi
   apt-get -y remove postfix
-  apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
+  apt-get -y install exim4-daemon-heavy sasl2-bin swaks libnet-ssleay-perl procmail
   echo 'dc_eximconfig_configtype="internet"' > /etc/exim4/update-exim4.conf.conf
   echo "dc_other_hostnames='$DOMAIN_NAME'" >> /etc/exim4/update-exim4.conf.conf
   echo "dc_local_interfaces=''" >> /etc/exim4/update-exim4.conf.conf
@@ -655,7 +655,7 @@ function spam_filtering {
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install spamassassin exim4-daemon-heavy
+  apt-get -y install spamassassin
   sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/spamassassin
   sed -i 's/# spamd_address = 127.0.0.1 783/spamd_address = 127.0.0.1 783/g' /etc/exim4/exim4.conf.template
   # This configuration is based on https://wiki.debian.org/DebianSpamAssassin
