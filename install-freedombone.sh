@@ -602,8 +602,8 @@ function configure_email {
   sed -i '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template
   sed -i "/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME = $DOMAIN_NAME\nMAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template
   sed -i "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4
-  if ! grep -Fxq "tls_on_connect_ports=465" /etc/exim4/exim4.conf.template; then
-    sed -i '/03_exim4-config_tlsoptions/a\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template
+  if ! grep -q "tls_on_connect_ports=465" /etc/exim4/exim4.conf.template; then
+    sed -i '/SSL configuration for exim/i\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template
   fi
 
   adduser $MY_USERNAME sasl
