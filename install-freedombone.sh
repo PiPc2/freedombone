@@ -956,6 +956,7 @@ argument_checks
 configure_firewall
 configure_firewall_for_ssh
 configure_firewall_for_dns
+configure_firewall_for_ftp
 configure_firewall_for_web
 remove_proprietary_repos
 https_repos
@@ -967,9 +968,6 @@ enable_backports
 update_the_kernel
 enable_zram
 random_number_generator
-configure_firewall_for_ftp
-configure_firewall_for_git
-configure_firewall_for_email
 set_your_domain_name
 time_synchronisation
 configure_internet_protocol
@@ -981,6 +979,7 @@ spam_filtering
 configure_imap
 configure_gpg
 email_client
+configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
 install_final
