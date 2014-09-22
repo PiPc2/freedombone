@@ -458,7 +458,7 @@ function configure_firewall_for_ftp {
   if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
 	  return
   fi
-  iptables -I INPUT -i eth0 -p tcp --dport 20:21 -j ACCEPT
+  iptables -I INPUT -i eth0 -p tcp --dport 1024:65535 --sport 20:21 -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_ftp' >> $COMPLETION_FILE
 }
