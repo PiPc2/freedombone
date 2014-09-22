@@ -583,7 +583,7 @@ function configure_email {
 	  return
   fi
   apt-get -y remove postfix
-  apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
+  apt-get -y --force-yes install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
   echo 'dc_eximconfig_configtype="internet"' > /etc/exim4/update-exim4.conf.conf
   echo "dc_other_hostnames='$DOMAIN_NAME'" >> /etc/exim4/update-exim4.conf.conf
   echo "dc_local_interfaces=''" >> /etc/exim4/update-exim4.conf.conf
