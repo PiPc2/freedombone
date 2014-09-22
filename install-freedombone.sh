@@ -446,12 +446,12 @@ function save_firewall_settings {
 }
 
 function configure_firewall_for_dns {
-  if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
+  if grep -Fxq "configure_firewall_for_dns" $COMPLETION_FILE; then
 	  return
   fi
-  iptables -A INPUT -i eth0 -p tcp --dport 53 -j ACCEPT
+  iptables -A INPUT -i eth0 -p udp -m udp --dport 1024:65535 --sport 53 -j ACCEPT
   save_firewall_settings
-  echo 'configure_firewall_for_ftp' >> $COMPLETION_FILE
+  echo 'configure_firewall_for_dns' >> $COMPLETION_FILE
 }
 
 function configure_firewall_for_ftp {
