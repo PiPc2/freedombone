@@ -52,6 +52,11 @@ SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
 USE_HWRNG="yes"
 
+# The Debian package repository to use.
+DEBIAN_REPO="ftp.de.debian.org"
+
+DEBIAN_VERSION="jessie"
+
 # Directory where source code is downloaded and compiled
 INSTALL_DIR=/root/build
 
@@ -98,21 +103,29 @@ function remove_proprietary_repos {
   echo 'remove_proprietary_repos' >> $COMPLETION_FILE
 }
 
-function https_repos {
-  # The lack of https repos by default is I think a significant security
-  # problem, potentially allowing an adversary to modify package downloads,
-  # checksums or gpg public keys in transit and also to know what is installed
-  # on your system
-  # See http://forums.debian.net/viewtopic.php?f=10&t=74444
-  # https://wiki.debian.org/SecureApt
-  if grep -Fxq "https_repos" $COMPLETION_FILE; then
+function change_debian_repos {
+  if grep -Fxq "change_debian_repos" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y update
-  # Since at the present time this does not work it's commented out
-  #apt-get -y --force-yes install apt-transport-https
-  #sed -i 's/http:/https:/g' /etc/apt/sources.list
-  echo 'https_repos' >> $COMPLETION_FILE
+  rm -rf /var/lib/apt/lists/*
+  apt-get clean
+  sed -i "s/ftp.us.debian.org/$DEBIAN_REPO/g" /etc/apt/sources.list
+
+  # ensure that there is a security repo
+  if ! grep -q "security" /etc/apt/sources.list; then
+      if grep -q "jessie" /etc/apt/sources.list; then
+          echo "deb http://security.debian.org/ jessie/updates main contrib" >> /etc/apt/sources.list
+          echo "#deb-src http://security.debian.org/ jessie/updates main contrib" >> /etc/apt/sources.list
+	  else
+          if grep -q "wheezy" /etc/apt/sources.list; then
+              echo "deb http://security.debian.org/ wheezy/updates main contrib" >> /etc/apt/sources.list
+              echo "#deb-src http://security.debian.org/ wheezy/updates main contrib" >> /etc/apt/sources.list
+		  fi
+	  fi
+  fi
+
+  apt-get update
+  echo 'change_debian_repos' >> $COMPLETION_FILE
 }
 
 function initial_setup {
@@ -137,8 +150,8 @@ function enable_backports {
   if grep -Fxq "enable_backports" $COMPLETION_FILE; then
 	  return
   fi
-  if ! grep -Fxq "deb http://ftp.us.debian.org/debian jessie-backports main" /etc/apt/sources.list; then
-    echo "deb http://ftp.us.debian.org/debian jessie-backports main" >> /etc/apt/sources.list
+  if ! grep -Fxq "deb https://$DEBIAN_REPO/debian jessie-backports main" /etc/apt/sources.list; then
+    echo "deb https://$DEBIAN_REPO/debian jessie-backports main" >> /etc/apt/sources.list
   fi
   echo 'enable_backports' >> $COMPLETION_FILE
 }
@@ -573,7 +586,7 @@ function configure_email {
 	  return
   fi
   apt-get -y remove postfix
-  apt-get -y install exim4-daemon-heavy sasl2-bin swaks libnet-ssleay-perl procmail
+  apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
   echo 'dc_eximconfig_configtype="internet"' > /etc/exim4/update-exim4.conf.conf
   echo "dc_other_hostnames='$DOMAIN_NAME'" >> /etc/exim4/update-exim4.conf.conf
   echo "dc_local_interfaces=''" >> /etc/exim4/update-exim4.conf.conf
@@ -965,12 +978,12 @@ configure_firewall_for_dns
 configure_firewall_for_ftp
 configure_firewall_for_web
 remove_proprietary_repos
-https_repos
+change_debian_repos
+enable_backports
 configure_dns
 initial_setup
 install_editor
 change_login_message
-enable_backports
 update_the_kernel
 enable_zram
 random_number_generator
