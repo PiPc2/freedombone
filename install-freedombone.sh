@@ -271,10 +271,7 @@ function configure_ssh {
   echo 'Ciphers aes256-ctr,aes128-ctr' >> /etc/ssh/sshd_config
   echo 'MACs hmac-sha2-512,hmac-sha2-256,hmac-ripemd160
   KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1' >> /etc/ssh/sshd_config
-  service ssh restart
   apt-get -y install fail2ban
-  rm -f /etc/ssh/ssh_host_*
-  dpkg-reconfigure openssh-server
   echo 'configure_ssh' >> $COMPLETION_FILE
   echo ''
   echo ''
