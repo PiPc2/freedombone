@@ -554,7 +554,7 @@ function script_to_make_self_signed_certificates {
   echo 'chmod 640 /etc/ssl/certs/$HOSTNAME.dhparam' >> /usr/bin/makecert
   echo 'if [ -f /etc/init.d/nginx ]; then' >> /usr/bin/makecert
   echo '  /etc/init.d/nginx reload' >> /usr/bin/makecert
-  echo 'fi'
+  echo 'fi' >> /usr/bin/makecert
   echo '# add the public certificate to a separate directory' >> /usr/bin/makecert
   echo '# so that we can redistribute it easily' >> /usr/bin/makecert
   echo 'if [ ! -d /etc/ssl/mycerts ]; then' >> /usr/bin/makecert
