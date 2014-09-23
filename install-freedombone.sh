@@ -1091,6 +1091,7 @@ function email_client {
   echo '' >> /etc/Muttrc
   echo '# automatically sign and encrypt with PGP/MIME' >> /etc/Muttrc
   echo 'set pgp_autosign         # autosign all outgoing mails' >> /etc/Muttrc
+  echo 'set pgp_autoencrypt      # Try to encrypt automatically' >> /etc/Muttrc
   echo 'set pgp_replyencrypt     # autocrypt replies to crypted' >> /etc/Muttrc
   echo 'set pgp_replysign        # autosign replies to signed' >> /etc/Muttrc
   echo 'set pgp_auto_decode=yes  # decode attachments' >> /etc/Muttrc
