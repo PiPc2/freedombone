@@ -145,16 +145,18 @@ function change_login_message {
 
 function search_for_attached_usb_drive {
   # If a USB drive is attached then search for email,
-  # gpg and ssh keys and change the directories accordingly
+  # gpg, ssh keys and emacs configuration
   if grep -Fxq "search_for_attached_usb_drive" $COMPLETION_FILE; then
       return
   fi
   if [ -d $USB_DRIVE ]; then
 	  mount $USB_DRIVE /media/usb
 	  if [ -d /media/usb/Maildir ]; then
+		  echo 'Maildir found on USB drive'
 		  IMPORT_MAILDIR=/media/usb/Maildir
 	  fi
 	  if [ -d /media/usb/.gnupg ]; then
+		  echo 'Importing GPG keyring'
 		  cp -r /media/usb/.gnupg /home/$MY_USERNAME/.gnupg
 		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
 		  shred -zu /media/usb/.gnupg/secring.gpg
@@ -163,12 +165,15 @@ function search_for_attached_usb_drive {
 		  rm -rf /media/usb/.gnupg
 	  fi
 	  if [ -f /media/usb/private_key.gpg ]; then
+		  echo 'GPG private key found on USB drive'
 		  MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
 	  fi
 	  if [ -f /media/usb/public_key.gpg ]; then
+		  echo 'GPG public key found on USB drive'
 		  MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
 	  fi
 	  if [ -d /media/usb/.ssh ]; then
+		  echo 'Importing ssh keys'
 		  cp -r /media/usb/.ssh /home/$MY_USERNAME/.ssh
 		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
 		  # for security delete the ssh keys from the usb drive
@@ -176,6 +181,16 @@ function search_for_attached_usb_drive {
 		  shred -zu /media/usb/.ssh/id_rsa.pub
 		  shred -zu /media/usb/.ssh/known_hosts
 		  rm -rf /media/usb/.ssh
+	  fi
+	  if [ -f /media/usb/.emacs ]; then
+		  echo 'Importing .emacs file'
+		  cp -f /media/usb/.emacs /home/$MY_USERNAME/.emacs
+		  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
+	  fi
+	  if [ -d /media/usb/.emacs.d ]; then
+		  echo 'Importing .emacs.d directory'
+		  cp -r /media/usb/.emacs.d /home/$MY_USERNAME/.emacs.d
+		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
 	  fi
   fi
   echo 'search_for_attached_usb_drive' >> $COMPLETION_FILE
