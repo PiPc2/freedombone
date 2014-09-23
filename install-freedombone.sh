@@ -92,21 +92,24 @@ if [ ! -f $COMPLETION_FILE ]; then
 fi
 
 function argument_checks {
-  echo './install-freedombone.sh [domain] [username] [subdomain code]'
+  SYNTAX='./install-freedombone.sh [domain] [username] [subdomain code]'
   echo ''
   if [ ! -d /home/$MY_USERNAME ]; then
 	  echo "There is no user '$MY_USERNAME' on the system. Use 'adduser $MY_USERNAME' to create the user."
 	  exit 1
   fi
   if [ ! $DOMAIN_NAME ]; then
+	  echo $SYNTAX
 	  echo 'Please specify your domain name'
 	  exit 2
   fi
   if [ ! $MY_USERNAME ]; then
+	  echo $SYNTAX
 	  echo 'Please specify your username'
 	  exit 3
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
+	  echo $SYNTAX
       echo 'Please specify the freedns subdomain code.  To find it from '
       echo "https://freedns.afraid.org select 'Dynamic DNS', then 'quick "
       echo "cron example' and copy the code located between '?' and '=='."
