@@ -88,6 +88,9 @@ DEBIAN_VERSION="jessie"
 # Directory where source code is downloaded and compiled
 INSTALL_DIR=/root/build
 
+# device name for an attached usb drive
+USB_DRIVE=/dev/sda1
+
 export DEBIAN_FRONTEND=noninteractive
 
 # File which keeps track of what has already been installed
@@ -138,6 +141,37 @@ function change_login_message {
   echo '                  Freedom in the Cloud' >> /etc/motd
   echo '' >> /etc/motd
   echo 'change_login_message' >> $COMPLETION_FILE
+}
+
+function search_for_attached_usb_drive {
+  # If a USB drive is attached then search for email,
+  # gpg and ssh keys and change the directories accordingly
+  if grep -Fxq "search_for_attached_usb_drive" $COMPLETION_FILE; then
+      return
+  fi
+  if [ -d $USB_DRIVE ]; then
+	  mount $USB_DRIVE /media/usb
+	  if [ -d /media/usb/Maildir ]; then
+		  IMPORT_MAILDIR=/media/usb/Maildir
+	  fi
+	  if [ -f /media/usb/private_key.gpg ]; then
+		  MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
+	  fi
+	  if [ -f /media/usb/public_key.gpg ]; then
+		  MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
+	  fi
+	  if [ -f /media/usb/id_rsa ]; then
+		  cp /media/usb/id_rsa /home/$MY_USERNAME/.ssh/id_rsa
+		  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh/id_rsa
+		  # for security delete the private key from the usb drive
+		  shred -zu /media/usb/id_rsa
+	  fi
+	  if [ -f /media/usb/id_rsa.pub ]; then
+		  cp /media/usb/id_rsa.pub /home/$MY_USERNAME/.ssh/id_rsa.pub
+		  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh/id_rsa.pub
+	  fi
+  fi
+  echo 'search_for_attached_usb_drive' >> $COMPLETION_FILE
 }
 
 function remove_proprietary_repos {
@@ -1117,6 +1151,7 @@ change_debian_repos
 enable_backports
 configure_dns
 initial_setup
+search_for_attached_usb_drive
 install_editor
 change_login_message
 update_the_kernel
