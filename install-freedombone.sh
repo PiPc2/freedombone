@@ -66,6 +66,7 @@ FREEDNS_SUBDOMAIN_CODE=$3
 SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
 USE_HWRNG="yes"
+INSTALLED_WITHIN_DOCKER="no"
 
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
@@ -269,6 +270,9 @@ function update_the_kernel {
   if grep -Fxq "update_the_kernel" $COMPLETION_FILE; then
       return
   fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  return
+  fi
   cd /opt/scripts/tools
   ./update_kernel.sh --kernel $KERNEL_VERSION
   echo 'update_the_kernel' >> $COMPLETION_FILE
@@ -277,6 +281,9 @@ function update_the_kernel {
 function enable_zram {
   if grep -Fxq "enable_zram" $COMPLETION_FILE; then
       return
+  fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  return
   fi
   if ! grep -q "options zram num_devices=1" /etc/modprobe.d/zram.conf; then
       echo 'options zram num_devices=1' >> /etc/modprobe.d/zram.conf
@@ -356,6 +363,11 @@ function enable_zram {
 function random_number_generator {
   if grep -Fxq "random_number_generator" $COMPLETION_FILE; then
       return
+  fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # it is assumed that docker uses the random number
+	  # generator of the host system
+	  return
   fi
   if [ $USE_HWRNG == "yes" ]; then
     apt-get -y --force-yes install rng-tools
@@ -544,6 +556,10 @@ function configure_firewall {
   if grep -Fxq "configure_firewall" $COMPLETION_FILE; then
       return
   fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # docker does its own firewalling
+	  return
+  fi
   iptables -P INPUT ACCEPT
   ip6tables -P INPUT ACCEPT
   iptables -F
@@ -570,6 +586,10 @@ function configure_firewall_for_dns {
   if grep -Fxq "configure_firewall_for_dns" $COMPLETION_FILE; then
       return
   fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # docker does its own firewalling
+	  return
+  fi
   iptables -A INPUT -i eth0 -p udp -m udp --dport 1024:65535 --sport 53 -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_dns' >> $COMPLETION_FILE
@@ -579,6 +599,10 @@ function configure_firewall_for_ftp {
   if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
       return
   fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # docker does its own firewalling
+	  return
+  fi
   iptables -I INPUT -i eth0 -p tcp --dport 1024:65535 --sport 20:21 -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_ftp' >> $COMPLETION_FILE
@@ -587,6 +611,10 @@ function configure_firewall_for_ftp {
 function configure_firewall_for_web {
   if grep -Fxq "configure_firewall_for_web" $COMPLETION_FILE; then
       return
+  fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # docker does its own firewalling
+	  return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 32768:61000 --sport 80 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 32768:61000 --sport 443 -j ACCEPT
@@ -598,6 +626,10 @@ function configure_firewall_for_ssh {
   if grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE; then
       return
   fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # docker does its own firewalling
+	  return
+  fi
   iptables -A INPUT -i eth0 -p tcp --dport 22 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport $SSH_PORT -j ACCEPT
   save_firewall_settings
@@ -608,6 +640,10 @@ function configure_firewall_for_git {
   if grep -Fxq "configure_firewall_for_git" $COMPLETION_FILE; then
       return
   fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # docker does its own firewalling
+	  return
+  fi
   iptables -A INPUT -i eth0 -p tcp --dport 9418 -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_git' >> $COMPLETION_FILE
@@ -616,6 +652,10 @@ function configure_firewall_for_git {
 function configure_firewall_for_email {
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
       return
+  fi
+  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+	  # docker does its own firewalling
+	  return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 25 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 587 -j ACCEPT
