@@ -172,7 +172,7 @@ function search_for_attached_usb_drive {
               rm -rf /media/usb/.gnupg
           else
               echo 'GPG files did not copy'
-              exit
+              exit 7
           fi
       fi
       if [ -f /media/usb/private_key.gpg ]; then
@@ -195,7 +195,7 @@ function search_for_attached_usb_drive {
               rm -rf /media/usb/.ssh
           else
               echo 'ssh files did not copy'
-              exit
+              exit 8
           fi
       fi
       if [ -f /media/usb/.emacs ]; then
@@ -1201,7 +1201,17 @@ function dynamic_dns_freedns {
 }
 
 function import_email {
+  EMAIL_COMPLETE_MSG='  *** Freedombone email system installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
+      if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
+          echo $EMAIL_COMPLETE_MSG
+          if [ -d /media/usb ]; then
+              umount /media/usb
+              rm -rf /media/usb
+              echo '            You can now remove the USB drive'
+          fi
+          exit 0
+      fi
       return
   fi
   if [ $IMPORT_MAILDIR ]; then
@@ -1211,14 +1221,14 @@ function import_email {
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
       else
           echo "Email import directory $IMPORT_MAILDIR not found"
-          exit
+          exit 9
       fi
   fi
   echo 'import_email' >> $COMPLETION_FILE
   if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
       # unmount any attached usb drive
       echo ''
-      echo '  *** Freedombone email system installation is complete ***'
+      echo $EMAIL_COMPLETE_MSG
       echo ''
       if [ -d /media/usb ]; then
           umount /media/usb
