@@ -157,6 +157,9 @@ function search_for_attached_usb_drive {
 	  if [ -d /media/usb/.gnupg ]; then
 		  cp -r /media/usb/.gnupg /home/$MY_USERNAME/.gnupg
 		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+		  shred -zu /media/usb/.gnupg/secring.gpg
+		  shred -zu /media/usb/.gnupg/random_seed
+		  shred -zu /media/usb/.gnupg/trustdb.gpg
 		  rm -rf /media/usb/.gnupg
 	  fi
 	  if [ -f /media/usb/private_key.gpg ]; then
