@@ -1246,7 +1246,7 @@ search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
 configure_email
-spam_filtering
+#spam_filtering
 configure_imap
 configure_gpg
 email_client
