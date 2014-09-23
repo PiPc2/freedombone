@@ -860,28 +860,22 @@ function configure_gpg {
           echo "GPG private key file $MY_GPG_PRIVATE_KEY was not found"
           exit 6
       fi
-      su - $MY_USERNAME gpg --import $MY_GPG_PUBLIC_KEY
-      su - $MY_USERNAME gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY
+      su -c "gpg --import $MY_GPG_PUBLIC_KEY" - $MY_USERNAME
+      su -c "gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY" - $MY_USERNAME
       # for security ensure that the private key file doesn't linger around
       shred -zu $MY_GPG_PRIVATE_KEY
   else
       # Generate a GPG key
-      umask 0277
-      cat << EOF > /tmp/$MY_USERNAME-gpg-genkey.conf
-      %echo Generating a GPG key
-      Key-Type: RSA
-      Key-Length: 4096
-      Subkey-Type: ELG-E
-      Subkey-Length: 4096
-      Name-Real:  `hostname --fqdn`
-      Name-Email: $MY_USERNAME@`hostname --fqdn`
-      Expire-Date: 0
-      %commit
-      %echo Done
-      EOF
-      umask 0002
-	  su $MY_USERNAME gpg --batch --gen-key /tmp/$MY_USERNAME-gpg-genkey.conf > gpg-keygen.log 2> gpg-keygen_error.log
-      shred -zu /tmp/$MY_USERNAME-gpg-genkey.conf
+      echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo "Name-Real:  `hostname --fqdn`" >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo "Name-Email: $MY_USERNAME@`hostname --fqdn`" >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+      su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+      shred -zu /home/$MY_USERNAME/gpg-genkey.conf
   fi
 
   echo 'configure_gpg' >> $COMPLETION_FILE
