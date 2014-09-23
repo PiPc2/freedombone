@@ -66,6 +66,7 @@ FREEDNS_SUBDOMAIN_CODE=$3
 SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
 USE_HWRNG="yes"
+GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # The Debian package repository to use.
 DEBIAN_REPO="ftp.de.debian.org"
@@ -811,6 +812,23 @@ function configure_gpg {
 	  return
   fi
   apt-get -y install gnupg
+
+  if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
+	  mkdir /home/$MY_USERNAME/.gnupg
+	  echo 'keyserver hkp://keys.gnupg.net' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+	  echo 'keyserver-options auto-key-retrieve' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+  fi
+
+  sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
+
+  if grep -q "# default preferences" /home/$MY_USERNAME/.gnupg/gpg.conf; then
+      echo '' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+      echo '# default preferences' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+      echo 'personal-digest-preferences SHA256' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+      echo 'cert-digest-algo SHA256' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+      echo 'default-preference-list SHA512 SHA384 SHA256 SHA224 AES256 AES192 AES CAST5 ZLIB BZIP2 ZIP Uncompressed' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+  fi
+
   echo 'configure_gpg' >> $COMPLETION_FILE
 }
 
