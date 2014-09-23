@@ -10,7 +10,7 @@
 # process of setting up a working server as trivial as possible.
 # Other dynamic DNS systems are available, and if you're using
 # something different then comment out the section within
-# argument check and the call to dynamic_dns_freedns.
+# argument_checks and the call to dynamic_dns_freedns.
 #
 # Prerequisites
 # =============
@@ -84,6 +84,8 @@ if [ ! -f $COMPLETION_FILE ]; then
 fi
 
 function argument_checks {
+  echo './install-freedombone.sh [domain] [username] [subdomain code]'
+  echo ''
   if [ ! $DOMAIN_NAME ]; then
 	  echo "Please specify your domain name"
 	  exit
