@@ -1,6 +1,20 @@
 #!/bin/bash
 # Freedombone install script intended for use with Debian Jessie
-
+#
+# Note on dynamic dns
+# ===================
+#
+# I'm not particularly trying to promote freedns.afraid.org
+# as a service, it just happens to be a dynamic DNS system which
+# provides free (as in beer) accounts, and I'm trying to make the
+# process of setting up a working server as trivial as possible.
+# Other dynamic DNS systems are available, and if you're using
+# something different then comment out the section within
+# argument check and the call to dynamic_dns_freedns.
+#
+# Prerequisites
+# =============
+#
 # cd ~/
 # wget http://freedombone.uk.to/debian-jessie-console-armhf-2014-08-13.tar.xz
 #
@@ -47,6 +61,7 @@
 
 DOMAIN_NAME=$1
 MY_USERNAME=$2
+FREEDNS_SUBDOMAIN_CODE=$3
 
 SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
@@ -75,6 +90,10 @@ function argument_checks {
   fi
   if [ ! $MY_USERNAME ]; then
 	  echo "Please specify your username"
+	  exit
+  fi
+  if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
+	  echo "Please specify the freedns subdomain code.  To find it from https://freedns.afraid.org select 'Dynamic DNS', then 'quick cron example' and copy the code located between '?' and '=='."
 	  exit
   fi
 }
@@ -662,10 +681,13 @@ function configure_email {
 }
 
 function spam_filtering {
+  # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install spamassassin
+  apt-get -y --force-yes install exim4-daemon-heavy
+  apt-get -y --force-yes install spamassassin
+  sa-update -v
   sed -i 's/ENABLED=0/ENABLED=1/g' /etc/default/spamassassin
   sed -i 's/# spamd_address = 127.0.0.1 783/spamd_address = 127.0.0.1 783/g' /etc/exim4/exim4.conf.template
   # This configuration is based on https://wiki.debian.org/DebianSpamAssassin
@@ -755,7 +777,7 @@ function configure_imap {
   if grep -Fxq "configure_imap" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install dovecot-common dovecot-imapd
+  apt-get -y --force-yes install dovecot-common dovecot-imapd
   makecert dovecot
   chown root:dovecot /etc/ssl/certs/dovecot.crt
   chown root:dovecot /etc/ssl/private/dovecot.key
@@ -788,7 +810,7 @@ function email_client {
   if grep -Fxq "email_client" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install mutt-patched lynx abook
+  apt-get -y --force-yes install mutt-patched lynx abook
   if [ ! -d /home/$MY_USERNAME/.mutt ]; then
     mkdir /home/$MY_USERNAME/.mutt
   fi
@@ -957,6 +979,24 @@ function folders_for_email_addresses {
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
 
+function dynamic_dns_freedns {
+  if grep -Fxq "dynamic_dns_freedns" $COMPLETION_FILE; then
+	  return
+  fi
+
+  echo '#!/bin/bash' > /usr/bin/dynamicdns
+  echo '# subdomain name 1' >> /usr/bin/dynamicdns
+  echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+  echo '# add any other subdomains below' >> /usr/bin/dynamicdns
+  chmod 600 /usr/bin/dynamicdns
+  chmod +x /usr/bin/dynamicdns
+
+  if ! grep -q "dynamicdns" /etc/crontab; then
+    sed -i '/# m h dom mon dow user	command/a\*/5 * * * * root /usr/bin/timeout 240 /usr/bin/dynamicdns' /etc/crontab
+  fi
+  echo 'dynamic_dns_freedns' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
 	  return
@@ -998,5 +1038,6 @@ email_client
 configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
+dynamic_dns_freedns
 install_final
 echo 'Freedombone installation is complete'
