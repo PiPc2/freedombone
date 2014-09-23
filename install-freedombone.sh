@@ -298,7 +298,7 @@ function configure_ssh {
   echo 'Ciphers aes256-ctr,aes128-ctr' >> /etc/ssh/sshd_config
   echo 'MACs hmac-sha2-512,hmac-sha2-256,hmac-ripemd160
   KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1' >> /etc/ssh/sshd_config
-  apt-get -y install fail2ban
+  apt-get -y --force-yes install fail2ban
   echo 'configure_ssh' >> $COMPLETION_FILE
   echo ''
   echo ''
@@ -345,7 +345,7 @@ function time_synchronisation {
   if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install tlsdate
+  apt-get -y --force-yes install tlsdate
   apt-get -y remove ntpdate
 
   echo '#!/bin/bash' > /usr/bin/updatedate
@@ -814,7 +814,7 @@ function configure_gpg {
   if grep -Fxq "configure_gpg" $COMPLETION_FILE; then
 	  return
   fi
-  apt-get -y install gnupg
+  apt-get -y --force-yes install gnupg
 
   if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
 	  mkdir /home/$MY_USERNAME/.gnupg
