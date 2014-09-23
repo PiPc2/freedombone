@@ -829,6 +829,7 @@ function configure_gpg {
       echo 'default-preference-list SHA512 SHA384 SHA256 SHA224 AES256 AES192 AES CAST5 ZLIB BZIP2 ZIP Uncompressed' >> /home/$MY_USERNAME/.gnupg/gpg.conf
   fi
 
+  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
   echo 'configure_gpg' >> $COMPLETION_FILE
 }
 
