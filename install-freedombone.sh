@@ -150,9 +150,10 @@ function search_for_attached_usb_drive {
   if grep -Fxq "search_for_attached_usb_drive" $COMPLETION_FILE; then
       return
   fi
-  if [ -d $USB_DRIVE ]; then
+  if [ -b $USB_DRIVE ]; then
       if [ ! -d /media/usb ]; then
           echo 'Mounting USB drive'
+		  mkdir /media/usb
           mount $USB_DRIVE /media/usb
       fi
       if [ -d /media/usb/Maildir ]; then
@@ -201,6 +202,12 @@ function search_for_attached_usb_drive {
           cp -r /media/usb/personal /home/$MY_USERNAME/personal
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/personal
       fi
+  else
+      if [ -d /media/usb ]; then
+		  umount /media/usb
+          rm -rf /media/usb
+      fi
+      echo 'No USB drive attached'
   fi
   echo 'search_for_attached_usb_drive' >> $COMPLETION_FILE
 }
@@ -1202,6 +1209,11 @@ function import_email {
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
+  fi
+  # unmount any attached usb drive
+  if [ -d /media/usb ]; then
+      umount /media/usb
+      rm -rf /media/usb
   fi
   echo 'install_final' >> $COMPLETION_FILE
   echo ''
