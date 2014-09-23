@@ -271,10 +271,10 @@ function random_number_generator {
 	  return
   fi
   if [ $USE_HWRNG == "yes" ]; then
-    apt-get -y install rng-tools
+    apt-get -y --force-yes install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
   else
-	apt-get -y install haveged
+	apt-get -y --force-yes install haveged
   fi
   echo 'random_number_generator' >> $COMPLETION_FILE
 }
