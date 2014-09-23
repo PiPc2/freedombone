@@ -872,7 +872,7 @@ function configure_gpg {
       echo '%commit' >> /home/$MY_USERNAME/gpg-genkey.conf
       echo '%echo Done' >> /home/$MY_USERNAME/gpg-genkey.conf
 	  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
-      su - $MY_USERNAME gpg --gen-key /home/$MY_USERNAME/gpg-genkey.conf
+      su - $MY_USERNAME gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
   fi
 
