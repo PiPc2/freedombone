@@ -150,53 +150,55 @@ function search_for_attached_usb_drive {
       return
   fi
   if [ -d $USB_DRIVE ]; then
-	  mount $USB_DRIVE /media/usb
-	  if [ -d /media/usb/Maildir ]; then
-		  echo 'Maildir found on USB drive'
-		  IMPORT_MAILDIR=/media/usb/Maildir
-	  fi
-	  if [ -d /media/usb/.gnupg ]; then
-		  echo 'Importing GPG keyring'
-		  cp -r /media/usb/.gnupg /home/$MY_USERNAME/.gnupg
-		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
-		  shred -zu /media/usb/.gnupg/secring.gpg
-		  shred -zu /media/usb/.gnupg/random_seed
-		  shred -zu /media/usb/.gnupg/trustdb.gpg
-		  rm -rf /media/usb/.gnupg
-	  fi
-	  if [ -f /media/usb/private_key.gpg ]; then
-		  echo 'GPG private key found on USB drive'
-		  MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
-	  fi
-	  if [ -f /media/usb/public_key.gpg ]; then
-		  echo 'GPG public key found on USB drive'
-		  MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
-	  fi
-	  if [ -d /media/usb/.ssh ]; then
-		  echo 'Importing ssh keys'
-		  cp -r /media/usb/.ssh /home/$MY_USERNAME/.ssh
-		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
-		  # for security delete the ssh keys from the usb drive
-		  shred -zu /media/usb/.ssh/id_rsa
-		  shred -zu /media/usb/.ssh/id_rsa.pub
-		  shred -zu /media/usb/.ssh/known_hosts
-		  rm -rf /media/usb/.ssh
-	  fi
-	  if [ -f /media/usb/.emacs ]; then
-		  echo 'Importing .emacs file'
-		  cp -f /media/usb/.emacs /home/$MY_USERNAME/.emacs
-		  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
-	  fi
-	  if [ -d /media/usb/.emacs.d ]; then
-		  echo 'Importing .emacs.d directory'
-		  cp -r /media/usb/.emacs.d /home/$MY_USERNAME/.emacs.d
-		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
-	  fi
-	  if [ -d /media/usb/personal ]; then
-		  echo 'Importing personal directory'
-		  cp -r /media/usb/personal /home/$MY_USERNAME/personal
-		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/personal
-	  fi
+      if [ ! -d /media/usb ]; then
+          mount $USB_DRIVE /media/usb
+      fi
+      if [ -d /media/usb/Maildir ]; then
+          echo 'Maildir found on USB drive'
+          IMPORT_MAILDIR=/media/usb/Maildir
+      fi
+      if [ -d /media/usb/.gnupg ]; then
+          echo 'Importing GPG keyring'
+          cp -r /media/usb/.gnupg /home/$MY_USERNAME/.gnupg
+          chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+          shred -zu /media/usb/.gnupg/secring.gpg
+          shred -zu /media/usb/.gnupg/random_seed
+          shred -zu /media/usb/.gnupg/trustdb.gpg
+          rm -rf /media/usb/.gnupg
+      fi
+      if [ -f /media/usb/private_key.gpg ]; then
+          echo 'GPG private key found on USB drive'
+          MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
+      fi
+      if [ -f /media/usb/public_key.gpg ]; then
+          echo 'GPG public key found on USB drive'
+          MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
+      fi
+      if [ -d /media/usb/.ssh ]; then
+          echo 'Importing ssh keys'
+          cp -r /media/usb/.ssh /home/$MY_USERNAME/.ssh
+          chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
+          # for security delete the ssh keys from the usb drive
+          shred -zu /media/usb/.ssh/id_rsa
+          shred -zu /media/usb/.ssh/id_rsa.pub
+          shred -zu /media/usb/.ssh/known_hosts
+          rm -rf /media/usb/.ssh
+      fi
+      if [ -f /media/usb/.emacs ]; then
+          echo 'Importing .emacs file'
+          cp -f /media/usb/.emacs /home/$MY_USERNAME/.emacs
+          chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
+      fi
+      if [ -d /media/usb/.emacs.d ]; then
+          echo 'Importing .emacs.d directory'
+          cp -r /media/usb/.emacs.d /home/$MY_USERNAME/.emacs.d
+          chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
+      fi
+      if [ -d /media/usb/personal ]; then
+          echo 'Importing personal directory'
+          cp -r /media/usb/personal /home/$MY_USERNAME/personal
+          chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/personal
+      fi
   fi
   echo 'search_for_attached_usb_drive' >> $COMPLETION_FILE
 }
@@ -1145,13 +1147,13 @@ function import_email {
   fi
   if [ $IMPORT_MAILDIR ]; then
       if [ -d $IMPORT_MAILDIR ]; then
-	      echo 'Transfering email files'
-	      cp -r $IMPORT_MAILDIR/* /home/$MY_USERNAME/Maildir/
-	      chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
-	  else
-		  echo "Email import directory $IMPORT_MAILDIR not found"
-		  exit
-	  fi
+          echo 'Transfering email files'
+          cp -r $IMPORT_MAILDIR/* /home/$MY_USERNAME/Maildir/
+          chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
+      else
+          echo "Email import directory $IMPORT_MAILDIR not found"
+          exit
+      fi
   fi
   echo 'import_email' >> $COMPLETION_FILE
 }
