@@ -94,19 +94,23 @@ fi
 function argument_checks {
   echo './install-freedombone.sh [domain] [username] [subdomain code]'
   echo ''
+  if [ ! -d /home/$MY_USERNAME ]; then
+	  echo "There is no user '$MY_USERNAME' on the system. Use 'adduser $MY_USERNAME' to create the user."
+	  exit 1
+  fi
   if [ ! $DOMAIN_NAME ]; then
 	  echo 'Please specify your domain name'
-	  exit
+	  exit 2
   fi
   if [ ! $MY_USERNAME ]; then
 	  echo 'Please specify your username'
-	  exit
+	  exit 3
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
       echo 'Please specify the freedns subdomain code.  To find it from '
       echo "https://freedns.afraid.org select 'Dynamic DNS', then 'quick "
       echo "cron example' and copy the code located between '?' and '=='."
-	  exit
+	  exit 4
   fi
 }
 
@@ -845,11 +849,11 @@ function configure_gpg {
 	  # use your existing GPG keys which were exported
 	  if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
 		  echo "GPG public key file $MY_GPG_PUBLIC_KEY was not found"
-		  exit 1
+		  exit 5
 	  fi
 	  if [ ! -f $MY_GPG_PRIVATE_KEY ]; then
 		  echo "GPG private key file $MY_GPG_PRIVATE_KEY was not found"
-		  exit 1
+		  exit 6
 	  fi
       su - $MY_USERNAME gpg --import $MY_GPG_PUBLIC_KEY
       su - $MY_USERNAME gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY
