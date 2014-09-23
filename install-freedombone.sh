@@ -840,7 +840,7 @@ function configure_gpg {
 
   sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
 
-  if grep -q "# default preferences" /home/$MY_USERNAME/.gnupg/gpg.conf; then
+  if ! grep -q "# default preferences" /home/$MY_USERNAME/.gnupg/gpg.conf; then
       echo '' >> /home/$MY_USERNAME/.gnupg/gpg.conf
       echo '# default preferences' >> /home/$MY_USERNAME/.gnupg/gpg.conf
       echo 'personal-digest-preferences SHA256' >> /home/$MY_USERNAME/.gnupg/gpg.conf
