@@ -75,6 +75,11 @@ GPG_KEYSERVER="hkp://keys.gnupg.net"
 MY_GPG_PUBLIC_KEY=
 MY_GPG_PRIVATE_KEY=
 
+# If you have existing mail within a Maildir
+# you can specify the directory here and the files
+# will be imported
+IMPORT_MAILDIR=
+
 # The Debian package repository to use.
 DEBIAN_REPO="ftp.de.debian.org"
 
@@ -1073,6 +1078,23 @@ function dynamic_dns_freedns {
   echo 'dynamic_dns_freedns' >> $COMPLETION_FILE
 }
 
+function import_email {
+  if grep -Fxq "import_email" $COMPLETION_FILE; then
+      return
+  fi
+  if [ $IMPORT_MAILDIR ]; then
+      if [ -d $IMPORT_MAILDIR ]; then
+	      echo 'Transfering email files'
+	      cp -r $IMPORT_MAILDIR/* /home/$MY_USERNAME/Maildir/
+	      chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
+	  else
+		  echo "Email import directory $IMPORT_MAILDIR not found"
+		  exit
+	  fi
+  fi
+  echo 'import_email' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -1115,5 +1137,6 @@ configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
 dynamic_dns_freedns
+import_email
 install_final
 echo 'Freedombone installation is complete'
