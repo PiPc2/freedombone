@@ -66,7 +66,14 @@ FREEDNS_SUBDOMAIN_CODE=$3
 SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
 USE_HWRNG="yes"
+
 GPG_KEYSERVER="hkp://keys.gnupg.net"
+
+# optionally you can provide your exported GPG key pair here
+# Note that the private key file will be deleted after use
+# If these are unspecified then a new GPG key will be created
+MY_GPG_PUBLIC_KEY=
+MY_GPG_PRIVATE_KEY=
 
 # The Debian package repository to use.
 DEBIAN_REPO="ftp.de.debian.org"
@@ -833,6 +840,38 @@ function configure_gpg {
   fi
 
   chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+
+  if [ $MY_GPG_PUBLIC_KEY && $MY_GPG_PRIVATE_KEY ]; then
+	  # use your existing GPG keys which were exported
+	  if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
+		  echo "GPG public key file $MY_GPG_PUBLIC_KEY was not found"
+		  exit 1
+	  fi
+	  if [ ! -f $MY_GPG_PRIVATE_KEY ]; then
+		  echo "GPG private key file $MY_GPG_PRIVATE_KEY was not found"
+		  exit 1
+	  fi
+      su - $MY_USERNAME gpg --import $MY_GPG_PUBLIC_KEY
+      su - $MY_USERNAME gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY
+	  # for security ensure that the private key file doesn't linger around
+	  shred -zu $MY_GPG_PRIVATE_KEY
+  else
+      # Generate a GPG key
+      echo "%echo Generating a GPG key for `hostname --fqdn`" > /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Key-Type: RSA' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Subkey-Type: ELG-E' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Name-Real:  `hostname --fqdn`' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo "Name-Email: $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo '%commit' >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo '%echo Done' >> /home/$MY_USERNAME/gpg-genkey.conf
+	  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+      su - $MY_USERNAME gpg --gen-key /home/$MY_USERNAME/gpg-genkey.conf
+      shred -zu /home/$MY_USERNAME/gpg-genkey.conf
+  fi
+
   echo 'configure_gpg' >> $COMPLETION_FILE
 }
 
