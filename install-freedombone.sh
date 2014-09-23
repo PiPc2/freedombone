@@ -192,6 +192,11 @@ function search_for_attached_usb_drive {
 		  cp -r /media/usb/.emacs.d /home/$MY_USERNAME/.emacs.d
 		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
 	  fi
+	  if [ -d /media/usb/personal ]; then
+		  echo 'Importing personal directory'
+		  cp -r /media/usb/personal /home/$MY_USERNAME/personal
+		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/personal
+	  fi
   fi
   echo 'search_for_attached_usb_drive' >> $COMPLETION_FILE
 }
