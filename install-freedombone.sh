@@ -87,15 +87,17 @@ function argument_checks {
   echo './install-freedombone.sh [domain] [username] [subdomain code]'
   echo ''
   if [ ! $DOMAIN_NAME ]; then
-	  echo "Please specify your domain name"
+	  echo 'Please specify your domain name'
 	  exit
   fi
   if [ ! $MY_USERNAME ]; then
-	  echo "Please specify your username"
+	  echo 'Please specify your username'
 	  exit
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
-	  echo "Please specify the freedns subdomain code.  To find it from https://freedns.afraid.org select 'Dynamic DNS', then 'quick cron example' and copy the code located between '?' and '=='."
+      echo 'Please specify the freedns subdomain code.  To find it from '
+      echo "https://freedns.afraid.org select 'Dynamic DNS', then 'quick "
+      echo "cron example' and copy the code located between '?' and '=='."
 	  exit
   fi
 }
