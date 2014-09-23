@@ -1201,7 +1201,7 @@ function dynamic_dns_freedns {
 }
 
 function import_email {
-  EMAIL_COMPLETE_MSG='  *** Freedombone email system installation is complete ***'
+  EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
           echo $EMAIL_COMPLETE_MSG
