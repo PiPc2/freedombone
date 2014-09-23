@@ -153,7 +153,7 @@ function search_for_attached_usb_drive {
   if [ -b $USB_DRIVE ]; then
       if [ ! -d /media/usb ]; then
           echo 'Mounting USB drive'
-		  mkdir /media/usb
+          mkdir /media/usb
           mount $USB_DRIVE /media/usb
       fi
       if [ -d /media/usb/Maildir ]; then
@@ -164,10 +164,15 @@ function search_for_attached_usb_drive {
           echo 'Importing GPG keyring'
           cp -r /media/usb/.gnupg /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
-          shred -zu /media/usb/.gnupg/secring.gpg
-          shred -zu /media/usb/.gnupg/random_seed
-          shred -zu /media/usb/.gnupg/trustdb.gpg
-          rm -rf /media/usb/.gnupg
+          if [ -f /home/$MY_USERNAME/.gnupg/secring.gpg ]; then
+              shred -zu /media/usb/.gnupg/secring.gpg
+              shred -zu /media/usb/.gnupg/random_seed
+              shred -zu /media/usb/.gnupg/trustdb.gpg
+              rm -rf /media/usb/.gnupg
+          else
+              echo 'GPG files did not copy'
+              exit
+          fi
       fi
       if [ -f /media/usb/private_key.gpg ]; then
           echo 'GPG private key found on USB drive'
@@ -182,10 +187,15 @@ function search_for_attached_usb_drive {
           cp -r /media/usb/.ssh /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
           # for security delete the ssh keys from the usb drive
-          shred -zu /media/usb/.ssh/id_rsa
-          shred -zu /media/usb/.ssh/id_rsa.pub
-          shred -zu /media/usb/.ssh/known_hosts
-          rm -rf /media/usb/.ssh
+          if [ -f /home/$MY_USERNAME/.ssh/id_rsa ]; then
+              shred -zu /media/usb/.ssh/id_rsa
+              shred -zu /media/usb/.ssh/id_rsa.pub
+              shred -zu /media/usb/.ssh/known_hosts
+              rm -rf /media/usb/.ssh
+          else
+              echo 'ssh files did not copy'
+              exit
+          fi
       fi
       if [ -f /media/usb/.emacs ]; then
           echo 'Importing .emacs file'
@@ -204,7 +214,7 @@ function search_for_attached_usb_drive {
       fi
   else
       if [ -d /media/usb ]; then
-		  umount /media/usb
+          umount /media/usb
           rm -rf /media/usb
       fi
       echo 'No USB drive attached'
