@@ -1095,6 +1095,7 @@ function email_client {
   echo 'set pgp_replyencrypt     # autocrypt replies to crypted' >> /etc/Muttrc
   echo 'set pgp_replysign        # autosign replies to signed' >> /etc/Muttrc
   echo 'set pgp_auto_decode=yes  # decode attachments' >> /etc/Muttrc
+  echo 'set fcc_clear            # Keep cleartext copy of sent encrypted mail' >> /etc/Muttrc
   echo 'unset smime_is_default' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo 'set alias_file=~/.mutt-alias' >> /etc/Muttrc
