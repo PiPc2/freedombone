@@ -194,7 +194,9 @@ function enable_zram {
   if grep -Fxq "enable_zram" $COMPLETION_FILE; then
 	  return
   fi
-  echo "options zram num_devices=1" >> /etc/modprobe.d/zram.conf
+  if ! grep -q "options zram num_devices=1" /etc/modprobe.d/zram.conf; then
+      echo 'options zram num_devices=1' >> /etc/modprobe.d/zram.conf
+  fi
   echo '#!/bin/bash' > /etc/init.d/zram
   echo '### BEGIN INIT INFO' >> /etc/init.d/zram
   echo '# Provides: zram' >> /etc/init.d/zram
