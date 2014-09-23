@@ -165,15 +165,14 @@ function search_for_attached_usb_drive {
 	  if [ -f /media/usb/public_key.gpg ]; then
 		  MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
 	  fi
-	  if [ -f /media/usb/id_rsa ]; then
-		  cp /media/usb/id_rsa /home/$MY_USERNAME/.ssh/id_rsa
-		  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh/id_rsa
-		  # for security delete the private key from the usb drive
-		  shred -zu /media/usb/id_rsa
-	  fi
-	  if [ -f /media/usb/id_rsa.pub ]; then
-		  cp /media/usb/id_rsa.pub /home/$MY_USERNAME/.ssh/id_rsa.pub
-		  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh/id_rsa.pub
+	  if [ -d /media/usb/.ssh ]; then
+		  cp -r /media/usb/.ssh /home/$MY_USERNAME/.ssh
+		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
+		  # for security delete the ssh keys from the usb drive
+		  shred -zu /media/usb/.ssh/id_rsa
+		  shred -zu /media/usb/.ssh/id_rsa.pub
+		  shred -zu /media/usb/.ssh/known_hosts
+		  rm -rf /media/usb/.ssh
 	  fi
   fi
   echo 'search_for_attached_usb_drive' >> $COMPLETION_FILE
