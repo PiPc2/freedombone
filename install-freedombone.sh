@@ -154,6 +154,11 @@ function search_for_attached_usb_drive {
 	  if [ -d /media/usb/Maildir ]; then
 		  IMPORT_MAILDIR=/media/usb/Maildir
 	  fi
+	  if [ -d /media/usb/.gnupg ]; then
+		  cp -r /media/usb/.gnupg /home/$MY_USERNAME/.gnupg
+		  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+		  rm -rf /media/usb/.gnupg
+	  fi
 	  if [ -f /media/usb/private_key.gpg ]; then
 		  MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
 	  fi
