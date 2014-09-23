@@ -763,8 +763,12 @@ function spam_filtering {
   echo '    rm "$MAILDIR/new/$f"' >> /usr/bin/filterham
   echo 'done' >> /usr/bin/filterham
 
-  echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterspam $MY_USERNAME" >> /etc/crontab
-  echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterham $MY_USERNAME" >> /etc/crontab
+  if ! grep -q "filterspam" /etc/crontab; then
+    echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterspam $MY_USERNAME" >> /etc/crontab
+  fi
+  if ! grep -q "filterham" /etc/crontab; then
+    echo "*/3 * * * * root /usr/bin/timeout 120 /usr/bin/filterham $MY_USERNAME" >> /etc/crontab
+  fi
   chmod 655 /usr/bin/filterspam /usr/bin/filterham
   sed -i 's/# use_bayes 1/use_bayes 1/g' /etc/mail/spamassassin/local.cf
   sed -i 's/# bayes_auto_learn 1/bayes_auto_learn 1/g' /etc/mail/spamassassin/local.cf
