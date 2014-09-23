@@ -1151,7 +1151,6 @@ change_debian_repos
 enable_backports
 configure_dns
 initial_setup
-search_for_attached_usb_drive
 install_editor
 change_login_message
 update_the_kernel
@@ -1161,6 +1160,7 @@ set_your_domain_name
 time_synchronisation
 configure_internet_protocol
 configure_ssh
+search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
 configure_email
