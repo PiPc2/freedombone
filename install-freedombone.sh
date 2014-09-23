@@ -162,7 +162,7 @@ function search_for_attached_usb_drive {
       fi
       if [ -d /media/usb/.gnupg ]; then
           echo 'Importing GPG keyring'
-          cp -r /media/usb/.gnupg /home/$MY_USERNAME/.gnupg
+          cp -r /media/usb/.gnupg /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
           shred -zu /media/usb/.gnupg/secring.gpg
           shred -zu /media/usb/.gnupg/random_seed
@@ -179,7 +179,7 @@ function search_for_attached_usb_drive {
       fi
       if [ -d /media/usb/.ssh ]; then
           echo 'Importing ssh keys'
-          cp -r /media/usb/.ssh /home/$MY_USERNAME/.ssh
+          cp -r /media/usb/.ssh /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
           # for security delete the ssh keys from the usb drive
           shred -zu /media/usb/.ssh/id_rsa
@@ -194,12 +194,12 @@ function search_for_attached_usb_drive {
       fi
       if [ -d /media/usb/.emacs.d ]; then
           echo 'Importing .emacs.d directory'
-          cp -r /media/usb/.emacs.d /home/$MY_USERNAME/.emacs.d
+          cp -r /media/usb/.emacs.d /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
       fi
       if [ -d /media/usb/personal ]; then
           echo 'Importing personal directory'
-          cp -r /media/usb/personal /home/$MY_USERNAME/personal
+          cp -r /media/usb/personal /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/personal
       fi
   else
@@ -1196,7 +1196,7 @@ function import_email {
   if [ $IMPORT_MAILDIR ]; then
       if [ -d $IMPORT_MAILDIR ]; then
           echo 'Transfering email files'
-          cp -r $IMPORT_MAILDIR/* /home/$MY_USERNAME/Maildir/
+          cp -r $IMPORT_MAILDIR /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
       else
           echo "Email import directory $IMPORT_MAILDIR not found"
