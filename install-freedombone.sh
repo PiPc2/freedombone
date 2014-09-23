@@ -149,6 +149,7 @@ function change_debian_repos {
   fi
 
   apt-get update
+  apt-get -y --force-yes install apt-transport-https
   echo 'change_debian_repos' >> $COMPLETION_FILE
 }
 
