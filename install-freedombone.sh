@@ -62,6 +62,7 @@
 DOMAIN_NAME=$1
 MY_USERNAME=$2
 FREEDNS_SUBDOMAIN_CODE=$3
+SYSTEM_TYPE=$4
 
 SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
@@ -1214,6 +1215,18 @@ function import_email {
       fi
   fi
   echo 'import_email' >> $COMPLETION_FILE
+  if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
+      # unmount any attached usb drive
+      echo ''
+      echo '  *** Freedombone email system installation is complete ***'
+      echo ''
+      if [ -d /media/usb ]; then
+          umount /media/usb
+          rm -rf /media/usb
+          echo '            You can now remove the USB drive'
+      fi
+      exit 0
+  fi
 }
 
 function install_final {
@@ -1267,3 +1280,4 @@ dynamic_dns_freedns
 import_email
 install_final
 echo 'Freedombone installation is complete'
+exit 0
