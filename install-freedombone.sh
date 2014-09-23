@@ -88,40 +88,40 @@ export DEBIAN_FRONTEND=noninteractive
 # File which keeps track of what has already been installed
 COMPLETION_FILE=/root/freedombone-completed.txt
 if [ ! -f $COMPLETION_FILE ]; then
-	touch $COMPLETION_FILE
+    touch $COMPLETION_FILE
 fi
 
 function argument_checks {
   SYNTAX='./install-freedombone.sh [domain] [username] [subdomain code]'
   if [ ! -d /home/$MY_USERNAME ]; then
-	  echo "There is no user '$MY_USERNAME' on the system. Use 'adduser $MY_USERNAME' to create the user."
-	  exit 1
+      echo "There is no user '$MY_USERNAME' on the system. Use 'adduser $MY_USERNAME' to create the user."
+      exit 1
   fi
   if [ ! $DOMAIN_NAME ]; then
       echo ''
-	  echo $SYNTAX
-	  echo 'Please specify your domain name'
-	  exit 2
+      echo $SYNTAX
+      echo 'Please specify your domain name'
+      exit 2
   fi
   if [ ! $MY_USERNAME ]; then
       echo ''
-	  echo $SYNTAX
-	  echo 'Please specify your username'
-	  exit 3
+      echo $SYNTAX
+      echo 'Please specify your username'
+      exit 3
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
       echo ''
-	  echo $SYNTAX
+      echo $SYNTAX
       echo 'Please specify the freedns subdomain code.  To find it from '
       echo "https://freedns.afraid.org select 'Dynamic DNS', then 'quick "
       echo "cron example' and copy the code located between '?' and '=='."
-	  exit 4
+      exit 4
   fi
 }
 
 function change_login_message {
   if grep -Fxq "change_login_message" $COMPLETION_FILE; then
-	  return
+      return
   fi
   echo '' > /etc/motd
   echo ".---.                  .              .                   " >> /etc/motd
@@ -137,7 +137,7 @@ function change_login_message {
 
 function remove_proprietary_repos {
   if grep -Fxq "remove_proprietary_repos" $COMPLETION_FILE; then
-	  return
+      return
   fi
   sed -i 's/ non-free//g' /etc/apt/sources.list
   echo 'remove_proprietary_repos' >> $COMPLETION_FILE
@@ -145,7 +145,7 @@ function remove_proprietary_repos {
 
 function change_debian_repos {
   if grep -Fxq "change_debian_repos" $COMPLETION_FILE; then
-	  return
+      return
   fi
   rm -rf /var/lib/apt/lists/*
   apt-get clean
@@ -156,12 +156,12 @@ function change_debian_repos {
       if grep -q "jessie" /etc/apt/sources.list; then
           echo "deb http://security.debian.org/ jessie/updates main contrib" >> /etc/apt/sources.list
           echo "#deb-src http://security.debian.org/ jessie/updates main contrib" >> /etc/apt/sources.list
-	  else
+      else
           if grep -q "wheezy" /etc/apt/sources.list; then
               echo "deb http://security.debian.org/ wheezy/updates main contrib" >> /etc/apt/sources.list
               echo "#deb-src http://security.debian.org/ wheezy/updates main contrib" >> /etc/apt/sources.list
-		  fi
-	  fi
+          fi
+      fi
   fi
 
   apt-get update
@@ -171,7 +171,7 @@ function change_debian_repos {
 
 function initial_setup {
   if grep -Fxq "initial_setup" $COMPLETION_FILE; then
-	  return
+      return
   fi
   apt-get -y remove --purge apache*
   apt-get -y dist-upgrade
@@ -181,7 +181,7 @@ function initial_setup {
 
 function install_editor {
   if grep -Fxq "install_editor" $COMPLETION_FILE; then
-	  return
+      return
   fi
   update-alternatives --set editor /usr/bin/emacs24
   echo 'install_editor' >> $COMPLETION_FILE
@@ -189,7 +189,7 @@ function install_editor {
 
 function enable_backports {
   if grep -Fxq "enable_backports" $COMPLETION_FILE; then
-	  return
+      return
   fi
   if ! grep -Fxq "deb http://$DEBIAN_REPO/debian jessie-backports main" /etc/apt/sources.list; then
     echo "deb http://$DEBIAN_REPO/debian jessie-backports main" >> /etc/apt/sources.list
@@ -199,7 +199,7 @@ function enable_backports {
 
 function update_the_kernel {
   if grep -Fxq "update_the_kernel" $COMPLETION_FILE; then
-	  return
+      return
   fi
   cd /opt/scripts/tools
   ./update_kernel.sh --kernel $KERNEL_VERSION
@@ -208,7 +208,7 @@ function update_the_kernel {
 
 function enable_zram {
   if grep -Fxq "enable_zram" $COMPLETION_FILE; then
-	  return
+      return
   fi
   if ! grep -q "options zram num_devices=1" /etc/modprobe.d/zram.conf; then
       echo 'options zram num_devices=1' >> /etc/modprobe.d/zram.conf
@@ -287,20 +287,20 @@ function enable_zram {
 
 function random_number_generator {
   if grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-	  return
+      return
   fi
   if [ $USE_HWRNG == "yes" ]; then
     apt-get -y --force-yes install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
   else
-	apt-get -y --force-yes install haveged
+    apt-get -y --force-yes install haveged
   fi
   echo 'random_number_generator' >> $COMPLETION_FILE
 }
 
 function configure_ssh {
   if grep -Fxq "configure_ssh" $COMPLETION_FILE; then
-	  return
+      return
   fi
   sed -i "s/Port 22/Port $SSH_PORT/g" /etc/ssh/sshd_config
   sed -i 's/PermitRootLogin without-password/PermitRootLogin no/g' /etc/ssh/sshd_config
@@ -327,7 +327,7 @@ function configure_ssh {
 
 function regenerate_ssh_keys {
   if grep -Fxq "regenerate_ssh_keys" $COMPLETION_FILE; then
-	  return
+      return
   fi
   rm -f /etc/ssh/ssh_host_*
   dpkg-reconfigure openssh-server
@@ -337,7 +337,7 @@ function regenerate_ssh_keys {
 
 function configure_dns {
   if grep -Fxq "configure_dns" $COMPLETION_FILE; then
-	  return
+      return
   fi
   echo 'domain localdomain' > /etc/resolv.conf
   echo 'search localdomain' >> /etc/resolv.conf
@@ -348,7 +348,7 @@ function configure_dns {
 
 function set_your_domain_name {
   if grep -Fxq "set_your_domain_name" $COMPLETION_FILE; then
-	  return
+      return
   fi
   echo "$DOMAIN_NAME" > /etc/hostname
   hostname $DOMAIN_NAME
@@ -359,7 +359,7 @@ function set_your_domain_name {
 
 function time_synchronisation {
   if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
-	  return
+      return
   fi
   apt-get -y --force-yes install tlsdate
   apt-get -y remove ntpdate
@@ -474,7 +474,7 @@ function time_synchronisation {
 
 function configure_firewall {
   if grep -Fxq "configure_firewall" $COMPLETION_FILE; then
-	  return
+      return
   fi
   iptables -P INPUT ACCEPT
   ip6tables -P INPUT ACCEPT
@@ -500,7 +500,7 @@ function save_firewall_settings {
 
 function configure_firewall_for_dns {
   if grep -Fxq "configure_firewall_for_dns" $COMPLETION_FILE; then
-	  return
+      return
   fi
   iptables -A INPUT -i eth0 -p udp -m udp --dport 1024:65535 --sport 53 -j ACCEPT
   save_firewall_settings
@@ -509,7 +509,7 @@ function configure_firewall_for_dns {
 
 function configure_firewall_for_ftp {
   if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
-	  return
+      return
   fi
   iptables -I INPUT -i eth0 -p tcp --dport 1024:65535 --sport 20:21 -j ACCEPT
   save_firewall_settings
@@ -518,7 +518,7 @@ function configure_firewall_for_ftp {
 
 function configure_firewall_for_web {
   if grep -Fxq "configure_firewall_for_web" $COMPLETION_FILE; then
-	  return
+      return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 32768:61000 --sport 80 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 32768:61000 --sport 443 -j ACCEPT
@@ -528,7 +528,7 @@ function configure_firewall_for_web {
 
 function configure_firewall_for_ssh {
   if grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE; then
-	  return
+      return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 22 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport $SSH_PORT -j ACCEPT
@@ -538,7 +538,7 @@ function configure_firewall_for_ssh {
 
 function configure_firewall_for_git {
   if grep -Fxq "configure_firewall_for_git" $COMPLETION_FILE; then
-	  return
+      return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 9418 -j ACCEPT
   save_firewall_settings
@@ -547,7 +547,7 @@ function configure_firewall_for_git {
 
 function configure_firewall_for_email {
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
-	  return
+      return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 25 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 587 -j ACCEPT
@@ -559,7 +559,7 @@ function configure_firewall_for_email {
 
 function configure_internet_protocol {
   if grep -Fxq "configure_internet_protocol" $COMPLETION_FILE; then
-	  return
+      return
   fi
   sed -i "s/#net.ipv4.tcp_syncookies=1/net.ipv4.tcp_syncookies=1/g" /etc/sysctl.conf
   sed -i "s/#net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 0/g" /etc/sysctl.conf
@@ -587,7 +587,7 @@ function configure_internet_protocol {
 
 function script_to_make_self_signed_certificates {
   if grep -Fxq "script_to_make_self_signed_certificates" $COMPLETION_FILE; then
-	  return
+      return
   fi
   echo '#!/bin/bash' > /usr/bin/makecert
   echo 'HOSTNAME=$1' >> /usr/bin/makecert
@@ -623,7 +623,7 @@ function script_to_make_self_signed_certificates {
 
 function configure_email {
   if grep -Fxq "configure_email" $COMPLETION_FILE; then
-	  return
+      return
   fi
   apt-get -y remove postfix
   apt-get -y --force-yes install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
@@ -687,19 +687,19 @@ function configure_email {
     mkdir -m 700 /home/$MY_USERNAME/Maildir/new
     mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent
     mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/cur
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/tmp
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/new
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/cur
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/new
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/tmp
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/cur
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/new
-	mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/tmp
-	ln -s /home/$MY_USERNAME/Maildir/.learn-spam /home/$MY_USERNAME/Maildir/spam
-	ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
-	chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/tmp
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/new
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/cur
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/new
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/tmp
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/cur
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/new
+    mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/tmp
+    ln -s /home/$MY_USERNAME/Maildir/.learn-spam /home/$MY_USERNAME/Maildir/spam
+    ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
+    chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
   fi
   echo 'configure_email' >> $COMPLETION_FILE
 }
@@ -707,7 +707,7 @@ function configure_email {
 function spam_filtering {
   # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
-	  return
+      return
   fi
   apt-get -y --force-yes install exim4-daemon-heavy
   apt-get -y --force-yes install spamassassin
@@ -803,7 +803,7 @@ function spam_filtering {
 
 function configure_imap {
   if grep -Fxq "configure_imap" $COMPLETION_FILE; then
-	  return
+      return
   fi
   apt-get -y --force-yes install dovecot-common dovecot-imapd
   makecert dovecot
@@ -828,14 +828,14 @@ function configure_imap {
 
 function configure_gpg {
   if grep -Fxq "configure_gpg" $COMPLETION_FILE; then
-	  return
+      return
   fi
   apt-get -y --force-yes install gnupg
 
   if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
-	  mkdir /home/$MY_USERNAME/.gnupg
-	  echo 'keyserver hkp://keys.gnupg.net' >> /home/$MY_USERNAME/.gnupg/gpg.conf
-	  echo 'keyserver-options auto-key-retrieve' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+      mkdir /home/$MY_USERNAME/.gnupg
+      echo 'keyserver hkp://keys.gnupg.net' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+      echo 'keyserver-options auto-key-retrieve' >> /home/$MY_USERNAME/.gnupg/gpg.conf
   fi
 
   sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
@@ -851,34 +851,37 @@ function configure_gpg {
   chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
 
   if [[ $MY_GPG_PUBLIC_KEY && $MY_GPG_PRIVATE_KEY ]]; then
-	  # use your existing GPG keys which were exported
-	  if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
-		  echo "GPG public key file $MY_GPG_PUBLIC_KEY was not found"
-		  exit 5
-	  fi
-	  if [ ! -f $MY_GPG_PRIVATE_KEY ]; then
-		  echo "GPG private key file $MY_GPG_PRIVATE_KEY was not found"
-		  exit 6
-	  fi
+      # use your existing GPG keys which were exported
+      if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
+          echo "GPG public key file $MY_GPG_PUBLIC_KEY was not found"
+          exit 5
+      fi
+      if [ ! -f $MY_GPG_PRIVATE_KEY ]; then
+          echo "GPG private key file $MY_GPG_PRIVATE_KEY was not found"
+          exit 6
+      fi
       su - $MY_USERNAME gpg --import $MY_GPG_PUBLIC_KEY
       su - $MY_USERNAME gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY
-	  # for security ensure that the private key file doesn't linger around
-	  shred -zu $MY_GPG_PRIVATE_KEY
+      # for security ensure that the private key file doesn't linger around
+      shred -zu $MY_GPG_PRIVATE_KEY
   else
       # Generate a GPG key
-      echo "%echo Generating a GPG key for `hostname --fqdn`" > /home/$MY_USERNAME/gpg-genkey.conf
-      echo 'Key-Type: RSA' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo 'Subkey-Type: ELG-E' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo 'Name-Real:  `hostname --fqdn`' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo "Name-Email: $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo '%commit' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo '%echo Done' >> /home/$MY_USERNAME/gpg-genkey.conf
-	  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
-      su - $MY_USERNAME gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf
-      shred -zu /home/$MY_USERNAME/gpg-genkey.conf
+      umask 0277
+      cat << EOF > /tmp/$MY_USERNAME-gpg-genkey.conf
+      %echo Generating a GPG key
+      Key-Type: RSA
+      Key-Length: 4096
+      Subkey-Type: ELG-E
+      Subkey-Length: 4096
+      Name-Real:  `hostname --fqdn`
+      Name-Email: $MY_USERNAME@`hostname --fqdn`
+      Expire-Date: 0
+      %commit
+      %echo Done
+      EOF
+      umask 0002
+	  su $MY_USERNAME gpg --batch --gen-key /tmp/$MY_USERNAME-gpg-genkey.conf > gpg-keygen.log 2> gpg-keygen_error.log
+      shred -zu /tmp/$MY_USERNAME-gpg-genkey.conf
   fi
 
   echo 'configure_gpg' >> $COMPLETION_FILE
@@ -886,7 +889,7 @@ function configure_gpg {
 
 function email_client {
   if grep -Fxq "email_client" $COMPLETION_FILE; then
-	  return
+      return
   fi
   apt-get -y --force-yes install mutt-patched lynx abook
   if [ ! -d /home/$MY_USERNAME/.mutt ]; then
@@ -987,7 +990,7 @@ function email_client {
 
 function folders_for_mailing_lists {
   if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
-	  return
+      return
   fi
   echo '#!/bin/bash' > /usr/bin/mailinglistrule
   echo 'MYUSERNAME=$1' >> /usr/bin/mailinglistrule
@@ -1023,7 +1026,7 @@ function folders_for_mailing_lists {
 
 function folders_for_email_addresses {
   if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
-	  return
+      return
   fi
   echo '#!/bin/bash' > /usr/bin/emailrule
   echo 'MYUSERNAME=$1' >> /usr/bin/emailrule
@@ -1059,7 +1062,7 @@ function folders_for_email_addresses {
 
 function dynamic_dns_freedns {
   if grep -Fxq "dynamic_dns_freedns" $COMPLETION_FILE; then
-	  return
+      return
   fi
 
   echo '#!/bin/bash' > /usr/bin/dynamicdns
@@ -1070,7 +1073,7 @@ function dynamic_dns_freedns {
   chmod +x /usr/bin/dynamicdns
 
   if ! grep -q "dynamicdns" /etc/crontab; then
-    sed -i '/# m h dom mon dow user	command/a\*/5 * * * * root /usr/bin/timeout 240 /usr/bin/dynamicdns' /etc/crontab
+    sed -i '/# m h dom mon dow user command/a\*/5 * * * * root /usr/bin/timeout 240 /usr/bin/dynamicdns' /etc/crontab
   fi
   service cron restart
   echo 'dynamic_dns_freedns' >> $COMPLETION_FILE
@@ -1078,7 +1081,7 @@ function dynamic_dns_freedns {
 
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
-	  return
+      return
   fi
   echo 'install_final' >> $COMPLETION_FILE
   echo ''
