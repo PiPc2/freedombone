@@ -1002,6 +1002,7 @@ function dynamic_dns_freedns {
   if ! grep -q "dynamicdns" /etc/crontab; then
     sed -i '/# m h dom mon dow user	command/a\*/5 * * * * root /usr/bin/timeout 240 /usr/bin/dynamicdns' /etc/crontab
   fi
+  service cron restart
   echo 'dynamic_dns_freedns' >> $COMPLETION_FILE
 }
 
