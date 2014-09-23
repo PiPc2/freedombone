@@ -850,7 +850,7 @@ function configure_gpg {
 
   chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
 
-  if [ $MY_GPG_PUBLIC_KEY && $MY_GPG_PRIVATE_KEY ]; then
+  if $MY_GPG_PUBLIC_KEY && $MY_GPG_PRIVATE_KEY; then
 	  # use your existing GPG keys which were exported
 	  if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
 		  echo "GPG public key file $MY_GPG_PUBLIC_KEY was not found"
