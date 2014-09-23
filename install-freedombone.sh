@@ -87,7 +87,7 @@ DEBIAN_REPO="ftp.de.debian.org"
 DEBIAN_VERSION="jessie"
 
 # Directory where source code is downloaded and compiled
-INSTALL_DIR=/root/build
+INSTALL_DIR=$HOME/build
 
 # device name for an attached usb drive
 USB_DRIVE=/dev/sda1
@@ -95,7 +95,7 @@ USB_DRIVE=/dev/sda1
 export DEBIAN_FRONTEND=noninteractive
 
 # File which keeps track of what has already been installed
-COMPLETION_FILE=/root/freedombone-completed.txt
+COMPLETION_FILE=$HOME/freedombone-completed.txt
 if [ ! -f $COMPLETION_FILE ]; then
     touch $COMPLETION_FILE
 fi
