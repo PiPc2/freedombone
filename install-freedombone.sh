@@ -117,7 +117,7 @@ if [ ! -f $COMPLETION_FILE ]; then
 fi
 
 function argument_checks {
-  SYNTAX='./install-freedombone.sh [domain] [username] [subdomain code]'
+  SYNTAX='./install-freedombone.sh [domain] [username] [subdomain code] [system ty[e]'
   if [ ! -d /home/$MY_USERNAME ]; then
       echo "There is no user '$MY_USERNAME' on the system. Use 'adduser $MY_USERNAME' to create the user."
       exit 1
