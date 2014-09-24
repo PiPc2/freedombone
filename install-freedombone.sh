@@ -69,6 +69,10 @@ KERNEL_VERSION="v3.15.10-bone7"
 USE_HWRNG="yes"
 INSTALLED_WITHIN_DOCKER="no"
 
+# If you want to run an encrypted mailing list specify its name here.
+# There should be no spaces in the name
+PRIVATE_MAILING_LIST=
+
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # optionally you can provide your exported GPG key pair here
@@ -1011,6 +1015,9 @@ function configure_gpg {
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
       su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $DOMAIN_NAME | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}'" - $MY_USERNAME)
+      MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
+	  su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
   fi
 
   echo 'configure_gpg' >> $COMPLETION_FILE
@@ -1151,6 +1158,9 @@ function folders_for_mailing_lists {
   echo '  mkdir $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
+  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)'
+  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC'
+  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC'
   chmod +x /usr/bin/mailinglistrule
   echo 'folders_for_mailing_lists' >> $COMPLETION_FILE
 }
@@ -1187,6 +1197,9 @@ function folders_for_email_addresses {
   echo '  mkdir $PROCMAILLOG' >> /usr/bin/emailrule
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/emailrule
   echo 'fi' >> /usr/bin/emailrule
+  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)'
+  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC'
+  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC'
   chmod +x /usr/bin/emailrule
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
@@ -1208,6 +1221,60 @@ function dynamic_dns_freedns {
   fi
   service cron restart
   echo 'dynamic_dns_freedns' >> $COMPLETION_FILE
+}
+
+function create_private_mailing_list {
+  if grep -Fxq "create_private_mailing_list" $COMPLETION_FILE; then
+      return
+  fi
+  if [ ! $PRIVATE_MAILING_LIST ]; then
+	  return
+  fi
+  if [ $PRIVATE_MAILING_LIST == $MY_USERNAME ]; then
+	  echo 'The name of the private mailing list should not be the'
+	  echo 'same as your username'
+	  exit 10
+  fi
+  if [ ! $MY_GPG_PUBLIC_KEY ]; then
+	  echo 'To create a private mailing list you need to specify a file'
+	  echo 'containing your exported GPG key within MY_GPG_PUBLIC_KEY at'
+	  echo 'the top of the script'
+	  exit 11
+  fi
+  apt-get -y --force-yes install ruby ruby-dev ruby-gpgme libgpgme11-dev libmagic-dev
+  gem install schleuder
+  schleuder-fix-gem-dependencies
+  schleuder-init-setup
+  sed -i 's/#smtp_port: 25/smtp_port: 465/g' /etc/schleuder/schleuder.conf
+  sed -i 's/#superadminaddr: root@localhost/superadminaddr: root@localhost' /etc/schleuder/schleuder.conf
+  schleuder-newlist $PRIVATE_MAILING_LIST@$DOMAIN_NAME -realname "$PRIVATE_MAILING_LIST" -adminaddress $MY_USERNAME@$DOMAIN_NAME -initmember $MY_USERNAME@$DOMAIN_NAME -initmemberkey $MY_GPG_PUBLIC_KEY -nointeractive
+  emailrule $MY_USERNAME $PRIVATE_MAILING_LIST@$DOMAIN_NAME $PRIVATE_MAILING_LIST
+
+  echo 'schleuder:' > /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  debug_print = "R: schleuder for $local_part@$domain"' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  driver = accept' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  local_part_suffix_optional' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  local_part_suffix = +* : -bounce : -sendkey' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  domains = +local_domains' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  user = schleuder' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  group = schleuder' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  require_files = schleuder:+/var/lib/schleuder/$domain/${local_part}' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+  echo '  transport = schleuder_transport' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
+
+  echo 'schleuder_transport:' > /etc/exim4/conf.d/transport/30_exim4-config_schleuder
+  echo '  debug_print = "T: schleuder_transport for $local_part@$domain"' >> /etc/exim4/conf.d/transport/30_exim4-config_schleuder
+  echo '  driver = pipe' >> /etc/exim4/conf.d/transport/30_exim4-config_schleuder
+  echo '  home_directory = "/var/lib/schleuder/$domain/$local_part"' >> /etc/exim4/conf.d/transport/30_exim4-config_schleuder
+  echo '  command = "/usr/bin/schleuder $local_part@$domain"' >> /etc/exim4/conf.d/transport/30_exim4-config_schleuder
+  chown -R schleuder:schleuder /var/lib/schleuder
+  update-exim4.conf.template -r
+  update-exim4.conf
+  service exim4 restart
+  useradd -d /var/schleuderlists -s /bin/false schleuder
+  adduser Debian-exim schleuder
+  usermod -a -G mail schleuder
+  exim -d -bt $PRIVATE_MAILING_LIST@$DOMAIN_NAME
+  echo 'create_private_mailing_list' >> $COMPLETION_FILE
 }
 
 function import_email {
@@ -1297,6 +1364,7 @@ configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
 dynamic_dns_freedns
+create_private_mailing_list
 import_email
 install_final
 echo 'Freedombone installation is complete'
