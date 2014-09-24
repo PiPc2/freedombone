@@ -1345,6 +1345,7 @@ function import_email {
   fi
   echo 'import_email' >> $COMPLETION_FILE
   if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
+	  apt-get -y --force-yes autoremove
       # unmount any attached usb drive
       echo ''
       echo $EMAIL_COMPLETE_MSG
@@ -1367,6 +1368,7 @@ function install_final {
       umount /media/usb
       rm -rf /media/usb
   fi
+  apt-get -y --force-yes autoremove
   echo 'install_final' >> $COMPLETION_FILE
   echo ''
   echo '  *** Freedombone installation is complete. Rebooting... ***'
