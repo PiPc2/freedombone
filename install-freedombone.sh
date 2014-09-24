@@ -205,31 +205,34 @@ function search_for_attached_usb_drive {
           mkdir /media/usb
           mount $USB_DRIVE /media/usb
       fi
-      if [ -d /media/usb/Maildir ]; then
-          echo 'Maildir found on USB drive'
-          IMPORT_MAILDIR=/media/usb/Maildir
-      fi
-      if [ -d /media/usb/.gnupg ]; then
-          echo 'Importing GPG keyring'
-          cp -r /media/usb/.gnupg /home/$MY_USERNAME
-          chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
-          if [ -f /home/$MY_USERNAME/.gnupg/secring.gpg ]; then
-              shred -zu /media/usb/.gnupg/secring.gpg
-              shred -zu /media/usb/.gnupg/random_seed
-              shred -zu /media/usb/.gnupg/trustdb.gpg
-              rm -rf /media/usb/.gnupg
-          else
-              echo 'GPG files did not copy'
-              exit 7
+      if ! [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+          if [ -d /media/usb/Maildir ]; then
+              echo 'Maildir found on USB drive'
+              IMPORT_MAILDIR=/media/usb/Maildir
           fi
-      fi
-      if [ -f /media/usb/private_key.gpg ]; then
-          echo 'GPG private key found on USB drive'
-          MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
-      fi
-      if [ -f /media/usb/public_key.gpg ]; then
-          echo 'GPG public key found on USB drive'
-          MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
+          if [ -d /media/usb/.gnupg ]; then
+              echo 'Importing GPG keyring'
+              cp -r /media/usb/.gnupg /home/$MY_USERNAME
+              chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+              if [ -f /home/$MY_USERNAME/.gnupg/secring.gpg ]; then
+                  shred -zu /media/usb/.gnupg/secring.gpg
+                  shred -zu /media/usb/.gnupg/random_seed
+                  shred -zu /media/usb/.gnupg/trustdb.gpg
+                  rm -rf /media/usb/.gnupg
+              else
+                  echo 'GPG files did not copy'
+                  exit 7
+              fi
+          fi
+
+          if [ -f /media/usb/private_key.gpg ]; then
+              echo 'GPG private key found on USB drive'
+              MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
+          fi
+          if [ -f /media/usb/public_key.gpg ]; then
+              echo 'GPG public key found on USB drive'
+              MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
+          fi
       fi
       if [ -d /media/usb/.ssh ]; then
           echo 'Importing ssh keys'
