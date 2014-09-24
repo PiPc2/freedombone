@@ -1189,8 +1189,10 @@ function folders_for_mailing_lists {
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
   echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/mailinglistrule
-  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/mailinglistrule
-  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/mailinglistrule
+  echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/mailinglistrule
+  echo '  sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/mailinglistrule
+  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/mailinglistrule
+  echo 'fi' >> /usr/bin/mailinglistrule
   chmod +x /usr/bin/mailinglistrule
   echo 'folders_for_mailing_lists' >> $COMPLETION_FILE
 }
@@ -1232,8 +1234,10 @@ function folders_for_email_addresses {
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/emailrule
   echo 'fi' >> /usr/bin/emailrule
   echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/emailrule
-  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/emailrule
-  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/emailrule
+  echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/emailrule
+  echo '  sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/emailrule
+  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/emailrule
+  echo 'fi' >> /usr/bin/emailrule
   chmod +x /usr/bin/emailrule
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
@@ -1307,7 +1311,7 @@ function create_private_mailing_list {
   useradd -d /var/schleuderlists -s /bin/false schleuder
   adduser Debian-exim schleuder
   usermod -a -G mail schleuder
-  exim -d -bt $PRIVATE_MAILING_LIST@$DOMAIN_NAME
+  #exim -d -bt $PRIVATE_MAILING_LIST@$DOMAIN_NAME
   echo 'create_private_mailing_list' >> $COMPLETION_FILE
 }
 
