@@ -151,15 +151,15 @@ function argument_checks {
       exit 1
   fi
   if [ ! $DOMAIN_NAME ]; then
-	  show_help
+      show_help
       exit 2
   fi
   if [ ! $MY_USERNAME ]; then
-	  show_help
+      show_help
       exit 3
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
-	  show_help
+      show_help
       exit 4
   fi
 }
@@ -1597,7 +1597,9 @@ function install_owncloud {
 
   # download owncloud
   cd $INSTALL_DIR
-  wget $OWNCLOUD_DOWNLOAD
+  if [ ! -f $INSTALL_DIR/$OWNCLOUD_ARCHIVE ]; then
+      wget $OWNCLOUD_DOWNLOAD
+  fi
   if [ ! -f $INSTALL_DIR/$OWNCLOUD_ARCHIVE ]; then
       echo 'Owncloud could not be downloaded.  Check that it exists at '
       echo $OWNCLOUD_DOWNLOAD
