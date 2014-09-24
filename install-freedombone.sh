@@ -225,7 +225,7 @@ function search_for_attached_usb_drive {
           mkdir /media/usb
           mount $USB_DRIVE /media/usb
       fi
-      if ! [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      if ! [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
           if [ -d /media/usb/Maildir ]; then
               echo 'Maildir found on USB drive'
               IMPORT_MAILDIR=/media/usb/Maildir
