@@ -1138,7 +1138,7 @@ function folders_for_mailing_lists {
   echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/mailinglistrule
   echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/mailinglistrule
 
-  echo 'if ! [[ $MYUSERNAME && $MAILINGLIST && SUBJECTTAG ]]; then' >> /usr/bin/mailinglistrule
+  echo 'if ! [[ $MYUSERNAME && $MAILINGLIST && $SUBJECTTAG ]]; then' >> /usr/bin/mailinglistrule
   echo '  echo "mailinglistsrule [username] [mailinglistname] [subject tag]"' >> /usr/bin/mailinglistrule
   echo '  exit 1' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
