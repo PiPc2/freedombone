@@ -73,6 +73,14 @@ INSTALLED_WITHIN_DOCKER="no"
 # There should be no spaces in the name
 PRIVATE_MAILING_LIST=
 
+# Domain name or freedns subdomain for Owncloud installation
+OWNCLOUD_DOMAIN_NAME=
+# Freedns dynamic dns code for owncloud
+OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
+OWNCLOUD_ARCHIVE="owncloud-7.0.2.tar.bz2"
+OWNCLOUD_DOWNLOAD="https://download.owncloud.org/community/$OWNCLOUD_ARCHIVE"
+OWNCLOUD_HASH="ea07124a1b9632aa5227240d655e4d84967fb6dd49e4a16d3207d6179d031a3a"
+
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # optionally you can provide your exported GPG key pair here
@@ -96,6 +104,9 @@ INSTALL_DIR=$HOME/build
 
 # device name for an attached usb drive
 USB_DRIVE=/dev/sda1
+
+# memory limit for php in MB
+MAX_PHP_MEMORY=32
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -800,6 +811,9 @@ function script_to_make_self_signed_certificates {
 }
 
 function configure_email {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "configure_email" $COMPLETION_FILE; then
       return
   fi
@@ -884,6 +898,9 @@ function configure_email {
 
 function spam_filtering {
   # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
       return
   fi
@@ -980,6 +997,9 @@ function spam_filtering {
 }
 
 function configure_imap {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "configure_imap" $COMPLETION_FILE; then
       return
   fi
@@ -1005,6 +1025,9 @@ function configure_imap {
 }
 
 function configure_gpg {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "configure_gpg" $COMPLETION_FILE; then
       return
   fi
@@ -1063,6 +1086,9 @@ function configure_gpg {
 }
 
 function email_client {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "email_client" $COMPLETION_FILE; then
       return
   fi
@@ -1166,6 +1192,9 @@ function email_client {
 }
 
 function folders_for_mailing_lists {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
       return
   fi
@@ -1212,6 +1241,9 @@ function folders_for_mailing_lists {
 }
 
 function folders_for_email_addresses {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
       return
   fi
@@ -1276,6 +1308,9 @@ function dynamic_dns_freedns {
 }
 
 function create_private_mailing_list {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   # This installation doesn't work, results in ruby errors
   # There is currently no schleuder package for Debian jessie
   if grep -Fxq "create_private_mailing_list" $COMPLETION_FILE; then
@@ -1334,6 +1369,9 @@ function create_private_mailing_list {
 }
 
 function import_email {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
@@ -1392,7 +1430,195 @@ function install_web_server {
   git clone https://github.com/perusio/nginx_ensite
   cd $INSTALL_DIR/nginx_ensite
   cp nginx_* /usr/sbin
+  nginx_dissite default
   echo 'install_web_server' >> $COMPLETION_FILE
+}
+
+function install_owncloud {
+  if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
+  OWNCLOUD_COMPLETION_MSG1=" *** Freedombone $SYSTEM_TYPE is now installed ***"
+  OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
+  if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
+      if [[ $SYSTEM_TYPE == "cloud" ]]; then
+          # unmount any attached usb drive
+          if [ -d /media/usb ]; then
+              umount /media/usb
+              rm -rf /media/usb
+          fi
+          echo ''
+          echo $OWNCLOUD_COMPLETION_MSG1
+          echo $OWNCLOUD_COMPLETION_MSG2
+          exit 0
+      fi
+      return
+  fi
+  if [ ! $OWNCLOUD_DOMAIN_NAME ]; then
+      return
+  fi
+  if ! [[ $SYSTEM_TYPE == "cloud" ]]; then
+      if [ ! $SYSTEM_TYPE ]; then
+          return
+      fi
+  fi
+  # if this is exclusively a cloud setup
+  if [[ $SYSTEM_TYPE == "cloud" ]]; then
+      OWNCLOUD_DOMAIN_NAME=$DOMAIN_NAME
+      OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
+  fi
+  apt-get -y --force-yes install php5 php5-gd php-xml-parser php5-intl wget
+  apt-get -y --force-yesinstall php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl
+
+  if [ ! -d /var/www/$OWNCLOUD_DOMAIN_NAME ]; then
+      mkdir /var/www/$OWNCLOUD_DOMAIN_NAME
+      mkdir /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
+  fi
+
+  echo 'server {' > /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    listen 80;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo 'server {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    root /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    ssl on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$OWNCLOUD_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    # if you want to be able to access the site via HTTP' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    # then replace the above with the following:' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    # add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    client_max_body_size 10G; # set max upload size' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    rewrite ^/caldav(.*)$ /remote.php/caldav$1 redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    rewrite ^/carddav(.*)$ /remote.php/carddav$1 redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    rewrite ^/webdav(.*)$ /remote.php/webdav$1 redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    index index.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    location = /robots.txt {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        log_not_found off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    location ~ ^/(data|config|\.ht|db_structure\.xml|README) {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    location / {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        # The following 2 rules are only needed with webfinger' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        rewrite ^/.well-known/host-meta /public.php?service=host-meta last;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        rewrite ^/.well-known/host-meta.json /public.php?service=host-meta-json last;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '        rewrite ^/.well-known/carddav /remote.php/carddav/ redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        rewrite ^/.well-known/caldav /remote.php/caldav/ redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '        rewrite ^(/core/doc/[^\/]+/)$ $1/index.html;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '        try_files $uri $uri/ index.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    location ~ ^(.+?\.php)(/.*)?$ {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        try_files $1 =404;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        fastcgi_param SCRIPT_FILENAME $document_root$1;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        fastcgi_param PATH_INFO $2;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        fastcgi_param HTTPS on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+  echo '    # Optional: set long EXPIRES header on static assets' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    location ~* ^.+\.(jpg|jpeg|gif|bmp|ico|png|css|js|swf)$ {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        expires 30d;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "        # Optional: Don't log access to assets" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '        access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+
+
+  sed -i "s/memory_limit = 128M/memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/fpm/php.ini
+  sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini
+  sed -i "s/memory_limit = -1/memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
+  sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
+  sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
+
+  makecert $OWNCLOUD_DOMAIN_NAME
+
+  # download owncloud
+  cd $INSTALL_DIR
+  wget $OWNCLOUD_DOWNLOAD
+  if [ ! -f $INSTALL_DIR/$OWNCLOUD_ARCHIVE ]; then
+      echo 'Owncloud could not be downloaded.  Check that it exists at '
+      echo $OWNCLOUD_DOWNLOAD
+      echo 'And if neccessary update the version number and hash within this script'
+      exit 18
+  fi
+  # Check that the hash is correct
+  CHECKSUM=$(sha256sum $OWNCLOUD_ARCHIVE | awk -F ' ' '{print $1}')
+  if [[ $CHECKSUM != $OWNCLOUD_HASH ]]; then
+      echo 'The sha256 hash of the owncloud download is incorrect. Possibly the file may have been tampered with. Check the hash on the Owncloud web site.'
+      exit 19
+  fi
+  tar -xjf $OWNCLOUD_ARCHIVE
+  echo 'Copying files...'
+  cp -r owncloud/* /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
+  chown -R www-data:www-data /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/apps
+  chown -R www-data:www-data /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config
+  chown www-data:www-data /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
+
+  nginx_ensite $OWNCLOUD_DOMAIN_NAME
+  service php5-fpm restart
+  service nginx restart
+
+  # update the dynamic DNS
+  if [[ $OWNCLOUD_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+      if ! grep -q "$OWNCLOUD_DOMAIN_NAME" /usr/bin/dynamicdns; then
+          echo "# $OWNCLOUD_DOMAIN_NAME" >> /usr/bin/dynamicdns
+          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$OWNCLOUD_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+      fi
+  fi
+
+  echo 'install_owncloud' >> $COMPLETION_FILE
+
+  if [[ $SYSTEM_TYPE == "cloud" ]]; then
+      # unmount any attached usb drive
+      if [ -d /media/usb ]; then
+          umount /media/usb
+          rm -rf /media/usb
+      fi
+      echo ''
+      echo $OWNCLOUD_COMPLETION_MSG1
+      echo $OWNCLOUD_COMPLETION_MSG2
+      exit 0
+  fi
 }
 
 function install_final {
@@ -1448,6 +1674,7 @@ dynamic_dns_freedns
 import_email
 install_web_server
 configure_firewall_for_web_server
+install_owncloud
 install_final
 echo 'Freedombone installation is complete'
 exit 0
