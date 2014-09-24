@@ -1359,7 +1359,7 @@ function import_email {
   fi
   echo 'import_email' >> $COMPLETION_FILE
   if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
-	  apt-get -y --force-yes autoremove
+      apt-get -y --force-yes autoremove
       # unmount any attached usb drive
       echo ''
       echo $EMAIL_COMPLETE_MSG
@@ -1385,6 +1385,9 @@ function install_web_server {
   # install nginx
   apt-get -y --force-yes install nginx php5-fpm git
   # install a script to easily enable and disable nginx virtual hosts
+  if [ ! -d $INSTALL_DIR ]; then
+      mkdir $INSTALL_DIR
+  fi
   cd $INSTALL_DIR
   git clone https://github.com/perusio/nginx_ensite
   cd $INSTALL_DIR/nginx_ensite
