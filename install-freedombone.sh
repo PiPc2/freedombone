@@ -1491,7 +1491,7 @@ function install_owncloud {
       fi
   fi
   apt-get -y --force-yes install php5 php5-gd php-xml-parser php5-intl wget
-  apt-get -y --force-yes install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl
+  apt-get -y --force-yes install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl bzip2
 
   if [ ! -d /var/www/$OWNCLOUD_DOMAIN_NAME ]; then
       mkdir /var/www/$OWNCLOUD_DOMAIN_NAME
@@ -1593,7 +1593,9 @@ function install_owncloud {
   sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
   sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
 
-  makecert $OWNCLOUD_DOMAIN_NAME
+  if [ ! -f /etc/ssl/private/$OWNCLOUD_DOMAIN_NAME.key ]; then
+      makecert $OWNCLOUD_DOMAIN_NAME
+  fi
 
   # download owncloud
   cd $INSTALL_DIR
