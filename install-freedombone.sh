@@ -754,6 +754,9 @@ function configure_firewall_for_git {
 }
 
 function configure_firewall_for_email {
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
       return
   fi
