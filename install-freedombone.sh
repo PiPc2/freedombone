@@ -144,7 +144,7 @@ function change_login_message {
   echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' " >> /etc/motd
   echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'" >> /etc/motd
 
-  if [ $SYSTEM_TYPE == "cloud" ]; then
+  if [[ $SYSTEM_TYPE == "cloud" ]]; then
       echo '                  .--..             . ' >> /etc/motd
       echo '                 :    |             | ' >> /etc/motd
       echo '                 |    | .-. .  . .-.| ' >> /etc/motd
@@ -152,7 +152,7 @@ function change_login_message {
       echo "                   --' - -'  -- - -' -" >> /etc/motd
   fi
 
-  if [ $SYSTEM_TYPE == "chat" ]; then
+  if [[ $SYSTEM_TYPE == "chat" ]]; then
       echo '                  .--..         .   ' >> /etc/motd
       echo '                 :    |        _|_  ' >> /etc/motd
       echo '                 |    |--. .-.  |   ' >> /etc/motd
@@ -160,7 +160,7 @@ function change_login_message {
       echo "                   --''   - -' - -' " >> /etc/motd
   fi
 
-  if [ $SYSTEM_TYPE == "social" ]; then
+  if [[ $SYSTEM_TYPE == "social" ]]; then
       echo '               .-.                    .  ' >> /etc/motd
       echo '              (   )           o       |  ' >> /etc/motd
       echo '                -.  .-.  .-.  .  .-.  |  ' >> /etc/motd
@@ -326,7 +326,7 @@ function update_the_kernel {
   if grep -Fxq "update_the_kernel" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       return
   fi
   cd /opt/scripts/tools
@@ -338,7 +338,7 @@ function enable_zram {
   if grep -Fxq "enable_zram" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       return
   fi
   if ! grep -q "options zram num_devices=1" /etc/modprobe.d/zram.conf; then
@@ -420,12 +420,12 @@ function random_number_generator {
   if grep -Fxq "random_number_generator" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # it is assumed that docker uses the random number
       # generator of the host system
       return
   fi
-  if [ $USE_HWRNG == "yes" ]; then
+  if [[ $USE_HWRNG == "yes" ]]; then
     apt-get -y --force-yes install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
   else
@@ -612,7 +612,7 @@ function configure_firewall {
   if grep -Fxq "configure_firewall" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # docker does its own firewalling
       return
   fi
@@ -642,7 +642,7 @@ function configure_firewall_for_dns {
   if grep -Fxq "configure_firewall_for_dns" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # docker does its own firewalling
       return
   fi
@@ -655,7 +655,7 @@ function configure_firewall_for_ftp {
   if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # docker does its own firewalling
       return
   fi
@@ -668,7 +668,7 @@ function configure_firewall_for_web {
   if grep -Fxq "configure_firewall_for_web" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # docker does its own firewalling
       return
   fi
@@ -682,7 +682,7 @@ function configure_firewall_for_ssh {
   if grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # docker does its own firewalling
       return
   fi
@@ -696,7 +696,7 @@ function configure_firewall_for_git {
   if grep -Fxq "configure_firewall_for_git" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # docker does its own firewalling
       return
   fi
@@ -709,7 +709,7 @@ function configure_firewall_for_email {
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
       return
   fi
-  if [ $INSTALLED_WITHIN_DOCKER == "yes" ]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # docker does its own firewalling
       return
   fi
