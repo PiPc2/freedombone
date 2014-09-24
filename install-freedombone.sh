@@ -141,11 +141,11 @@ function change_login_message {
   echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'" >> /etc/motd
 
   if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
-      echo '             .    .           . .                         ' >> /etc/motd
-      echo '             |\  /|        o  | |                         ' >> /etc/motd
-      echo '             | \/ | .-.    .  | |.-.  .-.-. ,-            ' >> /etc/motd
-      echo '             |    |(   )   |  | |   )(   ) :              ' >> /etc/motd
-      echo '             '    ' `-' --'  - -' -'  `-'-' `-            ' >> /etc/motd
+      echo '             .    .           . .              ' >> /etc/motd
+      echo '             |\  /|        o  | |              ' >> /etc/motd
+      echo '             | \/ | .-.    .  | |.-.  .-.-. ,- ' >> /etc/motd
+      echo '             |    |(   )   |  | |   )(   ) :   ' >> /etc/motd
+      echo '             '    ' `-' --'  - -' -'  `-'-' `- ' >> /etc/motd
   fi
   echo '' >> /etc/motd
   echo '                  Freedom in the Cloud' >> /etc/motd
