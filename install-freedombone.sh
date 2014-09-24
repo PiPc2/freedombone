@@ -1137,6 +1137,11 @@ function folders_for_mailing_lists {
   echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/mailinglistrule
   echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/mailinglistrule
   echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/mailinglistrule
+
+  echo 'if ! [[ $MYUSERNAME && $MAILINGLIST && SUBJECTTAG ]]; then' >> /usr/bin/mailinglistrule
+  echo '  mailinglistsrule [username] [mailinglistname] [subject tag]' >> /usr/bin/mailinglistrule
+  echo '  exit 1' >> /usr/bin/mailinglistrule
+  echo 'fi' >> /usr/bin/mailinglistrule
   echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/mailinglistrule
   echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/mailinglistrule
   echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/mailinglistrule
@@ -1176,6 +1181,10 @@ function folders_for_email_addresses {
   echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/emailrule
   echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/emailrule
   echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/emailrule
+  echo 'if ! [[ $MYUSERNAME && $EMAILADDRESS && $MAILINGLIST ]]; then' >> /usr/bin/emailrule
+  echo '  emailrule [username] [emailaddress] [mailinglistname]' >> /usr/bin/emailrule
+  echo '  exit 1' >> /usr/bin/emailrule
+  echo 'fi' >> /usr/bin/emailrule
   echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/emailrule
   echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/emailrule
   echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/emailrule
