@@ -1158,9 +1158,9 @@ function folders_for_mailing_lists {
   echo '  mkdir $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
-  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)'
-  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC'
-  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC'
+  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/mailinglistrule
+  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/mailinglistrule
+  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/mailinglistrule
   chmod +x /usr/bin/mailinglistrule
   echo 'folders_for_mailing_lists' >> $COMPLETION_FILE
 }
@@ -1197,9 +1197,9 @@ function folders_for_email_addresses {
   echo '  mkdir $PROCMAILLOG' >> /usr/bin/emailrule
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/emailrule
   echo 'fi' >> /usr/bin/emailrule
-  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)'
-  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC'
-  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC'
+  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/emailrule
+  echo 'sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/emailrule
+  echo 'chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/emailrule
   chmod +x /usr/bin/emailrule
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
