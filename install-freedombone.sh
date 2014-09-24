@@ -144,6 +144,30 @@ function change_login_message {
   echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' " >> /etc/motd
   echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'" >> /etc/motd
 
+  if [ $SYSTEM_TYPE == "cloud" ]; then
+      echo '                  .--..             . ' >> /etc/motd
+      echo '                 :    |             | ' >> /etc/motd
+      echo '                 |    | .-. .  . .-.| ' >> /etc/motd
+      echo '                 :    |(   )|  |(   | ' >> /etc/motd
+      echo "                   --' - -' `-- - -' -" >> /etc/motd
+  fi
+
+  if [ $SYSTEM_TYPE == "chat" ]; then
+      echo '                  .--..         .   ' >> /etc/motd
+      echo '                 :    |        _|_  ' >> /etc/motd
+      echo '                 |    |--. .-.  |   ' >> /etc/motd
+      echo '                 :    |  |(   ) |   ' >> /etc/motd
+      echo "                   --''   - -' - -' " >> /etc/motd
+  fi
+
+  if [ $SYSTEM_TYPE == "social" ]; then
+      echo '               .-.                    .  ' >> /etc/motd
+      echo '              (   )           o       |  ' >> /etc/motd
+      echo '               `-.  .-.  .-.  .  .-.  |  ' >> /etc/motd
+      echo '              (   )(   )(     | (   ) |  ' >> /etc/motd
+      echo "               `-'  `-'   -'-'  - -' - - " >> /etc/motd
+  fi
+
   if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
       echo '             .    .           . .              ' >> /etc/motd
       echo '             |\  /|        o  | |              ' >> /etc/motd
@@ -151,6 +175,7 @@ function change_login_message {
       echo '             |    |(   )   |  | |   )(   ) :   ' >> /etc/motd
       echo '             '    ' `-' --'  - -' -'  `-'-' `- ' >> /etc/motd
   fi
+
   echo '' >> /etc/motd
   echo '                  Freedom in the Cloud' >> /etc/motd
   echo '' >> /etc/motd
@@ -1017,7 +1042,7 @@ function configure_gpg {
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $DOMAIN_NAME | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}'" - $MY_USERNAME)
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
-	  su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+      su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
   fi
 
   echo 'configure_gpg' >> $COMPLETION_FILE
@@ -1237,18 +1262,18 @@ function create_private_mailing_list {
       return
   fi
   if [ ! $PRIVATE_MAILING_LIST ]; then
-	  return
+      return
   fi
   if [ $PRIVATE_MAILING_LIST == $MY_USERNAME ]; then
-	  echo 'The name of the private mailing list should not be the'
-	  echo 'same as your username'
-	  exit 10
+      echo 'The name of the private mailing list should not be the'
+      echo 'same as your username'
+      exit 10
   fi
   if [ ! $MY_GPG_PUBLIC_KEY ]; then
-	  echo 'To create a private mailing list you need to specify a file'
-	  echo 'containing your exported GPG key within MY_GPG_PUBLIC_KEY at'
-	  echo 'the top of the script'
-	  exit 11
+      echo 'To create a private mailing list you need to specify a file'
+      echo 'containing your exported GPG key within MY_GPG_PUBLIC_KEY at'
+      echo 'the top of the script'
+      exit 11
   fi
   apt-get -y --force-yes install ruby ruby-dev ruby-gpgme libgpgme11-dev libmagic-dev
   gem install schleuder
