@@ -1262,6 +1262,8 @@ function dynamic_dns_freedns {
 }
 
 function create_private_mailing_list {
+  # This installation doesn't work, results in ruby errors
+  # There is currently no schleuder package for Debian jessie
   if grep -Fxq "create_private_mailing_list" $COMPLETION_FILE; then
       return
   fi
@@ -1404,7 +1406,7 @@ configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
 dynamic_dns_freedns
-create_private_mailing_list
+#create_private_mailing_list
 import_email
 install_final
 echo 'Freedombone installation is complete'
