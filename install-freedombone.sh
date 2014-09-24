@@ -149,7 +149,7 @@ function change_login_message {
       echo '                 :    |             | ' >> /etc/motd
       echo '                 |    | .-. .  . .-.| ' >> /etc/motd
       echo '                 :    |(   )|  |(   | ' >> /etc/motd
-      echo "                   --' - -' `-- - -' -" >> /etc/motd
+      echo "                   --' - -'  -- - -' -" >> /etc/motd
   fi
 
   if [ $SYSTEM_TYPE == "chat" ]; then
@@ -163,9 +163,9 @@ function change_login_message {
   if [ $SYSTEM_TYPE == "social" ]; then
       echo '               .-.                    .  ' >> /etc/motd
       echo '              (   )           o       |  ' >> /etc/motd
-      echo '               `-.  .-.  .-.  .  .-.  |  ' >> /etc/motd
+      echo '                -.  .-.  .-.  .  .-.  |  ' >> /etc/motd
       echo '              (   )(   )(     | (   ) |  ' >> /etc/motd
-      echo "               `-'  `-'   -'-'  - -' - - " >> /etc/motd
+      echo "                -'   -'   -'-'  - -' - - " >> /etc/motd
   fi
 
   if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
@@ -173,7 +173,7 @@ function change_login_message {
       echo '             |\  /|        o  | |              ' >> /etc/motd
       echo '             | \/ | .-.    .  | |.-.  .-.-. ,- ' >> /etc/motd
       echo '             |    |(   )   |  | |   )(   ) :   ' >> /etc/motd
-      echo '             '    ' `-' --'  - -' -'  `-'-' `- ' >> /etc/motd
+      echo '             '    '  -' --'  - -' -'   -'-'  - ' >> /etc/motd
   fi
 
   echo '' >> /etc/motd
@@ -1034,8 +1034,8 @@ function configure_gpg {
       echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo "Name-Real:  `hostname --fqdn`" >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo "Name-Email: $MY_USERNAME@`hostname --fqdn`" >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo "Name-Real:  $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo "Name-Email: $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
       su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
