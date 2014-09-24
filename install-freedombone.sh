@@ -106,7 +106,7 @@ INSTALL_DIR=$HOME/build
 USB_DRIVE=/dev/sda1
 
 # memory limit for php in MB
-MAX_PHP_MEMORY=32
+MAX_PHP_MEMORY="32"
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -1595,6 +1595,7 @@ function install_owncloud {
   sed -i "s/memory_limit = -1/memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
   sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
   sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
+  sed -i "s/memory_limit = /memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
 
   if [ ! -f /etc/ssl/private/$OWNCLOUD_DOMAIN_NAME.key ]; then
       makecert $OWNCLOUD_DOMAIN_NAME
