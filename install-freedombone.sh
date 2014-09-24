@@ -116,30 +116,50 @@ if [ ! -f $COMPLETION_FILE ]; then
     touch $COMPLETION_FILE
 fi
 
+function show_help {
+  echo ''
+  echo './install-freedombone.sh [domain] [username] [subdomain code] [system type]'
+  echo ''
+  echo 'domain'
+  echo '------'
+  echo 'This is your domain name or freedns subdomain.'
+  echo ''
+  echo 'username'
+  echo '--------'
+  echo ''
+  echo 'This will be your username on the system. It should be all'
+  echo 'lower case and contain no spaces'
+  echo ''
+  echo 'subdomain code'
+  echo '--------------'
+  echo 'This is the freedns dynamic DNS code for your subdomain.'
+  echo "To find it from https://freedns.afraid.org select 'Dynamic DNS',"
+  echo "then 'quick cron example' and copy the code located between "
+  echo "'?' and '=='."
+  echo ''
+  echo 'system type'
+  echo '-----------'
+  echo 'This can either be blank if you wish to install the full system,'
+  echo 'or for more specialised variants you can specify "mailbox", "cloud",'
+  echo '"chat", "social" or "writer"'
+  echo ''
+}
+
 function argument_checks {
-  SYNTAX='./install-freedombone.sh [domain] [username] [subdomain code] [system ty[e]'
   if [ ! -d /home/$MY_USERNAME ]; then
       echo "There is no user '$MY_USERNAME' on the system. Use 'adduser $MY_USERNAME' to create the user."
       exit 1
   fi
   if [ ! $DOMAIN_NAME ]; then
-      echo ''
-      echo $SYNTAX
-      echo 'Please specify your domain name'
+	  show_help
       exit 2
   fi
   if [ ! $MY_USERNAME ]; then
-      echo ''
-      echo $SYNTAX
-      echo 'Please specify your username'
+	  show_help
       exit 3
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
-      echo ''
-      echo $SYNTAX
-      echo 'Please specify the freedns subdomain code.  To find it from '
-      echo "https://freedns.afraid.org select 'Dynamic DNS', then 'quick "
-      echo "cron example' and copy the code located between '?' and '=='."
+	  show_help
       exit 4
   fi
 }
@@ -814,7 +834,7 @@ function script_to_make_self_signed_certificates {
 }
 
 function configure_email {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   if grep -Fxq "configure_email" $COMPLETION_FILE; then
@@ -901,7 +921,7 @@ function configure_email {
 
 function spam_filtering {
   # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
@@ -1000,7 +1020,7 @@ function spam_filtering {
 }
 
 function configure_imap {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   if grep -Fxq "configure_imap" $COMPLETION_FILE; then
@@ -1028,7 +1048,7 @@ function configure_imap {
 }
 
 function configure_gpg {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   if grep -Fxq "configure_gpg" $COMPLETION_FILE; then
@@ -1089,7 +1109,7 @@ function configure_gpg {
 }
 
 function email_client {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   if grep -Fxq "email_client" $COMPLETION_FILE; then
@@ -1195,7 +1215,7 @@ function email_client {
 }
 
 function folders_for_mailing_lists {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
@@ -1244,7 +1264,7 @@ function folders_for_mailing_lists {
 }
 
 function folders_for_email_addresses {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
@@ -1311,7 +1331,7 @@ function dynamic_dns_freedns {
 }
 
 function create_private_mailing_list {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   # This installation doesn't work, results in ruby errors
@@ -1372,7 +1392,7 @@ function create_private_mailing_list {
 }
 
 function import_email {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
@@ -1438,7 +1458,7 @@ function install_web_server {
 }
 
 function install_owncloud {
-  if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
   fi
   OWNCLOUD_COMPLETION_MSG1=" *** Freedombone $SYSTEM_TYPE is now installed ***"
