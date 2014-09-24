@@ -664,8 +664,8 @@ function configure_firewall_for_ftp {
   echo 'configure_firewall_for_ftp' >> $COMPLETION_FILE
 }
 
-function configure_firewall_for_web {
-  if grep -Fxq "configure_firewall_for_web" $COMPLETION_FILE; then
+function configure_firewall_for_web_access {
+  if grep -Fxq "configure_firewall_for_web_access" $COMPLETION_FILE; then
       return
   fi
   if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
@@ -675,7 +675,21 @@ function configure_firewall_for_web {
   iptables -A INPUT -i eth0 -p tcp --dport 32768:61000 --sport 80 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 32768:61000 --sport 443 -j ACCEPT
   save_firewall_settings
-  echo 'configure_firewall_for_web' >> $COMPLETION_FILE
+  echo 'configure_firewall_for_web_access' >> $COMPLETION_FILE
+}
+
+function configure_firewall_for_web_server {
+  if grep -Fxq "configure_firewall_for_web_server" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+      # docker does its own firewalling
+      return
+  fi
+  iptables -A INPUT -i eth0 -p tcp --dport 80 -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 443 -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_web_server' >> $COMPLETION_FILE
 }
 
 function configure_firewall_for_ssh {
@@ -1400,7 +1414,7 @@ configure_firewall
 configure_firewall_for_ssh
 configure_firewall_for_dns
 configure_firewall_for_ftp
-configure_firewall_for_web
+configure_firewall_for_web_access
 remove_proprietary_repos
 change_debian_repos
 enable_backports
@@ -1430,6 +1444,7 @@ dynamic_dns_freedns
 #create_private_mailing_list
 import_email
 install_web_server
+configure_firewall_for_web_server
 install_final
 echo 'Freedombone installation is complete'
 exit 0
