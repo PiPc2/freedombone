@@ -1477,6 +1477,11 @@ function install_owncloud {
       fi
       return
   fi
+  # if this is exclusively a cloud setup
+  if [[ $SYSTEM_TYPE == "cloud" ]]; then
+      OWNCLOUD_DOMAIN_NAME=$DOMAIN_NAME
+      OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
+  fi
   if [ ! $OWNCLOUD_DOMAIN_NAME ]; then
       return
   fi
@@ -1485,13 +1490,8 @@ function install_owncloud {
           return
       fi
   fi
-  # if this is exclusively a cloud setup
-  if [[ $SYSTEM_TYPE == "cloud" ]]; then
-      OWNCLOUD_DOMAIN_NAME=$DOMAIN_NAME
-      OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
-  fi
   apt-get -y --force-yes install php5 php5-gd php-xml-parser php5-intl wget
-  apt-get -y --force-yesinstall php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl
+  apt-get -y --force-yes install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl
 
   if [ ! -d /var/www/$OWNCLOUD_DOMAIN_NAME ]; then
       mkdir /var/www/$OWNCLOUD_DOMAIN_NAME
