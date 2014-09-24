@@ -1359,6 +1359,25 @@ function import_email {
   fi
 }
 
+function install_web_server {
+  if grep -Fxq "install_web_server" $COMPLETION_FILE; then
+      return
+  fi
+  # remove apache
+  apt-get -y remove --purge apache2
+  if [ -d /etc/apache2 ]; then
+    rm -rf /etc/apache2
+  fi
+  # install nginx
+  apt-get -y --force-yes install nginx php5-fpm git
+  # install a script to easily enable and disable nginx virtual hosts
+  cd $INSTALL_DIR
+  git clone https://github.com/perusio/nginx_ensite
+  cd $INSTALL_DIR/nginx_ensite
+  cp nginx_* /usr/sbin
+  echo 'install_web_server' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -1410,6 +1429,7 @@ folders_for_email_addresses
 dynamic_dns_freedns
 #create_private_mailing_list
 import_email
+install_web_server
 install_final
 echo 'Freedombone installation is complete'
 exit 0
