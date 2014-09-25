@@ -1784,6 +1784,8 @@ function install_irc_server {
   sed -i 's/;ConnectIPv4 = yes/ConnectIPv4 = yes/g' /etc/ngircd/ngircd.conf
   sed -i 's/;MorePrivacy = no/MorePrivacy = yes/g' /etc/ngircd/ngircd.conf
   sed -i 's/;RequireAuthPing = no/RequireAuthPing = no/g' /etc/ngircd/ngircd.conf
+  sed -i "s/;Name = TheOper/Name = $MY_USERNAME/g" /etc/ngircd/ngircd.conf
+  sed -i "s/;Password = ThePwd/Password = $(openssl rand -base64 8)/g" /etc/ngircd/ngircd.conf
   service ngircd restart
   echo 'install_irc_server' >> $COMPLETION_FILE
 }
