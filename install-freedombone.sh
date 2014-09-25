@@ -1772,7 +1772,9 @@ function install_irc_server {
       return
   fi
   apt-get -y --force-yes install ngircd
-  makecert ngircd
+  if [ ! "/etc/ssl/private/ngircd.key" ]; then
+      makecert ngircd
+  fi
 
   echo '**************************************************' > /etc/ngircd/motd
   echo '*           F R E E D O M B O N E   I R C        *' >> /etc/ngircd/motd
@@ -1793,12 +1795,14 @@ function install_irc_server {
   sed -i 's/;MaxUsers = 23/MaxUsers = 23/g' /etc/ngircd/ngircd.conf
   sed -i 's|;KeyFile = /etc/ngircd/#chan.key|KeyFile = /etc/ngircd/#freedombone.key|g' /etc/ngircd/ngircd.conf
   sed -i 's/;CloakHost = cloaked.host/CloakHost = cloaked.host/g' /etc/ngircd/ngircd.conf
-  sed -i "s/;CloakHostSalt = abcdefghijklmnopqrstuvwxyz/CloakHostSalt = $(openssl rand -base64 64)/g" /etc/ngircd/ngircd.conf
+  IRC_SALT=$(openssl rand -base64 64)
+  IRC_OPERATOR_PASSWORD=$(openssl rand -base64 8)
+  sed -i "s/;CloakHostSalt = abcdefghijklmnopqrstuvwxyz/CloakHostSalt = $IRC_SALT/g" /etc/ngircd/ngircd.conf
   sed -i 's/;ConnectIPv4 = yes/ConnectIPv4 = yes/g' /etc/ngircd/ngircd.conf
   sed -i 's/;MorePrivacy = no/MorePrivacy = yes/g' /etc/ngircd/ngircd.conf
   sed -i 's/;RequireAuthPing = no/RequireAuthPing = no/g' /etc/ngircd/ngircd.conf
   sed -i "s/;Name = TheOper/Name = $MY_USERNAME/g" /etc/ngircd/ngircd.conf
-  sed -i "s/;Password = ThePwd/Password = $(openssl rand -base64 8)/g" /etc/ngircd/ngircd.conf
+  sed -i "s/;Password = ThePwd/Password = $IRC_OPERATOR_PASSWORD/g" /etc/ngircd/ngircd.conf
   service ngircd restart
   echo 'install_irc_server' >> $COMPLETION_FILE
 }
