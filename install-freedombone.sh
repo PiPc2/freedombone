@@ -1726,6 +1726,7 @@ function install_xmpp {
       sed -i '/c2s_require_encryption/a\s2s_require_encryption = true' /etc/prosody/prosody.cfg.lua
   fi
   sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
+  sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"' /etc/prosody/prosody.cfg.lua
 
   prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
   service prosody restart
