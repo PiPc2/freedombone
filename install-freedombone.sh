@@ -1728,8 +1728,8 @@ function install_xmpp {
   sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
   sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"' /etc/prosody/prosody.cfg.lua
 
-  prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
   service prosody restart
+  prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
   echo 'Change your XMPP password using:' >> /home/$MY_USERNAME/README
   echo '' >> /home/$MY_USERNAME/README
   echo "    prosodyctl new_password $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
