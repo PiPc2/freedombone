@@ -1723,10 +1723,12 @@ function install_xmpp {
       echo 'modules_enabled = {' >> /etc/prosody/conf.avail/xmpp.cfg.lua
       echo '  "bosh"; -- Enable mod_bosh' >> /etc/prosody/conf.avail/xmpp.cfg.lua
       echo '  "tls"; -- Enable mod_tls' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo '  "saslauth"; -- Enable mod_saslauth' >> /etc/prosody/conf.avail/xmpp.cfg.lua
       echo '}' >> /etc/prosody/conf.avail/xmpp.cfg.lua
       echo '' >> /etc/prosody/conf.avail/xmpp.cfg.lua
       echo 'c2s_require_encryption = true' >> /etc/prosody/conf.avail/xmpp.cfg.lua
       echo 's2s_require_encryption = true' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo 'allow_unencrypted_plain_auth = false' >> /etc/prosody/conf.avail/xmpp.cfg.lua
   fi
   ln -sf /etc/prosody/conf.avail/xmpp.cfg.lua /etc/prosody/conf.d/xmpp.cfg.lua
 
@@ -1739,19 +1741,24 @@ function install_xmpp {
   if ! grep -q "s2s_require_encryption" /etc/prosody/prosody.cfg.lua; then
       sed -i '/c2s_require_encryption/a\s2s_require_encryption = true' /etc/prosody/prosody.cfg.lua
   fi
+  if ! grep -q "allow_unencrypted_plain_auth" /etc/prosody/prosody.cfg.lua; then
+      echo 'allow_unencrypted_plain_auth = false' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+  fi
   sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
   sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"/g' /etc/prosody/prosody.cfg.lua
+  sed -i 's/enabled = false -- Remove this line to enable this host//g' /etc/prosody/prosody.cfg.lua
+  sed -i 's/example.com/$DOMAIN_NAME/g' /etc/prosody/prosody.cfg.lua
 
   service prosody restart
   touch /home/$MY_USERNAME/README
 
-  if ! grep -Fxq "Your XMPP password is" /home/$MY_USERNAME/README; then
+  if ! grep -q "Your XMPP password is" /home/$MY_USERNAME/README; then
       XMPP_PASSWORD=$(openssl rand -base64 8)
       prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
       echo "Your XMPP password is: $XMPP_PASSWORD" >> /home/$MY_USERNAME/README
       echo 'You can change it with: ' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      echo "    prosodyctl new_password $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
+      echo "    prosodyctl passwd $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
   echo 'install_xmpp' >> $COMPLETION_FILE
