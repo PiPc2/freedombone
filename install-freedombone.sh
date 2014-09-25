@@ -486,6 +486,11 @@ function configure_ssh {
   KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1' >> /etc/ssh/sshd_config
   apt-get -y --force-yes install fail2ban
   echo 'configure_ssh' >> $COMPLETION_FILE
+  # Don't reboot if installing within docker
+  # random numbers will come from the host system
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+      return
+  fi
   echo ''
   echo ''
   echo '  *** Rebooting to initialise ssh settings and random number generator ***'
