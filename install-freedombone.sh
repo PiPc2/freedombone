@@ -81,11 +81,6 @@ OWNCLOUD_ARCHIVE="owncloud-7.0.2.tar.bz2"
 OWNCLOUD_DOWNLOAD="https://download.owncloud.org/community/$OWNCLOUD_ARCHIVE"
 OWNCLOUD_HASH="ea07124a1b9632aa5227240d655e4d84967fb6dd49e4a16d3207d6179d031a3a"
 
-# You should either change this before running the script
-# or change it later with:
-# prosodyctl new_password myusername@mydomainname.com
-XMPP_PASSWORD="temppwd"
-
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # optionally you can provide your exported GPG key pair here
@@ -711,6 +706,23 @@ function configure_firewall_for_xmpp {
   iptables -A INPUT -i eth0 -p tcp --dport 5280:5281 -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_xmpp' >> $COMPLETION_FILE
+}
+
+function configure_firewall_for_irc {
+  if [ ! -d /etc/ngircd ]; then
+      return
+  fi
+  if grep -Fxq "configure_firewall_for_irc" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+      # docker does its own firewalling
+      return
+  fi
+  iptables -A INPUT -i eth0 -p tcp --dport 6697  -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 9999 -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_irc' >> $COMPLETION_FILE
 }
 
 function configure_firewall_for_ftp {
@@ -1729,12 +1741,51 @@ function install_xmpp {
   sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"' /etc/prosody/prosody.cfg.lua
 
   service prosody restart
+  XMPP_PASSWORD=$(openssl rand -base64 8)
   prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
-  echo 'Change your XMPP password using:' >> /home/$MY_USERNAME/README
+  echo "Your XMPP password is: $XMPP_PASSWORD" >> /home/$MY_USERNAME/README
+  echo 'You can change it with: ' >> /home/$MY_USERNAME/README
   echo '' >> /home/$MY_USERNAME/README
   echo "    prosodyctl new_password $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
   chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   echo 'install_xmpp' >> $COMPLETION_FILE
+}
+
+function install_irc_server {
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
+  if grep -Fxq "install_irc_server" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install ngircd
+  makecert ngircd
+
+  echo '**************************************************' > /etc/ngircd/motd
+  echo '*           F R E E D O M B O N E   I R C        *' >> /etc/ngircd/motd
+  echo '*                                                *' >> /etc/ngircd/motd
+  echo '*               Freedom in the Cloud             *' >> /etc/ngircd/motd
+  echo '**************************************************' >> /etc/ngircd/motd
+  sed -i 's|MotdFile = /etc/ngircd/ngircd.motd|MotdFile = /etc/ngircd/motd|g' /etc/ngircd/ngircd.conf
+  sed -i "s/irc@irc.example.com/$MY_USERNAME@$DOMAIN_NAME/g" /etc/ngircd/ngircd.conf
+  sed -i "s/irc.example.net/$DOMAIN_NAME/g" /etc/ngircd/ngircd.conf
+  sed -i "s|Yet another IRC Server running on Debian GNU/Linux|IRC Server of $DOMAIN_NAME|g" /etc/ngircd/ngircd.conf
+  sed -i 's/;Password = wealllikedebian/Password =/g' /etc/ngircd/ngircd.conf
+  sed -i 's|;CertFile = /etc/ssl/certs/server.crt|CertFile = /etc/ssl/certs/ngircd.crt|g' /etc/ngircd/ngircd.conf
+  sed -i 's|;DHFile = /etc/ngircd/dhparams.pem|DHFile = /etc/ssl/certs/ngircd.dhparam|g' /etc/ngircd/ngircd.conf
+  sed -i 's|;KeyFile = /etc/ssl/private/server.key|KeyFile = /etc/ssl/private/ngircd.key|g' /etc/ngircd/ngircd.conf
+  sed -i 's/;Ports = 6697, 9999/Ports = 6697, 9999/g' /etc/ngircd/ngircd.conf
+  sed -i 's/;Name = #ngircd/Name = #freedombone/g' /etc/ngircd/ngircd.conf
+  sed -i 's/;Topic = Our ngircd testing channel/Topic = Freedombone chat channel/g' /etc/ngircd/ngircd.conf
+  sed -i 's/;MaxUsers = 23/MaxUsers = 23/g' /etc/ngircd/ngircd.conf
+  sed -i 's|;KeyFile = /etc/ngircd/#chan.key|KeyFile = /etc/ngircd/#freedombone.key|g' /etc/ngircd/ngircd.conf
+  sed -i 's/;CloakHost = cloaked.host/CloakHost = cloaked.host/g' /etc/ngircd/ngircd.conf
+  sed -i "s/;CloakHostSalt = abcdefghijklmnopqrstuvwxyz/CloakHostSalt = $(openssl rand -base64 64)/g" /etc/ngircd/ngircd.conf
+  sed -i 's/;ConnectIPv4 = yes/ConnectIPv4 = yes/g' /etc/ngircd/ngircd.conf
+  sed -i 's/;MorePrivacy = no/MorePrivacy = yes/g' /etc/ngircd/ngircd.conf
+  sed -i 's/;RequireAuthPing = no/RequireAuthPing = no/g' /etc/ngircd/ngircd.conf
+  service ngircd restart
+  echo 'install_irc_server' >> $COMPLETION_FILE
 }
 
 function install_final {
@@ -1793,6 +1844,8 @@ configure_firewall_for_web_server
 install_owncloud
 install_xmpp
 configure_firewall_for_xmpp
+install_irc_server
+configure_firewall_for_irc
 install_final
 echo 'Freedombone installation is complete'
 exit 0
