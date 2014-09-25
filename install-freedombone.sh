@@ -1703,7 +1703,9 @@ function install_xmpp {
       return
   fi
   apt-get -y --force-yes install prosody
-  makecert xmpp
+  if [ ! -f "/etc/ssl/private/xmpp.key" ]; then
+      makecert xmpp
+  fi
   chown prosody:prosody /etc/ssl/private/xmpp.key
   chown prosody:prosody /etc/ssl/certs/xmpp.*
   cp -a /etc/prosody/conf.avail/example.com.cfg.lua /etc/prosody/conf.avail/xmpp.cfg.lua
@@ -1738,16 +1740,20 @@ function install_xmpp {
       sed -i '/c2s_require_encryption/a\s2s_require_encryption = true' /etc/prosody/prosody.cfg.lua
   fi
   sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
-  sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"' /etc/prosody/prosody.cfg.lua
+  sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"/g' /etc/prosody/prosody.cfg.lua
 
   service prosody restart
-  XMPP_PASSWORD=$(openssl rand -base64 8)
-  prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
-  echo "Your XMPP password is: $XMPP_PASSWORD" >> /home/$MY_USERNAME/README
-  echo 'You can change it with: ' >> /home/$MY_USERNAME/README
-  echo '' >> /home/$MY_USERNAME/README
-  echo "    prosodyctl new_password $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
-  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  touch /home/$MY_USERNAME/README
+
+  if ! grep -Fxq "Your XMPP password is" /home/$MY_USERNAME/README; then
+      XMPP_PASSWORD=$(openssl rand -base64 8)
+      prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
+      echo "Your XMPP password is: $XMPP_PASSWORD" >> /home/$MY_USERNAME/README
+      echo 'You can change it with: ' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "    prosodyctl new_password $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
   echo 'install_xmpp' >> $COMPLETION_FILE
 }
 
