@@ -81,6 +81,11 @@ OWNCLOUD_ARCHIVE="owncloud-7.0.2.tar.bz2"
 OWNCLOUD_DOWNLOAD="https://download.owncloud.org/community/$OWNCLOUD_ARCHIVE"
 OWNCLOUD_HASH="ea07124a1b9632aa5227240d655e4d84967fb6dd49e4a16d3207d6179d031a3a"
 
+# You should either change this before running the script
+# or change it later with:
+# prosodyctl new_password myusername@mydomainname.com
+XMPP_PASSWORD="temppwd"
+
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # optionally you can provide your exported GPG key pair here
@@ -1722,8 +1727,12 @@ function install_xmpp {
   fi
   sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
 
-  prosodyctl adduser $MY_USERNAME@$DOMAIN_NAME
+  prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
   service prosody restart
+  echo 'Change your XMPP password using:' >> /home/$MY_USERNAME/README
+  echo '' >> /home/$MY_USERNAME/README
+  echo "    prosodyctl new_password $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   echo 'install_xmpp' >> $COMPLETION_FILE
 }
 
