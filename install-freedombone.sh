@@ -690,6 +690,24 @@ function configure_firewall_for_dns {
   echo 'configure_firewall_for_dns' >> $COMPLETION_FILE
 }
 
+function configure_firewall_for_xmpp {
+  if [ ! -d /etc/prosody ]; then
+      return
+  fi
+  if grep -Fxq "configure_firewall_for_xmpp" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+      # docker does its own firewalling
+      return
+  fi
+  iptables -A INPUT -i eth0 -p tcp --dport 5222:5223 -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 5269 -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 5280:5281 -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_xmpp' >> $COMPLETION_FILE
+}
+
 function configure_firewall_for_ftp {
   if grep -Fxq "configure_firewall_for_ftp" $COMPLETION_FILE; then
       return
@@ -1443,6 +1461,9 @@ function import_email {
 }
 
 function install_web_server {
+  if [[ $SYSTEM_TYPE == "chat" ]]; then
+      return
+  fi
   if grep -Fxq "install_web_server" $COMPLETION_FILE; then
       return
   fi
@@ -1657,6 +1678,55 @@ function install_owncloud {
   fi
 }
 
+function install_xmpp {
+  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
+  if grep -Fxq "install_xmpp" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install prosody
+  makecert xmpp
+  chown prosody:prosody /etc/ssl/private/xmpp.key
+  chown prosody:prosody /etc/ssl/certs/xmpp.*
+  cp -a /etc/prosody/conf.avail/example.com.cfg.lua /etc/prosody/conf.avail/xmpp.cfg.lua
+
+  sed -i 's|/etc/prosody/certs/example.com.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+  sed -i 's|/etc/prosody/certs/example.com.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+  if ! grep -q "xmpp.dhparam" /etc/prosody/conf.avail/xmpp.cfg.lua; then
+      sed -i '/certificate =/a\              dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/conf.avail/xmpp.cfg.lua
+  fi
+  sed -i "s/example.com/$DOMAIN_NAME/g" /etc/prosody/conf.avail/xmpp.cfg.lua
+  sed -i 's/enabled = false -- Remove this line to enable this host//g' /etc/prosody/conf.avail/xmpp.cfg.lua
+
+  if ! grep -q "modules_enabled" /etc/prosody/conf.avail/xmpp.cfg.lua; then
+      echo '' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo 'modules_enabled = {' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo '  "bosh"; -- Enable mod_bosh' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo '  "tls"; -- Enable mod_tls' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo '}' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo '' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo 'c2s_require_encryption = true' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+      echo 's2s_require_encryption = true' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+  fi
+  ln -sf /etc/prosody/conf.avail/xmpp.cfg.lua /etc/prosody/conf.d/xmpp.cfg.lua
+
+  sed -i 's|/etc/prosody/certs/localhost.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/prosody.cfg.lua
+  sed -i 's|/etc/prosody/certs/localhost.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/prosody.cfg.lua
+  if ! grep -q "xmpp.dhparam" /etc/prosody/prosody.cfg.lua; then
+      sed -i '/certificate =/a\      dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/prosody.cfg.lua
+  fi
+  sed -i 's/c2s_require_encryption = false/c2s_require_encryption = true/g' /etc/prosody/prosody.cfg.lua
+  if ! grep -q "s2s_require_encryption" /etc/prosody/prosody.cfg.lua; then
+      sed -i '/c2s_require_encryption/a\s2s_require_encryption = true' /etc/prosody/prosody.cfg.lua
+  fi
+  sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
+
+  prosodyctl adduser $MY_USERNAME@$DOMAIN_NAME
+  service prosody restart
+  echo 'install_xmpp' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -1711,6 +1781,8 @@ import_email
 install_web_server
 configure_firewall_for_web_server
 install_owncloud
+install_xmpp
+configure_firewall_for_xmpp
 install_final
 echo 'Freedombone installation is complete'
 exit 0
