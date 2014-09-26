@@ -1896,8 +1896,12 @@ function install_wiki {
   fi
 
   tar -xzvf $WIKI_ARCHIVE
-  rm -rf /var/www/$WIKI_DOMAIN_NAME/htdocs
-  mv dokuwiki /var/www/$WIKI_DOMAIN_NAME/htdocs
+  cd dokuwiki-*
+
+  if [ -f "/var/www/$WIKI_DOMAIN_NAME/htdocs" ]; then
+      rm -rf /var/www/$WIKI_DOMAIN_NAME/htdocs
+  fi
+  mv * /var/www/$WIKI_DOMAIN_NAME/htdocs/
   chmod -R 755 /var/www/$WIKI_DOMAIN_NAME/htdocs
   chown -R www-data:www-data /var/www/$WIKI_DOMAIN_NAME/htdocs
 
