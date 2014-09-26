@@ -85,6 +85,10 @@ PRIVATE_MAILING_LIST=
 MICROBLOG_DOMAIN_NAME=
 MICROBLOG_REPO="git://gitorious.org/social/mainline.git"
 
+# Domain name or redmatrix installation
+REDMATRIX_DOMAIN_NAME=
+REDMATRIX_REPO=""
+
 # Domain name or freedns subdomain for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
 # Freedns dynamic dns code for owncloud
@@ -203,10 +207,10 @@ function argument_checks {
       exit 4
   fi
   if [ $SYSTEM_TYPE ]; then
-	  if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL ]]; then
-		  echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
-		  exit 30
-	  fi
+      if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL ]]; then
+          echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
+          exit 30
+      fi
   fi
 }
 
@@ -2222,15 +2226,22 @@ function install_gnu_social {
       return
   fi
   if [ ! $MICROBLOG_DOMAIN_NAME ]; then
-	  return
+      return
   fi
 
   install_mariadb
 
-  apt-get -y --force-yes install php5-xcache php-gettext php5-curl php5-gd php5-mysql git
+  apt-get -y --force-yes install php-gettext php5-curl php5-gd php5-mysql git
 
-  cd $INSTALL_DIR
+  if [ ! -d /var/www/$MICROBLOG_DOMAIN_NAME ]; then
+      mkdir /var/www/$MICROBLOG_DOMAIN_NAME
+  fi
+  if [ ! -d /var/www/$MICROBLOG_DOMAIN_NAME/htdocs ]; then
+      mkdir /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  fi
+
   if [ ! -f /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/index.php ]; then
+      cd $INSTALL_DIR
       git clone $MICROBLOG_REPO gnusocial
 
       rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
@@ -2256,8 +2267,14 @@ function install_redmatrix {
 
   install_mariadb
 
-  apt-get -y --force-yes install mysql-server php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
-  cp /usr/share/doc/mysql-server-5.5/examples/my-small.cnf /etc/mysql/my.cnf
+  apt-get -y --force-yes install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
+
+  if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME ]; then
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME
+  fi
+  if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs ]; then
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
+  fi
 
   cd $INSTALL_DIR
 
@@ -2279,8 +2296,8 @@ function install_final {
   echo '  *** Freedombone installation is complete. Rebooting... ***'
   echo ''
   if [ -f "/home/$MY_USERNAME/README" ]; then
-	  echo "See /home/$MY_USERNAME/README for post-installation instructions."
-	  echo ''
+      echo "See /home/$MY_USERNAME/README for post-installation instructions."
+      echo ''
   fi
   reboot
 }
