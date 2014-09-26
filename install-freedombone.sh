@@ -2063,6 +2063,8 @@ function install_blog {
       return
   fi
 
+  apt-get -y --force-yes install unzip
+
   # download mnml-blog
   cd $INSTALL_DIR
   rm -f latest
@@ -2102,11 +2104,11 @@ function install_blog {
   # install blogTNG
   unzip $WIKI_BLOGTNG_ADDON_ARCHIVE
   mv $WIKI_BLOGTNG_ADDON_NAME blogtng
-  cp blogtng /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
+  cp -r blogtng /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
 
   # install mnml-blog
   tar -xzvf $WIKI_MNML_BLOG_ADDON_ARCHIVE
-  cp mnml-blog /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/
+  cp -r mnml-blog /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl
   cp -r /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/mnml-blog/blogtng-tpl/* /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/default/
 
   echo 'install_blog' >> $COMPLETION_FILE
