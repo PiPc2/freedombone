@@ -2133,6 +2133,9 @@ function install_blog {
   cp -r sqlite /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
 
   # install blogTNG
+  if [ -d "$INSTALL_DIR/$WIKI_BLOGTNG_ADDON_NAME" ]; then
+      rm -rf $INSTALL_DIR/$WIKI_BLOGTNG_ADDON_NAME
+  fi
   unzip $WIKI_BLOGTNG_ADDON_ARCHIVE
   if [ -d "$INSTALL_DIR/blogtng" ]; then
       rm -rf $INSTALL_DIR/blogtng
