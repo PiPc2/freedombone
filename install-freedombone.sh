@@ -2190,6 +2190,10 @@ function install_final {
   echo ''
   echo '  *** Freedombone installation is complete. Rebooting... ***'
   echo ''
+  if [ -f "/home/$MY_USERNAME/README" ]; then
+	  echo "See /home/$MY_USERNAME/README for post-installation instructions."
+	  echo ''
+  fi
   reboot
 }
 
