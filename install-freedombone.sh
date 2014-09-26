@@ -84,6 +84,7 @@ PRIVATE_MAILING_LIST=
 # Domain name or freedns subdomain for microblog installation
 MICROBLOG_DOMAIN_NAME=
 MICROBLOG_REPO="git://gitorious.org/social/mainline.git"
+MICROBLOG_ADMIN_PASSWORD=
 
 # Domain name or redmatrix installation
 REDMATRIX_DOMAIN_NAME=
@@ -2205,7 +2206,6 @@ function install_mariadb {
 
   if [ ! $MARIADB_PASSWORD ]; then
       MARIADB_PASSWORD=$(openssl rand -base64 32)
-      prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
       echo '' >> /home/$MY_USERNAME/README
       echo "Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
@@ -2253,6 +2253,22 @@ function install_gnu_social {
       chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/file
       chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
   fi
+
+  if [ ! $MICROBLOG_ADMIN_PASSWORD ]; then
+      MICROBLOG_ADMIN_PASSWORD=$(openssl rand -base64 32)
+      echo '' >> /home/$MY_USERNAME/README
+      echo "Your MariaDB gnusocial admin password is: $MICROBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  echo "create database gnusocial;
+CREATE USER 'gnusocialadmin'@'localhost' IDENTIFIED BY '$MICROBLOG_ADMIN_PASSWORD';
+GRANT ALL PRIVILEGES ON gnusocial.* TO 'gnusocialadmin'@'localhost';
+quit" > $INSTALL_DIR/batch.sql
+  chmod 600 $INSTALL_DIR/batch.sql
+  mysql -u root -p $MARIADB_PASSWORD < $INSTALL_DIR/batch.sql
+  shred -zu $INSTALL_DIR/batch.sql
 
   echo 'install_gnu_social' >> $COMPLETION_FILE
 }
