@@ -166,8 +166,8 @@ function show_help {
   echo 'system type'
   echo '-----------'
   echo 'This can either be blank if you wish to install the full system,'
-  echo 'or for more specialised variants you can specify "mailbox", "cloud",'
-  echo '"chat", "social" or "writer"'
+  echo "or for more specialised variants you can specify '$VARIANT_MAILBOX', '$VARIANT_CLOUD',"
+  echo "'$VARIANT_CHAT', '$VARIANT_SOCIAL' or '$VARIANT_WRITER'"
   echo ''
 }
 
