@@ -141,6 +141,9 @@ USB_DRIVE=/dev/sda1
 # memory limit for php in MB
 MAX_PHP_MEMORY=32
 
+# default MariaDB password
+MARIADB_PASSWORD=
+
 export DEBIAN_FRONTEND=noninteractive
 
 # File which keeps track of what has already been installed
@@ -2176,6 +2179,31 @@ function install_blog {
   echo 'install_blog' >> $COMPLETION_FILE
 }
 
+function install_mariadb {
+  if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install python-software-properties
+  apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xcbcb082a1bb943db
+  add-apt-repository 'deb http://mariadb.biz.net.id//repo/10.1/debian sid main'
+  apt-get -y --force-yes install software-properties-common
+  apt-get -y update
+
+  if [ ! $MARIADB_PASSWORD ]; then
+      MARIADB_PASSWORD=$(openssl rand -base64 32)
+      prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
+      echo '' >> /home/$MY_USERNAME/README
+      echo "Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  debconf-set-selections <<< "mariadb-server mariadb-server/root_password password $MARIADB_PASSWORD"
+  debconf-set-selections <<< "mariadb-server mariadb-server/root_password_again password $MARIADB_PASSWORD"
+  apt-get -y --force-yes install mariadb-server
+  echo 'install_mariadb' >> $COMPLETION_FILE
+}
+
 function install_gnu_social {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       return
@@ -2183,12 +2211,45 @@ function install_gnu_social {
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
       return
   fi
-  apt-get -y --force-yes install git
+  if [ ! $MICROBLOG_DOMAIN_NAME ]; then
+	  return
+  fi
+
+  install_mariadb
+
+  apt-get -y --force-yes install php5-xcache php-gettext php5-curl php5-gd php5-mysql git
 
   cd $INSTALL_DIR
   git clone git://gitorious.org/social/mainline.git gnusocial
 
+  rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  mv gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  chown www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/avatar
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/background
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/file
+  chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
+
   echo 'install_gnu_social' >> $COMPLETION_FILE
+}
+
+function install_redmatrix {
+  if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
+      return
+  fi
+
+  install_mariadb
+
+  apt-get -y --force-yes install mysql-server php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
+  cp /usr/share/doc/mysql-server-5.5/examples/my-small.cnf /etc/mysql/my.cnf
+
+  cd $INSTALL_DIR
+
+  echo 'install_redmatrix' >> $COMPLETION_FILE
 }
 
 function install_final {
@@ -2256,6 +2317,7 @@ configure_firewall_for_irc
 install_wiki
 install_blog
 install_gnu_social
+install_redmatrix
 install_final
 echo 'Freedombone installation is complete'
 exit 0
