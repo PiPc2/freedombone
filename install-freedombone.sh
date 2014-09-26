@@ -108,6 +108,12 @@ WIKI_BLOGTNG_ADDON_ARCHIVE="$WIKI_BLOGTNG_ADDON_NAME.zip"
 WIKI_BLOGTNG_ADDON="https://github.com/dokufreaks/plugin-blogtng/zipball/master"
 WIKI_BLOGTNG_ADDON_HASH="212b3ad918fdc92b2d49ef5d36bc9e086eab27532931ba6b87e05f35fd402a27"
 
+# see https://www.dokuwiki.org/plugin:sqlite
+WIKI_SQLITE_ADDON_NAME="cosmocode-sqlite-7be4003.tar.gz"
+WIKI_SQLITE_ADDON_ARCHIVE="$WIKI_SQLITE_ADDON_NAME.tar.gz"
+WIKI_SQLITE_ADDON="https://github.com/cosmocode/sqlite/tarball/master"
+WIKI_SQLITE_ADDON_HASH="930335e647c7e62f3068689c256ee169fad2426b64f8360685d391ecb5eeda0c"
+
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # optionally you can provide your exported GPG key pair here
@@ -2100,6 +2106,28 @@ function install_blog {
 	  echo $WIKI_BLOGTNG_ADDON_HASH
       exit 24
   fi
+
+  # download dokuwiki sqlite plugin
+  wget $WIKI_SQLITE_ADDON
+  if [ ! -f "$INSTALL_DIR/master" ]; then
+      echo 'Dokuwiki sqlite addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_SQLITE_ADDON at the top of this script as needed.'
+      exit 25
+  fi
+  mv master $WIKI_SQLITE_ADDON_ARCHIVE
+
+  # Check that the sqlite plugin hash is correct
+  CHECKSUM=$(sha256sum $WIKI_SQLITE_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
+  if [[ $CHECKSUM != $WIKI_SQLITE_ADDON_HASH ]]; then
+      echo 'The sha256 hash of the Dokuwiki sqlite download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki sqlite plugin web site and alter WIKI_SQLITE_ADDON_HASH if needed.'
+	  echo $CHECKSUM
+	  echo $WIKI_SQLITE_ADDON_HASH
+      exit 26
+  fi
+
+  # install dokuwiki sqlite plugin
+  tar -xzvf $WIKI_SQLITE_ADDON_ARCHIVE
+  mv $WIKI_SQLITE_ADDON_NAME cosmocode-sqlite
+  cp -r cosmocode-sqlite /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
 
   # install blogTNG
   unzip $WIKI_BLOGTNG_ADDON_ARCHIVE
