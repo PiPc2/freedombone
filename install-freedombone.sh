@@ -64,6 +64,8 @@ MY_USERNAME=$2
 FREEDNS_SUBDOMAIN_CODE=$3
 SYSTEM_TYPE=$4
 
+# Different system variants which may be specified within
+# the SYSTEM_TYPE option
 VARIANT_WRITER="writer"
 VARIANT_CLOUD="cloud"
 VARIANT_CHAT="chat"
@@ -93,10 +95,17 @@ WIKI_DOMAIN_NAME=
 WIKI_ARCHIVE="dokuwiki-stable.tgz"
 WIKI_DOWNLOAD="http://download.dokuwiki.org/src/dokuwiki/$WIKI_ARCHIVE"
 WIKI_HASH="a0e79986b87b2744421ce3c33b43a21f296deadd81b1789c25fa4bb095e8e470"
+
 # see https://www.dokuwiki.org/template:mnml-blog
 WIKI_MNML_BLOG_ADDON_ARCHIVE="mnml-blog.tar.gz"
 WIKI_MNML_BLOG_ADDON="https://andreashaerter.com/downloads/dokuwiki-template-mnml-blog/latest"
 WIKI_MNML_BLOG_ADDON_HASH="428c280d09ee14326fef5cd6f6772ecfcd532f7b6779cd992ff79a97381cf39f"
+
+# see https://www.dokuwiki.org/plugin:blogtng
+WIKI_BLOGTNG_ADDON_NAME="dokufreaks-plugin-blogtng-93a3fec"
+WIKI_BLOGTNG_ADDON_ARCHIVE="$WIKI_BLOGTNG_ADDON_NAME.zip"
+WIKI_BLOGTNG_ADDON="https://github.com/dokufreaks/plugin-blogtng/zipball/master"
+WIKI_BLOGTNMG_ADDON_HASH="212b3ad918fdc92b2d49ef5d36bc9e086eab27532931ba6b87e05f35fd402a27"
 
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
@@ -2025,23 +2034,48 @@ function install_blog {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       return
   fi
+  if [ ! -f $WIKI_DOMAIN_NAME ]; then
+      return
+  fi
 
+  # download mnml-blog
   cd $INSTALL_DIR
   rm -f latest
   wget $WIKI_MNML_BLOG_ADDON
   if [ ! -f "$INSTALL_DIR/latest" ]; then
-	  echo 'Dokuwiki mnml-blog addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_MNML_BLOG_ADDON at the top of this script as needed.'
-	  exit 21
+      echo 'Dokuwiki mnml-blog addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_MNML_BLOG_ADDON at the top of this script as needed.'
+      exit 21
   fi
   mv latest $WIKI_MNML_BLOG_ADDON_ARCHIVE
 
-  # Check that the hash is correct
+  # Check that the mnml-blog download hash is correct
   CHECKSUM=$(sha256sum $WIKI_MNML_BLOG_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
   if [[ $CHECKSUM != $WIKI_MNML_BLOG_ADDON_HASH ]]; then
       echo 'The sha256 hash of the mnml-blog download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki mnmlblog web site and alter WIKI_MNML_BLOG_ADDON_HASH if needed.'
       exit 22
   fi
 
+  # download blogTNG
+  wget $WIKI_BLOGTNG_ADDON
+  if [ ! -f "$INSTALL_DIR/master" ]; then
+      echo 'Dokuwiki blogTNG addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_BLOGTNG_ADDON at the top of this script as needed.'
+      exit 23
+  fi
+  mv master $WIKI_BLOGTNG_ADDON_ARCHIVE
+
+  # Check that the blogTNG hash is correct
+  CHECKSUM=$(sha256sum $WIKI_BLOGTNG_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
+  if [[ $CHECKSUM != $WIKI_BLOGTNG_ADDON_HASH ]]; then
+      echo 'The sha256 hash of the blogTNG download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki blogTNG web site and alter WIKI_BLOGTNG_ADDON_HASH if needed.'
+      exit 24
+  fi
+
+  # install blogTNG
+  unzip $WIKI_BLOGTNG_ADDON_ARCHIVE
+  mv $WIKI_BLOGTNG_ADDON_NAME blogtng
+  cp blogtng /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
+
+  # install mnml-blog
   tar -xzvf $WIKI_MNML_BLOG_ADDON_ARCHIVE
   cp mnml-blog /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/
   cp -r /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/mnml-blog/blogtng-tpl/* /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/default/
@@ -2108,7 +2142,7 @@ configure_firewall_for_xmpp
 install_irc_server
 configure_firewall_for_irc
 install_wiki
-#install_blog
+install_blog
 install_final
 echo 'Freedombone installation is complete'
 exit 0
