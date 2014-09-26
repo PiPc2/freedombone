@@ -1901,6 +1901,10 @@ function install_wiki {
   mv * /var/www/$WIKI_DOMAIN_NAME/htdocs/
   chmod -R 755 /var/www/$WIKI_DOMAIN_NAME/htdocs
   chown -R www-data:www-data /var/www/$WIKI_DOMAIN_NAME/htdocs
+  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/data
+  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/conf
+  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/bin
+  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/inc
 
   if ! grep -q "video/ogg" /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
       echo 'ogv     video/ogg' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
@@ -2009,6 +2013,12 @@ function install_wiki {
   echo '    #deny access to store' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    location ~ /store {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '      deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '      deny  all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
 
