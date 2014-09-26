@@ -2148,6 +2148,31 @@ function install_blog {
   cp -r mnml-blog /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl
   cp -r /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/mnml-blog/blogtng-tpl/* /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/default/
 
+  # make a "freedombone" template so that if the default template gets
+  # changed after an upgrade to blogTNG this doesn't necessarily change the appearance
+  cp -r /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/default /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/freedombone
+
+  if ! grep -q "To set up your blog" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo "To set up your blog go to" >> /home/$MY_USERNAME/README
+      echo "https://$WIKI_DOMAIN_NAME/doku.php?id=start&do=admin&page=config" >> /home/$MY_USERNAME/README
+      echo 'and set the template to mnml-blog' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'To edit things on the right hand sidebar (links, blogroll, etc) go to' >> /home/$MY_USERNAME/README
+      echo "https://$WIKI_DOMAIN_NAME/doku.php?id=wiki:navigation_sidebar" >> /home/$MY_USERNAME/README
+      echo 'and edit the page' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'To edit things to a header bar (home, contacts, etc) go to' >> /home/$MY_USERNAME/README
+      echo "https://$WIKI_DOMAIN_NAME/doku.php?id=wiki:navigation_header" >> /home/$MY_USERNAME/README
+      echo 'and select the "create this page" at the bottom.' >> /home/$MY_USERNAME/README
+      echo 'You can then add somethething like:' >> /home/$MY_USERNAME/README
+      echo '  * [[:start|Home]]' >> /home/$MY_USERNAME/README
+      echo '  * [[:wiki|Wiki]]' >> /home/$MY_USERNAME/README
+      echo '  * [[:contact|Contact]]' >> /home/$MY_USERNAME/README
+      echo "Go to https://$WIKI_DOMAIN_NAME/doku.php?id=start&do=admin&page=config" >> /home/$MY_USERNAME/README
+      echo 'and check "Show header navigation" to ensure that the header shows' >> /home/$MY_USERNAME/README
+  fi
+
   echo 'install_blog' >> $COMPLETION_FILE
 }
 
