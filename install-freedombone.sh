@@ -109,7 +109,7 @@ WIKI_BLOGTNG_ADDON="https://github.com/dokufreaks/plugin-blogtng/zipball/master"
 WIKI_BLOGTNG_ADDON_HASH="212b3ad918fdc92b2d49ef5d36bc9e086eab27532931ba6b87e05f35fd402a27"
 
 # see https://www.dokuwiki.org/plugin:sqlite
-WIKI_SQLITE_ADDON_NAME="cosmocode-sqlite-7be4003.tar.gz"
+WIKI_SQLITE_ADDON_NAME="cosmocode-sqlite-7be4003"
 WIKI_SQLITE_ADDON_ARCHIVE="$WIKI_SQLITE_ADDON_NAME.tar.gz"
 WIKI_SQLITE_ADDON="https://github.com/cosmocode/sqlite/tarball/master"
 WIKI_SQLITE_ADDON_HASH="930335e647c7e62f3068689c256ee169fad2426b64f8360685d391ecb5eeda0c"
@@ -2126,8 +2126,8 @@ function install_blog {
 
   # install dokuwiki sqlite plugin
   tar -xzvf $WIKI_SQLITE_ADDON_ARCHIVE
-  mv $WIKI_SQLITE_ADDON_NAME cosmocode-sqlite
-  cp -r cosmocode-sqlite /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
+  mv $WIKI_SQLITE_ADDON_NAME sqlite
+  cp -r sqlite /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
 
   # install blogTNG
   unzip $WIKI_BLOGTNG_ADDON_ARCHIVE
