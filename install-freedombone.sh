@@ -1870,6 +1870,8 @@ function install_wiki {
 
   if [ ! -d /var/www/$WIKI_DOMAIN_NAME ]; then
       mkdir /var/www/$WIKI_DOMAIN_NAME
+  fi
+  if [ ! -d /var/www/$WIKI_DOMAIN_NAME/htdocs ]; then
       mkdir /var/www/$WIKI_DOMAIN_NAME/htdocs
   fi
 
@@ -1897,10 +1899,6 @@ function install_wiki {
 
   tar -xzvf $WIKI_ARCHIVE
   cd dokuwiki-*
-
-  if [ -f "/var/www/$WIKI_DOMAIN_NAME/htdocs" ]; then
-      rm -rf /var/www/$WIKI_DOMAIN_NAME/htdocs
-  fi
   mv * /var/www/$WIKI_DOMAIN_NAME/htdocs/
   chmod -R 755 /var/www/$WIKI_DOMAIN_NAME/htdocs
   chown -R www-data:www-data /var/www/$WIKI_DOMAIN_NAME/htdocs
