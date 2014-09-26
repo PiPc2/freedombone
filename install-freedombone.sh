@@ -2194,6 +2194,24 @@ function install_blog {
   echo 'install_blog' >> $COMPLETION_FILE
 }
 
+function get_mariadb_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+	  if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
+		  MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+		  echo "MariaDB password: $MARIADB_PASSWORD"
+	  fi
+  fi
+}
+
+function get_mariadb_gnusocial_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+	  if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
+		  MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+		  echo "MariaDB gnusocial admin password: $MICROBLOG_ADMIN_PASSWORD"
+	  fi
+  fi
+}
+
 function install_mariadb {
   if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
       return
@@ -2204,8 +2222,9 @@ function install_mariadb {
   apt-get -y --force-yes install software-properties-common
   apt-get -y update
 
+  get_mariadb_password
   if [ ! $MARIADB_PASSWORD ]; then
-      MARIADB_PASSWORD=$(openssl rand -base64 32)
+	  MARIADB_PASSWORD=$(openssl rand -base64 32)
       echo '' >> /home/$MY_USERNAME/README
       echo "Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
@@ -2230,6 +2249,7 @@ function install_gnu_social {
   fi
 
   install_mariadb
+  get_mariadb_password
 
   apt-get -y --force-yes install php-gettext php5-curl php5-gd php5-mysql git
 
@@ -2254,6 +2274,7 @@ function install_gnu_social {
       chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
   fi
 
+  get_mariadb_gnusocial_admin_password
   if [ ! $MICROBLOG_ADMIN_PASSWORD ]; then
       MICROBLOG_ADMIN_PASSWORD=$(openssl rand -base64 32)
       echo '' >> /home/$MY_USERNAME/README
