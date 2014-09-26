@@ -1901,10 +1901,6 @@ function install_wiki {
   mv * /var/www/$WIKI_DOMAIN_NAME/htdocs/
   chmod -R 755 /var/www/$WIKI_DOMAIN_NAME/htdocs
   chown -R www-data:www-data /var/www/$WIKI_DOMAIN_NAME/htdocs
-  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/data
-  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/conf
-  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/bin
-  chown -R root:root /var/www/$WIKI_DOMAIN_NAME/htdocs/inc
 
   if ! grep -q "video/ogg" /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
       echo 'ogv     video/ogg' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
