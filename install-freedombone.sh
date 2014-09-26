@@ -2183,7 +2183,7 @@ function install_mariadb {
   if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
       return
   fi
-  apt-get -y --force-yes install python-software-properties
+  apt-get -y --force-yes install python-software-properties debconf-utils
   apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xcbcb082a1bb943db
   add-apt-repository 'deb http://mariadb.biz.net.id//repo/10.1/debian sid main'
   apt-get -y --force-yes install software-properties-common
