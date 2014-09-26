@@ -97,6 +97,7 @@ WIKI_DOWNLOAD="http://download.dokuwiki.org/src/dokuwiki/$WIKI_ARCHIVE"
 WIKI_HASH="a0e79986b87b2744421ce3c33b43a21f296deadd81b1789c25fa4bb095e8e470"
 
 # see https://www.dokuwiki.org/template:mnml-blog
+# https://andreashaerter.com/tmp/downloads/dokuwiki-template-mnml-blog/CHECKSUMS.asc
 WIKI_MNML_BLOG_ADDON_ARCHIVE="mnml-blog.tar.gz"
 WIKI_MNML_BLOG_ADDON="https://andreashaerter.com/downloads/dokuwiki-template-mnml-blog/latest"
 WIKI_MNML_BLOG_ADDON_HASH="428c280d09ee14326fef5cd6f6772ecfcd532f7b6779cd992ff79a97381cf39f"
@@ -200,6 +201,14 @@ function change_login_message {
   echo "|--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-. " >> /etc/motd
   echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' " >> /etc/motd
   echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'" >> /etc/motd
+
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
+      echo '              .  .   .  .     .          ' >> /etc/motd
+      echo '               \  \ /  /   o _|_         ' >> /etc/motd
+      echo '                \  \  /.--..  |  .-. .--.' >> /etc/motd
+      echo "                 \/ \/ |   |  | (.-' |   " >> /etc/motd
+      echo "                  ' '  ' -'  - -' --''   " >> /etc/motd
+  fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
       echo '                  .--..             . ' >> /etc/motd
