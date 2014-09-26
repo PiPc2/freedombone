@@ -1702,8 +1702,8 @@ function install_owncloud {
   CHECKSUM=$(sha256sum $OWNCLOUD_ARCHIVE | awk -F ' ' '{print $1}')
   if [[ $CHECKSUM != $OWNCLOUD_HASH ]]; then
       echo 'The sha256 hash of the owncloud download is incorrect. Possibly the file may have been tampered with. Check the hash on the Owncloud web site.'
-	  echo $CHECKSUM
-	  echo $OWNCLOUD_HASH
+      echo $CHECKSUM
+      echo $OWNCLOUD_HASH
       exit 19
   fi
   tar -xjf $OWNCLOUD_ARCHIVE
@@ -1901,8 +1901,8 @@ function install_wiki {
   CHECKSUM=$(sha256sum $WIKI_ARCHIVE | awk -F ' ' '{print $1}')
   if [[ $CHECKSUM != $WIKI_HASH ]]; then
       echo 'The sha256 hash of the Dokuwiki download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki web site.'
-	  echo $CHECKSUM
-	  echo $WIKI_HASH
+      echo $CHECKSUM
+      echo $WIKI_HASH
       exit 21
   fi
 
@@ -2085,8 +2085,8 @@ function install_blog {
   CHECKSUM=$(sha256sum $WIKI_MNML_BLOG_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
   if [[ $CHECKSUM != $WIKI_MNML_BLOG_ADDON_HASH ]]; then
       echo 'The sha256 hash of the mnml-blog download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki mnmlblog web site and alter WIKI_MNML_BLOG_ADDON_HASH if needed.'
-	  echo $CHECKSUM
-	  echo $WIKI_MNML_BLOG_ADDON_HASH
+      echo $CHECKSUM
+      echo $WIKI_MNML_BLOG_ADDON_HASH
       exit 22
   fi
 
@@ -2102,8 +2102,8 @@ function install_blog {
   CHECKSUM=$(sha256sum $WIKI_BLOGTNG_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
   if [[ $CHECKSUM != $WIKI_BLOGTNG_ADDON_HASH ]]; then
       echo 'The sha256 hash of the blogTNG download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki blogTNG web site and alter WIKI_BLOGTNG_ADDON_HASH if needed.'
-	  echo $CHECKSUM
-	  echo $WIKI_BLOGTNG_ADDON_HASH
+      echo $CHECKSUM
+      echo $WIKI_BLOGTNG_ADDON_HASH
       exit 24
   fi
 
@@ -2119,18 +2119,24 @@ function install_blog {
   CHECKSUM=$(sha256sum $WIKI_SQLITE_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
   if [[ $CHECKSUM != $WIKI_SQLITE_ADDON_HASH ]]; then
       echo 'The sha256 hash of the Dokuwiki sqlite download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki sqlite plugin web site and alter WIKI_SQLITE_ADDON_HASH if needed.'
-	  echo $CHECKSUM
-	  echo $WIKI_SQLITE_ADDON_HASH
+      echo $CHECKSUM
+      echo $WIKI_SQLITE_ADDON_HASH
       exit 26
   fi
 
   # install dokuwiki sqlite plugin
   tar -xzvf $WIKI_SQLITE_ADDON_ARCHIVE
+  if [ -d "$INSTALL_DIR/sqlite" ]; then
+      rm -rf $INSTALL_DIR/sqlite
+  fi
   mv $WIKI_SQLITE_ADDON_NAME sqlite
   cp -r sqlite /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
 
   # install blogTNG
   unzip $WIKI_BLOGTNG_ADDON_ARCHIVE
+  if [ -d "$INSTALL_DIR/blogtng" ]; then
+      rm -rf $INSTALL_DIR/blogtng
+  fi
   mv $WIKI_BLOGTNG_ADDON_NAME blogtng
   cp -r blogtng /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
 
