@@ -2267,7 +2267,7 @@ CREATE USER 'gnusocialadmin'@'localhost' IDENTIFIED BY '$MICROBLOG_ADMIN_PASSWOR
 GRANT ALL PRIVILEGES ON gnusocial.* TO 'gnusocialadmin'@'localhost';
 quit" > $INSTALL_DIR/batch.sql
   chmod 600 $INSTALL_DIR/batch.sql
-  mysql -u root -p $MARIADB_PASSWORD < $INSTALL_DIR/batch.sql
+  mysql -u root --password=$MARIADB_PASSWORD < $INSTALL_DIR/batch.sql
   shred -zu $INSTALL_DIR/batch.sql
 
   echo 'install_gnu_social' >> $COMPLETION_FILE
