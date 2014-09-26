@@ -2176,6 +2176,21 @@ function install_blog {
   echo 'install_blog' >> $COMPLETION_FILE
 }
 
+function install_gnu_social {
+  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
+      return
+  fi
+  apt-get -y --force-yes install git
+
+  cd $INSTALL_DIR
+  git clone git://gitorious.org/social/mainline.git gnusocial
+
+  echo 'install_gnu_social' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -2240,6 +2255,7 @@ install_irc_server
 configure_firewall_for_irc
 install_wiki
 install_blog
+install_gnu_social
 install_final
 echo 'Freedombone installation is complete'
 exit 0
