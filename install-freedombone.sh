@@ -2054,7 +2054,12 @@ function install_blog {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       return
   fi
-  if [ ! -f $WIKI_DOMAIN_NAME ]; then
+  # if this is exclusively a writer setup
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
+      WIKI_DOMAIN_NAME=$DOMAIN_NAME
+      WIKI_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
+  fi
+  if [ ! $WIKI_DOMAIN_NAME ]; then
       return
   fi
 
