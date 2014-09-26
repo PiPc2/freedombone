@@ -202,6 +202,12 @@ function argument_checks {
       show_help
       exit 4
   fi
+  if [ $SYSTEM_TYPE ]; then
+	  if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL ]]; then
+		  echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
+		  exit 30
+	  fi
+  fi
 }
 
 function change_login_message {
