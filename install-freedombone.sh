@@ -1545,6 +1545,7 @@ function configure_php {
   sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
   sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
   sed -i "s/memory_limit = /memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
+  sed -i "s/memory_limit = /memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/fpm/php.ini
 }
 
 function install_owncloud {
@@ -1909,20 +1910,18 @@ function install_wiki {
       echo 'webm    video/webm' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
   fi
 
-  configure_php
-
   echo 'server {' > /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    listen 80;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    server_name $WIKI_DOMAIN_NAME;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    root /var/www/$WIKI_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    error_log /var/www/$WIKI_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-  echo '    index index.html index.htm index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    # Uncomment this if you need to redirect HTTP to HTTPS' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    #rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    location / {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-  echo '        try_files $uri $uri/ /index.html;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    location ~ \.php$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -1938,7 +1937,7 @@ function install_wiki {
   echo "    root /var/www/$WIKI_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    server_name $WIKI_DOMAIN_NAME;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    error_log /var/www/$WIKI_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-  echo '    index index.html index.htm index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -1992,7 +1991,7 @@ function install_wiki {
   echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-  echo "        try_files $uri =404;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "        try_files $uri /dev/null =404;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -2014,6 +2013,8 @@ function install_wiki {
   echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+
+  configure_php
 
   nginx_ensite $WIKI_DOMAIN_NAME
   service php5-fpm restart
