@@ -81,6 +81,10 @@ INSTALLED_WITHIN_DOCKER="no"
 # There should be no spaces in the name
 PRIVATE_MAILING_LIST=
 
+# Domain name or freedns subdomain for microblog installation
+MICROBLOG_DOMAIN_NAME=
+MICROBLOG_REPO="git://gitorious.org/social/mainline.git"
+
 # Domain name or freedns subdomain for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
 # Freedns dynamic dns code for owncloud
@@ -2220,16 +2224,18 @@ function install_gnu_social {
   apt-get -y --force-yes install php5-xcache php-gettext php5-curl php5-gd php5-mysql git
 
   cd $INSTALL_DIR
-  git clone git://gitorious.org/social/mainline.git gnusocial
+  if [ ! -f /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/index.php ]; then
+      git clone $MICROBLOG_REPO gnusocial
 
-  rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-  mv gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-  chown www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/avatar
-  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/background
-  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/file
-  chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
+      rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+      mv gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+      chown www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/avatar
+      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/background
+      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/file
+      chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
+  fi
 
   echo 'install_gnu_social' >> $COMPLETION_FILE
 }
