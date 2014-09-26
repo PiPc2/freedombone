@@ -81,6 +81,17 @@ OWNCLOUD_ARCHIVE="owncloud-7.0.2.tar.bz2"
 OWNCLOUD_DOWNLOAD="https://download.owncloud.org/community/$OWNCLOUD_ARCHIVE"
 OWNCLOUD_HASH="ea07124a1b9632aa5227240d655e4d84967fb6dd49e4a16d3207d6179d031a3a"
 
+# Domain name or freedns subdomain for your wiki
+WIKI_FREEDNS_SUBDOMAIN_CODE=
+WIKI_DOMAIN_NAME=
+WIKI_ARCHIVE="dokuwiki-stable.tgz"
+WIKI_DOWNLOAD="http://download.dokuwiki.org/src/dokuwiki/$WIKI_ARCHIVE"
+WIKI_HASH="a0e79986b87b2744421ce3c33b43a21f296deadd81b1789c25fa4bb095e8e470"
+# see https://www.dokuwiki.org/template:mnml-blog
+WIKI_MNML_BLOG_ADDON_ARCHIVE="mnml-blog.tar.gz"
+WIKI_MNML_BLOG_ADDON="https://andreashaerter.com/downloads/dokuwiki-template-mnml-blog/latest"
+WIKI_MNML_BLOG_ADDON_HASH="428c280d09ee14326fef5cd6f6772ecfcd532f7b6779cd992ff79a97381cf39f"
+
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # optionally you can provide your exported GPG key pair here
@@ -1503,6 +1514,15 @@ function install_web_server {
   echo 'install_web_server' >> $COMPLETION_FILE
 }
 
+function configure_php {
+  sed -i "s/memory_limit = 128M/memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/fpm/php.ini
+  sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini
+  sed -i "s/memory_limit = -1/memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
+  sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
+  sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
+  sed -i "s/memory_limit = /memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
+}
+
 function install_owncloud {
   if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
       return
@@ -1632,13 +1652,7 @@ function install_owncloud {
   echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
 
-
-  sed -i "s/memory_limit = 128M/memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/fpm/php.ini
-  sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini
-  sed -i "s/memory_limit = -1/memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
-  sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
-  sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
-  sed -i "s/memory_limit = /memory_limit = $MAX_PHP_MEMORYM/g" /etc/php5/cli/php.ini
+  configure_php
 
   if [ ! -f /etc/ssl/private/$OWNCLOUD_DOMAIN_NAME.key ]; then
       makecert $OWNCLOUD_DOMAIN_NAME
@@ -1795,9 +1809,9 @@ function install_irc_server {
   sed -i 's/;MaxUsers = 23/MaxUsers = 23/g' /etc/ngircd/ngircd.conf
   sed -i 's|;KeyFile = /etc/ngircd/#chan.key|KeyFile = /etc/ngircd/#freedombone.key|g' /etc/ngircd/ngircd.conf
   sed -i 's/;CloakHost = cloaked.host/CloakHost = cloaked.host/g' /etc/ngircd/ngircd.conf
-  IRC_SALT=$(openssl rand -base64 64)
+  IRC_SALT=$(openssl rand -base64 32)
   IRC_OPERATOR_PASSWORD=$(openssl rand -base64 8)
-  sed -i "s/;CloakHostSalt = abcdefghijklmnopqrstuvwxyz/CloakHostSalt = $IRC_SALT/g" /etc/ngircd/ngircd.conf
+  sed -i "s|;CloakHostSalt = abcdefghijklmnopqrstuvwxyz|CloakHostSalt = $IRC_SALT|g" /etc/ngircd/ngircd.conf
   sed -i 's/;ConnectIPv4 = yes/ConnectIPv4 = yes/g' /etc/ngircd/ngircd.conf
   sed -i 's/;MorePrivacy = no/MorePrivacy = yes/g' /etc/ngircd/ngircd.conf
   sed -i 's/;RequireAuthPing = no/RequireAuthPing = no/g' /etc/ngircd/ngircd.conf
@@ -1805,6 +1819,228 @@ function install_irc_server {
   sed -i "s/;Password = ThePwd/Password = $IRC_OPERATOR_PASSWORD/g" /etc/ngircd/ngircd.conf
   service ngircd restart
   echo 'install_irc_server' >> $COMPLETION_FILE
+}
+
+function install_wiki {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
+  if grep -Fxq "install_wiki" $COMPLETION_FILE; then
+      return
+  fi
+  # if this is exclusively a writer setup
+  if [[ $SYSTEM_TYPE == "writer" ]]; then
+      WIKI_DOMAIN_NAME=$DOMAIN_NAME
+      WIKI_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
+  fi
+  if [ ! $WIKI_DOMAIN_NAME ]; then
+      return
+  fi
+  if ! [[ $SYSTEM_TYPE == "writer" ]]; then
+      if [ ! $SYSTEM_TYPE ]; then
+          return
+      fi
+  fi
+  apt-get -y --force-yes install php5 php5-gd php-xml-parser php5-intl wget
+  apt-get -y --force-yes install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl bzip2
+
+  if [ ! -d /var/www/$WIKI_DOMAIN_NAME ]; then
+      mkdir /var/www/$WIKI_DOMAIN_NAME
+      mkdir /var/www/$WIKI_DOMAIN_NAME/htdocs
+  fi
+
+  if [ ! -f /etc/ssl/private/$WIKI_DOMAIN_NAME.key ]; then
+      makecert $WIKI_DOMAIN_NAME
+  fi
+
+  # download the archive
+  cd $INSTALL_DIR
+  if [ ! -f $INSTALL_DIR/$WIKI_ARCHIVE ]; then
+      wget $WIKI_DOWNLOAD
+  fi
+  if [ ! -f $INSTALL_DIR/$WIKI_ARCHIVE ]; then
+      echo 'Dokuwiki could not be downloaded.  Check that it exists at '
+      echo $WIKI_DOWNLOAD
+      echo 'And if neccessary update the version number and hash within this script'
+      exit 18
+  fi
+  # Check that the hash is correct
+  CHECKSUM=$(sha256sum $WIKI_ARCHIVE | awk -F ' ' '{print $1}')
+  if [[ $CHECKSUM != $WIKI_HASH ]]; then
+      echo 'The sha256 hash of the Dokuwiki download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki web site.'
+      exit 21
+  fi
+
+  tar -xzvf $WIKI_ARCHIVE
+  rm -rf /var/www/$WIKI_DOMAIN_NAME/htdocs
+  mv dokuwiki /var/www/$WIKI_DOMAIN_NAME/htdocs
+  chmod -R 755 /var/www/$WIKI_DOMAIN_NAME/htdocs
+  chown -R www-data:www-data /var/www/$WIKI_DOMAIN_NAME/htdocs
+
+  if ! grep -q "video/ogg" /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
+      echo 'ogv     video/ogg' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
+      echo 'mp4     video/mp4' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
+      echo 'webm    video/webm' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
+  fi
+
+  configure_php
+
+  echo 'server {' > /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    listen 80;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    server_name $WIKI_DOMAIN_NAME;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    root /var/www/$WIKI_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    error_log /var/www/$WIKI_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    index index.html index.htm index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # Uncomment this if you need to redirect HTTP to HTTPS' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    #rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        try_files $uri $uri/ /index.html;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~ \.php$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo 'server {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    root /var/www/$WIKI_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    server_name $WIKI_DOMAIN_NAME;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    error_log /var/www/$WIKI_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    index index.html index.htm index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    charset utf-8;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    ssl on;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$WIKI_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$WIKI_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$WIKI_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        expires 30d;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # block these file types' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # or a unix socket' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "        try_files $uri =404;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~ /\. {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    #deny access to store' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    location ~ /store {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+
+  nginx_ensite $WIKI_DOMAIN_NAME
+  service php5-fpm restart
+  service nginx restart
+
+  # update the dynamic DNS
+  if [[ $WIKI_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+      if ! grep -q "$WIKI_DOMAIN_NAME" /usr/bin/dynamicdns; then
+          echo "# $WIKI_DOMAIN_NAME" >> /usr/bin/dynamicdns
+          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$WIKI_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+      fi
+  fi
+
+  # add some post-install instructions
+  if ! grep -q "Once you have set up the wiki" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Once you have set up the wiki then remove the install file:' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "  rm /var/www/$WIKI_DOMAIN_NAME/htdocs/install.php" >> /home/$MY_USERNAME/README
+  fi
+
+  echo 'install_wiki' >> $COMPLETION_FILE
+}
+
+function install_blog {
+  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      return
+  fi
+  if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      return
+  fi
+
+  cd $INSTALL_DIR
+  rm -f latest
+  wget $WIKI_MNML_BLOG_ADDON
+  if [ ! -f "$INSTALL_DIR/latest" ]; then
+	  echo 'Dokuwiki mnml-blog addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_MNML_BLOG_ADDON at the top of this script as needed.'
+	  exit 21
+  fi
+  mv latest $WIKI_MNML_BLOG_ADDON_ARCHIVE
+
+  # Check that the hash is correct
+  CHECKSUM=$(sha256sum $WIKI_MNML_BLOG_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
+  if [[ $CHECKSUM != $WIKI_MNML_BLOG_ADDON_HASH ]]; then
+      echo 'The sha256 hash of the mnml-blog download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki mnmlblog web site and alter WIKI_MNML_BLOG_ADDON_HASH if needed.'
+      exit 22
+  fi
+
+  tar -xzvf $WIKI_MNML_BLOG_ADDON_ARCHIVE
+  cp mnml-blog /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/
+  cp -r /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/mnml-blog/blogtng-tpl/* /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/default/
+
+  echo 'install_blog' >> $COMPLETION_FILE
 }
 
 function install_final {
@@ -1865,6 +2101,8 @@ install_xmpp
 configure_firewall_for_xmpp
 install_irc_server
 configure_firewall_for_irc
+install_wiki
+#install_blog
 install_final
 echo 'Freedombone installation is complete'
 exit 0
