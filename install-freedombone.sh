@@ -64,6 +64,12 @@ MY_USERNAME=$2
 FREEDNS_SUBDOMAIN_CODE=$3
 SYSTEM_TYPE=$4
 
+VARIANT_WRITER="writer"
+VARIANT_CLOUD="cloud"
+VARIANT_CHAT="chat"
+VARIANT_MAILBOX="mailbox"
+VARIANT_SOCIAL="social"
+
 SSH_PORT=2222
 KERNEL_VERSION="v3.15.10-bone7"
 USE_HWRNG="yes"
@@ -186,7 +192,7 @@ function change_login_message {
   echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' " >> /etc/motd
   echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'" >> /etc/motd
 
-  if [[ $SYSTEM_TYPE == "cloud" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
       echo '                  .--..             . ' >> /etc/motd
       echo '                 :    |             | ' >> /etc/motd
       echo '                 |    | .-. .  . .-.| ' >> /etc/motd
@@ -194,7 +200,7 @@ function change_login_message {
       echo "                   --' - -'  -- - -' -" >> /etc/motd
   fi
 
-  if [[ $SYSTEM_TYPE == "chat" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" ]]; then
       echo '                  .--..         .   ' >> /etc/motd
       echo '                 :    |        _|_  ' >> /etc/motd
       echo '                 |    |--. .-.  |   ' >> /etc/motd
@@ -202,7 +208,7 @@ function change_login_message {
       echo "                   --''   - -' - -' " >> /etc/motd
   fi
 
-  if [[ $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       echo '               .-.                    .  ' >> /etc/motd
       echo '              (   )           o       |  ' >> /etc/motd
       echo '                -.  .-.  .-.  .  .-.  |  ' >> /etc/motd
@@ -210,7 +216,7 @@ function change_login_message {
       echo "                -'   -'   -'-'  - -' - - " >> /etc/motd
   fi
 
-  if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
+  if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
       echo '             .    .           . .              ' >> /etc/motd
       echo '             |\  /|        o  | |              ' >> /etc/motd
       echo '             | \/ | .-.    .  | |.-.  .-.-. ,- ' >> /etc/motd
@@ -236,7 +242,7 @@ function search_for_attached_usb_drive {
           mkdir /media/usb
           mount $USB_DRIVE /media/usb
       fi
-      if ! [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+      if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
           if [ -d /media/usb/Maildir ]; then
               echo 'Maildir found on USB drive'
               IMPORT_MAILDIR=/media/usb/Maildir
@@ -805,7 +811,7 @@ function configure_firewall_for_git {
 }
 
 function configure_firewall_for_email {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
@@ -888,7 +894,7 @@ function script_to_make_self_signed_certificates {
 }
 
 function configure_email {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "configure_email" $COMPLETION_FILE; then
@@ -975,7 +981,7 @@ function configure_email {
 
 function spam_filtering {
   # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
@@ -1074,7 +1080,7 @@ function spam_filtering {
 }
 
 function configure_imap {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "configure_imap" $COMPLETION_FILE; then
@@ -1102,7 +1108,7 @@ function configure_imap {
 }
 
 function configure_gpg {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "configure_gpg" $COMPLETION_FILE; then
@@ -1163,7 +1169,7 @@ function configure_gpg {
 }
 
 function email_client {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "email_client" $COMPLETION_FILE; then
@@ -1269,7 +1275,7 @@ function email_client {
 }
 
 function folders_for_mailing_lists {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
@@ -1318,7 +1324,7 @@ function folders_for_mailing_lists {
 }
 
 function folders_for_email_addresses {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
@@ -1385,7 +1391,7 @@ function dynamic_dns_freedns {
 }
 
 function create_private_mailing_list {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   # This installation doesn't work, results in ruby errors
@@ -1446,12 +1452,12 @@ function create_private_mailing_list {
 }
 
 function import_email {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
-      if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
+      if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
           echo $EMAIL_COMPLETE_MSG
           if [ -d /media/usb ]; then
               umount /media/usb
@@ -1473,7 +1479,7 @@ function import_email {
       fi
   fi
   echo 'import_email' >> $COMPLETION_FILE
-  if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" ]]; then
+  if [[ $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
       apt-get -y --force-yes autoremove
       # unmount any attached usb drive
       echo ''
@@ -1489,7 +1495,7 @@ function import_email {
 }
 
 function install_web_server {
-  if [[ $SYSTEM_TYPE == "chat" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" ]]; then
       return
   fi
   if grep -Fxq "install_web_server" $COMPLETION_FILE; then
@@ -1524,13 +1530,13 @@ function configure_php {
 }
 
 function install_owncloud {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   OWNCLOUD_COMPLETION_MSG1=" *** Freedombone $SYSTEM_TYPE is now installed ***"
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
-      if [[ $SYSTEM_TYPE == "cloud" ]]; then
+      if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
           # unmount any attached usb drive
           if [ -d /media/usb ]; then
               umount /media/usb
@@ -1544,14 +1550,14 @@ function install_owncloud {
       return
   fi
   # if this is exclusively a cloud setup
-  if [[ $SYSTEM_TYPE == "cloud" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
       OWNCLOUD_DOMAIN_NAME=$DOMAIN_NAME
       OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
   fi
   if [ ! $OWNCLOUD_DOMAIN_NAME ]; then
       return
   fi
-  if ! [[ $SYSTEM_TYPE == "cloud" ]]; then
+  if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
       if [ ! $SYSTEM_TYPE ]; then
           return
       fi
@@ -1696,7 +1702,7 @@ function install_owncloud {
 
   echo 'install_owncloud' >> $COMPLETION_FILE
 
-  if [[ $SYSTEM_TYPE == "cloud" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
       # unmount any attached usb drive
       if [ -d /media/usb ]; then
           umount /media/usb
@@ -1710,7 +1716,7 @@ function install_owncloud {
 }
 
 function install_xmpp {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "install_xmpp" $COMPLETION_FILE; then
@@ -1779,7 +1785,7 @@ function install_xmpp {
 }
 
 function install_irc_server {
-  if [[ $SYSTEM_TYPE == "writer" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "install_irc_server" $COMPLETION_FILE; then
@@ -1822,21 +1828,21 @@ function install_irc_server {
 }
 
 function install_wiki {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       return
   fi
   # if this is exclusively a writer setup
-  if [[ $SYSTEM_TYPE == "writer" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
       WIKI_DOMAIN_NAME=$DOMAIN_NAME
       WIKI_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
   fi
   if [ ! $WIKI_DOMAIN_NAME ]; then
       return
   fi
-  if ! [[ $SYSTEM_TYPE == "writer" ]]; then
+  if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
       if [ ! $SYSTEM_TYPE ]; then
           return
       fi
@@ -2013,7 +2019,7 @@ function install_wiki {
 }
 
 function install_blog {
-  if [[ $SYSTEM_TYPE == "cloud" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "mailbox" || $SYSTEM_TYPE == "chat" || $SYSTEM_TYPE == "social" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "email" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       return
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
