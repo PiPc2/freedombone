@@ -82,6 +82,12 @@ INSTALLED_WITHIN_DOCKER="no"
 # There should be no spaces in the name
 PRIVATE_MAILING_LIST=
 
+# Domain name or freedns subdomain for mediagoblin installation
+MEDIAGOBLIN_DOMAIN_NAME=
+MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE=
+MEDIAGOBLIN_REPO=""
+MEDIAGOBLIN_ADMIN_PASSWORD=
+
 # Domain name or freedns subdomain for microblog installation
 MICROBLOG_DOMAIN_NAME=
 MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
@@ -2698,6 +2704,55 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'install_redmatrix' >> $COMPLETION_FILE
 }
 
+function install_mediagoblin {
+  if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+      return
+  fi
+  # if this is exclusively a writer setup
+  if [[ $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+      MEDIAGOBLIN_DOMAIN_NAME=$DOMAIN_NAME
+      MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
+  fi
+  if [ ! $MEDIAGOBLIN_DOMAIN_NAME ]; then
+      return
+  fi
+
+  apt-get -y --force-yes install git python python-dev python-lxml python-imaging python-virtualenv python-gst0.10 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer0.10-plugins-base gstreamer0.10-plugins-bad gstreamer0.10-plugins-good gstreamer0.10-plugins-ugly gstreamer0.10-ffmpeg python-numpy python-scipy libsndfile1-dev
+  useradd mediagoblin
+
+  if [ ! -d /srv/$MEDIAGOBLIN_DOMAIN_NAME ]; then
+      mkdir -p /srv/$MEDIAGOBLIN_DOMAIN_NAME
+  fi
+  chown -hR mediagoblin:mediagoblin /srv/$MEDIAGOBLIN_DOMAIN_NAME
+su - mediagoblin
+  su -c "git clone git://gitorious.org/mediagoblin/mediagoblin.git /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin" - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; git submodule init" - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; git submodule update" - mediagoblin
+
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; virtualenv --system-site-packages ." - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; ./bin/python setup.py develop" - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; ./bin/easy_install flup" - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; cp mediagoblin.ini mediagoblin_local.ini" - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; cp paste.ini paste_local.ini" - mediagoblin
+
+  # update the dynamic DNS
+  if [ $MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE ]; then
+      if [[ $MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+          if ! grep -q "$MEDIAGOBLIN_DOMAIN_NAME" /usr/bin/dynamicdns; then
+              echo "# $MEDIAGOBLIN_DOMAIN_NAME" >> /usr/bin/dynamicdns
+              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+          fi
+      fi
+  else
+      echo 'WARNING: No freeDNS subdomain code given for mediagoblin. It is assumed that you are using some other dynamic DNS provider.'
+  fi
+
+  echo 'install_mediagoblin' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -2764,6 +2819,7 @@ install_wiki
 install_blog
 install_gnu_social
 install_redmatrix
+install_mediagoblin
 install_final
 echo 'Freedombone installation is complete'
 exit 0
