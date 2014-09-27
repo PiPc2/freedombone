@@ -244,11 +244,11 @@ function change_login_message {
   echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'" >> /etc/motd
 
   if [[ $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
-      echo '                 .    .        .            '
-	  echo '                 |\  /|        |   o        '
-	  echo "                 | \/ | .-. .-.|   .  .-.   "
-	  echo "                 |    |(.-'(   |   | (   )  "
-	  echo "                 '    '  --' -' --'  - -' - "
+      echo '                 .    .        .            ' >> /etc/motd
+	  echo '                 |\  /|        |   o        ' >> /etc/motd
+	  echo "                 | \/ | .-. .-.|   .  .-.   " >> /etc/motd
+	  echo "                 |    |(.-'(   |   | (   )  " >> /etc/motd
+	  echo "                 '    '  --' -' --'  - -' - " >> /etc/motd
   fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
