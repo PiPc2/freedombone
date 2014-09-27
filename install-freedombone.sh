@@ -2404,6 +2404,10 @@ quit" > $INSTALL_DIR/batch.sql
 
   configure_php
 
+  if [ ! -f /etc/ssl/private/$MICROBLOG_DOMAIN_NAME.key ]; then
+      makecert $MICROBLOG_DOMAIN_NAME
+  fi
+
   nginx_ensite $MICROBLOG_DOMAIN_NAME
   service php5-fpm restart
   service nginx restart
