@@ -2720,14 +2720,14 @@ function install_mediagoblin {
       return
   fi
 
-  apt-get -y --force-yes install git python python-dev python-lxml python-imaging python-virtualenv python-gst0.10 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer0.10-plugins-base gstreamer0.10-plugins-bad gstreamer0.10-plugins-good gstreamer0.10-plugins-ugly gstreamer0.10-ffmpeg python-numpy python-scipy libsndfile1-dev
+  apt-get -y --force-yes install git python python-dev python-lxml python-imaging python-virtualenv python-gst0.10 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer0.10-plugins-base gstreamer0.10-plugins-bad gstreamer0.10-plugins-good gstreamer0.10-plugins-ugly gstreamer0.10-libav python-numpy python-scipy libsndfile1-dev
   useradd mediagoblin
 
   if [ ! -d /srv/$MEDIAGOBLIN_DOMAIN_NAME ]; then
       mkdir -p /srv/$MEDIAGOBLIN_DOMAIN_NAME
   fi
   chown -hR mediagoblin:mediagoblin /srv/$MEDIAGOBLIN_DOMAIN_NAME
-su - mediagoblin
+
   su -c "git clone git://gitorious.org/mediagoblin/mediagoblin.git /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin" - mediagoblin
   su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; git submodule init" - mediagoblin
   su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; git submodule update" - mediagoblin
