@@ -2421,7 +2421,7 @@ quit" > $INSTALL_DIR/batch.sql
       echo ' - Set a name for the site' >> /home/$MY_USERNAME/README
       echo ' - Server SSL: enable' >> /home/$MY_USERNAME/README
       echo ' - Hostname: localhost' >> /home/$MY_USERNAME/README
-      echo ' - Type: MySql' >> /home/$MY_USERNAME/README
+      echo ' - Type: MySql/MariaDB' >> /home/$MY_USERNAME/README
       echo ' - Name: gnusocial' >> /home/$MY_USERNAME/README
       echo ' - DB username: gnusocialadmin' >> /home/$MY_USERNAME/README
       echo " - DB Password; $MICROBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
