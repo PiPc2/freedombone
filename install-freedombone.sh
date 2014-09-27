@@ -157,6 +157,9 @@ MAX_PHP_MEMORY=32
 # default MariaDB password
 MARIADB_PASSWORD=
 
+# list of ciphers to use
+SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA"
+
 export DEBIAN_FRONTEND=noninteractive
 
 # File which keeps track of what has already been installed
@@ -1143,7 +1146,7 @@ function configure_imap {
   sed -i 's|ssl_key = </etc/dovecot/private/dovecot.pem|/etc/ssl/private/dovecot.key|g' /etc/dovecot/conf.d/10-ssl.conf
   sed -i 's|#ssl_dh_parameters_length = 1024|ssl_dh_parameters_length = 1024|g' /etc/dovecot/conf.d/10-ssl.conf
   sed -i 's/#ssl_prefer_server_ciphers = no/ssl_prefer_server_ciphers = yes/g' /etc/dovecot/conf.d/10-ssl.conf
-  echo "ssl_cipher_list = 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA'" >> /etc/dovecot/conf.d/10-ssl.conf
+  echo "ssl_cipher_list = '$SSL_CIPHERS'" >> /etc/dovecot/conf.d/10-ssl.conf
 
 
   sed -i 's/#listen = *, ::/listen = */g' /etc/dovecot/dovecot.conf
@@ -1634,7 +1637,7 @@ function install_owncloud {
   echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-  echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -1985,7 +1988,7 @@ function install_wiki {
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-  echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -2362,7 +2365,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -2571,7 +2574,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
-  echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
