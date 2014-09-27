@@ -2198,7 +2198,6 @@ function get_mariadb_password {
   if [ -f /home/$MY_USERNAME/README ]; then
 	  if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
 		  MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		  echo "MariaDB password: $MARIADB_PASSWORD"
 	  fi
   fi
 }
@@ -2207,7 +2206,6 @@ function get_mariadb_gnusocial_admin_password {
   if [ -f /home/$MY_USERNAME/README ]; then
 	  if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
 		  MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		  echo "MariaDB gnusocial admin password: $MICROBLOG_ADMIN_PASSWORD"
 	  fi
   fi
 }
@@ -2288,7 +2286,7 @@ CREATE USER 'gnusocialadmin'@'localhost' IDENTIFIED BY '$MICROBLOG_ADMIN_PASSWOR
 GRANT ALL PRIVILEGES ON gnusocial.* TO 'gnusocialadmin'@'localhost';
 quit" > $INSTALL_DIR/batch.sql
   chmod 600 $INSTALL_DIR/batch.sql
-  mysql -u root --password=$MARIADB_PASSWORD < $INSTALL_DIR/batch.sql
+  mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
   shred -zu $INSTALL_DIR/batch.sql
 
   echo 'install_gnu_social' >> $COMPLETION_FILE
