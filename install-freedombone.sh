@@ -2739,7 +2739,7 @@ function install_mediagoblin {
   su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; git submodule update" - mediagoblin
   su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; virtualenv --system-site-packages ." - mediagoblin
 
-  #su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; ./bin/python setup.py develop" - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; ./bin/python setup.py develop" - mediagoblin
   su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/easy_install flup" - mediagoblin
   su -c "cp /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin.ini /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini" - mediagoblin
   su -c "cp /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/paste.ini /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/paste_local.ini" - mediagoblin
@@ -2904,6 +2904,7 @@ function install_mediagoblin {
   chmod +x /etc/init.d/mediagoblin
   update-rc.d mediagoblin defaults
   service mediagoblin start
+  systemctl daemon-reload
 
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
