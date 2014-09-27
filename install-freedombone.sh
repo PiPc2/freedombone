@@ -2311,6 +2311,40 @@ quit" > $INSTALL_DIR/batch.sql
       fi
   fi
 
+  # some post-install instructions for the user
+  if ! grep -q "To set up your microblog" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo "To set up your microblog go to" >> /home/$MY_USERNAME/README
+      echo "https://$MICROBLOG_DOMAIN_NAME/install.php" >> /home/$MY_USERNAME/README
+      echo 'and enter the following settings:' >> /home/$MY_USERNAME/README
+      echo ' - Set a name for the site' >> /home/$MY_USERNAME/README
+      echo ' - Server SSL: enable' >> /home/$MY_USERNAME/README
+      echo ' - Hostname: localhost' >> /home/$MY_USERNAME/README
+      echo ' - Type: MySql' >> /home/$MY_USERNAME/README
+      echo ' - Name: gnusocial' >> /home/$MY_USERNAME/README
+      echo ' - DB username: gnusocialadmin' >> /home/$MY_USERNAME/README
+      echo " - DB Password; $MICROBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo " - Administrator nickname: $MY_USERNAME" >> /home/$MY_USERNAME/README
+      echo " - Administrator password: $MICROBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo ' - Subscribe to announcements: ticked' >> /home/$MY_USERNAME/README
+      echo ' - Site profile: Community' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "Navigate to https://$MICROBLOG_DOMAIN_NAME and you can then " >> /home/$MY_USERNAME/README
+	  echo 'complete the configuration via the *Admin* section on the header' >> /home/$MY_USERNAME/README
+	  echo 'bar.  Some recommended admin settings are:' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Under the *Site* settings:' >> /home/$MY_USERNAME/README
+      echo '    Text limit: 140' >> /home/$MY_USERNAME/README
+      echo '    Dupe Limit: 60000' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Under the *User* settings:' >> /home/$MY_USERNAME/README
+      echo '    Bio limit: 1000' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Under the *Access* settings:' >> /home/$MY_USERNAME/README
+      echo '    /Invite only/ ticked' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+  fi
+
   echo 'install_gnu_social' >> $COMPLETION_FILE
 }
 
