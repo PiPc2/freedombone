@@ -2825,6 +2825,7 @@ function install_mediagoblin {
 
   sed -i "s/notice@mediagoblin.example.org/$MY_USERNAME@$DOMAIN_NAME/g" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
   sed -i 's/email_debug_mode = true/email_debug_mode = false/g' /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  sed -i 's|# sql_engine = postgresql:///mediagoblin|sql_engine = postgresql:///mediagoblin|g' /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
 
   if grep -q "media_types.audio" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
       echo '[[mediagoblin.media_types.audio]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
