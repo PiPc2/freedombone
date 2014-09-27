@@ -2741,8 +2741,8 @@ function install_mediagoblin {
 
   #su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; ./bin/python setup.py develop" - mediagoblin
   su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/easy_install flup" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; cp mediagoblin.ini mediagoblin_local.ini" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; cp paste.ini paste_local.ini" - mediagoblin
+  su -c "cp /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin.ini /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini" - mediagoblin
+  su -c "cp /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/paste.ini /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/paste_local.ini" - mediagoblin
 
   # update the dynamic DNS
   if [ $MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE ]; then
