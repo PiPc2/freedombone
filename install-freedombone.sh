@@ -2292,6 +2292,17 @@ quit" > $INSTALL_DIR/batch.sql
   mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
   shred -zu $INSTALL_DIR/batch.sql
 
+  if [ ! -f "/etc/aliases" ]; then
+      touch /etc/aliases
+  fi
+  if grep -q "www-data: root" /etc/aliases; then
+      echo 'www-data: root' >> /etc/aliases
+  fi
+  if grep -q "/var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php" /etc/aliases; then
+      echo "*: /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php" >> /etc/aliases
+  fi
+  newaliases
+
   # update the dynamic DNS
   if [[ $MICROBLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
       if ! grep -q "$MICROBLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
