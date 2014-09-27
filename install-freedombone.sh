@@ -83,11 +83,13 @@ PRIVATE_MAILING_LIST=
 
 # Domain name or freedns subdomain for microblog installation
 MICROBLOG_DOMAIN_NAME=
+MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
 MICROBLOG_REPO="git://gitorious.org/social/mainline.git"
 MICROBLOG_ADMIN_PASSWORD=
 
 # Domain name or redmatrix installation
 REDMATRIX_DOMAIN_NAME=
+REDMATRIX_FREEDNS_SUBDOMAIN_CODE=
 REDMATRIX_REPO=""
 
 # Domain name or freedns subdomain for Owncloud installation
@@ -2285,9 +2287,18 @@ function install_gnu_social {
 CREATE USER 'gnusocialadmin'@'localhost' IDENTIFIED BY '$MICROBLOG_ADMIN_PASSWORD';
 GRANT ALL PRIVILEGES ON gnusocial.* TO 'gnusocialadmin'@'localhost';
 quit" > $INSTALL_DIR/batch.sql
+  echo $INSTALL_DIR/batch.sql
   chmod 600 $INSTALL_DIR/batch.sql
   mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
   shred -zu $INSTALL_DIR/batch.sql
+
+  # update the dynamic DNS
+  if [[ $MICROBLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+      if ! grep -q "$MICROBLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
+          echo "# $MICROBLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
+          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MICROBLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+      fi
+  fi
 
   echo 'install_gnu_social' >> $COMPLETION_FILE
 }
@@ -2298,6 +2309,11 @@ function install_redmatrix {
   fi
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
       return
+  fi
+  # if this is exclusively a writer setup
+  if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+      REDMATRIX_DOMAIN_NAME=$DOMAIN_NAME
+      REDMATRIX_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
   fi
 
   install_mariadb
@@ -2312,6 +2328,14 @@ function install_redmatrix {
   fi
 
   cd $INSTALL_DIR
+
+  # update the dynamic DNS
+  if [[ $REDMATRIX_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+      if ! grep -q "$REDMATRIX_DOMAIN_NAME" /usr/bin/dynamicdns; then
+          echo "# $REDMATRIX_DOMAIN_NAME" >> /usr/bin/dynamicdns
+          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$REDMATRIX_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+      fi
+  fi
 
   echo 'install_redmatrix' >> $COMPLETION_FILE
 }
