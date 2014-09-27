@@ -2490,7 +2490,7 @@ function install_redmatrix {
   install_mariadb
   get_mariadb_password
 
-  apt-get -y --force-yes install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
+  apt-get -y --force-yes install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git git
 
   if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME ]; then
       mkdir /var/www/$REDMATRIX_DOMAIN_NAME
@@ -2506,12 +2506,6 @@ function install_redmatrix {
       rm -rf /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
       mv redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
       chown -R www-data:www-data /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
-      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
-      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
-      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
-      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
-      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
-      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
       git clone $REDMATRIX_ADDONS_REPO /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/addon
   fi
 
@@ -2644,6 +2638,19 @@ quit" > $INSTALL_DIR/batch.sql
   if [ ! -f /etc/ssl/private/$REDMATRIX_DOMAIN_NAME.key ]; then
       makecert $REDMATRIX_DOMAIN_NAME
   fi
+
+  if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3 ]; then
+	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+  fi
+  if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data] ]; then
+	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
+  fi
+  if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3 ]; then
+	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+  fi
+  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
+  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
 
   nginx_ensite $REDMATRIX_DOMAIN_NAME
   service php5-fpm restart
