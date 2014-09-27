@@ -90,7 +90,9 @@ MICROBLOG_ADMIN_PASSWORD=
 # Domain name or redmatrix installation
 REDMATRIX_DOMAIN_NAME=
 REDMATRIX_FREEDNS_SUBDOMAIN_CODE=
-REDMATRIX_REPO=""
+REDMATRIX_REPO="https://github.com/friendica/red.git"
+REDMATRIX_ADDONS_REPO="https://github.com/friendica/red-addons.git"
+REDMATRIX_ADMIN_PASSWORD=
 
 # Domain name or freedns subdomain for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
@@ -2212,6 +2214,14 @@ function get_mariadb_gnusocial_admin_password {
   fi
 }
 
+function get_mariadb_redmatrix_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB Red Matrix admin password" /home/$MY_USERNAME/README; then
+          REDMATRIX_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Red Matrix admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
 function install_mariadb {
   if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
       return
@@ -2304,10 +2314,12 @@ quit" > $INSTALL_DIR/batch.sql
   newaliases
 
   # update the dynamic DNS
-  if [[ $MICROBLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-      if ! grep -q "$MICROBLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
-          echo "# $MICROBLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
-          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MICROBLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+  if [ $MICROBLOG_FREEDNS_SUBDOMAIN_CODE ]; then
+      if [[ $MICROBLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+          if ! grep -q "$MICROBLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
+              echo "# $MICROBLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
+              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MICROBLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+          fi
       fi
   fi
 
@@ -2461,8 +2473,12 @@ function install_redmatrix {
       REDMATRIX_DOMAIN_NAME=$DOMAIN_NAME
       REDMATRIX_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
   fi
+  if [ ! $REDMATRIX_DOMAIN_NAME ]; then
+	  return
+  fi
 
   install_mariadb
+  get_mariadb_password
 
   apt-get -y --force-yes install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
 
@@ -2473,15 +2489,54 @@ function install_redmatrix {
       mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
   fi
 
-  cd $INSTALL_DIR
+  if [ ! -f /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/index.php ]; then
+      cd $INSTALL_DIR
+      git clone $REDMATRIX_REPO redmatrix
+
+      rm -rf /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
+      mv redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
+      chown -R www-data:www-data /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
+	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
+	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+	  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
+	  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+	  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+	  git clone $REDMATRIX_ADDONS_REPO /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/addon
+  fi
+
+  get_mariadb_redmatrix_admin_password
+  if [ ! $REDMATRIX_ADMIN_PASSWORD ]; then
+      REDMATRIX_ADMIN_PASSWORD=$(openssl rand -base64 32)
+      echo '' >> /home/$MY_USERNAME/README
+      echo "Your MariaDB Red Matrix admin password is: $REDMATRIX_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  echo "create database redmatrix;
+CREATE USER 'redmatrixadmin'@'localhost' IDENTIFIED BY '$REDMATRIX_ADMIN_PASSWORD';
+GRANT ALL PRIVILEGES ON redmatrix.* TO 'redmatrixadmin'@'localhost';
+quit" > $INSTALL_DIR/batch.sql
+  chmod 600 $INSTALL_DIR/batch.sql
+  mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
+  shred -zu $INSTALL_DIR/batch.sql
+
+  if ! grep -q "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs" /etc/crontab; then
+      echo "12,22,32,42,52 * *   *   *   root cd /var/www/$REDMATRIX_DOMAIN_NAME/htdocs; /usr/bin/timeout 240 /usr/bin/php include/poller.php" >> /etc/crontab
+  fi
 
   # update the dynamic DNS
-  if [[ $REDMATRIX_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-      if ! grep -q "$REDMATRIX_DOMAIN_NAME" /usr/bin/dynamicdns; then
-          echo "# $REDMATRIX_DOMAIN_NAME" >> /usr/bin/dynamicdns
-          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$REDMATRIX_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+  if [ $REDMATRIX_FREEDNS_SUBDOMAIN_CODE ]; then
+      if [[ $REDMATRIX_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+          if ! grep -q "$REDMATRIX_DOMAIN_NAME" /usr/bin/dynamicdns; then
+              echo "# $REDMATRIX_DOMAIN_NAME" >> /usr/bin/dynamicdns
+              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$REDMATRIX_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+          fi
       fi
   fi
+
+  service cron restart
 
   echo 'install_redmatrix' >> $COMPLETION_FILE
 }
