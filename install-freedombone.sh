@@ -2084,6 +2084,7 @@ function install_wiki {
       echo 'Once you have set up the wiki then remove the install file:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo "  rm /var/www/$WIKI_DOMAIN_NAME/htdocs/install.php" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
   echo 'install_wiki' >> $COMPLETION_FILE
@@ -2207,6 +2208,7 @@ function install_blog {
       echo '  * [[:contact|Contact]]' >> /home/$MY_USERNAME/README
       echo "Go to https://$WIKI_DOMAIN_NAME/doku.php?id=start&do=admin&page=config" >> /home/$MY_USERNAME/README
       echo 'and check "Show header navigation" to ensure that the header shows' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
   echo 'install_blog' >> $COMPLETION_FILE
@@ -2472,6 +2474,7 @@ quit" > $INSTALL_DIR/batch.sql
       echo 'Under the *Access* settings:' >> /home/$MY_USERNAME/README
       echo '    /Invite only/ ticked' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
   echo 'install_gnu_social' >> $COMPLETION_FILE
@@ -2663,6 +2666,25 @@ quit" > $INSTALL_DIR/batch.sql
   service php5-fpm restart
   service nginx restart
   service cron restart
+
+  # some post-install instructions for the user
+  if ! grep -q "To set up your Red Matrix" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo "To set up your Red Matrix site go to" >> /home/$MY_USERNAME/README
+      echo "https://$REDMATRIX_DOMAIN_NAME" >> /home/$MY_USERNAME/README
+	  echo 'You will need to have a non self-signed SSL certificate in order' >> /home/$MY_USERNAME/README
+	  echo "to use Red Matrix. Put the public certificate in /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt" >> /home/$MY_USERNAME/README
+	  echo "and the private certificate in /etc/ssl/private/$REDMATRIX_DOMAIN_NAME.key." >> /home/$MY_USERNAME/README
+	  echo 'If there is an intermediate certificate needed (such as with StartSSL) then' >> /home/$MY_USERNAME/README
+      echo 'this will need to be concatenated onto the end of the crt file, like this:' >> /home/$MY_USERNAME/README
+	  echo '' >> /home/$MY_USERNAME/README
+      echo "  cat /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt /etc/ssl/chains/startssl-sub.class1.server.ca.pem > /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.bundle.crt" >> /home/$MY_USERNAME/README
+	  echo '' >> /home/$MY_USERNAME/README
+	  echo "Then change ssl_certificate to /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.bundle.crt" >> /home/$MY_USERNAME/README
+	  echo "within /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
 
   echo 'install_redmatrix' >> $COMPLETION_FILE
 }
