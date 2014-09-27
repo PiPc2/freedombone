@@ -2720,7 +2720,7 @@ function install_mediagoblin {
       return
   fi
 
-  apt-get -y --force-yes install git python python-dev python-lxml python-imaging python-virtualenv python-gst0.10 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer0.10-plugins-base gstreamer0.10-plugins-bad gstreamer0.10-plugins-good gstreamer0.10-plugins-ugly gstreamer0.10-libav python-numpy python-scipy libsndfile1-dev
+  apt-get -y --force-yes install git python python-dev python-lxml python-imaging python-virtualenv python-gst-1.0 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer1.0-plugins-base gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-libav python-numpy python-scipy libsndfile1-dev
   useradd mediagoblin
 
   if [ ! -d /srv/$MEDIAGOBLIN_DOMAIN_NAME ]; then
