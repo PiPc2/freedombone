@@ -2784,7 +2784,7 @@ function install_mediagoblin {
   echo ' # interprets as an HTML file, etc.)' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
   echo ' add_header X-Content-Type-Options nosniff;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
   echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo " server_name mediagoblin.example.org www.mediagoblin.example.org;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
+  echo " server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
   echo " access_log /var/log/nginx/$MEDIAGOBLIN_DOMAIN_NAME.access.log;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
   echo " error_log /var/log/nginx/$MEDIAGOBLIN_DOMAIN_NAME.error.log;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
   echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
@@ -2823,8 +2823,7 @@ function install_mediagoblin {
   ln -s /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf /etc/nginx/conf.d/
   ln -s /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf /etc/nginx/sites-enabled/
 
-  sudo /etc/init.d/nginx restart
-  sudo /etc/rc.d/nginx restart
+  /etc/init.d/nginx restart
 
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
