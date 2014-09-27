@@ -1740,11 +1740,15 @@ function install_owncloud {
   service nginx restart
 
   # update the dynamic DNS
-  if [[ $OWNCLOUD_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-      if ! grep -q "$OWNCLOUD_DOMAIN_NAME" /usr/bin/dynamicdns; then
-          echo "# $OWNCLOUD_DOMAIN_NAME" >> /usr/bin/dynamicdns
-          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$OWNCLOUD_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+  if [ $OWNCLOUD_FREEDNS_SUBDOMAIN_CODE ]; then
+      if [[ $OWNCLOUD_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+          if ! grep -q "$OWNCLOUD_DOMAIN_NAME" /usr/bin/dynamicdns; then
+              echo "# $OWNCLOUD_DOMAIN_NAME" >> /usr/bin/dynamicdns
+              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$OWNCLOUD_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+          fi
       fi
+  else
+      echo 'WARNING: No freeDNS subdomain code given for Owncloud. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
   echo 'install_owncloud' >> $COMPLETION_FILE
@@ -2057,11 +2061,15 @@ function install_wiki {
   service nginx restart
 
   # update the dynamic DNS
-  if [[ $WIKI_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-      if ! grep -q "$WIKI_DOMAIN_NAME" /usr/bin/dynamicdns; then
-          echo "# $WIKI_DOMAIN_NAME" >> /usr/bin/dynamicdns
-          echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$WIKI_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+  if [ $WIKI_FREEDNS_SUBDOMAIN_CODE ]; then
+      if [[ $WIKI_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+          if ! grep -q "$WIKI_DOMAIN_NAME" /usr/bin/dynamicdns; then
+              echo "# $WIKI_DOMAIN_NAME" >> /usr/bin/dynamicdns
+              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$WIKI_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+          fi
       fi
+  else
+      echo 'WARNING: No freeDNS subdomain code given for wiki installation. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
   # add some post-install instructions
@@ -2321,6 +2329,8 @@ quit" > $INSTALL_DIR/batch.sql
               echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MICROBLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
           fi
       fi
+  else
+      echo 'WARNING: No freeDNS subdomain code given for microblog. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
   echo 'server {' > /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -2474,7 +2484,7 @@ function install_redmatrix {
       REDMATRIX_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
   fi
   if [ ! $REDMATRIX_DOMAIN_NAME ]; then
-	  return
+      return
   fi
 
   install_mariadb
@@ -2496,13 +2506,13 @@ function install_redmatrix {
       rm -rf /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
       mv redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
       chown -R www-data:www-data /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
-	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
-	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
-	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
-	  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
-	  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
-	  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
-	  git clone $REDMATRIX_ADDONS_REPO /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/addon
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
+      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+      git clone $REDMATRIX_ADDONS_REPO /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/addon
   fi
 
   get_mariadb_redmatrix_admin_password
@@ -2534,6 +2544,8 @@ quit" > $INSTALL_DIR/batch.sql
               echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$REDMATRIX_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
           fi
       fi
+  else
+      echo 'WARNING: No freeDNS subdomain code given for Red Matrix. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
   service cron restart
