@@ -2836,7 +2836,73 @@ function install_mediagoblin {
       echo '[[mediagoblin.media_types.stl]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
   fi
 
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/pip install scikits.audiolab" - mediagoblin
+  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/gmg dbupdate" - mediagoblin
+
+  # create an init script
+  echo '#!/bin/bash' > /etc/init.d/mediagoblin
+  echo '# /etc/init.d/mediagoblin' >> /etc/init.d/mediagoblin
+  echo '' >> /etc/init.d/mediagoblin
+  echo '### BEGIN INIT INFO' >> /etc/init.d/mediagoblin
+  echo '# Provides:          mediagoblin' >> /etc/init.d/mediagoblin
+  echo '# Required-Start:    $remote_fs $syslog' >> /etc/init.d/mediagoblin
+  echo '# Required-Stop:     $remote_fs $syslog' >> /etc/init.d/mediagoblin
+  echo '# Default-Start:     2 3 4 5' >> /etc/init.d/mediagoblin
+  echo '# Default-Stop:      0 1 6' >> /etc/init.d/mediagoblin
+  echo '# Short-Description: starts mediagoblin' >> /etc/init.d/mediagoblin
+  echo '# Description:       Other methods may work, but I found this the easiest' >> /etc/init.d/mediagoblin
+  echo '### END INIT INFO' >> /etc/init.d/mediagoblin
+  echo '' >> /etc/init.d/mediagoblin
+  echo '# Author: Bob Mottram <bob@robotics.uk.to>' >> /etc/init.d/mediagoblin
+  echo '' >> /etc/init.d/mediagoblin
+  echo '#Settings' >> /etc/init.d/mediagoblin
+  echo "SERVICE='mediagoblin'" >> /etc/init.d/mediagoblin
+  echo "LOGFILE='/srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin.log'" >> /etc/init.d/mediagoblin
+  echo 'COMMAND="./lazyserver.sh > $LOGFILE"' >> /etc/init.d/mediagoblin
+  echo "USERNAME='mediagoblin'" >> /etc/init.d/mediagoblin
+  echo 'NICELEVEL=15 # from 0-19 the bigger the number, the less the impact on system resources' >> /etc/init.d/mediagoblin
+  echo 'HISTORY=1024' >> /etc/init.d/mediagoblin
+  echo "MG_LOCATION='/srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin'" >> /etc/init.d/mediagoblin
+  echo 'INVOCATION="nice -n ${NICELEVEL} ${COMMAND}"' >> /etc/init.d/mediagoblin
+  echo "PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/core_perl:/sbin:/usr/sbin:/bin'" >> /etc/init.d/mediagoblin
+  echo '' >> /etc/init.d/mediagoblin
+  echo 'mg_start() {' >> /etc/init.d/mediagoblin
+  echo '  echo "Starting $SERVICE..."' >> /etc/init.d/mediagoblin
+  echo '  cd ${MG_LOCATION}' >> /etc/init.d/mediagoblin
+  echo '  su --command "screen -h ${HISTORY} -dmS ${SERVICE} ${INVOCATION}" $USERNAME' >> /etc/init.d/mediagoblin
+  echo '}' >> /etc/init.d/mediagoblin
+  echo '' >> /etc/init.d/mediagoblin
+  echo 'mg_stop() {' >> /etc/init.d/mediagoblin
+  echo '  echo "Stopping $SERVICE"' >> /etc/init.d/mediagoblin
+
+  echo '  su --command "screen -p 0 -S ${SERVICE} -X stuff "'"'"^C"'"'"" $USERNAME' >> /etc/init.d/mediagoblin
+  echo '}' >> /etc/init.d/mediagoblin
+  echo '' >> /etc/init.d/mediagoblin
+  echo '#Start-Stop here' >> /etc/init.d/mediagoblin
+  echo 'case "$1" in' >> /etc/init.d/mediagoblin
+  echo '  start)' >> /etc/init.d/mediagoblin
+  echo '    mg_start' >> /etc/init.d/mediagoblin
+  echo '    ;;' >> /etc/init.d/mediagoblin
+  echo '  stop)' >> /etc/init.d/mediagoblin
+  echo '    mg_stop' >> /etc/init.d/mediagoblin
+  echo '    ;;' >> /etc/init.d/mediagoblin
+  echo '  restart)' >> /etc/init.d/mediagoblin
+  echo '    mg_stop' >> /etc/init.d/mediagoblin
+  echo '    sleep 10s' >> /etc/init.d/mediagoblin
+  echo '    mg_start' >> /etc/init.d/mediagoblin
+  echo '    ;;' >> /etc/init.d/mediagoblin
+  echo '    *)' >> /etc/init.d/mediagoblin
+  echo '  echo "Usage: $0 {start|stop|restart}"' >> /etc/init.d/mediagoblin
+  echo '  exit 1' >> /etc/init.d/mediagoblin
+  echo '  ;;' >> /etc/init.d/mediagoblin
+  echo 'esac' >> /etc/init.d/mediagoblin
+  echo '' >> /etc/init.d/mediagoblin
+  echo 'exit 0' >> /etc/init.d/mediagoblin
+
   /etc/init.d/nginx restart
+  chmod +x /etc/init.d/mediagoblin
+  update-rc.d mediagoblin defaults
+  service mediagoblin start
 
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
