@@ -2198,17 +2198,17 @@ function install_blog {
 
 function get_mariadb_password {
   if [ -f /home/$MY_USERNAME/README ]; then
-	  if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
-		  MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-	  fi
+      if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
+          MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
   fi
 }
 
 function get_mariadb_gnusocial_admin_password {
   if [ -f /home/$MY_USERNAME/README ]; then
-	  if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
-		  MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-	  fi
+      if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
+          MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
   fi
 }
 
@@ -2224,7 +2224,7 @@ function install_mariadb {
 
   get_mariadb_password
   if [ ! $MARIADB_PASSWORD ]; then
-	  MARIADB_PASSWORD=$(openssl rand -base64 32)
+      MARIADB_PASSWORD=$(openssl rand -base64 32)
       echo '' >> /home/$MY_USERNAME/README
       echo "Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
@@ -2234,6 +2234,7 @@ function install_mariadb {
   debconf-set-selections <<< "mariadb-server mariadb-server/root_password password $MARIADB_PASSWORD"
   debconf-set-selections <<< "mariadb-server mariadb-server/root_password_again password $MARIADB_PASSWORD"
   apt-get -y --force-yes install mariadb-server
+  mysqladmin -u root password "$MARIADB_PASSWORD"
   echo 'install_mariadb' >> $COMPLETION_FILE
 }
 
@@ -2287,7 +2288,6 @@ function install_gnu_social {
 CREATE USER 'gnusocialadmin'@'localhost' IDENTIFIED BY '$MICROBLOG_ADMIN_PASSWORD';
 GRANT ALL PRIVILEGES ON gnusocial.* TO 'gnusocialadmin'@'localhost';
 quit" > $INSTALL_DIR/batch.sql
-  echo $INSTALL_DIR/batch.sql
   chmod 600 $INSTALL_DIR/batch.sql
   mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
   shred -zu $INSTALL_DIR/batch.sql
