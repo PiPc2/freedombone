@@ -2548,6 +2548,106 @@ quit" > $INSTALL_DIR/batch.sql
       echo 'WARNING: No freeDNS subdomain code given for Red Matrix. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
+  echo 'server {' > /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    listen 80;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    server_name $REDMATRIX_DOMAIN_NAME;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    root /var/www/$REDMATRIX_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    index index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo 'server {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    root /var/www/$REDMATRIX_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    server_name $REDMATRIX_DOMAIN_NAME;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    index index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    charset utf-8;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    ssl on;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$REDMATRIX_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # not possible to do exclusive' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        expires 30d;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # block these file types' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # or a unix socket' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    location ~ /\. {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '      deny  all;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+
+  configure_php
+
+  if [ ! -f /etc/ssl/private/$REDMATRIX_DOMAIN_NAME.key ]; then
+      makecert $REDMATRIX_DOMAIN_NAME
+  fi
+
+  nginx_ensite $REDMATRIX_DOMAIN_NAME
+  service php5-fpm restart
+  service nginx restart
   service cron restart
 
   echo 'install_redmatrix' >> $COMPLETION_FILE
