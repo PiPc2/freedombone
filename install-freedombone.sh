@@ -245,10 +245,10 @@ function change_login_message {
 
   if [[ $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       echo '                 .    .        .            ' >> /etc/motd
-	  echo '                 |\  /|        |   o        ' >> /etc/motd
-	  echo "                 | \/ | .-. .-.|   .  .-.   " >> /etc/motd
-	  echo "                 |    |(.-'(   |   | (   )  " >> /etc/motd
-	  echo "                 '    '  --' -' --'  - -' - " >> /etc/motd
+      echo '                 |\  /|        |   o        ' >> /etc/motd
+      echo "                 | \/ | .-. .-.|   .  .-.   " >> /etc/motd
+      echo "                 |    |(.-'(   |   | (   )  " >> /etc/motd
+      echo "                 '    '  --' -' --'  - -' - " >> /etc/motd
   fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
@@ -2665,13 +2665,13 @@ quit" > $INSTALL_DIR/batch.sql
   fi
 
   if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3 ]; then
-	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
   fi
   if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data] ]; then
-	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
   fi
   if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3 ]; then
-	  mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
       chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
   fi
   chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
@@ -2687,16 +2687,16 @@ quit" > $INSTALL_DIR/batch.sql
       echo '' >> /home/$MY_USERNAME/README
       echo "To set up your Red Matrix site go to" >> /home/$MY_USERNAME/README
       echo "https://$REDMATRIX_DOMAIN_NAME" >> /home/$MY_USERNAME/README
-	  echo 'You will need to have a non self-signed SSL certificate in order' >> /home/$MY_USERNAME/README
-	  echo "to use Red Matrix. Put the public certificate in /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt" >> /home/$MY_USERNAME/README
-	  echo "and the private certificate in /etc/ssl/private/$REDMATRIX_DOMAIN_NAME.key." >> /home/$MY_USERNAME/README
-	  echo 'If there is an intermediate certificate needed (such as with StartSSL) then' >> /home/$MY_USERNAME/README
+      echo 'You will need to have a non self-signed SSL certificate in order' >> /home/$MY_USERNAME/README
+      echo "to use Red Matrix. Put the public certificate in /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt" >> /home/$MY_USERNAME/README
+      echo "and the private certificate in /etc/ssl/private/$REDMATRIX_DOMAIN_NAME.key." >> /home/$MY_USERNAME/README
+      echo 'If there is an intermediate certificate needed (such as with StartSSL) then' >> /home/$MY_USERNAME/README
       echo 'this will need to be concatenated onto the end of the crt file, like this:' >> /home/$MY_USERNAME/README
-	  echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
       echo "  cat /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt /etc/ssl/chains/startssl-sub.class1.server.ca.pem > /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.bundle.crt" >> /home/$MY_USERNAME/README
-	  echo '' >> /home/$MY_USERNAME/README
-	  echo "Then change ssl_certificate to /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.bundle.crt" >> /home/$MY_USERNAME/README
-	  echo "within /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "Then change ssl_certificate to /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.bundle.crt" >> /home/$MY_USERNAME/README
+      echo "within /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
@@ -2822,6 +2822,19 @@ function install_mediagoblin {
 
   ln -s /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf /etc/nginx/conf.d/
   ln -s /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf /etc/nginx/sites-enabled/
+
+  sed -i "s/notice@mediagoblin.example.org/$MY_USERNAME@$DOMAIN_NAME/g" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  sed -i 's/email_debug_mode = true/email_debug_mode = false/g' /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+
+  if grep -q "media_types.audio" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
+      echo '[[mediagoblin.media_types.audio]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  fi
+  if grep -q "media_types.video" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
+      echo '[[mediagoblin.media_types.video]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  fi
+  if grep -q "media_types.stl" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
+      echo '[[mediagoblin.media_types.stl]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  fi
 
   /etc/init.d/nginx restart
 
