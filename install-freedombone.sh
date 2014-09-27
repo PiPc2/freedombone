@@ -2343,7 +2343,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    ssl_ciphers 'EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA';" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '    add_header Strict-Transport-Security "max-age=15768000;";' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    location / {' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
