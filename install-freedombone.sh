@@ -1639,7 +1639,7 @@ function install_owncloud {
 
   echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-  echo '    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -1990,7 +1990,7 @@ function install_wiki {
   echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-  echo '    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -2367,7 +2367,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -2545,7 +2545,7 @@ quit" > $INSTALL_DIR/batch.sql
           fi
       fi
   else
-      echo 'WARNING: No freeDNS subdomain code given for Red Matrix. It is assumed that you are using some other dynamic DNS provider.'
+      echo 'WARNING: No freeDNS code given for Red Matrix. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
   echo 'server {' > /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
@@ -2576,7 +2576,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
-  echo '    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
