@@ -2704,211 +2704,6 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'install_redmatrix' >> $COMPLETION_FILE
 }
 
-function install_mediagoblin_old {
-  if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
-      return
-  fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
-      return
-  fi
-  # if this is exclusively a writer setup
-  if [[ $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
-      MEDIAGOBLIN_DOMAIN_NAME=$DOMAIN_NAME
-      MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
-  fi
-  if [ ! $MEDIAGOBLIN_DOMAIN_NAME ]; then
-      return
-  fi
-
-  apt-get -y --force-yes install git-core python python-dev python-lxml python-imaging python-virtualenv
-  apt-get -y --force-yes install python-gst-1.0 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer1.0-plugins-base gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-libav python-numpy python-scipy libsndfile1-dev
-  apt-get -y --force-yes install postgresql postgresql-client python-psycopg2
-
-  sudo -u postgres createuser -A -D mediagoblin
-  sudo -u postgres createdb -E UNICODE -O mediagoblin mediagoblin
-
-  adduser --system mediagoblin
-
-  if [ ! -d /srv/$MEDIAGOBLIN_DOMAIN_NAME ]; then
-      mkdir -p /srv/$MEDIAGOBLIN_DOMAIN_NAME
-  fi
-  chown -hR mediagoblin: /srv/$MEDIAGOBLIN_DOMAIN_NAME
-  cd /srv/$MEDIAGOBLIN_DOMAIN_NAME
-  su -c "git clone git://gitorious.org/mediagoblin/mediagoblin.git /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; git submodule init" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; git submodule update" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; virtualenv --system-site-packages ." - mediagoblin
-
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin; ./bin/python setup.py develop" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/easy_install flup" - mediagoblin
-  su -c "cp /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin.ini /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini" - mediagoblin
-  su -c "cp /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/paste.ini /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/paste_local.ini" - mediagoblin
-
-  # update the dynamic DNS
-  if [ $MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$MEDIAGOBLIN_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $MEDIAGOBLIN_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-          fi
-      fi
-  else
-      echo 'WARNING: No freeDNS subdomain code given for mediagoblin. It is assumed that you are using some other dynamic DNS provider.'
-  fi
-
-  echo 'server {' > /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' #################################################' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Stock useful config options, but ignore them :)' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' #################################################' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' include /etc/nginx/mime.types;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' autoindex off;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' default_type  application/octet-stream;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' sendfile on;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Gzip' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' gzip on;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' gzip_min_length 1024;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' gzip_buffers 4 32k;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' gzip_types text/plain text/html application/x-javascript text/javascript text/xml text/css;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' #####################################' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Mounting MediaGoblin stuff' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # This is the section you should read' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' #####################################' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Change this to update the upload size limit for your users' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' client_max_body_size 8m;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # prevent attacks (someone uploading a .txt file that the browser' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # interprets as an HTML file, etc.)' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' add_header X-Content-Type-Options nosniff;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo " server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo " access_log /var/log/nginx/$MEDIAGOBLIN_DOMAIN_NAME.access.log;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo " error_log /var/log/nginx/$MEDIAGOBLIN_DOMAIN_NAME.error.log;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo " # MediaGoblin's stock static files: CSS, JS, etc." >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' location /mgoblin_static/ {' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo "    alias /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin/static/;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' }' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Instance specific media:' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' location /mgoblin_media/ {' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo "    alias /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/user_dev/media/public/;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' }' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Theme static files (usually symlinked in)' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' location /theme_static/ {' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo "    alias /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/user_dev/theme_static/;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' }' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Plugin static files (usually symlinked in)' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' location /plugin_static/ {' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo "    alias /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/user_dev/plugin_static/;" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' }' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' # Mounting MediaGoblin itself via FastCGI.' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' location / {' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '    fastcgi_pass 127.0.0.1:26543;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '    include /etc/nginx/fastcgi_params;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo "    # our understanding vs nginx's handling of script_name vs" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo "    # path_info don't match :)" >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '    fastcgi_param PATH_INFO $fastcgi_script_name;' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '    fastcgi_param SCRIPT_NAME "";' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo ' }' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-  echo '}' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf
-
-  ln -s /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf /etc/nginx/conf.d/
-  ln -s /srv/$MEDIAGOBLIN_DOMAIN_NAME/nginx.conf /etc/nginx/sites-enabled/
-
-  sed -i "s/notice@mediagoblin.example.org/$MY_USERNAME@$DOMAIN_NAME/g" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-  sed -i 's/email_debug_mode = true/email_debug_mode = false/g' /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-  sed -i 's|# sql_engine = postgresql:///mediagoblin|sql_engine = postgresql:///mediagoblin|g' /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-
-  if grep -q "media_types.audio" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
-      echo '[[mediagoblin.media_types.audio]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-  fi
-  if grep -q "media_types.video" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
-      echo '[[mediagoblin.media_types.video]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-  fi
-  if grep -q "media_types.stl" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
-      echo '[[mediagoblin.media_types.stl]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-  fi
-
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/pip install scikits.audiolab" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/gmg dbupdate" - mediagoblin
-
-  # create an init script
-  echo '#!/bin/bash' > /etc/init.d/mediagoblin
-  echo '# /etc/init.d/mediagoblin' >> /etc/init.d/mediagoblin
-  echo '' >> /etc/init.d/mediagoblin
-  echo '### BEGIN INIT INFO' >> /etc/init.d/mediagoblin
-  echo '# Provides:          mediagoblin' >> /etc/init.d/mediagoblin
-  echo '# Required-Start:    $remote_fs $syslog' >> /etc/init.d/mediagoblin
-  echo '# Required-Stop:     $remote_fs $syslog' >> /etc/init.d/mediagoblin
-  echo '# Default-Start:     2 3 4 5' >> /etc/init.d/mediagoblin
-  echo '# Default-Stop:      0 1 6' >> /etc/init.d/mediagoblin
-  echo '# Short-Description: starts mediagoblin' >> /etc/init.d/mediagoblin
-  echo '# Description:       Other methods may work, but I found this the easiest' >> /etc/init.d/mediagoblin
-  echo '### END INIT INFO' >> /etc/init.d/mediagoblin
-  echo '' >> /etc/init.d/mediagoblin
-  echo '# Author: Bob Mottram <bob@robotics.uk.to>' >> /etc/init.d/mediagoblin
-  echo '' >> /etc/init.d/mediagoblin
-  echo '#Settings' >> /etc/init.d/mediagoblin
-  echo "SERVICE='mediagoblin'" >> /etc/init.d/mediagoblin
-  echo "LOGFILE='/srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin.log'" >> /etc/init.d/mediagoblin
-  echo 'COMMAND="./lazyserver.sh > $LOGFILE"' >> /etc/init.d/mediagoblin
-  echo "USERNAME='mediagoblin'" >> /etc/init.d/mediagoblin
-  echo 'NICELEVEL=15 # from 0-19 the bigger the number, the less the impact on system resources' >> /etc/init.d/mediagoblin
-  echo 'HISTORY=1024' >> /etc/init.d/mediagoblin
-  echo "MG_LOCATION='/srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin'" >> /etc/init.d/mediagoblin
-  echo 'INVOCATION="nice -n ${NICELEVEL} ${COMMAND}"' >> /etc/init.d/mediagoblin
-  echo "PATH='/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/bin/core_perl:/sbin:/usr/sbin:/bin'" >> /etc/init.d/mediagoblin
-  echo '' >> /etc/init.d/mediagoblin
-  echo 'mg_start() {' >> /etc/init.d/mediagoblin
-  echo '  echo "Starting $SERVICE..."' >> /etc/init.d/mediagoblin
-  echo '  cd ${MG_LOCATION}' >> /etc/init.d/mediagoblin
-  echo '  su --command "screen -h ${HISTORY} -dmS ${SERVICE} ${INVOCATION}" $USERNAME' >> /etc/init.d/mediagoblin
-  echo '}' >> /etc/init.d/mediagoblin
-  echo '' >> /etc/init.d/mediagoblin
-  echo 'mg_stop() {' >> /etc/init.d/mediagoblin
-  echo '  echo "Stopping $SERVICE"' >> /etc/init.d/mediagoblin
-
-  echo '  su --command "screen -p 0 -S ${SERVICE} -X stuff "'"'"^C"'"'"" $USERNAME' >> /etc/init.d/mediagoblin
-  echo '}' >> /etc/init.d/mediagoblin
-  echo '' >> /etc/init.d/mediagoblin
-  echo '#Start-Stop here' >> /etc/init.d/mediagoblin
-  echo 'case "$1" in' >> /etc/init.d/mediagoblin
-  echo '  start)' >> /etc/init.d/mediagoblin
-  echo '    mg_start' >> /etc/init.d/mediagoblin
-  echo '    ;;' >> /etc/init.d/mediagoblin
-  echo '  stop)' >> /etc/init.d/mediagoblin
-  echo '    mg_stop' >> /etc/init.d/mediagoblin
-  echo '    ;;' >> /etc/init.d/mediagoblin
-  echo '  restart)' >> /etc/init.d/mediagoblin
-  echo '    mg_stop' >> /etc/init.d/mediagoblin
-  echo '    sleep 10s' >> /etc/init.d/mediagoblin
-  echo '    mg_start' >> /etc/init.d/mediagoblin
-  echo '    ;;' >> /etc/init.d/mediagoblin
-  echo '    *)' >> /etc/init.d/mediagoblin
-  echo '  echo "Usage: $0 {start|stop|restart}"' >> /etc/init.d/mediagoblin
-  echo '  exit 1' >> /etc/init.d/mediagoblin
-  echo '  ;;' >> /etc/init.d/mediagoblin
-  echo 'esac' >> /etc/init.d/mediagoblin
-  echo '' >> /etc/init.d/mediagoblin
-  echo 'exit 0' >> /etc/init.d/mediagoblin
-
-  /etc/init.d/nginx restart
-  chmod +x /etc/init.d/mediagoblin
-  update-rc.d mediagoblin defaults
-  service mediagoblin start
-  systemctl daemon-reload
-
-  echo 'install_mediagoblin' >> $COMPLETION_FILE
-}
-
 function install_mediagoblin {
   if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
       return
@@ -2926,7 +2721,7 @@ function install_mediagoblin {
   fi
   apt-get -y --force-yes install git-core python python-dev python-lxml python-imaging python-virtualenv
   apt-get -y --force-yes install python-gst-1.0 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer1.0-plugins-base gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-libav python-numpy python-scipy libsndfile1-dev
-  apt-get -y --force-yes install postgresql postgresql-client python-psycopg2
+  apt-get -y --force-yes install postgresql postgresql-client python-psycopg2 python-pip autotools-dev automake
 
   sudo -u postgres createuser -A -D mediagoblin
   sudo -u postgres createdb -E UNICODE -O mediagoblin mediagoblin
@@ -2937,24 +2732,21 @@ function install_mediagoblin {
   MEDIAGOBLIN_PATH="$MEDIAGOBLIN_DOMAIN_ROOT/mediagoblin"
   MEDIAGOBLIN_PATH_BIN="$MEDIAGOBLIN_PATH/mediagoblin/bin"
 
-  if [ -d $MEDIAGOBLIN_DOMAIN_ROOT ]; then
-      rm -rf $MEDIAGOBLIN_DOMAIN_ROOT
-  fi
   if [ ! -d $MEDIAGOBLIN_DOMAIN_ROOT ]; then
       mkdir -p $MEDIAGOBLIN_DOMAIN_ROOT
   fi
-  chown -hR mediagoblin: $MEDIAGOBLIN_DOMAIN_ROOT
   cd $MEDIAGOBLIN_DOMAIN_ROOT
+  chown -hR mediagoblin: $MEDIAGOBLIN_DOMAIN_ROOT
   su -c "cd $MEDIAGOBLIN_DOMAIN_ROOT; git clone git://gitorious.org/mediagoblin/mediagoblin.git" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; git submodule init" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; git submodule update" - mediagoblin
 
-  su -c 'cd $MEDIAGOBLIN_PATH; ./experimental-bootstrap.sh' - mediagoblin
-  su -c 'cd $MEDIAGOBLIN_PATH; ./configure' - mediagoblin
-  su -c 'cd $MEDIAGOBLIN_PATH; make' - mediagoblin
+  #su -c 'cd $MEDIAGOBLIN_PATH; ./experimental-bootstrap.sh' - mediagoblin
+  #su -c 'cd $MEDIAGOBLIN_PATH; ./configure' - mediagoblin
+  #su -c 'cd $MEDIAGOBLIN_PATH; make' - mediagoblin
 
-  #su -c "cd $MEDIAGOBLIN_PATH; virtualenv --system-site-packages ." - mediagoblin
-  #su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH; virtualenv --system-site-packages ." - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
 
   su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
   su -c "cp $MEDIAGOBLIN_PATH/paste.ini $MEDIAGOBLIN_PATH/paste_local.ini" - mediagoblin
