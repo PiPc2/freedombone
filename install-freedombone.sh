@@ -162,8 +162,11 @@ USB_DRIVE=/dev/sda1
 # Location where the USB drive is mounted to
 USB_MOUNT=/media/usb
 
-# Name of a script used to create a backup of the system
+# Name of a script used to create a backup of the system on usb drive
 BACKUP_SCRIPT_NAME="backup"
+
+# Name of a script used to restore the system from usb drive
+RESTORE_SCRIPT_NAME="restore"
 
 # memory limit for php in MB
 MAX_PHP_MEMORY=32
@@ -3016,10 +3019,7 @@ function create_backup_script {
   fi
   # dynamic dns
   echo "  if [ -f /usr/bin/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    if [ ! -d $USB_MOUNT/backup/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "        mkdir $USB_MOUNT/backup/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    obnam -r $USB_MOUNT/backup/dynamicdns /usr/bin/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    cp -f /usr/bin/dynamicdns $USB_MOUNT/backup/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # web server
   echo "  if [ -d /etc/nginx ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3081,6 +3081,7 @@ function create_backup_script {
 	  echo "  obnam -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  chmod 600 /usr/bin/$BACKUP_SCRIPT_NAME
   chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'create_backup_script' >> $COMPLETION_FILE
@@ -3091,94 +3092,87 @@ function create_restore_script {
       return
   fi
   apt-get -y --force-yes install obnam
-  echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    mkdir $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    mkdir $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '#!/bin/bash' > /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    mkdir $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    mkdir $USB_MOUNT/backup" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # email
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
-      echo "  if [ -d $USB_MOUNT/backup/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "    obnam restore --to /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "    obnam restore --to /home/$MY_USERNAME/.gnupg $USB_MOUNT/backup/gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "    cp -f $USB_MOUNT/backup/gpg/.muttrc /home/$MY_USERNAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "    cp -f $USB_MOUNT/backup/gpg/.procmailrc /home/$MY_USERNAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  if [ -d $USB_MOUNT/backup/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    obnam restore --to /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/Maildir" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    obnam restore --to /home/$MY_USERNAME/.gnupg $USB_MOUNT/backup/gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+	  echo "    cp -f $USB_MOUNT/backup/gpg/.muttrc /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+	  echo "    cp -f $USB_MOUNT/backup/gpg/.procmailrc /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
   # dynamic dns
-  echo "  if [ -f /usr/bin/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    if [ ! -d $USB_MOUNT/backup/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "        mkdir $USB_MOUNT/backup/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    obnam -r $USB_MOUNT/backup/dynamicdns /usr/bin/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ -f $USB_MOUNT/backup/dynamicdns ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp -f $USB_MOUNT/backup/dynamicdns /usr/bin/dynamicdns" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # web server
-  echo "  if [ -d /etc/nginx ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    if [ ! -d $USB_MOUNT/backup/webserver ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "        mkdir $USB_MOUNT/backup/webserver" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    obnam -r $USB_MOUNT/backup/webserver /etc/nginx/sites-available" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ -d /etc/nginx ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    if [ -d $USB_MOUNT/backup/webserver ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      obnam restore --to /etc/nginx $USB_MOUNT/backup/webserver" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # owncloud
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
 	  if [ $OWNCLOUD_DOMAIN_NAME ]; then
-		  echo "  if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "    mkdir $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "  obnam -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo "  if [ -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    obnam restore --to /var/www/$OWNCLOUD_DOMAIN_NAME $USB_MOUNT/backup/owncloud" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
 	  fi
   fi
   # prosody
-  echo 'if [ -d /var/lib/prosody ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  if [ ! -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    mkdir $USB_MOUNT/backup/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  obnam -r $USB_MOUNT/backup/prosody /var/lib/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'if [ -d /var/lib/prosody ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    obnam restore --to /var/lib/prosody $USB_MOUNT/backup/prosody" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # wiki / blog
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
 	  if [ $WIKI_DOMAIN_NAME ]; then
-          echo "  if [ ! -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo "    mkdir $USB_MOUNT/backup/wiki-blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	      echo "  obnam -r $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "  if [ -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    obnam restore --to /var/www/$WIKI_DOMAIN_NAME $USB_MOUNT/backup/wiki-blog" >> /usr/bin/$RESTORE_SCRIPT_NAME
+          echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
 	  fi
   fi
   # microblog
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
 	  if [ $MICROBLOG_DOMAIN_NAME ]; then
-          echo "  if [ ! -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo "    mkdir $USB_MOUNT/backup/gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	      echo "  obnam -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "  mysqldump --password=$MARIADB_PASSWORD gnusocial > $USB_MOUNT/backup/gnusocial/database.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "  if [ -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    obnam restore --to /var/www/$MICROBLOG_DOMAIN_NAME $USB_MOUNT/backup/gnusocial" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < $USB_MOUNT/backup/gnusocial/database.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+          echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
 	  fi
   fi
   # redmatrix
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
 	  if [ $REDMATRIX_DOMAIN_NAME ]; then
-          echo "  if [ ! -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo "    mkdir $USB_MOUNT/backup/redmatrix" >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	      echo "  obnam -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "  mysqldump --password=$MARIADB_PASSWORD redmatrix > $USB_MOUNT/backup/redmatrix/database.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "  if [ -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    obnam restore --to /var/www/$REDMATRIX_DOMAIN_NAME $USB_MOUNT/backup/redmatrix" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < $USB_MOUNT/backup/redmatrix/database.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+          echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+IPT_NAME
 	  fi
   fi
   # dlna
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
-      echo "  if [ ! -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "    mkdir $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "  obnam -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  if [ -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+	  echo "    obnam restore --to /var/cache/minidlna $USB_MOUNT/backup/minidlna" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  chmod 600 /usr/bin/$RESTORE_SCRIPT_NAME
+  chmod +x /usr/bin/$RESTORE_SCRIPT_NAME
 
-  echo 'create_backup_script' >> $COMPLETION_FILE
+  echo 'create_restore_script' >> $COMPLETION_FILE
 }
 
 function install_final {
@@ -3220,6 +3214,7 @@ enable_zram
 random_number_generator
 set_your_domain_name
 create_backup_script
+create_restore_script
 time_synchronisation
 configure_internet_protocol
 configure_ssh
