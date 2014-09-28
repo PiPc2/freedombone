@@ -2901,6 +2901,59 @@ function install_mediagoblin {
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
 
+function install_dlna_server {
+  if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+      return
+  fi
+  apt-get -y --force-yes install minidlna
+  sed -i "s|media_dir=/var/lib/minidlna|media_dir=A,/home/$MY_USERNAME/Music|g" /etc/minidlna.conf
+  if ! grep -q "/home/$MY_USERNAME/Pictures" /etc/minidlna.conf; then
+    echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/home/$MY_USERNAME/Videos" /etc/minidlna.conf; then
+	  echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/var/media/Music" /etc/minidlna.conf; then
+	  echo "media_dir=A,/var/media/Music" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/var/media/Pictures" /etc/minidlna.conf; then
+	  echo "media_dir=P,/var/media/Pictures" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/var/media/Videos" /etc/minidlna.conf; then
+	  echo "media_dir=V,/var/media/Videos" >> /etc/minidlna.conf
+  fi
+  sed -i 's/#root_container=./root_container=B/g' /etc/minidlna.conf
+  sed -i 's/#network_interface=/network_interface=eth0/g' /etc/minidlna.conf
+  sed -i 's/#friendly_name=/friendly_name="Freedombone Media"/g' /etc/minidlna.conf
+  sed -i 's|#db_dir=/var/cache/minidlna|db_dir=/var/cache/minidlna|g' /etc/minidlna.conf
+  sed -i 's/#inotify=yes/inotify=yes/g' /etc/minidlna.conf
+  service minidlna force-reload
+  service minidlna reload
+
+  # make a script to make attaching media via usb stick easy
+  echo '#!/bin/bash' > /usr/bin/attach-music
+  echo 'if [ -d /var/media ]; then' >> /usr/bin/attach-music
+  echo '  umount /var/media' >> /usr/bin/attach-music
+  echo 'fi' >> /usr/bin/attach-music
+  echo 'if [ ! -d /var/media ]; then' >> /usr/bin/attach-music
+  echo '  mkdir /var/media' >> /usr/bin/attach-music
+  echo 'fi' >> /usr/bin/attach-music
+  echo 'mount /dev/sda1 /var/media' >> /usr/bin/attach-music
+  echo 'chown root:root /var/media' >> /usr/bin/attach-music
+  echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
+  echo 'minidlna -R' >> /usr/bin/attach-music
+  chmod +x /usr/bin/attach-music
+  ln -s /usr/bin/attach-usb /usr/bin/attach-music
+  ln -s /usr/bin/attach-videos /usr/bin/attach-music
+  ln -s /usr/bin/attach-pictures /usr/bin/attach-music
+  ln -s /usr/bin/attach-media /usr/bin/attach-music
+
+  echo 'install_dlna_server' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -2967,6 +3020,7 @@ install_wiki
 install_blog
 install_gnu_social
 install_redmatrix
+install_dlna_server
 install_mediagoblin
 install_final
 echo 'Freedombone installation is complete'
