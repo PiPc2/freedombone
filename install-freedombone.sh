@@ -3008,11 +3008,72 @@ function create_backup_script {
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  obnam -r $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
-
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  # dynamic dns
+  echo "  if [ -f /usr/bin/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    if [ ! -d $USB_MOUNT/backup/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "        mkdir $USB_MOUNT/backup/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    obnam -r $USB_MOUNT/backup/dynamicdns /usr/bin/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  # web server
+  echo "  if [ -d /etc/nginx ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    if [ ! -d $USB_MOUNT/backup/webserver ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "        mkdir $USB_MOUNT/backup/webserver" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    obnam -r $USB_MOUNT/backup/webserver /etc/nginx/sites-available" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  # owncloud
+  if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+	  if [ $OWNCLOUD_DOMAIN_NAME ]; then
+		  echo "  if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo "    mkdir $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo "  obnam -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  fi
+  fi
+  # prosody
+  echo 'if [ -d /var/lib/prosody ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir $USB_MOUNT/backup/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  obnam -r $USB_MOUNT/backup/prosody /var/lib/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  # wiki / blog
+  if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+	  if [ $WIKI_DOMAIN_NAME ]; then
+          echo "  if [ ! -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "    mkdir $USB_MOUNT/backup/wiki-blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+	      echo "  obnam -r $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  fi
+  fi
+  # microblog
+  if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+	  if [ $MICROBLOG_DOMAIN_NAME ]; then
+          echo "  if [ ! -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "    mkdir $USB_MOUNT/backup/gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+	      echo "  obnam -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo "  mysqldump --password=$MARIADB_PASSWORD gnusocial > $USB_MOUNT/backup/gnusocial/database.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  fi
+  fi
+  # redmatrix
+  if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+	  if [ $REDMATRIX_DOMAIN_NAME ]; then
+          echo "  if [ ! -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "    mkdir $USB_MOUNT/backup/redmatrix" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+	      echo "  obnam -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo "  mysqldump --password=$MARIADB_PASSWORD redmatrix > $USB_MOUNT/backup/redmatrix/database.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  fi
+  fi
+  # dlna
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+      echo "  if [ ! -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "    mkdir $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  echo "  obnam -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
 
