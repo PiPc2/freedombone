@@ -2945,7 +2945,7 @@ function install_mediagoblin {
   fi
   chown -hR mediagoblin: $MEDIAGOBLIN_DOMAIN_ROOT
   cd $MEDIAGOBLIN_DOMAIN_ROOT
-  su -c "cd $MEDIAGOBLIN_PATH; git clone git://gitorious.org/mediagoblin/mediagoblin.git" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_DOMAIN_ROOT; git clone git://gitorious.org/mediagoblin/mediagoblin.git" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; git submodule init" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; git submodule update" - mediagoblin
 
