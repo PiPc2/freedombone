@@ -2946,10 +2946,10 @@ function install_dlna_server {
   echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
   echo 'minidlna -R' >> /usr/bin/attach-music
   chmod +x /usr/bin/attach-music
-  ln -s /usr/bin/attach-usb /usr/bin/attach-music
-  ln -s /usr/bin/attach-videos /usr/bin/attach-music
-  ln -s /usr/bin/attach-pictures /usr/bin/attach-music
-  ln -s /usr/bin/attach-media /usr/bin/attach-music
+  ln -s /usr/bin/attach-music /usr/bin/attach-usb
+  ln -s /usr/bin/attach-music /usr/bin/attach-videos
+  ln -s /usr/bin/attach-music /usr/bin/attach-pictures
+  ln -s /usr/bin/attach-music /usr/bin/attach-media
 
   echo 'install_dlna_server' >> $COMPLETION_FILE
 }
