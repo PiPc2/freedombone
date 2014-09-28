@@ -2944,7 +2944,7 @@ function install_dlna_server {
   echo 'mount /dev/sda1 /var/media' >> /usr/bin/attach-music
   echo 'chown root:root /var/media' >> /usr/bin/attach-music
   echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
-  echo 'minidlna -R' >> /usr/bin/attach-music
+  echo 'minidlnad -R' >> /usr/bin/attach-music
   chmod +x /usr/bin/attach-music
   ln -s /usr/bin/attach-music /usr/bin/attach-usb
   ln -s /usr/bin/attach-music /usr/bin/attach-videos
