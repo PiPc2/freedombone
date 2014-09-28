@@ -2726,6 +2726,23 @@ function script_for_attaching_usb_drive {
   ln -s /usr/bin/attach-music /usr/bin/attach-videos
   ln -s /usr/bin/attach-music /usr/bin/attach-pictures
   ln -s /usr/bin/attach-music /usr/bin/attach-media
+
+  echo '#!/bin/bash' > /usr/bin/remove-music
+  echo 'if [ -d /var/media ]; then' >> /usr/bin/remove-music
+  echo '  umount /var/media' >> /usr/bin/remove-music
+  echo '  rm -rf /var/media' >> /usr/bin/remove-music
+  echo 'fi' >> /usr/bin/remove-music
+  chmod +x /usr/bin/remove-music
+  ln -s /usr/bin/remove-music /usr/bin/detach-music
+  ln -s /usr/bin/remove-music /usr/bin/detach-usb
+  ln -s /usr/bin/remove-music /usr/bin/remove-usb
+  ln -s /usr/bin/remove-music /usr/bin/detach-media
+  ln -s /usr/bin/remove-music /usr/bin/remove-media
+  ln -s /usr/bin/remove-music /usr/bin/detach-videos
+  ln -s /usr/bin/remove-music /usr/bin/remove-videos
+  ln -s /usr/bin/remove-music /usr/bin/detach-pictures
+  ln -s /usr/bin/remove-music /usr/bin/remove-pictures
+
   echo 'script_for_attaching_usb_drive' >> $COMPLETION_FILE
 }
 
