@@ -174,6 +174,9 @@ MAX_PHP_MEMORY=32
 # default MariaDB password
 MARIADB_PASSWORD=
 
+# Whether to encrypt backups to the USB drive
+ENCRYPT_BACKUPS="yes"
+
 #list of encryption protocols
 SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 
@@ -2990,11 +2993,21 @@ function install_mediagoblin {
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
 
+function decrypt_file {
+	if [ ! $FILE_TO_DECRYPT ]; then
+		return
+	fi
+	if [ ! -d $FILE_TO_DECRYPT ]; then
+		return
+	fi
+    bcrypt $FILE_TO_DECRYPT
+}
+
 function create_backup_script {
   if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
       return
   fi
-  apt-get -y --force-yes install obnam
+  apt-get -y --force-yes install obnam bcrypt
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3066,7 +3079,6 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo "  obnam -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "  mysqldump --password=$MARIADB_PASSWORD gnusocial > $USB_MOUNT/backup/gnusocial/database.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
@@ -3076,7 +3088,6 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/redmatrix" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo "  obnam -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "  mysqldump --password=$MARIADB_PASSWORD redmatrix > $USB_MOUNT/backup/redmatrix/database.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
@@ -3089,6 +3100,13 @@ function create_backup_script {
   fi
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'Backup completed' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  if [[ $ENCRYPT_BACKUPS == "yes" ]]; then
+      echo 'Archiving backup data' >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  echo "cd $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  echo "tar -czvf $USB_MOUNT/backup.tar.gz $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  echo 'Encrypting backup data' >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  echo "bcrypt -c $USB_MOUNT/backup.tar.gz" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
   chmod 600 /usr/bin/$BACKUP_SCRIPT_NAME
   chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3100,13 +3118,18 @@ function create_restore_script {
   if grep -Fxq "create_restore_script" $COMPLETION_FILE; then
       return
   fi
-  apt-get -y --force-yes install obnam
+  apt-get -y --force-yes install obnam bcrypt
   echo '#!/bin/bash' > /usr/bin/$RESTORE_SCRIPT_NAME
   echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    mkdir $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -f $USB_MOUNT/backup.tar.gz.bfe ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    bcrypt $USB_MOUNT/backup.tar.gz.bfe" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    cd $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    tar -xzvf $USB_MOUNT/backup.tar.gz" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    echo "No backup directory was found on the USB drive"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    exit 1" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -3160,7 +3183,6 @@ function create_restore_script {
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $MICROBLOG_DOMAIN_NAME ]; then
           echo "  if [ -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-          echo "    obnam restore --to /var/www/$MICROBLOG_DOMAIN_NAME $USB_MOUNT/backup/gnusocial" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo "    mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < $USB_MOUNT/backup/gnusocial/database.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -3170,7 +3192,6 @@ function create_restore_script {
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $REDMATRIX_DOMAIN_NAME ]; then
           echo "  if [ -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-          echo "    obnam restore --to /var/www/$REDMATRIX_DOMAIN_NAME $USB_MOUNT/backup/redmatrix" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo "    mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < $USB_MOUNT/backup/redmatrix/database.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
 IPT_NAME
