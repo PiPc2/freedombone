@@ -3104,7 +3104,7 @@ function create_backup_script {
       echo 'echo "Archiving backup data"' >> /usr/bin/$BACKUP_SCRIPT_NAME
 	  echo "cd $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
 	  echo "tar -czvf $USB_MOUNT/backup.tar.gz $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo 'Encrypting backup data' >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  echo 'echo "Encrypting backup data"' >> /usr/bin/$BACKUP_SCRIPT_NAME
 	  echo "bcrypt -c $USB_MOUNT/backup.tar.gz" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
