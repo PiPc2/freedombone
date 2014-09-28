@@ -3099,9 +3099,9 @@ function create_backup_script {
       echo "  obnam -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'Backup completed' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'echo "Backup completed"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if [[ $ENCRYPT_BACKUPS == "yes" ]]; then
-      echo 'Archiving backup data' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Archiving backup data"' >> /usr/bin/$BACKUP_SCRIPT_NAME
 	  echo "cd $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
 	  echo "tar -czvf $USB_MOUNT/backup.tar.gz $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
 	  echo 'Encrypting backup data' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3125,11 +3125,12 @@ function create_restore_script {
   echo "    mkdir $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -f $USB_MOUNT/backup.tar.gz.bfe ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    bcrypt $USB_MOUNT/backup.tar.gz.bfe" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    cd $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    tar -xzvf $USB_MOUNT/backup.tar.gz" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ -f $USB_MOUNT/backup.tar.gz.bfe ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "Decrypting encrypted backup"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    bcrypt $USB_MOUNT/backup.tar.gz.bfe" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cd $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    tar -xzvf $USB_MOUNT/backup.tar.gz" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    echo "No backup directory was found on the USB drive"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    exit 1" >> /usr/bin/$RESTORE_SCRIPT_NAME
