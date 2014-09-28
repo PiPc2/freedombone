@@ -2935,18 +2935,27 @@ function install_mediagoblin {
 
   MEDIAGOBLIN_DOMAIN_ROOT="/srv/$MEDIAGOBLIN_DOMAIN_NAME"
   MEDIAGOBLIN_PATH="$MEDIAGOBLIN_DOMAIN_ROOT/mediagoblin"
-  MEDIAGOBLIN_PATH_BIN="$MEDIAGOBLIN_PATH/bin"
+  MEDIAGOBLIN_PATH_BIN="$MEDIAGOBLIN_PATH/mediagoblin/bin"
 
+  if [ -d $MEDIAGOBLIN_DOMAIN_ROOT ]; then
+      rm -rf $MEDIAGOBLIN_DOMAIN_ROOT
+  fi
   if [ ! -d $MEDIAGOBLIN_DOMAIN_ROOT ]; then
       mkdir -p $MEDIAGOBLIN_DOMAIN_ROOT
   fi
   chown -hR mediagoblin: $MEDIAGOBLIN_DOMAIN_ROOT
   cd $MEDIAGOBLIN_DOMAIN_ROOT
-  su -c "git clone git://gitorious.org/mediagoblin/mediagoblin.git $MEDIAGOBLIN_DOMAIN_ROOT" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH; git clone git://gitorious.org/mediagoblin/mediagoblin.git" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; git submodule init" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; git submodule update" - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH; virtualenv --system-site-packages ." - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
+
+  su -c 'cd $MEDIAGOBLIN_PATH; ./experimental-bootstrap.sh' - mediagoblin
+  su -c 'cd $MEDIAGOBLIN_PATH; ./configure' - mediagoblin
+  su -c 'cd $MEDIAGOBLIN_PATH; make' - mediagoblin
+
+  #su -c "cd $MEDIAGOBLIN_PATH; virtualenv --system-site-packages ." - mediagoblin
+  #su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
+
   su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
   su -c "cp $MEDIAGOBLIN_PATH/paste.ini $MEDIAGOBLIN_PATH/paste_local.ini" - mediagoblin
 
