@@ -2704,7 +2704,68 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'install_redmatrix' >> $COMPLETION_FILE
 }
 
+function script_for_attaching_usb_drive {
+  if grep -Fxq "script_for_attaching_usb_drive" $COMPLETION_FILE; then
+      return
+  fi
+  echo '#!/bin/bash' > /usr/bin/attach-music
+  echo 'if [ -d /var/media ]; then' >> /usr/bin/attach-music
+  echo '  umount /var/media' >> /usr/bin/attach-music
+  echo 'fi' >> /usr/bin/attach-music
+  echo 'if [ ! -d /var/media ]; then' >> /usr/bin/attach-music
+  echo '  mkdir /var/media' >> /usr/bin/attach-music
+  echo 'fi' >> /usr/bin/attach-music
+  echo 'mount /dev/sda1 /var/media' >> /usr/bin/attach-music
+  echo 'chown root:root /var/media' >> /usr/bin/attach-music
+  echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
+  echo 'minidlnad -R' >> /usr/bin/attach-music
+  chmod +x /usr/bin/attach-music
+  ln -s /usr/bin/attach-music /usr/bin/attach-usb
+  ln -s /usr/bin/attach-music /usr/bin/attach-videos
+  ln -s /usr/bin/attach-music /usr/bin/attach-pictures
+  ln -s /usr/bin/attach-music /usr/bin/attach-media
+  echo 'script_for_attaching_usb_drive' >> $COMPLETION_FILE
+}
+
+function install_dlna_server {
+  if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+      return
+  fi
+  apt-get -y --force-yes install minidlna
+  sed -i "s|media_dir=/var/lib/minidlna|media_dir=A,/home/$MY_USERNAME/Music|g" /etc/minidlna.conf
+  if ! grep -q "/home/$MY_USERNAME/Pictures" /etc/minidlna.conf; then
+    echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/home/$MY_USERNAME/Videos" /etc/minidlna.conf; then
+	  echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/var/media/Music" /etc/minidlna.conf; then
+	  echo "media_dir=A,/var/media/Music" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/var/media/Pictures" /etc/minidlna.conf; then
+	  echo "media_dir=P,/var/media/Pictures" >> /etc/minidlna.conf
+  fi
+  if ! grep -q "/var/media/Videos" /etc/minidlna.conf; then
+	  echo "media_dir=V,/var/media/Videos" >> /etc/minidlna.conf
+  fi
+  sed -i 's/#root_container=./root_container=B/g' /etc/minidlna.conf
+  sed -i 's/#network_interface=/network_interface=eth0/g' /etc/minidlna.conf
+  sed -i 's/#friendly_name=/friendly_name="Freedombone Media"/g' /etc/minidlna.conf
+  sed -i 's|#db_dir=/var/cache/minidlna|db_dir=/var/cache/minidlna|g' /etc/minidlna.conf
+  sed -i 's/#inotify=yes/inotify=yes/g' /etc/minidlna.conf
+  sed -i "s|#presentation_url=/|presentation_url=http://localhost:8200|g" /etc/minidlna.conf
+  service minidlna force-reload
+  service minidlna reload
+
+  echo 'install_dlna_server' >> $COMPLETION_FILE
+}
+
 function install_mediagoblin {
+  # These instructions don't work and need fixing
+  return
   if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
       return
   fi
@@ -2899,65 +2960,6 @@ function install_mediagoblin {
   systemctl start gmg-celeryd.service
 
   echo 'install_mediagoblin' >> $COMPLETION_FILE
-}
-
-function script_for_attaching_usb_drive {
-  if grep -Fxq "script_for_attaching_usb_drive" $COMPLETION_FILE; then
-      return
-  fi
-  echo '#!/bin/bash' > /usr/bin/attach-music
-  echo 'if [ -d /var/media ]; then' >> /usr/bin/attach-music
-  echo '  umount /var/media' >> /usr/bin/attach-music
-  echo 'fi' >> /usr/bin/attach-music
-  echo 'if [ ! -d /var/media ]; then' >> /usr/bin/attach-music
-  echo '  mkdir /var/media' >> /usr/bin/attach-music
-  echo 'fi' >> /usr/bin/attach-music
-  echo 'mount /dev/sda1 /var/media' >> /usr/bin/attach-music
-  echo 'chown root:root /var/media' >> /usr/bin/attach-music
-  echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
-  echo 'minidlnad -R' >> /usr/bin/attach-music
-  chmod +x /usr/bin/attach-music
-  ln -s /usr/bin/attach-music /usr/bin/attach-usb
-  ln -s /usr/bin/attach-music /usr/bin/attach-videos
-  ln -s /usr/bin/attach-music /usr/bin/attach-pictures
-  ln -s /usr/bin/attach-music /usr/bin/attach-media
-  echo 'script_for_attaching_usb_drive' >> $COMPLETION_FILE
-}
-
-function install_dlna_server {
-  if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
-      return
-  fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
-      return
-  fi
-  apt-get -y --force-yes install minidlna
-  sed -i "s|media_dir=/var/lib/minidlna|media_dir=A,/home/$MY_USERNAME/Music|g" /etc/minidlna.conf
-  if ! grep -q "/home/$MY_USERNAME/Pictures" /etc/minidlna.conf; then
-    echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
-  fi
-  if ! grep -q "/home/$MY_USERNAME/Videos" /etc/minidlna.conf; then
-	  echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
-  fi
-  if ! grep -q "/var/media/Music" /etc/minidlna.conf; then
-	  echo "media_dir=A,/var/media/Music" >> /etc/minidlna.conf
-  fi
-  if ! grep -q "/var/media/Pictures" /etc/minidlna.conf; then
-	  echo "media_dir=P,/var/media/Pictures" >> /etc/minidlna.conf
-  fi
-  if ! grep -q "/var/media/Videos" /etc/minidlna.conf; then
-	  echo "media_dir=V,/var/media/Videos" >> /etc/minidlna.conf
-  fi
-  sed -i 's/#root_container=./root_container=B/g' /etc/minidlna.conf
-  sed -i 's/#network_interface=/network_interface=eth0/g' /etc/minidlna.conf
-  sed -i 's/#friendly_name=/friendly_name="Freedombone Media"/g' /etc/minidlna.conf
-  sed -i 's|#db_dir=/var/cache/minidlna|db_dir=/var/cache/minidlna|g' /etc/minidlna.conf
-  sed -i 's/#inotify=yes/inotify=yes/g' /etc/minidlna.conf
-  sed -i "s|#presentation_url=/|presentation_url=http://localhost:8200|g" /etc/minidlna.conf
-  service minidlna force-reload
-  service minidlna reload
-
-  echo 'install_dlna_server' >> $COMPLETION_FILE
 }
 
 function install_final {
