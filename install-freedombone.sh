@@ -2901,6 +2901,29 @@ function install_mediagoblin {
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
 
+function script_for_attaching_usb_drive {
+  if grep -Fxq "script_for_attaching_usb_drive" $COMPLETION_FILE; then
+      return
+  fi
+  echo '#!/bin/bash' > /usr/bin/attach-music
+  echo 'if [ -d /var/media ]; then' >> /usr/bin/attach-music
+  echo '  umount /var/media' >> /usr/bin/attach-music
+  echo 'fi' >> /usr/bin/attach-music
+  echo 'if [ ! -d /var/media ]; then' >> /usr/bin/attach-music
+  echo '  mkdir /var/media' >> /usr/bin/attach-music
+  echo 'fi' >> /usr/bin/attach-music
+  echo 'mount /dev/sda1 /var/media' >> /usr/bin/attach-music
+  echo 'chown root:root /var/media' >> /usr/bin/attach-music
+  echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
+  echo 'minidlnad -R' >> /usr/bin/attach-music
+  chmod +x /usr/bin/attach-music
+  ln -s /usr/bin/attach-music /usr/bin/attach-usb
+  ln -s /usr/bin/attach-music /usr/bin/attach-videos
+  ln -s /usr/bin/attach-music /usr/bin/attach-pictures
+  ln -s /usr/bin/attach-music /usr/bin/attach-media
+  echo 'script_for_attaching_usb_drive' >> $COMPLETION_FILE
+}
+
 function install_dlna_server {
   if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
       return
@@ -2933,24 +2956,6 @@ function install_dlna_server {
   sed -i "s|#presentation_url=/|presentation_url=http://localhost:8200|g" /etc/minidlna.conf
   service minidlna force-reload
   service minidlna reload
-
-  # make a script to make attaching media via usb stick easy
-  echo '#!/bin/bash' > /usr/bin/attach-music
-  echo 'if [ -d /var/media ]; then' >> /usr/bin/attach-music
-  echo '  umount /var/media' >> /usr/bin/attach-music
-  echo 'fi' >> /usr/bin/attach-music
-  echo 'if [ ! -d /var/media ]; then' >> /usr/bin/attach-music
-  echo '  mkdir /var/media' >> /usr/bin/attach-music
-  echo 'fi' >> /usr/bin/attach-music
-  echo 'mount /dev/sda1 /var/media' >> /usr/bin/attach-music
-  echo 'chown root:root /var/media' >> /usr/bin/attach-music
-  echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
-  echo 'minidlnad -R' >> /usr/bin/attach-music
-  chmod +x /usr/bin/attach-music
-  ln -s /usr/bin/attach-music /usr/bin/attach-usb
-  ln -s /usr/bin/attach-music /usr/bin/attach-videos
-  ln -s /usr/bin/attach-music /usr/bin/attach-pictures
-  ln -s /usr/bin/attach-music /usr/bin/attach-media
 
   echo 'install_dlna_server' >> $COMPLETION_FILE
 }
@@ -3010,6 +3015,7 @@ folders_for_email_addresses
 dynamic_dns_freedns
 #create_private_mailing_list
 import_email
+script_for_attaching_usb_drive
 install_web_server
 configure_firewall_for_web_server
 install_owncloud
