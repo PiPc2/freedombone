@@ -2935,18 +2935,19 @@ function install_mediagoblin {
 
   MEDIAGOBLIN_DOMAIN_ROOT="/srv/$MEDIAGOBLIN_DOMAIN_NAME"
   MEDIAGOBLIN_PATH="$MEDIAGOBLIN_DOMAIN_ROOT/mediagoblin"
+  MEDIAGOBLIN_PATH_BIN="$MEDIAGOBLIN_PATH/bin"
 
   if [ ! -d $MEDIAGOBLIN_DOMAIN_ROOT ]; then
       mkdir -p $MEDIAGOBLIN_DOMAIN_ROOT
   fi
   chown -hR mediagoblin: $MEDIAGOBLIN_DOMAIN_ROOT
   cd $MEDIAGOBLIN_DOMAIN_ROOT
-  su -c "git clone git://gitorious.org/mediagoblin/mediagoblin.git $MEDIAGOBLIN_PATH" - mediagoblin
+  su -c "git clone git://gitorious.org/mediagoblin/mediagoblin.git $MEDIAGOBLIN_DOMAIN_ROOT" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH/mediagoblin; git submodule init" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH/mediagoblin; git submodule update" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH/mediagoblin; virtualenv --system-site-packages ." - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH; ./bin/python setup.py develop" - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH/mediagoblin; ./bin/easy_install flup" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH_BIN; easy_install flup" - mediagoblin
   su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
   su -c "cp $MEDIAGOBLIN_PATH/paste.ini $MEDIAGOBLIN_PATH/paste_local.ini" - mediagoblin
 
@@ -3018,7 +3019,7 @@ function install_mediagoblin {
   echo " ini-paste: $MEDIAGOBLIN_PATH/paste_local.ini" >> /etc/uwsgi/apps-available/mg.yaml
 
   echo '[program:celery]' > /etc/supervisor/conf.d/mediagoblin.conf
-  echo "command=$MEDIAGOBLIN_PATH/bin/celery worker -l debug" >> /etc/supervisor/conf.d/mediagoblin.conf
+  echo "command=$MEDIAGOBLIN_PATH_BIN/celery worker -l debug" >> /etc/supervisor/conf.d/mediagoblin.conf
   echo '' >> /etc/supervisor/conf.d/mediagoblin.conf
   echo '; Set PYTHONPATH to the directory containing celeryconfig.py' >> /etc/supervisor/conf.d/mediagoblin.conf
   echo "environment=PYTHONPATH='$MEDIAGOBLIN_PATH',MEDIAGOBLIN_CONFIG='$MEDIAGOBLIN_PATH/mediagoblin_local.ini',CELERY_CONFIG_MODULE='mediagoblin.init.celery.from_celery'" >> /etc/supervisor/conf.d/mediagoblin.conf
@@ -3041,23 +3042,61 @@ function install_mediagoblin {
   ln -s /etc/uwsgi/apps-available/mg.yaml /etc/uwsgi/apps-enabled/
 
   # change settings
-  sed -i "s/notice@mediagoblin.example.org/$MY_USERNAME@$DOMAIN_NAME/g" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-  sed -i 's/email_debug_mode = true/email_debug_mode = false/g' /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
-  sed -i 's|# sql_engine = postgresql:///mediagoblin|sql_engine = postgresql:///mediagoblin|g' /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  sed -i "s/notice@mediagoblin.example.org/$MY_USERNAME@$DOMAIN_NAME/g" $MEDIAGOBLIN_PATH/mediagoblin_local.ini
+  sed -i 's/email_debug_mode = true/email_debug_mode = false/g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
+  sed -i 's|# sql_engine = postgresql:///mediagoblin|sql_engine = postgresql:///mediagoblin|g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
 
   # add extra media types
-  if grep -q "media_types.audio" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
-      echo '[[mediagoblin.media_types.audio]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  if grep -q "media_types.audio" $MEDIAGOBLIN_PATH/mediagoblin_local.ini; then
+      echo '[[mediagoblin.media_types.audio]]' >> $MEDIAGOBLIN_PATH/mediagoblin_local.ini
   fi
-  if grep -q "media_types.video" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
-      echo '[[mediagoblin.media_types.video]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  if grep -q "media_types.video" $MEDIAGOBLIN_PATH/mediagoblin_local.ini; then
+      echo '[[mediagoblin.media_types.video]]' >> $MEDIAGOBLIN_PATH/mediagoblin_local.ini
   fi
-  if grep -q "media_types.stl" /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini; then
-      echo '[[mediagoblin.media_types.stl]]' >> /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin_local.ini
+  if grep -q "media_types.stl" $MEDIAGOBLIN_PATH/mediagoblin_local.ini; then
+      echo '[[mediagoblin.media_types.stl]]' >> $MEDIAGOBLIN_PATH/mediagoblin_local.ini
   fi
 
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/pip install scikits.audiolab" - mediagoblin
-  su -c "cd /srv/$MEDIAGOBLIN_DOMAIN_NAME/mediagoblin/mediagoblin; ./bin/gmg dbupdate" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH_BIN; pip install scikits.audiolab" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH_BIN; gmg dbupdate" - mediagoblin
+
+  # systemd init scripts
+
+  echo '[Unit]' > /etc/systemd/system/gmg.service
+  echo 'Description=Mediagoblin' >> /etc/systemd/system/gmg.service
+  echo '' >> /etc/systemd/system/gmg.service
+  echo '[Service]' >> /etc/systemd/system/gmg.service
+  echo 'Type=forking' >> /etc/systemd/system/gmg.service
+  echo 'User=mediagoblin' >> /etc/systemd/system/gmg.service
+  echo 'Group=mediagoblin' >> /etc/systemd/system/gmg.service
+  echo '#Environment=CELERY_ALWAYS_EAGER=true' >> /etc/systemd/system/gmg.service
+  echo 'Environment=CELERY_ALWAYS_EAGER=false' >> /etc/systemd/system/gmg.service
+  echo "WorkingDirectory=$MEDIAGOBLIN_PATH" >> /etc/systemd/system/gmg.service
+  echo "ExecStart=$MEDIAGOBLIN_PATH_BIN/paster serve $MEDIAGOBLIN_PATH/paste_local.ini --pid-file=/var/run/mediagoblin/paster.pid --log-file=/var/log/nginx/mediagoblin_paster.log --daemon --server-name=fcgi fcgi_host=127.0.0.1 fcgi_port=26543" >> /etc/systemd/system/gmg.service
+  echo "ExecStop=$MEDIAGOBLIN_PATH_BIN/paster serve --pid-file=/var/run/mediagoblin/paster.pid $MEDIAGOBLIN_PATH/paste_local.ini stop" >> /etc/systemd/system/gmg.service
+  echo 'PIDFile=/var/run/mediagoblin/mediagoblin.pid' >> /etc/systemd/system/gmg.service
+  echo '' >> /etc/systemd/system/gmg.service
+  echo '[Install]' >> /etc/systemd/system/gmg.service
+  echo 'WantedBy=multi-user.target' >> /etc/systemd/system/gmg.service
+
+
+  echo '[Unit]' > /etc/systemd/system/gmg-celeryd.service
+  echo 'Description=Mediagoblin Celeryd' >> /etc/systemd/system/gmg-celeryd.service
+  echo '' >> /etc/systemd/system/gmg-celeryd.service
+  echo '[Service]' >> /etc/systemd/system/gmg-celeryd.service
+  echo 'User=mediagoblin' >> /etc/systemd/system/gmg-celeryd.service
+  echo 'Group=mediagoblin' >> /etc/systemd/system/gmg-celeryd.service
+  echo 'Type=simple' >> /etc/systemd/system/gmg-celeryd.service
+  echo "WorkingDirectory=$MEDIAGOBLIN_PATH" >> /etc/systemd/system/gmg-celeryd.service
+  echo "Environment='MEDIAGOBLIN_CONFIG=$MEDIAGOBLIN_PATH/mediagoblin_local.ini' CELERY_CONFIG_MODULE=mediagoblin.init.celery.from_celery" >> /etc/systemd/system/gmg-celeryd.service
+  echo "ExecStart=$MEDIAGOBLIN_PATH_BIN/celeryd" >> /etc/systemd/system/gmg-celeryd.service
+  echo 'PIDFile=/var/run/mediagoblin/mediagoblin-celeryd.pid' >> /etc/systemd/system/gmg-celeryd.service
+  echo '' >> /etc/systemd/system/gmg-celeryd.service
+  echo '[Install]' >> /etc/systemd/system/gmg-celeryd.service
+  echo 'WantedBy=multi-user.target' >> /etc/systemd/system/gmg-celeryd.service
+
+  systemctl start gmg.service
+  systemctl start gmg-celeryd.service
 
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
