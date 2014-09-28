@@ -159,6 +159,12 @@ INSTALL_DIR=$HOME/build
 # device name for an attached usb drive
 USB_DRIVE=/dev/sda1
 
+# Location where the USB drive is mounted to
+USB_MOUNT=/media/usb
+
+# Name of a script used to create a backup of the system
+BACKUP_SCRIPT_NAME="backup"
+
 # memory limit for php in MB
 MAX_PHP_MEMORY=32
 
@@ -306,74 +312,74 @@ function search_for_attached_usb_drive {
       return
   fi
   if [ -b $USB_DRIVE ]; then
-      if [ ! -d /media/usb ]; then
+      if [ ! -d $USB_MOUNT ]; then
           echo 'Mounting USB drive'
-          mkdir /media/usb
-          mount $USB_DRIVE /media/usb
+          mkdir $USB_MOUNT
+          mount $USB_DRIVE $USB_MOUNT
       fi
       if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
-          if [ -d /media/usb/Maildir ]; then
+          if [ -d $USB_MOUNT/Maildir ]; then
               echo 'Maildir found on USB drive'
-              IMPORT_MAILDIR=/media/usb/Maildir
+              IMPORT_MAILDIR=$USB_MOUNT/Maildir
           fi
-          if [ -d /media/usb/.gnupg ]; then
+          if [ -d $USB_MOUNT/.gnupg ]; then
               echo 'Importing GPG keyring'
-              cp -r /media/usb/.gnupg /home/$MY_USERNAME
+              cp -r $USB_MOUNT/.gnupg /home/$MY_USERNAME
               chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
               if [ -f /home/$MY_USERNAME/.gnupg/secring.gpg ]; then
-                  shred -zu /media/usb/.gnupg/secring.gpg
-                  shred -zu /media/usb/.gnupg/random_seed
-                  shred -zu /media/usb/.gnupg/trustdb.gpg
-                  rm -rf /media/usb/.gnupg
+                  shred -zu $USB_MOUNT/.gnupg/secring.gpg
+                  shred -zu $USB_MOUNT/.gnupg/random_seed
+                  shred -zu $USB_MOUNT/.gnupg/trustdb.gpg
+                  rm -rf $USB_MOUNT/.gnupg
               else
                   echo 'GPG files did not copy'
                   exit 7
               fi
           fi
 
-          if [ -f /media/usb/private_key.gpg ]; then
+          if [ -f $USB_MOUNT/private_key.gpg ]; then
               echo 'GPG private key found on USB drive'
-              MY_GPG_PRIVATE_KEY=/media/usb/private_key.gpg
+              MY_GPG_PRIVATE_KEY=$USB_MOUNT/private_key.gpg
           fi
-          if [ -f /media/usb/public_key.gpg ]; then
+          if [ -f $USB_MOUNT/public_key.gpg ]; then
               echo 'GPG public key found on USB drive'
-              MY_GPG_PUBLIC_KEY=/media/usb/public_key.gpg
+              MY_GPG_PUBLIC_KEY=$USB_MOUNT/public_key.gpg
           fi
       fi
-      if [ -d /media/usb/.ssh ]; then
+      if [ -d $USB_MOUNT/.ssh ]; then
           echo 'Importing ssh keys'
-          cp -r /media/usb/.ssh /home/$MY_USERNAME
+          cp -r $USB_MOUNT/.ssh /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
           # for security delete the ssh keys from the usb drive
           if [ -f /home/$MY_USERNAME/.ssh/id_rsa ]; then
-              shred -zu /media/usb/.ssh/id_rsa
-              shred -zu /media/usb/.ssh/id_rsa.pub
-              shred -zu /media/usb/.ssh/known_hosts
-              rm -rf /media/usb/.ssh
+              shred -zu $USB_MOUNT/.ssh/id_rsa
+              shred -zu $USB_MOUNT/.ssh/id_rsa.pub
+              shred -zu $USB_MOUNT/.ssh/known_hosts
+              rm -rf $USB_MOUNT/.ssh
           else
               echo 'ssh files did not copy'
               exit 8
           fi
       fi
-      if [ -f /media/usb/.emacs ]; then
+      if [ -f $USB_MOUNT/.emacs ]; then
           echo 'Importing .emacs file'
-          cp -f /media/usb/.emacs /home/$MY_USERNAME/.emacs
+          cp -f $USB_MOUNT/.emacs /home/$MY_USERNAME/.emacs
           chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
       fi
-      if [ -d /media/usb/.emacs.d ]; then
+      if [ -d $USB_MOUNT/.emacs.d ]; then
           echo 'Importing .emacs.d directory'
-          cp -r /media/usb/.emacs.d /home/$MY_USERNAME
+          cp -r $USB_MOUNT/.emacs.d /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
       fi
-      if [ -d /media/usb/personal ]; then
+      if [ -d $USB_MOUNT/personal ]; then
           echo 'Importing personal directory'
-          cp -r /media/usb/personal /home/$MY_USERNAME
+          cp -r $USB_MOUNT/personal /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/personal
       fi
   else
-      if [ -d /media/usb ]; then
-          umount /media/usb
-          rm -rf /media/usb
+      if [ -d $USB_MOUNT ]; then
+          umount $USB_MOUNT
+          rm -rf $USB_MOUNT
       fi
       echo 'No USB drive attached'
   fi
@@ -1528,9 +1534,9 @@ function import_email {
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
           echo $EMAIL_COMPLETE_MSG
-          if [ -d /media/usb ]; then
-              umount /media/usb
-              rm -rf /media/usb
+          if [ -d $USB_MOUNT ]; then
+              umount $USB_MOUNT
+              rm -rf $USB_MOUNT
               echo '            You can now remove the USB drive'
           fi
           exit 0
@@ -1554,9 +1560,9 @@ function import_email {
       echo ''
       echo $EMAIL_COMPLETE_MSG
       echo ''
-      if [ -d /media/usb ]; then
-          umount /media/usb
-          rm -rf /media/usb
+      if [ -d $USB_MOUNT ]; then
+          umount $USB_MOUNT
+          rm -rf $USB_MOUNT
           echo '            You can now remove the USB drive'
       fi
       exit 0
@@ -1606,9 +1612,9 @@ function install_owncloud {
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
           # unmount any attached usb drive
-          if [ -d /media/usb ]; then
-              umount /media/usb
-              rm -rf /media/usb
+          if [ -d $USB_MOUNT ]; then
+              umount $USB_MOUNT
+              rm -rf $USB_MOUNT
           fi
           echo ''
           echo $OWNCLOUD_COMPLETION_MSG1
@@ -1778,9 +1784,9 @@ function install_owncloud {
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
       # unmount any attached usb drive
-      if [ -d /media/usb ]; then
-          umount /media/usb
-          rm -rf /media/usb
+      if [ -d $USB_MOUNT ]; then
+          umount $USB_MOUNT
+          rm -rf $USB_MOUNT
       fi
       echo ''
       echo $OWNCLOUD_COMPLETION_MSG1
@@ -2711,15 +2717,15 @@ function script_for_attaching_usb_drive {
       return
   fi
   echo '#!/bin/bash' > /usr/bin/attach-music
-  echo 'if [ -d /var/media ]; then' >> /usr/bin/attach-music
-  echo '  umount /var/media' >> /usr/bin/attach-music
+  echo "if [ -d $USB_MOUNT ]; then" >> /usr/bin/attach-music
+  echo "  umount $USB_MOUNT" >> /usr/bin/attach-music
   echo 'fi' >> /usr/bin/attach-music
-  echo 'if [ ! -d /var/media ]; then' >> /usr/bin/attach-music
-  echo '  mkdir /var/media' >> /usr/bin/attach-music
+  echo "if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/attach-music
+  echo "  mkdir $USB_MOUNT" >> /usr/bin/attach-music
   echo 'fi' >> /usr/bin/attach-music
-  echo 'mount /dev/sda1 /var/media' >> /usr/bin/attach-music
-  echo 'chown root:root /var/media' >> /usr/bin/attach-music
-  echo 'chown -R minidlna:minidlna /var/media/*' >> /usr/bin/attach-music
+  echo "mount /dev/sda1 $USB_MOUNT" >> /usr/bin/attach-music
+  echo "chown root:root $USB_MOUNT" >> /usr/bin/attach-music
+  echo "chown -R minidlna:minidlna $USB_MOUNT/*" >> /usr/bin/attach-music
   echo 'minidlnad -R' >> /usr/bin/attach-music
   chmod +x /usr/bin/attach-music
   ln -s /usr/bin/attach-music /usr/bin/attach-usb
@@ -2728,9 +2734,9 @@ function script_for_attaching_usb_drive {
   ln -s /usr/bin/attach-music /usr/bin/attach-media
 
   echo '#!/bin/bash' > /usr/bin/remove-music
-  echo 'if [ -d /var/media ]; then' >> /usr/bin/remove-music
-  echo '  umount /var/media' >> /usr/bin/remove-music
-  echo '  rm -rf /var/media' >> /usr/bin/remove-music
+  echo "if [ -d $USB_MOUNT ]; then" >> /usr/bin/remove-music
+  echo "  umount $USB_MOUNT" >> /usr/bin/remove-music
+  echo "  rm -rf $USB_MOUNT" >> /usr/bin/remove-music
   echo 'fi' >> /usr/bin/remove-music
   chmod +x /usr/bin/remove-music
   ln -s /usr/bin/remove-music /usr/bin/detach-music
@@ -2759,16 +2765,16 @@ function install_dlna_server {
     echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
   fi
   if ! grep -q "/home/$MY_USERNAME/Videos" /etc/minidlna.conf; then
-	  echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
+      echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
   fi
-  if ! grep -q "/var/media/Music" /etc/minidlna.conf; then
-	  echo "media_dir=A,/var/media/Music" >> /etc/minidlna.conf
+  if ! grep -q "$USB_MOUNT/Music" /etc/minidlna.conf; then
+      echo "media_dir=A,$USB_MOUNT/Music" >> /etc/minidlna.conf
   fi
-  if ! grep -q "/var/media/Pictures" /etc/minidlna.conf; then
-	  echo "media_dir=P,/var/media/Pictures" >> /etc/minidlna.conf
+  if ! grep -q "$USB_MOUNT/Pictures" /etc/minidlna.conf; then
+      echo "media_dir=P,$USB_MOUNT/Pictures" >> /etc/minidlna.conf
   fi
-  if ! grep -q "/var/media/Videos" /etc/minidlna.conf; then
-	  echo "media_dir=V,/var/media/Videos" >> /etc/minidlna.conf
+  if ! grep -q "$USB_MOUNT/Videos" /etc/minidlna.conf; then
+      echo "media_dir=V,$USB_MOUNT/Videos" >> /etc/minidlna.conf
   fi
   sed -i 's/#root_container=./root_container=B/g' /etc/minidlna.conf
   sed -i 's/#network_interface=/network_interface=eth0/g' /etc/minidlna.conf
@@ -2981,14 +2987,46 @@ function install_mediagoblin {
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
 
+function create_backup_script {
+  if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install obnam
+  echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  # email
+  if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+      echo "  if [ ! -d $USB_MOUNT/backup/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "    mkdir $USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  obnam -r $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
+
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo 'create_backup_script' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
   fi
   # unmount any attached usb drive
-  if [ -d /media/usb ]; then
-      umount /media/usb
-      rm -rf /media/usb
+  if [ -d $USB_MOUNT ]; then
+      umount $USB_MOUNT
+      rm -rf $USB_MOUNT
   fi
   apt-get -y --force-yes autoremove
   echo 'install_final' >> $COMPLETION_FILE
