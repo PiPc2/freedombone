@@ -2943,9 +2943,9 @@ function install_mediagoblin {
   chown -hR mediagoblin: $MEDIAGOBLIN_DOMAIN_ROOT
   cd $MEDIAGOBLIN_DOMAIN_ROOT
   su -c "git clone git://gitorious.org/mediagoblin/mediagoblin.git $MEDIAGOBLIN_DOMAIN_ROOT" - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH/mediagoblin; git submodule init" - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH/mediagoblin; git submodule update" - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH/mediagoblin; virtualenv --system-site-packages ." - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH; git submodule init" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH; git submodule update" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH; virtualenv --system-site-packages ." - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH_BIN; easy_install flup" - mediagoblin
   su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
@@ -2992,7 +2992,7 @@ function install_mediagoblin {
   echo "        root $MEDIAGOBLIN_PATH/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '        location /mgoblin_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo "                alias $MEDIAGOBLIN_PATH/mediagoblin/static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "                alias $MEDIAGOBLIN_PATH/static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '        }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '        location /mgoblin_media/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo "                alias $MEDIAGOBL_PATH/media/public/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
