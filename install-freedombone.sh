@@ -3118,6 +3118,7 @@ update_the_kernel
 enable_zram
 random_number_generator
 set_your_domain_name
+create_backup_script
 time_synchronisation
 configure_internet_protocol
 configure_ssh
