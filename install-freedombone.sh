@@ -2947,7 +2947,6 @@ function install_mediagoblin {
   su -c "cd $MEDIAGOBLIN_PATH; git submodule update" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; virtualenv --system-site-packages ." - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH_BIN; easy_install flup" - mediagoblin
   su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
   su -c "cp $MEDIAGOBLIN_PATH/paste.ini $MEDIAGOBLIN_PATH/paste_local.ini" - mediagoblin
 
