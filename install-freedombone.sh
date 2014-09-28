@@ -3081,6 +3081,8 @@ function create_backup_script {
 	  echo "  obnam -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'Backup completed' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
   chmod 600 /usr/bin/$BACKUP_SCRIPT_NAME
   chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
 
@@ -3099,7 +3101,8 @@ function create_restore_script {
   echo "    mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    mkdir $USB_MOUNT/backup" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "No backup directory was found on the USB drive"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    exit 1" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # email
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
@@ -3169,6 +3172,8 @@ IPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'Restore completed' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
   chmod 600 /usr/bin/$RESTORE_SCRIPT_NAME
   chmod +x /usr/bin/$RESTORE_SCRIPT_NAME
 
