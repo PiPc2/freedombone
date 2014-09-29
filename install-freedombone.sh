@@ -1677,7 +1677,7 @@ function import_email {
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
-		  echo ''
+          echo ''
           echo "$EMAIL_COMPLETE_MSG"
           if [ -d $USB_MOUNT ]; then
               umount $USB_MOUNT
@@ -3268,6 +3268,9 @@ function create_backup_script {
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  obnam backup -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
+  echo 'else' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Please insert a USB drive to create the backup."' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  exit 1' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'echo "Backup completed"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if [[ $ENCRYPT_BACKUPS == "yes" ]]; then
@@ -3384,6 +3387,9 @@ IPT_NAME
       echo "    obnam restore --to /var/cache/minidlna $USB_MOUNT/backup/minidlna" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
+  echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Please insert a USB drive containing the backup."' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  exit 1' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'Restore completed' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
