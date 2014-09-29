@@ -247,7 +247,7 @@ if [ ! -f $COMPLETION_FILE ]; then
 fi
 
 # message if something fails to install
-CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror."
+CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
 function show_help {
   echo ''
