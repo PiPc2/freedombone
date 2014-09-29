@@ -229,6 +229,9 @@ MAX_PHP_MEMORY=32
 # default MariaDB password
 MARIADB_PASSWORD=
 
+# The obnam forgetting period
+BACKUP_PERIOD_DAYS=30
+
 # Whether to encrypt backups to the USB drive
 ENCRYPT_BACKUPS="yes"
 
@@ -3174,6 +3177,7 @@ function create_backup_script {
   fi
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "obnam forget --keep=${BACKUP_PERIOD_DAYS}d" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
