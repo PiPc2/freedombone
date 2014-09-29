@@ -235,7 +235,7 @@ ENCRYPT_BACKUPS="yes"
 #list of encryption protocols
 SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 
-# list of ciphers to use
+# list of ciphers to use.  See bettercrypto.org recommendations
 SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -301,6 +301,15 @@ function argument_checks {
           echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
           exit 30
       fi
+  fi
+  # make sure you don't use the default user account
+  if [[ $MY_USERNAME == "debian" ]]; then
+      echo 'Do not use the default debian user account. Create a different user with: adduser [username]'
+      exit 68
+  fi
+  # remove the default debian user to prevent it from becoming an attack vector
+  if [ -d /home/debian ]; then
+      userdel -r debian
   fi
 }
 
