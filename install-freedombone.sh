@@ -204,7 +204,7 @@ MY_GPG_PRIVATE_KEY=
 IMPORT_MAILDIR=
 
 # The Debian package repository to use.
-DEBIAN_REPO="ftp.de.debian.org"
+DEBIAN_REPO="ftp.us.debian.org"
 
 DEBIAN_VERSION="jessie"
 
@@ -247,7 +247,7 @@ if [ ! -f $COMPLETION_FILE ]; then
 fi
 
 # message if something fails to install
-CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE and run this script again."
+CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror."
 
 function show_help {
   echo ''
