@@ -3086,21 +3086,17 @@ function install_mediagoblin {
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
 
-function decrypt_file {
-    if [ ! $FILE_TO_DECRYPT ]; then
-        return
-    fi
-    if [ ! -d $FILE_TO_DECRYPT ]; then
-        return
-    fi
-    bcrypt $FILE_TO_DECRYPT
-}
-
 function create_backup_script {
   if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
       return
   fi
   apt-get -y --force-yes install obnam bcrypt
+
+  if [ ! -d /etc/obnam ]; then
+	  echo 'obnam may not have installed correctly. Check your internet connection, /etc/network/interfaces and /etc/resolv.conf'
+	  exit 46
+  fi
+
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3217,6 +3213,12 @@ function create_restore_script {
       return
   fi
   apt-get -y --force-yes install obnam bcrypt
+
+  if [ ! -d /etc/obnam ]; then
+	  echo 'obnam may not have installed correctly. Check your internet connection, /etc/network/interfaces and /etc/resolv.conf'
+	  exit 47
+  fi
+
   echo '#!/bin/bash' > /usr/bin/$RESTORE_SCRIPT_NAME
   echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
