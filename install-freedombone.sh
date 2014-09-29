@@ -3290,7 +3290,7 @@ function create_restore_script {
   apt-get -y --force-yes install obnam bcrypt
 
   if [ ! -f /usr/bin/obnam ]; then
-      echo 'obnam may not have installed correctly. Check your internet connection, /etc/network/interfaces and /etc/resolv.conf'
+      echo "ERROR: obnam may not have installed correctly. $CHECK_MESSAGE"
       exit 47
   fi
 
