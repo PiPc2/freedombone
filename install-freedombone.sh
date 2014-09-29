@@ -1,5 +1,25 @@
 #!/bin/bash
-# Freedombone install script intended for use with Debian Jessie
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# This install script is intended for use with Debian Jessie
+#
+# Please note that the various hashes and download archives
+# for systems such as Owncloud and Dokuwiki may need to be updated
+#
+# Summary
+# =======
+# To be able to run this script you need to get to a condition
+# where you have Debian Jessie installed, with at least one
+# unprivileged user account and at least one subdomain created on
+# https://freedns.afraid.org/. If you're not installing on a
+# Beaglebone Black then set the variable INSTALLING_ON_BBB to "no"
 #
 # Note on dynamic dns
 # ===================
@@ -15,8 +35,12 @@
 # Prerequisites
 # =============
 #
+# Debian image sites:
+#     http://ynezz.ibawizard.net/beagleboard/jessie/
+#     https://rcn-ee.net/deb/rootfs/jessie/
+#
 # cd ~/
-# wget http://freedombone.uk.to/debian-jessie-console-armhf-2014-08-13.tar.xz
+# wget https://rcn-ee.net/deb/rootfs/jessie/debian-jessie-console-armhf-2014-08-13.tar.xz
 #
 # Verify it.
 #
