@@ -64,6 +64,9 @@ MY_USERNAME=$2
 FREEDNS_SUBDOMAIN_CODE=$3
 SYSTEM_TYPE=$4
 
+# Are we installing on a Beaglebone Black (BBB) or some other system?
+INSTALLING_ON_BBB="yes"
+
 # Different system variants which may be specified within
 # the SYSTEM_TYPE option
 VARIANT_WRITER="writer"
@@ -75,8 +78,14 @@ VARIANT_SOCIAL="social"
 VARIANT_MEDIA="media"
 
 SSH_PORT=2222
+
+# kernel specifically tweaked for the Beaglebone Black
 KERNEL_VERSION="v3.15.10-bone7"
+
+# Whether or not to use the beaglebone's hardware random number generator
 USE_HWRNG="yes"
+
+# Whether this system is being installed within a docker container
 INSTALLED_WITHIN_DOCKER="no"
 
 # If you want to run an encrypted mailing list specify its name here.
@@ -458,7 +467,9 @@ function update_the_kernel {
   if grep -Fxq "update_the_kernel" $COMPLETION_FILE; then
       return
   fi
-  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+  # if this is not a beaglebone or is a docker container
+  # then just use the standard kernel
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" || $INSTALLING_ON_BBB != "yes" ]]; then
       return
   fi
   cd /opt/scripts/tools
@@ -470,7 +481,7 @@ function enable_zram {
   if grep -Fxq "enable_zram" $COMPLETION_FILE; then
       return
   fi
-  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" || $INSTALLING_ON_BBB != "yes" ]]; then
       return
   fi
   if ! grep -q "options zram num_devices=1" /etc/modprobe.d/zram.conf; then
@@ -552,6 +563,13 @@ function random_number_generator {
   if grep -Fxq "random_number_generator" $COMPLETION_FILE; then
       return
   fi
+  if [[ $INSTALLING_ON_BBB != "yes" ]]; then
+      # On systems which are not beaglebones assume that
+      # no hardware random number generator is available
+      # and use the second best option
+      apt-get -y --force-yes install haveged
+      return
+  fi
   if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # it is assumed that docker uses the random number
       # generator of the host system
@@ -586,7 +604,7 @@ function configure_ssh {
   echo 'configure_ssh' >> $COMPLETION_FILE
   # Don't reboot if installing within docker
   # random numbers will come from the host system
-  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" || $INSTALLING_ON_BBB != "yes" ]]; then
       return
   fi
   echo ''
@@ -2994,12 +3012,12 @@ function install_mediagoblin {
 }
 
 function decrypt_file {
-	if [ ! $FILE_TO_DECRYPT ]; then
-		return
-	fi
-	if [ ! -d $FILE_TO_DECRYPT ]; then
-		return
-	fi
+    if [ ! $FILE_TO_DECRYPT ]; then
+        return
+    fi
+    if [ ! -d $FILE_TO_DECRYPT ]; then
+        return
+    fi
     bcrypt $FILE_TO_DECRYPT
 }
 
@@ -3102,10 +3120,10 @@ function create_backup_script {
   echo 'echo "Backup completed"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if [[ $ENCRYPT_BACKUPS == "yes" ]]; then
       echo 'echo "Archiving backup data"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "cd $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "tar -czvf $USB_MOUNT/backup.tar.gz $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo 'echo "Encrypting backup data"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "bcrypt -c $USB_MOUNT/backup.tar.gz" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "cd $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf $USB_MOUNT/backup.tar.gz $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Encrypting backup data"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "bcrypt -c $USB_MOUNT/backup.tar.gz" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
   chmod 600 /usr/bin/$BACKUP_SCRIPT_NAME
