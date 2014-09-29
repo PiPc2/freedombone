@@ -429,6 +429,21 @@ function search_for_attached_usb_drive {
           cp -r $USB_MOUNT/.emacs.d /home/$MY_USERNAME
           chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
       fi
+      if [ -d $USB_MOUNT/ssl ]; then
+          echo 'Importing SSL certificates'
+          cp -r $USB_MOUNT/ssl/* /etc/ssl
+          chmod 640 /etc/ssl/certs/*
+          chmod 400 /etc/ssl/private/*
+		  # change ownership of some certificates
+		  if [ -f /etc/ssl/private/xmpp.key ]; then
+			  chown prosody:prosody /etc/ssl/private/xmpp.*
+			  chown prosody:prosody /etc/ssl/certs/xmpp.*
+		  fi
+		  if [ -f /etc/ssl/private/dovecot.key ]; then
+			  chown root:dovecot /etc/ssl/certs/dovecot.*
+			  chown root:dovecot /etc/ssl/private/dovecot.*
+		  fi
+      fi
       if [ -d $USB_MOUNT/personal ]; then
           echo 'Importing personal directory'
           cp -r $USB_MOUNT/personal /home/$MY_USERNAME
@@ -1229,10 +1244,11 @@ function configure_imap {
       return
   fi
   apt-get -y --force-yes install dovecot-common dovecot-imapd
-  makecert dovecot
-  chown root:dovecot /etc/ssl/certs/dovecot.crt
-  chown root:dovecot /etc/ssl/private/dovecot.key
-  chown root:dovecot /etc/ssl/private/dovecot.dhparams
+  if [ ! -f /etc/ssl/private/dovecot.key ]; then
+	  makecert dovecot
+  fi
+  chown root:dovecot /etc/ssl/certs/dovecot.*
+  chown root:dovecot /etc/ssl/private/dovecot.*
 
   sed -i 's|#ssl = yes|ssl = yes|g' /etc/dovecot/conf.d/10-ssl.conf
   sed -i 's|ssl_cert = </etc/dovecot/dovecot.pem|ssl_cert = </etc/ssl/certs/dovecot.crt|g' /etc/dovecot/conf.d/10-ssl.conf
