@@ -3167,7 +3167,7 @@ function create_backup_script {
   fi
   apt-get -y --force-yes install obnam bcrypt
 
-  if [ ! -d /etc/obnam ]; then
+  if [ ! -f /usr/bin/obnam ]; then
       echo "ERROR: obnam may not have installed correctly. $CHECK_MESSAGE"
       exit 46
   fi
@@ -3289,7 +3289,7 @@ function create_restore_script {
   fi
   apt-get -y --force-yes install obnam bcrypt
 
-  if [ ! -d /etc/obnam ]; then
+  if [ ! -f /usr/bin/obnam ]; then
       echo 'obnam may not have installed correctly. Check your internet connection, /etc/network/interfaces and /etc/resolv.conf'
       exit 47
   fi
