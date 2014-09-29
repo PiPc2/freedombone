@@ -3114,6 +3114,11 @@ function create_backup_script {
   echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    obnam -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  # SSL certificates
+  echo "  if [ ! -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir $USB_MOUNT/backup/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  obnam -r $USB_MOUNT/backup/ssl /etc/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
   # dynamic dns
   echo "  if [ -f /usr/bin/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    cp -f /usr/bin/dynamicdns $USB_MOUNT/backup/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3224,6 +3229,10 @@ function create_restore_script {
   # personal directory
   echo "  if [ -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    obnam restore --to /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  # SSL certificates
+  echo "  if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    obnam restore --to /etc/ssl $USB_MOUNT/backup/ssl" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # dynamic dns
   echo "  if [ -f $USB_MOUNT/backup/dynamicdns ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
