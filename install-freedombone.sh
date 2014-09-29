@@ -317,6 +317,17 @@ function remove_default_user {
   fi
 }
 
+function enforce_good_passwords {
+  # because humans are generally bad at choosing passwords
+  if grep -Fxq "enforce_good_passwords" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install libpam-cracklib
+
+  sed -i 's/password	requisite			pam_deny.so/password    requisite   pam_cracklib.so retry=2 dcredit=-4 ucredit=-1 ocredit=-1 lcredit=0 minlen=10 reject_username/g' /etc/pam.d/common-password
+  echo 'enforce_good_passwords' >> $COMPLETION_FILE
+}
+
 function change_login_message {
   if grep -Fxq "change_login_message" $COMPLETION_FILE; then
       return
@@ -3414,6 +3425,7 @@ change_debian_repos
 enable_backports
 configure_dns
 initial_setup
+enforce_good_passwords
 install_editor
 change_login_message
 update_the_kernel
