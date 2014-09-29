@@ -238,6 +238,9 @@ SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 # list of ciphers to use
 SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA"
 
+# message if something fails to install
+CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf"
+
 export DEBIAN_FRONTEND=noninteractive
 
 # File which keeps track of what has already been installed
@@ -1066,6 +1069,12 @@ function configure_email {
   fi
   apt-get -y remove postfix
   apt-get -y --force-yes install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
+
+  if [ ! -d /etc/exim4 ]; then
+      echo "ERROR: Exim does not appear to have installed. $CHECK_MESSAGE"
+      exit 48
+  fi
+
   echo 'dc_eximconfig_configtype="internet"' > /etc/exim4/update-exim4.conf.conf
   echo "dc_other_hostnames='$DOMAIN_NAME'" >> /etc/exim4/update-exim4.conf.conf
   echo "dc_local_interfaces=''" >> /etc/exim4/update-exim4.conf.conf
@@ -1253,6 +1262,12 @@ function configure_imap {
       return
   fi
   apt-get -y --force-yes install dovecot-common dovecot-imapd
+
+  if [ ! -d /etc/dovecot ]; then
+      echo "ERROR: Dovecot does not appear to have installed. $CHECK_MESSAGE"
+      exit 48
+  fi
+
   if [ ! -f /etc/ssl/private/dovecot.key ]; then
       makecert dovecot
   fi
@@ -1350,6 +1365,12 @@ function email_client {
       return
   fi
   apt-get -y --force-yes install mutt-patched lynx abook
+
+  if [ ! -f /etc/Muttrc ]; then
+      echo "ERROR: Mutt does not appear to have installed. $CHECK_MESSAGE"
+      exit 49
+  fi
+
   if [ ! -d /home/$MY_USERNAME/.mutt ]; then
     mkdir /home/$MY_USERNAME/.mutt
   fi
@@ -1682,6 +1703,12 @@ function install_web_server {
   fi
   # install nginx
   apt-get -y --force-yes install nginx php5-fpm git
+
+  if [ ! -d /etc/nginx ]; then
+      echo "ERROR: nginx does not appear to have installed. $CHECK_MESSAGE"
+      exit 51
+  fi
+
   # install a script to easily enable and disable nginx virtual hosts
   if [ ! -d $INSTALL_DIR ]; then
       mkdir $INSTALL_DIR
@@ -1902,6 +1929,12 @@ function install_xmpp {
       return
   fi
   apt-get -y --force-yes install prosody
+
+  if [ ! -d /etc/prosody ]; then
+      echo "ERROR: prosody does not appear to have installed. $CHECK_MESSAGE"
+      exit 52
+  fi
+
   if [ ! -f "/etc/ssl/private/xmpp.key" ]; then
       makecert xmpp
   fi
@@ -1971,6 +2004,12 @@ function install_irc_server {
       return
   fi
   apt-get -y --force-yes install ngircd
+
+  if [ ! -d /etc/ngircd ]; then
+      echo "ERROR: ngircd does not appear to have installed. $CHECK_MESSAGE"
+      exit 53
+  fi
+
   if [ ! "/etc/ssl/private/ngircd.key" ]; then
       makecert ngircd
   fi
@@ -2382,6 +2421,12 @@ function install_mariadb {
   debconf-set-selections <<< "mariadb-server mariadb-server/root_password password $MARIADB_PASSWORD"
   debconf-set-selections <<< "mariadb-server mariadb-server/root_password_again password $MARIADB_PASSWORD"
   apt-get -y --force-yes install mariadb-server
+
+  if [ ! -d /etc/mysql ]; then
+      echo "ERROR: mariadb-server does not appear to have installed. $CHECK_MESSAGE"
+      exit 54
+  fi
+
   mysqladmin -u root password "$MARIADB_PASSWORD"
   echo 'install_mariadb' >> $COMPLETION_FILE
 }
@@ -2859,6 +2904,12 @@ function install_dlna_server {
       return
   fi
   apt-get -y --force-yes install minidlna
+
+  if [ ! -f /etc/minidlna.conf ]; then
+      echo "ERROR: minidlna does not appear to have installed. $CHECK_MESSAGE"
+      exit 55
+  fi
+
   sed -i "s|media_dir=/var/lib/minidlna|media_dir=A,/home/$MY_USERNAME/Music|g" /etc/minidlna.conf
   if ! grep -q "/home/$MY_USERNAME/Pictures" /etc/minidlna.conf; then
     echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
@@ -3093,8 +3144,8 @@ function create_backup_script {
   apt-get -y --force-yes install obnam bcrypt
 
   if [ ! -d /etc/obnam ]; then
-	  echo 'obnam may not have installed correctly. Check your internet connection, /etc/network/interfaces and /etc/resolv.conf'
-	  exit 46
+      echo "ERROR: obnam may not have installed correctly. $CHECK_MESSAGE"
+      exit 46
   fi
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3215,8 +3266,8 @@ function create_restore_script {
   apt-get -y --force-yes install obnam bcrypt
 
   if [ ! -d /etc/obnam ]; then
-	  echo 'obnam may not have installed correctly. Check your internet connection, /etc/network/interfaces and /etc/resolv.conf'
-	  exit 47
+      echo 'obnam may not have installed correctly. Check your internet connection, /etc/network/interfaces and /etc/resolv.conf'
+      exit 47
   fi
 
   echo '#!/bin/bash' > /usr/bin/$RESTORE_SCRIPT_NAME
