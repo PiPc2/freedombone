@@ -302,6 +302,9 @@ function argument_checks {
           exit 30
       fi
   fi
+}
+
+function remove_default_user {
   # make sure you don't use the default user account
   if [[ $MY_USERNAME == "debian" ]]; then
       echo 'Do not use the default debian user account. Create a different user with: adduser [username]'
@@ -310,6 +313,7 @@ function argument_checks {
   # remove the default debian user to prevent it from becoming an attack vector
   if [ -d /home/debian ]; then
       userdel -r debian
+      echo 'Default debian user account removed'
   fi
 }
 
@@ -3399,6 +3403,7 @@ function install_final {
 }
 
 argument_checks
+remove_default_user
 configure_firewall
 configure_firewall_for_ssh
 configure_firewall_for_dns
