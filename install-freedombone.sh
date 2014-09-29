@@ -3347,11 +3347,11 @@ function create_restore_script {
       fi
   fi
   # prosody
-  echo 'if [ -d /var/lib/prosody ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    obnam restore --to /var/lib/prosody $USB_MOUNT/backup/prosody" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ -d /var/lib/prosody ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    if [ -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      obnam restore --to /var/lib/prosody $USB_MOUNT/backup/prosody" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # wiki / blog
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $WIKI_DOMAIN_NAME ]; then
