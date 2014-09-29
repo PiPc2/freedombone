@@ -3228,12 +3228,12 @@ function create_backup_script {
       fi
   fi
   # prosody
-  echo 'if [ -d /var/lib/prosody ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  if [ ! -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    mkdir $USB_MOUNT/backup/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ -d /var/lib/prosody ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    if [ ! -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "      mkdir $USB_MOUNT/backup/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    obnam -r $USB_MOUNT/backup/prosody /var/lib/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  obnam -r $USB_MOUNT/backup/prosody /var/lib/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # wiki / blog
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $WIKI_DOMAIN_NAME ]; then
