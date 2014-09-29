@@ -3171,8 +3171,6 @@ function create_backup_script {
       exit 46
   fi
 
-  RSYNC_KEYFILE=$(openssl rand -base64 32)
-
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ ! -f /etc/ssl/private/rsync.key ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3185,9 +3183,8 @@ function create_backup_script {
   echo 'if [ ! -d ~/rr ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  mkdir ~/rr' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! -f ~/rr/keys ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  echo '$RSYNC_KEYFILE' > ~/rr/keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  chmod 400 ~/rr/keys' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'if [ ! -d ~/rr/keys ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  mkdir ~/rr/keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
