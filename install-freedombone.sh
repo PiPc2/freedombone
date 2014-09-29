@@ -1678,7 +1678,7 @@ function import_email {
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
 		  echo ''
-          echo $EMAIL_COMPLETE_MSG
+          echo "$EMAIL_COMPLETE_MSG"
           if [ -d $USB_MOUNT ]; then
               umount $USB_MOUNT
               rm -rf $USB_MOUNT
@@ -1703,7 +1703,7 @@ function import_email {
       apt-get -y --force-yes autoremove
       # unmount any attached usb drive
       echo ''
-      echo $EMAIL_COMPLETE_MSG
+      echo "$EMAIL_COMPLETE_MSG"
       echo ''
       if [ -d $USB_MOUNT ]; then
           umount $USB_MOUNT
@@ -1768,8 +1768,8 @@ function install_owncloud {
               rm -rf $USB_MOUNT
           fi
           echo ''
-          echo $OWNCLOUD_COMPLETION_MSG1
-          echo $OWNCLOUD_COMPLETION_MSG2
+          echo "$OWNCLOUD_COMPLETION_MSG1"
+          echo "$OWNCLOUD_COMPLETION_MSG2"
           exit 0
       fi
       return
@@ -1940,8 +1940,8 @@ function install_owncloud {
           rm -rf $USB_MOUNT
       fi
       echo ''
-      echo $OWNCLOUD_COMPLETION_MSG1
-      echo $OWNCLOUD_COMPLETION_MSG2
+      echo "$OWNCLOUD_COMPLETION_MSG1"
+      echo "$OWNCLOUD_COMPLETION_MSG2"
       exit 0
   fi
 }
