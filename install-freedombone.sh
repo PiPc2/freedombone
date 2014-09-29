@@ -215,7 +215,7 @@ INSTALL_DIR=$HOME/build
 USB_DRIVE=/dev/sda1
 
 # Location where the USB drive is mounted to
-USB_MOUNT=/media/usb
+USB_MOUNT=/mnt/usb
 
 # Name of a script used to create a backup of the system on usb drive
 BACKUP_SCRIPT_NAME="backup"
@@ -466,11 +466,11 @@ function search_for_attached_usb_drive {
           chmod 640 /etc/ssl/certs/*
           chmod 400 /etc/ssl/private/*
           # change ownership of some certificates
-          if [ -f /etc/ssl/private/xmpp.key ]; then
+          if [ -d /etc/prosody ]; then
               chown prosody:prosody /etc/ssl/private/xmpp.*
               chown prosody:prosody /etc/ssl/certs/xmpp.*
           fi
-          if [ -f /etc/ssl/private/dovecot.key ]; then
+          if [ -d /etc/dovecot ]; then
               chown root:dovecot /etc/ssl/certs/dovecot.*
               chown root:dovecot /etc/ssl/private/dovecot.*
           fi
@@ -1677,6 +1677,7 @@ function import_email {
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
+		  echo ''
           echo $EMAIL_COMPLETE_MSG
           if [ -d $USB_MOUNT ]; then
               umount $USB_MOUNT
