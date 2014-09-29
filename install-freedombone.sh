@@ -3277,7 +3277,7 @@ function create_backup_script {
       echo 'echo "Encrypting backup data"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "bcrypt -c $USB_MOUNT/backup.tar.gz" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
-  echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'exit 0' >> /usr/bin/$BACKUP_SCRIPT_NAME
   chmod 600 /usr/bin/$BACKUP_SCRIPT_NAME
   chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
 
@@ -3323,11 +3323,11 @@ function create_restore_script {
   # personal directory
   echo "  if [ -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    obnam restore --to /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # SSL certificates
   echo "  if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    obnam restore --to /etc/ssl $USB_MOUNT/backup/ssl" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # dynamic dns
   echo "  if [ -f $USB_MOUNT/backup/dynamicdns ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    cp -f $USB_MOUNT/backup/dynamicdns /usr/bin/dynamicdns" >> /usr/bin/$RESTORE_SCRIPT_NAME
