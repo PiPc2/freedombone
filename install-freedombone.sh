@@ -443,6 +443,9 @@ function search_for_attached_usb_drive {
 			  chown root:dovecot /etc/ssl/certs/dovecot.*
 			  chown root:dovecot /etc/ssl/private/dovecot.*
 		  fi
+		  if [ -f /etc/ssl/private/exim.key ]; then
+			  chown root:Debian-exim /etc/ssl/private/exim.key /etc/ssl/certs/exim.crt /etc/ssl/certs/exim.dhparam
+		  fi
       fi
       if [ -d $USB_MOUNT/personal ]; then
           echo 'Importing personal directory'
@@ -1077,10 +1080,12 @@ function configure_email {
   /etc/init.d/saslauthd start
 
   # make a tls certificate for email
-  makecert exim
-  mv /etc/ssl/private/exim.key /etc/exim4
-  mv /etc/ssl/certs/exim.crt /etc/exim4
-  mv /etc/ssl/certs/exim.dhparam /etc/exim4
+  if [ ! -f /etc/ssl/private/exim.key ]; then
+	  makecert exim
+  fi
+  cp /etc/ssl/private/exim.key /etc/exim4
+  cp /etc/ssl/certs/exim.crt /etc/exim4
+  cp /etc/ssl/certs/exim.dhparam /etc/exim4
   chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
   chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
 
