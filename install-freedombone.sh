@@ -238,9 +238,6 @@ SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 # list of ciphers to use
 SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA"
 
-# message if something fails to install
-CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE and run this script again."
-
 export DEBIAN_FRONTEND=noninteractive
 
 # File which keeps track of what has already been installed
@@ -248,6 +245,9 @@ COMPLETION_FILE=$HOME/freedombone-completed.txt
 if [ ! -f $COMPLETION_FILE ]; then
     touch $COMPLETION_FILE
 fi
+
+# message if something fails to install
+CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE and run this script again."
 
 function show_help {
   echo ''
