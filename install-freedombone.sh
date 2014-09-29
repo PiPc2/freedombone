@@ -324,7 +324,7 @@ function enforce_good_passwords {
   fi
   apt-get -y --force-yes install libpam-cracklib
 
-  sed -i 's/password.*requisite.*pam_cracklib.so retry=3 minlen=8 difok=3/password        required                       pam_cracklib.so retry=2 dcredit=-4 ucredit=-1 ocredit=-1 lcredit=0 minlen=10 reject_username/g' /etc/pam.d/common-password
+  sed -i 's/password.*requisite.*pam_cracklib.so.*/password        required                       pam_cracklib.so retry=2 dcredit=-4 ucredit=-1 ocredit=-1 lcredit=0 minlen=10 reject_username/g' /etc/pam.d/common-password
   echo 'enforce_good_passwords' >> $COMPLETION_FILE
 }
 
