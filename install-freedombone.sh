@@ -247,7 +247,7 @@ if [ ! -f $COMPLETION_FILE ]; then
 fi
 
 # message if something fails to install
-CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
+CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
 function show_help {
   echo ''
@@ -324,7 +324,7 @@ function enforce_good_passwords {
   fi
   apt-get -y --force-yes install libpam-cracklib
 
-  sed -i 's/password	requisite			pam_deny.so/password    requisite   pam_cracklib.so retry=2 dcredit=-4 ucredit=-1 ocredit=-1 lcredit=0 minlen=10 reject_username/g' /etc/pam.d/common-password
+  sed -i 's/password.*requisite.*pam_cracklib.so retry=3 minlen=8 difok=3/password        required                       pam_cracklib.so retry=2 dcredit=-4 ucredit=-1 ocredit=-1 lcredit=0 minlen=10 reject_username/g' /etc/pam.d/common-password
   echo 'enforce_good_passwords' >> $COMPLETION_FILE
 }
 
