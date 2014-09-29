@@ -3187,11 +3187,11 @@ function create_backup_script {
       echo "  if [ ! -d $USB_MOUNT/backup/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    mkdir $USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  obnam -r $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  obnam backup -r $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  if [ ! -d $USB_MOUNT/backup/gpg ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    mkdir $USB_MOUNT/backup/gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  obnam -r $USB_MOUNT/backup/gpg /home/$MY_USERNAME/.gnupg" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  obnam backup -r $USB_MOUNT/backup/gpg /home/$MY_USERNAME/.gnupg" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  cp -f /home/$MY_USERNAME/.muttrc $USB_MOUNT/backup/gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  cp -f /home/$MY_USERNAME/.procmailrc $USB_MOUNT/backup/gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
@@ -3200,13 +3200,13 @@ function create_backup_script {
   echo "    if [ ! -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "      mkdir $USB_MOUNT/backup/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    obnam -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    obnam backup -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # SSL certificates
   echo "  if [ ! -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir $USB_MOUNT/backup/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  obnam -r $USB_MOUNT/backup/ssl /etc/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  obnam backup -r $USB_MOUNT/backup/ssl /etc/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
   # dynamic dns
   echo "  if [ -f /usr/bin/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    cp -f /usr/bin/dynamicdns $USB_MOUNT/backup/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3216,7 +3216,7 @@ function create_backup_script {
   echo "    if [ ! -d $USB_MOUNT/backup/webserver ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "        mkdir $USB_MOUNT/backup/webserver" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    obnam -r $USB_MOUNT/backup/webserver /etc/nginx/sites-available" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    obnam backup -r $USB_MOUNT/backup/webserver /etc/nginx/sites-available" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # owncloud
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
@@ -3224,7 +3224,7 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo "  obnam -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "  obnam backup -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
   # prosody
@@ -3232,7 +3232,7 @@ function create_backup_script {
   echo "    if [ ! -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "      mkdir $USB_MOUNT/backup/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    obnam -r $USB_MOUNT/backup/prosody /var/lib/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    obnam backup -r $USB_MOUNT/backup/prosody /var/lib/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # wiki / blog
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
@@ -3240,7 +3240,7 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/wiki-blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-          echo "  obnam -r $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "  obnam backup -r $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
   # microblog
@@ -3266,7 +3266,7 @@ function create_backup_script {
       echo "  if [ ! -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    mkdir $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  obnam -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  obnam backup -r $USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'echo "Backup completed"' >> /usr/bin/$BACKUP_SCRIPT_NAME
