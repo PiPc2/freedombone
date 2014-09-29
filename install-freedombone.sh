@@ -189,6 +189,9 @@ WIKI_SQLITE_ADDON_HASH="930335e647c7e62f3068689c256ee169fad2426b64f8360685d391ec
 
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
+# gets set to yes if gpg keys are imported from usb
+GPG_KEYS_IMPORTED="no"
+
 # optionally you can provide your exported GPG key pair here
 # Note that the private key file will be deleted after use
 # If these are unspecified then a new GPG key will be created
@@ -384,6 +387,7 @@ function search_for_attached_usb_drive {
               echo 'Importing GPG keyring'
               cp -r $USB_MOUNT/.gnupg /home/$MY_USERNAME
               chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+              GPG_KEYS_IMPORTED="yes"
               if [ -f /home/$MY_USERNAME/.gnupg/secring.gpg ]; then
                   shred -zu $USB_MOUNT/.gnupg/secring.gpg
                   shred -zu $USB_MOUNT/.gnupg/random_seed
@@ -434,18 +438,18 @@ function search_for_attached_usb_drive {
           cp -r $USB_MOUNT/ssl/* /etc/ssl
           chmod 640 /etc/ssl/certs/*
           chmod 400 /etc/ssl/private/*
-		  # change ownership of some certificates
-		  if [ -f /etc/ssl/private/xmpp.key ]; then
-			  chown prosody:prosody /etc/ssl/private/xmpp.*
-			  chown prosody:prosody /etc/ssl/certs/xmpp.*
-		  fi
-		  if [ -f /etc/ssl/private/dovecot.key ]; then
-			  chown root:dovecot /etc/ssl/certs/dovecot.*
-			  chown root:dovecot /etc/ssl/private/dovecot.*
-		  fi
-		  if [ -f /etc/ssl/private/exim.key ]; then
-			  chown root:Debian-exim /etc/ssl/private/exim.key /etc/ssl/certs/exim.crt /etc/ssl/certs/exim.dhparam
-		  fi
+          # change ownership of some certificates
+          if [ -f /etc/ssl/private/xmpp.key ]; then
+              chown prosody:prosody /etc/ssl/private/xmpp.*
+              chown prosody:prosody /etc/ssl/certs/xmpp.*
+          fi
+          if [ -f /etc/ssl/private/dovecot.key ]; then
+              chown root:dovecot /etc/ssl/certs/dovecot.*
+              chown root:dovecot /etc/ssl/private/dovecot.*
+          fi
+          if [ -f /etc/ssl/private/exim.key ]; then
+              chown root:Debian-exim /etc/ssl/private/exim.key /etc/ssl/certs/exim.crt /etc/ssl/certs/exim.dhparam
+          fi
       fi
       if [ -d $USB_MOUNT/personal ]; then
           echo 'Importing personal directory'
@@ -1081,7 +1085,7 @@ function configure_email {
 
   # make a tls certificate for email
   if [ ! -f /etc/ssl/private/exim.key ]; then
-	  makecert exim
+      makecert exim
   fi
   cp /etc/ssl/private/exim.key /etc/exim4
   cp /etc/ssl/certs/exim.crt /etc/exim4
@@ -1250,7 +1254,7 @@ function configure_imap {
   fi
   apt-get -y --force-yes install dovecot-common dovecot-imapd
   if [ ! -f /etc/ssl/private/dovecot.key ]; then
-	  makecert dovecot
+      makecert dovecot
   fi
   chown root:dovecot /etc/ssl/certs/dovecot.*
   chown root:dovecot /etc/ssl/private/dovecot.*
@@ -1278,6 +1282,13 @@ function configure_gpg {
       return
   fi
   apt-get -y --force-yes install gnupg
+
+  # if gpg keys directory was previously imported from usb
+  if [[ $GPG_KEYS_IMPORTED == "yes" && -d /home/$MY_USERNAME/.gnupg ]]; then
+      sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
+      echo 'configure_gpg' >> $COMPLETION_FILE
+      return
+  fi
 
   if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
       mkdir /home/$MY_USERNAME/.gnupg
