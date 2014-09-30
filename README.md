@@ -13,6 +13,8 @@ The Freedombone system can be installed onto a Beaglebone Black, or any system c
 
 Unlike certain other self-hosting projects Freedombone has more emphasis on security and privacy. When installed on a Beaglebone Black it uses the built-in hardware random number generator as an entropy source and all communications with the box are encrypted by default using the recommendations from https://bettercrypto.org. The firewall is configured to only allow communications on the necessary ports and to drop all other packets, icmp is disabled by default and time synchronisation occurs via TLS only.  Backups are also encrypted.
 
+Freedombone is, and shall remain, 100% free software. Non-free repositories are removed automatically upon installation.
+
 Installation
 ============
 To get started you will need:
