@@ -57,53 +57,11 @@
 # Prerequisites
 # =============
 #
-# Debian image sites:
-#     http://ynezz.ibawizard.net/beagleboard/jessie/
-#     https://rcn-ee.net/deb/rootfs/jessie/
+# You will need to initially prepare a microSD card with a Debian
+# image on it. This can be done using the initial_setup.sh script.
 #
-# cd ~/
-# wget https://rcn-ee.net/deb/rootfs/jessie/debian-jessie-console-armhf-2014-08-13.tar.xz
-#
-# Verify it.
-#
-# sha256sum debian-jessie-console-armhf-2014-08-13.tar.xz
-# fc225cfb3c2dfad92cccafa97e92c3cd3db9d94f4771af8da364ef59609f43de
-#
-# Uncompress it.
-#
-# tar xJf debian-jessie-console-armhf-2014-08-13.tar.xz
-# cd debian-jessie-console-armhf-2014-08-13
-#
-# sudo apt-get install u-boot-tools dosfstools git-core kpartx wget parted
-# sudo ./setup_sdcard.sh --mmc /dev/sdX --dtb beaglebone
-#
-# When finished eject the micrtoSD then reinsert it
-#
-# sudo cp /media/$USER/BOOT/bbb-uEnv.txt /media/$USER/BOOT/uEnv.txt
-# sync
-#
-# Eject microSD, insert into BBB, attach USB cable between BBB and laptop.
-# On Ubuntu wait until you see the "connected" message.
-#
-# ssh-keygen -f "/home/$USER/.ssh/known_hosts" -R 192.168.7.2
-# ssh debian@192.168.7.2 (password "temppwd")
-# su (password "root")
-# passwd
-# adduser $MY_USERNAME
-# sed -i '/iface eth0 inet dhcp/a\iface eth0 inet static' /etc/network/interfaces
-# sed -i '/iface eth0 inet static/a\    dns-nameservers 213.73.91.35 85.214.20.141' /etc/network/interfaces
-# sed -i "/iface eth0 inet static/a\    gateway $MY_ROUTER_IP" /etc/network/interfaces
-# sed -i '/iface eth0 inet static/a\    netmask 255.255.255.0' /etc/network/interfaces
-# sed -i "/iface eth0 inet static/a\    address $MY_BBB_STATIC_IP" /etc/network/interfaces
-# sed -i '/iface usb0 inet static/,/    gateway 192.168.7.1/ s/^/#/' /etc/network/interfaces
-# shutdown now
-#
-# Connect BBB to router
-#
-# scp install-freedombone.sh $MY_USERNAME@$MY_BBB_STATIC_IP:/home/$MY_USERNAME
-# ssh $MY_USERNAME@$MY_BBB_STATIC_IP
-# su
-# ./install-freedombone.sh [DOMAIN_NAME] [MY_USERNAME]
+# If you are not using a Beaglebone Black then just prepare the
+# target system with a fresh installation of Debian Jessie.
 
 DOMAIN_NAME=$1
 MY_USERNAME=$2
