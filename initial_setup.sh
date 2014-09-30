@@ -33,10 +33,11 @@ BBB_FIXED_IP_ADDRESS="192.168.2.200"
 
 MICROSD_MOUNT_POINT="/media/$USER"
 
-# Downloads for the Debian installer
-DOWNLOAD_LINK1="https://rcn-ee.net/deb/rootfs/jessie/debian-jessie-console-armhf-2014-08-13.tar.xz"
-DOWNLOAD_LINK2="http://ynezz.ibawizard.net/beagleboard/jessie/debian-jessie-console-armhf-2014-08-13.tar.xz"
+DEBIAN_FILE_NAME="debian-jessie-console-armhf-2014-08-13"
 
+# Downloads for the Debian installer
+DOWNLOAD_LINK1="https://rcn-ee.net/deb/rootfs/jessie/$DEBIAN_FILE_NAME.tar.xz"
+DOWNLOAD_LINK2="http://ynezz.ibawizard.net/beagleboard/jessie/$DEBIAN_FILE_NAME.tar.xz"
 
 if [ ! MICROSD_DRIVE ]; then
 	echo 'You need to specify a drive for the connected microSD.'
@@ -58,20 +59,25 @@ if [ ! -d ~/freedombone ]; then
 	mkdir ~/freedombone
 fi
 cd ~/freedombone
-if [ ! -f ~/freedombone/debian-jessie-console-armhf-2014-08-13.tar.xz ]; then
+if [ ! -f ~/freedombone/$DEBIAN_FILE_NAME.tar.xz ]; then
 	wget $DOWNLOAD_LINK1
 fi
-if [ ! -f ~/freedombone/debian-jessie-console-armhf-2014-08-13.tar.xz ]; then
+if [ ! -f ~/freedombone/$DEBIAN_FILE_NAME.tar.xz ]; then
 	# try another site
     wget $DOWNLOAD_LINK2
-	if [ ! -f ~/freedombone/debian-jessie-console-armhf-2014-08-13.tar.xz ]; then
+	if [ ! -f ~/freedombone/$DEBIAN_FILE_NAME.tar.xz ]; then
 		echo 'The Debian installer could not be downloaded'
 		exit 3
 	fi
 fi
 
-tar xJf debian-jessie-console-armhf-2014-08-13.tar.xz
-cd debian-*
+echo 'Extracting files...'
+tar xJf $DEBIAN_FILE_NAME.tar.xz
+if [ ! -d ~/freedombone/$DEBIAN_FILE_NAME ]; then
+	echo "Couldn't extract files"
+	exit 4
+fi
+cd $DEBIAN_FILE_NAME
 sudo ./setup_sdcard.sh --mmc $MICROSD_DRIVE --dtb beaglebone
 
 echo ''
@@ -84,7 +90,7 @@ if [ ! -b ${MICROSD_DRIVE}1 ]; then
 	read -p "Wait for the drive to mount then press any key... " -n1 -s
 	if [ ! -b ${MICROSD_DRIVE}1 ]; then
 		echo "microSD drive not found at ${MICROSD_DRIVE}1"
-		exit 4
+		exit 5
 	fi
 fi
 
