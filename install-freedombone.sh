@@ -1160,6 +1160,22 @@ function configure_email {
   echo 'configure_email' >> $COMPLETION_FILE
 }
 
+function create_procmail {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+      return
+  fi
+  if grep -Fxq "create_procmail" $COMPLETION_FILE; then
+      return
+  fi
+  if [ ! -f /home/$MY_USERNAME/.procmailrc ]; then
+      echo 'MAILDIR=$HOME/Maildir' > /home/$MY_USERNAME/.procmailrc
+      echo 'DEFAULT=$MAILDIR/' >> /home/$MY_USERNAME/.procmailrc
+      echo 'LOGFILE=$HOME/log/procmail.log' >> /home/$MY_USERNAME/.procmailrc
+      echo 'LOGABSTRACT=all' >> /home/$MY_USERNAME/.procmailrc
+  fi
+  echo 'create_procmail' >> $COMPLETION_FILE
+}
+
 function spam_filtering {
   # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
@@ -1188,10 +1204,6 @@ function spam_filtering {
   echo '      spam = nobody:true' >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
   echo '      condition = ${if >{$spam_score_int}{120}{1}{0}}' >> /etc/exim4/conf.d/acl/40_exim4-config_check_data
   # procmail configuration
-  echo 'MAILDIR=$HOME/Maildir' > /home/$MY_USERNAME/.procmailrc
-  echo 'DEFAULT=$MAILDIR/' >> /home/$MY_USERNAME/.procmailrc
-  echo 'LOGFILE=$HOME/log/procmail.log' >> /home/$MY_USERNAME/.procmailrc
-  echo 'LOGABSTRACT=all' >> /home/$MY_USERNAME/.procmailrc
   echo '# get spamassassin to check emails' >> /home/$MY_USERNAME/.procmailrc
   echo ':0fw: .spamassassin.lock' >> /home/$MY_USERNAME/.procmailrc
   echo '  * < 256000' >> /home/$MY_USERNAME/.procmailrc
@@ -3473,6 +3485,7 @@ search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
 configure_email
+create_procmail
 #spam_filtering
 configure_imap
 configure_gpg
