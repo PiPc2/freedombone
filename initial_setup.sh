@@ -96,7 +96,7 @@ sudo sed -i '/iface eth0 inet static/a\    netmask 255.255.255.0' $MICROSD_MOUNT
 sudo sed -i "/iface eth0 inet static/a\    address $BBB_FIXED_IP_ADDRESS" $MICROSD_MOUNT_POINT/rootfs/etc/network/interfaces
 sudo sed -i '/iface usb0 inet static/,/    gateway 192.168.7.1/ s/^/#/' $MICROSD_MOUNT_POINT/rootfs/etc/network/interfaces
 
-sudo sed -i "s/nameserver.*/nameserver 213.73.91.35" $MICROSD_MOUNT_POINT/rootfs/etc/resolv.conf
+sudo sed -i 's/nameserver.*/nameserver 213.73.91.35/g' $MICROSD_MOUNT_POINT/rootfs/etc/resolv.conf
 sudo echo 'nameserver 85.214.20.141' >> $MICROSD_MOUNT_POINT/rootfs/etc/resolv.conf
 
 sync
