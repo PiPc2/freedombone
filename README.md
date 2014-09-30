@@ -1,26 +1,58 @@
-<img src="https://github.com/fuzzgun/freedombone/blob/master/images/logo120.png?raw=true"/>
+Freedombone
+===========
+The Freedombone system can be installed onto a Beaglebone Black, or any system capable of running Debian Jessie, and allows you to host your own email and web services. With Freedombone you can enjoy true freedom and independence in the cloud. It comes in a variety of flavours.
 
-**Note: for information on fixing the "heartbleed" vulnerability see the section called "Regenerating SSL certificates"**
+  Full install - Installs eveything
+  Mailbox - An email server with GPG encryption enabled by default
+  Cloud - Share files, maintain a calendar and collaborate on document editing
+  Social - Social networking with Red Matrix and GNU Social
+  Media - Runs media services such as DLNA to play music or videos on your devices
+  Writer - Host your blog and wiki
+  Chat - Encrypted IRC and XMPP services for one-to-one and many-to-many chat
 
-FreedomBone is a personal home communications server based upon the BeagleBone Black hardware. It's small and cheap and will allow you to use email, have your own web site and do social networking in a federated way without needing to rely upon any intermediary companies other than your ISP.
+Unlike certain other self-hosting projects Freedombone has more emphasis on security and privacy. When installed on a Beaglebone Black it uses the built-in hardware random number generator as an entropy source and all communications with the box are encrypted by default using the recommendations from https://bettercrypto.org. The firewall is configured to only allow communications on the necessary ports and to drop all other packets, icmp is disabled by default and time synchronisation occurs via TLS only.  Backups are also encrypted.
 
-beaglebone.txt is in Emacs org-mode format.
+Installation
+============
+To get started you will need:
 
-* [Main site](http://freedombone.uk.to)
-* [Initial project announcement](http://computationalist.uk.to/?x=entry:entry140101-121418)
+ - A Beaglebone Black
+ - A MicroSD card
+ - Ethernet cable
+ - Optionally a 5V 2A power supply for the Beaglebone Black
+ - Access to the internet via a router with ethernet sockets
+ - USB thumb drive (for backups or storing media)
+ - A subdomain created on https://freedns.afraid.org
+ - A purchased domain name and SSL certificate (only needed for Red Matrix)
 
-If anyone wants to help on the project:
+You will also need to know, or find out, the IP address of your internet router and have a suitable static IP address for the Beaglebone on your local network. The router should allow you to forward ports to the Beaglebone (often this is under firewall or "advanced" settings).
 
-1. Suggest some quotations.  The idea of the quotations is to provide some extra inspiration in what otherwise would be a long boring process of typing in instructions.
+Plug the microSD card into your laptop/desktop and then run the initial_setup.sh script. For example:
 
-2. Promote the idea of hosting your own internet services and resisting mass surveillance and censorship.  Encourage other people to set up their own Freedombone or similar home servers.  If you are a member of a club or organisation then set up a Freedombone for use by members.
+    ./initial_setup.sh /dev/sdX
 
-3. If you know anything about computer security, encryption or filewalls then check the instructions and report any mistakes or improvements if you find them. That can be done via the Github issues. https://github.com/fuzzgun/freedombone/issues
+where /dev/sdX is the device name for the microSD card. Often it's /dev/sdb or /dev/sdc, depending upon how many drives there are on your system. The script will download the Debian installer and update the microSD card. It can take a while, so be patient.
 
-4. If you think any of the systems are too vulnerable to security failings and shouldn't be recommended then flag that.
+When the initial setup is done follow the instructions on screen to run the main Freedombone script. Edit the install-freedombone.sh script and change the following as needed. If you don't want those services then just leave them as they are.
 
-5. There are some deprecated instructions for systems which I havn't yet been able to get running. If you can improve those instructions to the extent that a working system is obtainable on Debian 7 then either submit a pull request or add the instructions as an issue.
+    MICROBLOG_DOMAIN_NAME
+    MICROBLOG_FREEDNS_SUBDOMAIN_CODE
+	OWNCLOUD_DOMAIN_NAME
+	OWNCLOUD_FREEDNS_SUBDOMAIN_CODE
+	WIKI_DOMAIN_NAME
+	WIKI_FREEDNS_SUBDOMAIN_CODE
+	REDMATRIX_DOMAIN_NAME
 
-6. I would like to include a liquid voting system for community or civic organisation. This goes beyond personal communications into the area of organising and developing a community (voting on things, making plans, delegating resources and people), and I think something like a Freedombox/Freedombone would be a good infrastructure for that. I havn't done much research on it but there are systems such as Liquid Feedback and Agora which would be good to include if possible. https://github.com/agoraciudadana/agora-ciudadana
+The FreeDNS subdomain codes can be found under "Dynamic DNS" and "quick cron example". On the last line it will be the string located between the '?' and the '==' characters.
 
-5. It would also be nice to turn instructions into scripts, with the ultimate aim of being able to just type "apt-get install freedombone" and then enter some domain names and passwords. I think that's also a stated aim of the Freedombox project.
+Installation is not quick, and depends upon which variant you choose and your internet bandwidth. Allow at least a couple of hours for it to finish.
+
+When done you can ssh into the Freedombone with:
+
+    ssh username@domain -p 2222
+
+Any manual post-installation setup instructions or passwords can be found in /home/username/README. You should remove any passwords from that file and store them within a password manager such as KeepassX.
+
+Non-Beaglebone hardware
+=======================
+It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within the install-freedombone.sh script. Obviously, you don't need to run the initial_setup.sh script on non-Beaglebone systems.
