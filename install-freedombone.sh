@@ -272,7 +272,7 @@ function check_hwrng {
   if [ ! -f /etc/default/rng-tools ]; then
       return
   fi
-  if [ ! -f /dev/hwrng ]; then
+  if [ ! -e /dev/hwrng ]; then
       ls /dev/hw*
       echo 'The hardware random number generator is enabled but could not be detected on'
       echo '/dev/hwrng.  There may be a problem with the installation or the Beaglebone hardware.'
