@@ -70,6 +70,7 @@ if [ ! -f ~/freedombone/debian-jessie-console-armhf-2014-08-13.tar.xz ]; then
 	fi
 fi
 
+tar xJf debian-jessie-console-armhf-2014-08-13.tar.xz
 cd debian-*
 sudo ./setup_sdcard.sh --mmc $MICROSD_DRIVE --dtb beaglebone
 
