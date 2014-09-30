@@ -402,6 +402,12 @@ function search_for_attached_usb_drive {
               fi
           fi
 
+          if [ -f $USB_MOUNT/.procmailrc ]; then
+              echo 'Importing procmail settings'
+              cp $USB_MOUNT/.procmailrc /home/$MY_USERNAME
+              chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.procmailrc
+          fi
+
           if [ -f $USB_MOUNT/private_key.gpg ]; then
               echo 'GPG private key found on USB drive'
               MY_GPG_PRIVATE_KEY=$USB_MOUNT/private_key.gpg
