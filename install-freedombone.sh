@@ -741,6 +741,8 @@ function time_synchronisation {
   ./configure
   make
   make install
+  cp /usr/local/bin/tlsdate* /usr/bin
+  cp /usr/local/sbin/tlsdate* /usr/bin
   systemctl start tlsdated.service
 
   apt-get -y remove ntpdate
