@@ -265,6 +265,20 @@ function argument_checks {
   fi
 }
 
+function check_hwrng {
+    # If hardware random number generation was enabled then make sure that the device exists.
+    # if /dev/hwrng is not found than any subsequent cryptographic key generation would
+    # suffer from low entropy and might be insecure
+    if [ ! -f /etc/default/rng-tools ]; then
+        return
+    fi
+    if [ ! -b /dev/hwrng ]; then
+        ls /dev/hw*
+        echo 'The hardware random number generator is anabled but could not be detected on /dev/hwrng.  There may be a problem with the installation or the Beaglebone hardware.'
+        exit 75
+    fi
+}
+
 function remove_default_user {
   # make sure you don't use the default user account
   if [[ $MY_USERNAME == "debian" ]]; then
@@ -3447,6 +3461,7 @@ create_restore_script
 time_synchronisation
 configure_internet_protocol
 configure_ssh
+check_hwrng
 search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
