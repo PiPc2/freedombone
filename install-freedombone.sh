@@ -34,14 +34,14 @@
 # Summary
 # =======
 #
+# This script is intended to be run on the target device, which
+# is typically a Beaglebone Black.
+#
 # To be able to run this script you need to get to a condition
 # where you have Debian Jessie installed, with at least one
 # unprivileged user account and at least one subdomain created on
 # https://freedns.afraid.org/. If you're not installing on a
 # Beaglebone Black then set the variable INSTALLING_ON_BBB to "no"
-#
-# This script is intended to be run on the target device, which
-# is typically a Beaglebone Black.
 #
 # Note on dynamic dns
 # ===================
