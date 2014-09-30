@@ -1081,6 +1081,18 @@ function configure_email {
       exit 48
   fi
 
+  # configure for Maildir format
+  sed -i 's/MAIL_DIR/#MAIL_DIR/g' /etc/login.defs
+  sed -i 's|#MAIL_FILE.*|MAIL_FILE Maildir/|g' /etc/login.defs
+
+  if ! grep -q "export MAIL" /etc/profile; then
+      echo 'export MAIL=~/Maildir' >> /etc/profile
+  fi
+
+  sed -i 's|pam_mail.so standard|pam_mail.so dir=~/Maildir standard|g' /etc/pam.d/login
+  sed -i 's|pam_mail.so standard noenv|pam_mail.so dir=~/Maildir standard|g' /etc/pam.d/sshd
+  sed -i 's|pam_mail.so nopen|pam_mail.so dir=~/Maildir nopen|g' /etc/pam.d/su
+
   echo 'dc_eximconfig_configtype="internet"' > /etc/exim4/update-exim4.conf.conf
   echo "dc_other_hostnames='$DOMAIN_NAME'" >> /etc/exim4/update-exim4.conf.conf
   echo "dc_local_interfaces=''" >> /etc/exim4/update-exim4.conf.conf
