@@ -69,6 +69,8 @@ if [ ! -f ~/freedombone/debian-jessie-console-armhf-2014-08-13.tar.xz ]; then
 		exit 3
 	fi
 fi
+
+cd debian-*
 sudo ./setup_sdcard.sh --mmc $MICROSD_DRIVE --dtb beaglebone
 
 echo ''
