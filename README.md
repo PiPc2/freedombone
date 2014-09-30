@@ -2,14 +2,14 @@ Freedombone
 ===========
 The Freedombone system can be installed onto a Beaglebone Black, or any system capable of running Debian Jessie, and allows you to host your own email and web services. With Freedombone you can enjoy true freedom and independence in the cloud. It comes in a variety of flavours.
 
- - *Full install*: Installs eveything
- - *Mailbox*: An email server with GPG encryption enabled by default
- - *Cloud*: Share files, maintain a calendar and collaborate on document editing
- - *Social*: Social networking with Red Matrix and GNU Social
- - *Media*: Runs media services such as DLNA to play music or videos on your devices
- - *Writer*: Host your blog and wiki
- - *Chat*: Encrypted IRC and XMPP services for one-to-one and many-to-many chat
- - *Notmailbox*: Installs eveything except for the email server
+ - **Full install**: Installs eveything
+ - **Mailbox**: An email server with GPG encryption enabled by default
+ - **Cloud**: Share files, maintain a calendar and collaborate on document editing
+ - **Social**: Social networking with Red Matrix and GNU Social
+ - **Media**: Runs media services such as DLNA to play music or videos on your devices
+ - **Writer**: Host your blog and wiki
+ - **Chat**: Encrypted IRC and XMPP services for one-to-one and many-to-many chat
+ - **Notmailbox**: Installs eveything except for the email server
 
 Unlike certain other self-hosting projects Freedombone has more emphasis on security and privacy. When installed on a Beaglebone Black it uses the built-in hardware random number generator as an entropy source and all communications with the box are encrypted by default using the recommendations from https://bettercrypto.org. The firewall is configured to only allow communications on the necessary ports and to drop all other packets, icmp is disabled by default and time synchronisation occurs via TLS only.  Backups are also encrypted.
 
@@ -28,13 +28,15 @@ To get started you will need:
 
 You will also need to know, or find out, the IP address of your internet router and have a suitable static IP address for the Beaglebone on your local network. The router should allow you to forward ports to the Beaglebone (often this is under firewall or "advanced" settings).
 
-Plug the microSD card into your laptop/desktop and then run the initial_setup.sh script. For example:
+Check that within *initial_setup.sh* the router IP address and static IP for the Beaglebone are set correctly.
+
+Plug the microSD card into your laptop/desktop and then run the *initial_setup.sh* script. For example:
 
     ./initial_setup.sh /dev/sdX
 
 where /dev/sdX is the device name for the microSD card. Often it's /dev/sdb or /dev/sdc, depending upon how many drives there are on your system. The script will download the Debian installer and update the microSD card. It can take a while, so be patient.
 
-When the initial setup is done follow the instructions on screen to run the main Freedombone script. Edit the install-freedombone.sh script and change the following as needed. If you don't want those services then just leave them as they are.
+When the initial setup is done follow the instructions on screen to run the main Freedombone script. Edit the *install-freedombone.sh* script and change the following as needed. If you don't want those services then just leave them as they are.
 
     MICROBLOG_DOMAIN_NAME
     MICROBLOG_FREEDNS_SUBDOMAIN_CODE
@@ -56,4 +58,4 @@ Any manual post-installation setup instructions or passwords can be found in /ho
 
 Non-Beaglebone hardware
 =======================
-It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within the install-freedombone.sh script. Obviously, you don't need to run the initial_setup.sh script on non-Beaglebone systems.
+It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within the *install-freedombone.sh* script. Obviously, you don't need to run the *initial_setup.sh* script on non-Beaglebone systems.
