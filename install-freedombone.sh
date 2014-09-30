@@ -274,7 +274,7 @@ function check_hwrng {
   fi
   if [ ! -b /dev/hwrng ]; then
       ls /dev/hw*
-      echo 'The hardware random number generator is anabled but could not be detected on'
+      echo 'The hardware random number generator is enabled but could not be detected on'
       echo '/dev/hwrng.  There may be a problem with the installation or the Beaglebone hardware.'
       exit 75
   fi
