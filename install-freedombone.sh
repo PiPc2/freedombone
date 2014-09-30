@@ -3138,7 +3138,7 @@ function create_backup_script {
   echo '  echo "Generating an rsync encryption certificate"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  openssl req -nodes -newkey rsa:2048 -x509 -sha256 -keyout /etc/ssl/private/rsync.key -out /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  chmod 400 /etc/ssl/private/rsync.key' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  chmod 640 /etc/ssl/certs/rsync.crt' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  rm /etc/ssl/certs/rsync.crt' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'if [ ! -d ~/rr ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3161,11 +3161,11 @@ function create_backup_script {
       echo "  if [ ! -d $USB_MOUNT/backup/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    mkdir $USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/Maildir ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/Maildir ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  if [ ! -d $USB_MOUNT/backup/gpg ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    mkdir $USB_MOUNT/backup/gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /home/$MY_USERNAME/.gnupg $USB_MOUNT/backup/gpg ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /home/$MY_USERNAME/.gnupg $USB_MOUNT/backup/gpg ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  cp -f /home/$MY_USERNAME/.muttrc $USB_MOUNT/backup/gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  cp -f /home/$MY_USERNAME/.procmailrc $USB_MOUNT/backup/gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
@@ -3174,13 +3174,13 @@ function create_backup_script {
   echo "    if [ ! -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "      mkdir $USB_MOUNT/backup/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # SSL certificates
   echo "  if [ ! -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir $USB_MOUNT/backup/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /etc/ssl $USB_MOUNT/backup/ssl ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /etc/ssl $USB_MOUNT/backup/ssl ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
   # dynamic dns
   echo "  if [ -f /usr/bin/dynamicdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    cp -f /usr/bin/dynamicdns $USB_MOUNT/backup/dynamicdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3190,7 +3190,7 @@ function create_backup_script {
   echo "    if [ ! -d $USB_MOUNT/backup/webserver ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "        mkdir $USB_MOUNT/backup/webserver" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /etc/nginx/sites-available $USB_MOUNT/backup/webserver ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /etc/nginx/sites-available $USB_MOUNT/backup/webserver ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # owncloud
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
@@ -3198,7 +3198,7 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$OWNCLOUD_DOMAIN_NAME $USB_MOUNT/backup/owncloud ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$OWNCLOUD_DOMAIN_NAME $USB_MOUNT/backup/owncloud ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
   # prosody
@@ -3206,7 +3206,7 @@ function create_backup_script {
   echo "    if [ ! -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "      mkdir $USB_MOUNT/backup/prosody" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/lib/prosody $USB_MOUNT/backup/prosody ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/lib/prosody $USB_MOUNT/backup/prosody ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   # wiki / blog
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
@@ -3214,7 +3214,7 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/wiki-blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$WIKI_DOMAIN_NAME $USB_MOUNT/backup/wiki-blog ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+		  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$WIKI_DOMAIN_NAME $USB_MOUNT/backup/wiki-blog ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
   # microblog
@@ -3240,7 +3240,7 @@ function create_backup_script {
       echo "  if [ ! -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    mkdir $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/cache/minidlna $USB_MOUNT/backup/dlna ~/rr/keys /etc/ssl/certs/rsync.crt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+	  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/cache/minidlna $USB_MOUNT/backup/dlna ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'else' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Please insert a USB drive to create the backup."' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3286,19 +3286,19 @@ function create_restore_script {
   # email
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
       echo "  if [ -d $USB_MOUNT/backup/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
-	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/gpg /home/$MY_USERNAME/.gnupg ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/gpg /home/$MY_USERNAME/.gnupg ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    cp -f $USB_MOUNT/backup/gpg/.muttrc /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    cp -f $USB_MOUNT/backup/gpg/.procmailrc /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
   # personal directory
   echo "  if [ -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # SSL certificates
   echo "  if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/ssl /etc/ssl ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/ssl /etc/ssl ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # dynamic dns
   echo "  if [ -f $USB_MOUNT/backup/dynamicdns ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -3307,28 +3307,28 @@ function create_restore_script {
   # web server
   echo "  if [ -d /etc/nginx ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    if [ -d $USB_MOUNT/backup/webserver ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "      rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/webserver /etc/nginx ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/webserver /etc/nginx ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # owncloud
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $OWNCLOUD_DOMAIN_NAME ]; then
           echo "  if [ -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-		  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       fi
   fi
   # prosody
   echo '  if [ -d /var/lib/prosody ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    if [ -d $USB_MOUNT/backup/prosody ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "      rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/prosody /var/lib/prosody ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/prosody /var/lib/prosody ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   # wiki / blog
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $WIKI_DOMAIN_NAME ]; then
           echo "  if [ -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-		  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+		  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       fi
   fi
@@ -3353,7 +3353,7 @@ IPT_NAME
   # dlna
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       echo "  if [ -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/minidlna /var/cache/minidlna ~/rr/keys /etc/ssl/certs/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/minidlna /var/cache/minidlna ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
   echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
