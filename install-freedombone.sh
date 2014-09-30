@@ -726,7 +726,20 @@ function time_synchronisation {
   if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
       return
   fi
-  apt-get -y --force-yes install tlsdate
+  #apt-get -y --force-yes install tlsdate
+
+  # building tlsdate from source is a workaround because of
+  # this bug https://github.com/ioerror/tlsdate/issues/130
+  apt-get -y --force-yes install build-essential automake git pkg-config autoconf libtool libssl-dev
+  cd $INSTALL_DIR
+  git clone https://github.com/ioerror/tlsdate.git
+  cd $INSTALL_DIR/tlsdate
+  ./autogen.sh
+  ./configure
+  make
+  make install
+  systemctl start tlsdated.service
+
   apt-get -y remove ntpdate
 
   echo '#!/bin/bash' > /usr/bin/updatedate
