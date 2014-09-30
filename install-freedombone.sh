@@ -1356,7 +1356,7 @@ function encrypt_incoming_email {
       return
   fi
   if [ ! -f /usr/bin/gpgit.pl ]; then
-      apt-get -y --force-yes install git
+      apt-get -y --force-yes install git libmail-gnupg-perl
       cd $INSTALL_DIR
       git clone https://github.com/mikecardwell/gpgit
       cd gpgit
