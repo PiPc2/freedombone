@@ -96,7 +96,7 @@ fi
 
 sudo cp $MICROSD_MOUNT_POINT/BOOT/bbb-uEnv.txt $MICROSD_MOUNT_POINT/BOOT/uEnv.txt
 
-sudo sed -i '/iface eth0 inet dhcp/a\iface eth0 inet static' $MICROSD_MOUNT_POINT/rootfs/etc/network/interfaces
+sudo sed -i 's/iface eth0 inet dhcp/iface eth0 inet static/g' $MICROSD_MOUNT_POINT/rootfs/etc/network/interfaces
 sudo sed -i '/iface eth0 inet static/a\    dns-nameservers 213.73.91.35 85.214.20.141' $MICROSD_MOUNT_POINT/rootfs/etc/network/interfaces
 sudo sed -i "/iface eth0 inet static/a\    gateway $ROUTER_IP_ADDRESS" $MICROSD_MOUNT_POINT/rootfs/etc/network/interfaces
 sudo sed -i '/iface eth0 inet static/a\    netmask 255.255.255.0' $MICROSD_MOUNT_POINT/rootfs/etc/network/interfaces
