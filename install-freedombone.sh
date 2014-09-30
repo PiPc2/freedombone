@@ -150,6 +150,9 @@ WIKI_SQLITE_ADDON_HASH="930335e647c7e62f3068689c256ee169fad2426b64f8360685d391ec
 
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
+# whether to encrypt all incoming email with your public key
+GPG_ENCRYPT_STORED_EMAIL="yes"
+
 # gets set to yes if gpg keys are imported from usb
 GPG_KEYS_IMPORTED="no"
 
@@ -1338,6 +1341,37 @@ function configure_gpg {
 
   echo 'configure_gpg' >> $COMPLETION_FILE
 }
+
+function encrypt_incoming_email {
+  # encrypts incoming mail using your GPG public key
+  # so even if an attacker gains access to the data at rest they still need
+  # to know your GPG key password to be able to read anything
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+      return
+  fi
+  if grep -Fxq "encrypt_incoming_email" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $GPG_ENCRYPT_STORED_EMAIL != "yes" ]]; then
+      return
+  fi
+  if [ ! -f /usr/bin/gpgit.pl ]; then
+      apt-get -y --force-yes install git
+      cd $INSTALL_DIR
+      git clone https://github.com/mikecardwell/gpgit
+      cd gpgit
+      cp gpgit.pl /usr/bin
+  fi
+
+  # add a procmail rule
+  if ! grep -q "/usr/bin/gpgit.pl" /home/$MY_USERNAME/.procmailrc; then
+      echo '  :0 f' >> /home/$MY_USERNAME/.procmailrc
+      echo "  | /usr/bin/gpgit.pl $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/.procmailrc
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.procmailrc
+  fi
+  echo 'encrypt_incoming_email' >> $COMPLETION_FILE
+}
+
 
 function email_client {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
@@ -3198,7 +3232,7 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$OWNCLOUD_DOMAIN_NAME $USB_MOUNT/backup/owncloud ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$OWNCLOUD_DOMAIN_NAME $USB_MOUNT/backup/owncloud ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
   # prosody
@@ -3214,7 +3248,7 @@ function create_backup_script {
           echo "  if [ ! -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo "    mkdir $USB_MOUNT/backup/wiki-blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-		  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$WIKI_DOMAIN_NAME $USB_MOUNT/backup/wiki-blog ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
+          echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/www/$WIKI_DOMAIN_NAME $USB_MOUNT/backup/wiki-blog ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
       fi
   fi
   # microblog
@@ -3240,7 +3274,7 @@ function create_backup_script {
       echo "  if [ ! -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    mkdir $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-	  echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/cache/minidlna $USB_MOUNT/backup/dlna ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rsyncrypto --ne-nesting=2 --trim=3 -n ~/rr/map -cvr /var/cache/minidlna $USB_MOUNT/backup/dlna ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'else' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Please insert a USB drive to create the backup."' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3286,8 +3320,8 @@ function create_restore_script {
   # email
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
       echo "  if [ -d $USB_MOUNT/backup/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
-	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/gpg /home/$MY_USERNAME/.gnupg ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/gpg /home/$MY_USERNAME/.gnupg ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    cp -f $USB_MOUNT/backup/gpg/.muttrc /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    cp -f $USB_MOUNT/backup/gpg/.procmailrc /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -3314,7 +3348,7 @@ function create_restore_script {
   if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $OWNCLOUD_DOMAIN_NAME ]; then
           echo "  if [ -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-		  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+          echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       fi
   fi
@@ -3328,7 +3362,7 @@ function create_restore_script {
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       if [ $WIKI_DOMAIN_NAME ]; then
           echo "  if [ -d $USB_MOUNT/backup/wiki-blog ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-		  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+          echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/wiki-blog /var/www/$WIKI_DOMAIN_NAME ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
           echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       fi
   fi
@@ -3353,7 +3387,7 @@ IPT_NAME
   # dlna
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       echo "  if [ -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-	  echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/minidlna /var/cache/minidlna ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rsyncrypto --trim=${DIR_TRIM} -vrd $USB_MOUNT/backup/minidlna /var/cache/minidlna ~/rr/keys /etc/ssl/private/rsync.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
   echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -3420,6 +3454,7 @@ configure_email
 #spam_filtering
 configure_imap
 configure_gpg
+encrypt_incoming_email
 email_client
 configure_firewall_for_email
 folders_for_mailing_lists
