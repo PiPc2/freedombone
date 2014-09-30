@@ -1398,6 +1398,7 @@ function encrypt_incoming_email {
 
   # add a procmail rule
   if ! grep -q "/usr/bin/gpgit.pl" /home/$MY_USERNAME/.procmailrc; then
+      echo '' >> /home/$MY_USERNAME/.procmailrc
       echo ':0 f' >> /home/$MY_USERNAME/.procmailrc
       echo "| /usr/bin/gpgit.pl $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/.procmailrc
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.procmailrc
