@@ -40,6 +40,9 @@
 # https://freedns.afraid.org/. If you're not installing on a
 # Beaglebone Black then set the variable INSTALLING_ON_BBB to "no"
 #
+# This script is intended to be run on the target device, which
+# is typically a Beaglebone Black.
+#
 # Note on dynamic dns
 # ===================
 #
