@@ -1705,8 +1705,12 @@ function create_public_mailing_list {
   apt-get -y --force-yes install mlmmj
   adduser --system mlmmj
 
+  echo ''
+  echo "Creating the $PUBLIC_MAILING_LIST mailing list"
+  echo ''
+
   # create the list
-  mlmmj-make-ml -a -L "$PUBLIC_MAILING_LIST" -c mlmmj -z
+  mlmmj-make-ml -a -L "$PUBLIC_MAILING_LIST" -c mlmmj
 
   echo 'mlmmj_router:' > /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  driver = accept' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
@@ -1746,6 +1750,9 @@ function create_public_mailing_list {
   fi
   service exim4 restart
   newaliases
+
+  # subscribe the user to the list
+  mlmmj-sub -L /var/spool/mlmmj/$PUBLIC_MAILING_LIST -a $MY_USERNAME@$DOMAIN_NAME
 
   mailinglistrule $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
 
