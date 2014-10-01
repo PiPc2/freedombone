@@ -199,6 +199,9 @@ MAX_PHP_MEMORY=32
 # default MariaDB password
 MARIADB_PASSWORD=
 
+# file containing a list of remote locations to backup to
+FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
+
 #list of encryption protocols
 SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 
@@ -1442,6 +1445,41 @@ function encrypt_incoming_email {
   echo 'encrypt_incoming_email' >> $COMPLETION_FILE
 }
 
+function encrypt_outgoing_email {
+  # encrypts outgoing mail using your GPG public key
+  # so even if an attacker gains access to the data at rest they still need
+  # to know your GPG key password to be able to read sent mail
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+      return
+  fi
+  if grep -Fxq "encrypt_outgoing_email" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $GPG_ENCRYPT_STORED_EMAIL != "yes" ]]; then
+      return
+  fi
+
+  echo 'sent_items_router:' > /etc/exim4/conf.d/router/170_exim4-config_encryptsent
+  echo '   driver    = accept' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
+  echo '   transport = sent_items_transport' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
+  echo '   condition = ${if !eq{$authenticated_id}{}}' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
+  echo '   unseen' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
+  echo '   no_verify' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
+
+  # TODO
+  echo 'sent_items_transport:'
+  echo '   driver           = pipe'
+  echo '   user             = $authenticated_id'
+  echo '   group            = Debian-exim'
+  echo '   temp_errors      = *'
+  echo '   transport_filter = /usr/bin/gpgit.pl $sender_address'
+  echo '   command          = /usr/bin/pipe2imap.pl --ssl --user master --authas $authenticated_id --passfile /etc/exim4/master_imap_password.txt --folder "Sent Items" --flags "\\seen"'
+  echo '   log_defer_output = true'
+
+  service exim4 restart
+
+  echo 'encrypt_outgoing_email' >> $COMPLETION_FILE
+}
 
 function email_client {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
@@ -3576,6 +3614,49 @@ IPT_NAME
   echo 'create_restore_script' >> $COMPLETION_FILE
 }
 
+function backup_to_friends_servers {
+  if grep -Fxq "backup_to_friends_servers" $COMPLETION_FILE; then
+      return
+  fi
+  if [ ! $FRIENDS_SERVERS_LIST ]; then
+      return
+  fi
+
+  apt-get -y --force-yes install duplicity
+
+  # script to do backups
+  echo '#!/bin/bash' > /usr/bin/backup2friends
+  echo 'GPG_KEY=$1' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/backup2friends
+  echo '    echo "No GPG key specified"' >> /usr/bin/backup2friends
+  echo '    exit 1' >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backup2friends
+  echo '    exit 2' >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo 'while read remote_server' >> /usr/bin/backup2friends
+  echo 'do' >> /usr/bin/backup2friends
+  echo '    SERVER="${* %%remote_server}"' >> /usr/bin/backup2friends
+  echo '    FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/backup2friends
+  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME $SERVER" >> /usr/bin/backup2friends
+  echo '    duplicity --ssh-askpass --force cleanup $SERVER' >> /usr/bin/backup2friends
+  echo '    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER' >> /usr/bin/backup2friends
+  echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/backup2friends
+  echo 'exit 0' >> /usr/bin/backup2friends
+  chmod +x /usr/bin/backup2friends
+
+  # update crontab
+  echo '#!/bin/bash' > /etc/cron.daily/backuptofriends
+  echo 'GPG_KEY=' >> /etc/cron.daily/backuptofriends
+  echo '/usr/bin/backup2friends $GPG_KEY' >> /etc/cron.daily/backuptofriends
+  chmod +x /etc/cron.daily/backuptofriends
+
+  echo 'backup_to_friends_servers' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -3622,6 +3703,7 @@ time_synchronisation
 configure_internet_protocol
 configure_ssh
 check_hwrng
+backup_to_friends_servers
 search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
@@ -3631,6 +3713,7 @@ create_procmail
 configure_imap
 configure_gpg
 encrypt_incoming_email
+#encrypt_outgoing_email
 email_client
 configure_firewall_for_email
 folders_for_mailing_lists
