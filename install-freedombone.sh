@@ -92,6 +92,12 @@ USE_HWRNG="yes"
 # Whether this system is being installed within a docker container
 INSTALLED_WITHIN_DOCKER="no"
 
+# If you want to run a public mailing list specify its name here.
+# There should be no spaces in the name
+PUBLIC_MAILING_LIST=
+# Optional different domain name for the public mailing list
+PUBLIC_MAILING_LIST_DOMAIN_NAME=
+
 # If you want to run an encrypted mailing list specify its name here.
 # There should be no spaces in the name
 PRIVATE_MAILING_LIST=
@@ -1665,6 +1671,70 @@ function dynamic_dns_freedns {
   echo 'dynamic_dns_freedns' >> $COMPLETION_FILE
 }
 
+function create_public_mailing_list {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+      return
+  fi
+  if grep -Fxq "create_public_mailing_list" $COMPLETION_FILE; then
+      return
+  fi
+  if [ ! $PUBLIC_MAILING_LIST ]; then
+      return
+  fi
+  # does the mailing list have a separate domain name?
+  if [ ! $PUBLIC_MAILING_LIST_DOMAIN_NAME ]; then
+      PUBLIC_MAILING_LIST_DOMAIN_NAME=$DOMAIN_NAME
+  fi
+
+  apt-get -y --force-yes install mlmmj
+  adduser --system mlmmj
+
+  # create the list
+  mlmmj-make-ml -a -L "$PUBLIC_MAILING_LIST" -c mlmmj
+
+  echo 'mlmmj_router:' > /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  driver = accept' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  domains = +mlmmj_domains' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  require_files = MLMMJ_HOME/${lc::$local_part}' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  # Use this instead, if you dont want to give Exim rx rights to mlmmj spool.' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  # Exim will then spawn a new process running under the UID of "mlmmj".' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  #require_files = mlmmj:MLMMJ_HOME/${lc::$local_part}' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  local_part_suffix = +*' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  local_part_suffix_optional' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  headers_remove = Delivered-To' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  headers_add = Delivered-To: $local_part$local_part_suffix@$domain' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  transport = mlmmj_transport' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+
+  echo 'mlmmj_transport:' > /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  driver = pipe' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  return_path_add' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  user = mlmmj' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  group = mlmmj' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  home_directory = MLMMJ_HOME' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  current_directory = MLMMJ_HOME' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  command = /usr/local/bin/mlmmj-receive -F -L MLMMJ_HOME/${lc:$local_part}' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+
+  if ! grep -q "MLMMJ_HOME=/var/spool/mlmmj" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs; then
+      sed -i '/MAIN CONFIGURATION SETTINGS/a\MLMMJ_HOME=/var/spool/mlmmj' /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
+  fi
+  if ! grep -q "domainlist mlmmj_domains =" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs; then
+      sed -i "/MLMMJ_HOME/a\domainlist mlmmj_domains = $PUBLIC_MAILING_LIST_DOMAIN_NAME" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
+  fi
+
+  if ! grep -q ": +mlmmj_domains" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs; then
+      sed -i 's/domainlist relay_to_domains = MAIN_RELAY_TO_DOMAINS/domainlist relay_to_domains = MAIN_RELAY_TO_DOMAINS : +mlmmj_domains/g' /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
+  fi
+
+  if ! grep -q "! +mlmmj_domains" /etc/exim4/conf.d/router/200_exim4-config_primary; then
+      sed -i 's/domains = ! +local_domains/domains = ! +mlmmj_domains : ! +local_domains/g' /etc/exim4/conf.d/router/200_exim4-config_primary
+  fi
+  service exim4 restart
+
+  mailinglistrule $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
+
+  echo 'create_public_mailing_list' >> $COMPLETION_FILE
+}
+
 function create_private_mailing_list {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
       return
@@ -1677,7 +1747,7 @@ function create_private_mailing_list {
   if [ ! $PRIVATE_MAILING_LIST ]; then
       return
   fi
-  if [ $PRIVATE_MAILING_LIST == $MY_USERNAME ]; then
+  if [[ $PRIVATE_MAILING_LIST == $MY_USERNAME ]]; then
       echo 'The name of the private mailing list should not be the'
       echo 'same as your username'
       exit 10
@@ -3526,6 +3596,7 @@ configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
 dynamic_dns_freedns
+create_public_mailing_list
 #create_private_mailing_list
 import_email
 script_for_attaching_usb_drive
