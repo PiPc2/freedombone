@@ -731,6 +731,7 @@ function time_synchronisation {
   # building tlsdate from source is a workaround because of
   # this bug https://github.com/ioerror/tlsdate/issues/130
   apt-get -y --force-yes install build-essential automake git pkg-config autoconf libtool libssl-dev libevent-dev
+
   if [ ! -d $INSTALL_DIR ]; then
       mkdir $INSTALL_DIR
   fi
@@ -743,7 +744,6 @@ function time_synchronisation {
   make install
   cp /usr/local/bin/tlsdate* /usr/bin
   cp /usr/local/sbin/tlsdate* /usr/bin
-  systemctl start tlsdated.service
 
   apt-get -y remove ntpdate
 
