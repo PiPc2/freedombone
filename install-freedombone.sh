@@ -1569,37 +1569,48 @@ function folders_for_mailing_lists {
   echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/mailinglistrule
   echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/mailinglistrule
   echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/mailinglistrule
-
+  echo '' >> /usr/bin/mailinglistrule
+  echo '# Exit if the list was already added' >> /usr/bin/mailinglistrule
+  echo 'if grep -Fxq "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/mailinglistrule
+  echo '  exit 1' >> /usr/bin/mailinglistrule
+  echo 'fi' >> /usr/bin/mailinglistrule
+  echo '' >> /usr/bin/mailinglistrule
   echo 'if ! [[ $MYUSERNAME && $MAILINGLIST && $SUBJECTTAG ]]; then' >> /usr/bin/mailinglistrule
   echo '  echo "mailinglistsrule [user name] [mailing list name] [subject tag]"' >> /usr/bin/mailinglistrule
   echo '  exit 1' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
+  echo '' >> /usr/bin/mailinglistrule
   echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/mailinglistrule
   echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/mailinglistrule
   echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/mailinglistrule
   echo '  mkdir -m 700 $LISTDIR/new' >> /usr/bin/mailinglistrule
   echo '  mkdir -m 700 $LISTDIR/cur' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
+  echo '' >> /usr/bin/mailinglistrule
   echo 'chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR' >> /usr/bin/mailinglistrule
   echo 'echo "" >> $PM' >> /usr/bin/mailinglistrule
   echo 'echo ":0" >> $PM' >> /usr/bin/mailinglistrule
   echo 'echo "  * ^Subject:.*()\[$SUBJECTTAG\]" >> $PM' >> /usr/bin/mailinglistrule
   echo 'echo "$LISTDIR/new" >> $PM' >> /usr/bin/mailinglistrule
   echo 'chown $MYUSERNAME:$MYUSERNAME $PM' >> /usr/bin/mailinglistrule
+  echo '' >> /usr/bin/mailinglistrule
   echo 'if [ ! -f "$MUTTRC" ]; then' >> /usr/bin/mailinglistrule
   echo '  cp /etc/Muttrc $MUTTRC' >> /usr/bin/mailinglistrule
   echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
+  echo '' >> /usr/bin/mailinglistrule
   echo 'PROCMAILLOG=/home/$MYUSERNAME/log' >> /usr/bin/mailinglistrule
   echo 'if [ ! -d $PROCMAILLOG ]; then' >> /usr/bin/mailinglistrule
   echo '  mkdir $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
+  echo '' >> /usr/bin/mailinglistrule
   echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/mailinglistrule
   echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/mailinglistrule
   echo '  sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/mailinglistrule
   echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
+  echo 'exit 0' >> /usr/bin/mailinglistrule
   chmod +x /usr/bin/mailinglistrule
   echo 'folders_for_mailing_lists' >> $COMPLETION_FILE
 }
@@ -1695,10 +1706,10 @@ function create_public_mailing_list {
   echo 'mlmmj_router:' > /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  driver = accept' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  domains = +mlmmj_domains' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
-  echo '  require_files = MLMMJ_HOME/${lc::$local_part}' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  #require_files = MLMMJ_HOME/${lc::$local_part}' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  # Use this instead, if you dont want to give Exim rx rights to mlmmj spool.' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  # Exim will then spawn a new process running under the UID of "mlmmj".' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
-  echo '  #require_files = mlmmj:MLMMJ_HOME/${lc::$local_part}' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  require_files = mlmmj:MLMMJ_HOME/${lc::$local_part}' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  local_part_suffix = +*' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  local_part_suffix_optional' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  headers_remove = Delivered-To' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
@@ -1712,7 +1723,7 @@ function create_public_mailing_list {
   echo '  group = mlmmj' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
   echo '  home_directory = MLMMJ_HOME' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
   echo '  current_directory = MLMMJ_HOME' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
-  echo '  command = /usr/local/bin/mlmmj-receive -F -L MLMMJ_HOME/${lc:$local_part}' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  command = /usr/bin/mlmmj-receive -F -L MLMMJ_HOME/${lc:$local_part}' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
 
   if ! grep -q "MLMMJ_HOME=/var/spool/mlmmj" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs; then
       sed -i '/MAIN CONFIGURATION SETTINGS/a\MLMMJ_HOME=/var/spool/mlmmj' /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
