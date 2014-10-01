@@ -2248,8 +2248,8 @@ function install_wiki {
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       return
   fi
-  # if this is exclusively a writer setup
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
+  # if everything is being installed or if this is exclusively a writer setup
+  if [[ ! $SYSTEM_TYPE || $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
       WIKI_DOMAIN_NAME=$DOMAIN_NAME
       WIKI_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
   fi
@@ -2449,8 +2449,8 @@ function install_blog {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       return
   fi
-  # if this is exclusively a writer setup
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
+  # if everything is being installed or if this is exclusively a writer setup
+  if [[ ! $SYSTEM_TYPE || $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
       WIKI_DOMAIN_NAME=$DOMAIN_NAME
       WIKI_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
   fi
