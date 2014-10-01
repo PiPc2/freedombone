@@ -1525,7 +1525,7 @@ function email_client {
   echo '' >> /etc/Muttrc
   echo '# GPG/PGP integration' >> /etc/Muttrc
   echo '# this set the number of seconds to keep in memory the passphrase used to encrypt/sign' >> /etc/Muttrc
-  echo 'set pgp_timeout=60' >> /etc/Muttrc
+  echo 'set pgp_timeout=1800' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# automatically sign and encrypt with PGP/MIME' >> /etc/Muttrc
   echo 'set pgp_autosign         # autosign all outgoing mails' >> /etc/Muttrc
