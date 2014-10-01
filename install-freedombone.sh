@@ -1571,7 +1571,7 @@ function folders_for_mailing_lists {
   echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/mailinglistrule
   echo '' >> /usr/bin/mailinglistrule
   echo '# Exit if the list was already added' >> /usr/bin/mailinglistrule
-  echo 'if grep -Fxq "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/mailinglistrule
+  echo 'if grep -q "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/mailinglistrule
   echo '  exit 1' >> /usr/bin/mailinglistrule
   echo 'fi' >> /usr/bin/mailinglistrule
   echo '' >> /usr/bin/mailinglistrule
@@ -1629,10 +1629,12 @@ function folders_for_email_addresses {
   echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/emailrule
   echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/emailrule
   echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/emailrule
+  echo '' >> /usr/bin/emailrule
   echo 'if ! [[ $MYUSERNAME && $EMAILADDRESS && $MAILINGLIST ]]; then' >> /usr/bin/emailrule
   echo '  echo "emailrule [user name] [email address] [mailing list name]"' >> /usr/bin/emailrule
   echo '  exit 1' >> /usr/bin/emailrule
   echo 'fi' >> /usr/bin/emailrule
+  echo '' >> /usr/bin/emailrule
   echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/emailrule
   echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/emailrule
   echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/emailrule
@@ -1656,9 +1658,12 @@ function folders_for_email_addresses {
   echo 'fi' >> /usr/bin/emailrule
   echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/emailrule
   echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/emailrule
-  echo '  sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/emailrule
-  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/emailrule
+  echo '  if ! grep -q "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/emailrule
+  echo '    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/emailrule
+  echo '    chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/emailrule
+  echo '  fi' >> /usr/bin/emailrule
   echo 'fi' >> /usr/bin/emailrule
+  echo 'exit 0' >> /usr/bin/emailrule
   chmod +x /usr/bin/emailrule
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
