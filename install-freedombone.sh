@@ -1769,6 +1769,12 @@ function create_public_mailing_list {
   update-exim4.conf
   service exim4 restart
 
+  if grep -q "$PUBLIC_MAILING_LIST mailing list" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo "To subscribe to the $PUBLIC_MAILING_LIST mailing list send a" >> /home/$MY_USERNAME/README
+      echo "cleartext email to $PUBLIC_MAILING_LIST+subscribe@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
+  fi
+
   mailinglistrule $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
 
   echo 'create_public_mailing_list' >> $COMPLETION_FILE
