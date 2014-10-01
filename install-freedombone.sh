@@ -1706,7 +1706,7 @@ function create_public_mailing_list {
   adduser --system mlmmj
 
   # create the list
-  mlmmj-make-ml -a -L "$PUBLIC_MAILING_LIST" -c mlmmj
+  mlmmj-make-ml -a -L "$PUBLIC_MAILING_LIST" -c mlmmj -z
 
   echo 'mlmmj_router:' > /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  driver = accept' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
@@ -1745,6 +1745,7 @@ function create_public_mailing_list {
       sed -i 's/domains = ! +local_domains/domains = ! +mlmmj_domains : ! +local_domains/g' /etc/exim4/conf.d/router/200_exim4-config_primary
   fi
   service exim4 restart
+  newaliases
 
   mailinglistrule $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
 
