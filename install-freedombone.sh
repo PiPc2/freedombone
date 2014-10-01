@@ -1752,7 +1752,7 @@ function create_public_mailing_list {
   newaliases
 
   # subscribe the user to the list
-  mlmmj-sub -L /var/spool/mlmmj/$PUBLIC_MAILING_LIST -a $MY_USERNAME@$DOMAIN_NAME
+  mlmmj-sub -f -c -L /var/spool/mlmmj/$PUBLIC_MAILING_LIST -a $MY_USERNAME@$DOMAIN_NAME
 
   mailinglistrule $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
 
