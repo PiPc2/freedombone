@@ -2256,11 +2256,6 @@ function install_wiki {
   if [ ! $WIKI_DOMAIN_NAME ]; then
       return
   fi
-  if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
-      if [ ! $SYSTEM_TYPE ]; then
-          return
-      fi
-  fi
   apt-get -y --force-yes install php5 php5-gd php-xml-parser php5-intl wget
   apt-get -y --force-yes install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl bzip2
 
