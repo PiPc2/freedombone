@@ -761,15 +761,15 @@ function time_synchronisation {
   echo 'BEFORE=$(date -d "$Y-$M-$D" "+%s")' >> /usr/bin/updatedate
   echo 'BACKWARDS_BETWEEN=0' >> /usr/bin/updatedate
   echo '# If the date was previously set' >> /usr/bin/updatedate
-  echo 'if [[ -f "$BEFORE_DATE_FILE" ]]; then' >> /usr/bin/updatedate
+  echo 'if [ -f "$BEFORE_DATE_FILE" ]; then' >> /usr/bin/updatedate
   echo '    BEFORE_FILE=$(cat $BEFORE_DATE_FILE)' >> /usr/bin/updatedate
   echo '    BEFORE_FULLDATE=$(cat $BEFORE_FULLDATE_FILE)' >> /usr/bin/updatedate
   echo '    # is the date going backwards?' >> /usr/bin/updatedate
-  echo '    if (( BEFORE_FILE > BEFORE )); then' >> /usr/bin/updatedate
+  echo '    if (( $BEFORE_FILE > $BEFORE )); then' >> /usr/bin/updatedate
   echo '        echo -n "Date went backwards between tlsdate updates. " >> $LOGFILE' >> /usr/bin/updatedate
   echo '        echo -n "$BEFORE_FILE > $BEFORE, " >> $LOGFILE' >> /usr/bin/updatedate
   echo '        echo "$BEFORE_FULLDATE > $DATE_BEFORE" >> $LOGFILE' >> /usr/bin/updatedate
-  echo '        # Send a warning email' > /usr/bin/updatedate
+  echo '        # Send a warning email' >> /usr/bin/updatedate
   echo '        echo $(tail $LOGFILE -n 2) | mail -s "tlsdate anomaly" $EMAIL' >> /usr/bin/updatedate
   echo '        # Try another time source' >> /usr/bin/updatedate
   echo '        TIMESOURCE=$TIMESOURCE2' >> /usr/bin/updatedate
@@ -783,7 +783,7 @@ function time_synchronisation {
   echo 'DATE_AFTER=$(date)' >> /usr/bin/updatedate
   echo 'AFTER=$(date -d "$Y-$M-$D" '+%s')' >> /usr/bin/updatedate
   echo '# After setting the date did it go backwards?' >> /usr/bin/updatedate
-  echo 'if (( AFTER < BEFORE )); then' >> /usr/bin/updatedate
+  echo 'if (( $AFTER < $BEFORE )); then' >> /usr/bin/updatedate
   echo '    echo "Incorrect date: $DATE_BEFORE -> $DATE_AFTER" >> $LOGFILE' >> /usr/bin/updatedate
   echo '    # Send a warning email' >> /usr/bin/updatedate
   echo '    echo $(tail $LOGFILE -n 2) | mail -s "tlsdate anomaly" $EMAIL' >> /usr/bin/updatedate
@@ -793,7 +793,7 @@ function time_synchronisation {
   echo '    AFTER=$(date -d "$Y-$M-$D" "+%s")' >> /usr/bin/updatedate
   echo 'else' >> /usr/bin/updatedate
   echo '    echo -n $TIMESOURCE >> $LOGFILE' >> /usr/bin/updatedate
-  echo '    if [[ -f "$BEFORE_DATE_FILE" ]]; then' >> /usr/bin/updatedate
+  echo '    if [ -f "$BEFORE_DATE_FILE" ]; then' >> /usr/bin/updatedate
   echo '        echo -n " " >> $LOGFILE' >> /usr/bin/updatedate
   echo '        echo -n $BEFORE_FILE >> $LOGFILE' >> /usr/bin/updatedate
   echo '    fi' >> /usr/bin/updatedate
@@ -805,7 +805,7 @@ function time_synchronisation {
   echo '    echo $DATE_AFTER >> $LOGFILE' >> /usr/bin/updatedate
   echo 'fi' >> /usr/bin/updatedate
   echo '# Log the last date' >> /usr/bin/updatedate
-  echo 'if [ BACKWARDS_BETWEEN == 0 ]; then' >> /usr/bin/updatedate
+  echo 'if [[ $BACKWARDS_BETWEEN == 0 ]]; then' >> /usr/bin/updatedate
   echo '    echo "$AFTER" > $BEFORE_DATE_FILE' >> /usr/bin/updatedate
   echo '    echo "$DATE_AFTER" > $BEFORE_FULLDATE_FILE' >> /usr/bin/updatedate
   echo '    exit 0' >> /usr/bin/updatedate
