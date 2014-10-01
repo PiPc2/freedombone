@@ -1702,17 +1702,27 @@ function create_public_mailing_list {
       PUBLIC_MAILING_LIST_DOMAIN_NAME=$DOMAIN_NAME
   fi
 
+  PUBLIC_MAILING_LIST_USER="mlmmj"
+
   apt-get -y --force-yes install mlmmj
-  adduser --system mlmmj
+  adduser --system $PUBLIC_MAILING_LIST_USER
+  addgroup $PUBLIC_MAILING_LIST_USER
+  adduser $PUBLIC_MAILING_LIST_USER $PUBLIC_MAILING_LIST_USER
 
   echo ''
   echo "Creating the $PUBLIC_MAILING_LIST mailing list"
   echo ''
 
   # create the list
-  mlmmj-make-ml -a -L "$PUBLIC_MAILING_LIST" -c mlmmj
+  mlmmj-make-ml -a -L "$PUBLIC_MAILING_LIST" -c $PUBLIC_MAILING_LIST_USER
 
+  echo 'SYSTEM_ALIASES_PIPE_TRANSPORT = address_pipe' > /etc/exim4/conf.d/main/000_localmacros
+  echo "SYSTEM_ALIASES_USER = $PUBLIC_MAILING_LIST_USER" >> /etc/exim4/conf.d/main/000_localmacros
+  echo "SYSTEM_ALIASES_GROUP = $PUBLIC_MAILING_LIST_USER" >> /etc/exim4/conf.d/main/000_localmacros
+
+  # router
   echo 'mlmmj_router:' > /etc/exim4/conf.d/router/750_exim4-config_mlmmj
+  echo '  debug_print = "R: mlmmj_router for $local_part@$domain"' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  driver = accept' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  domains = +mlmmj_domains' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  #require_files = MLMMJ_HOME/${lc::$local_part}' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
@@ -1725,7 +1735,9 @@ function create_public_mailing_list {
   echo '  headers_add = Delivered-To: $local_part$local_part_suffix@$domain' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
   echo '  transport = mlmmj_transport' >> /etc/exim4/conf.d/router/750_exim4-config_mlmmj
 
+  # transport
   echo 'mlmmj_transport:' > /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
+  echo '  debug_print = "T: mlmmj_transport for $local_part@$domain"' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
   echo '  driver = pipe' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
   echo '  return_path_add' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
   echo '  user = mlmmj' >> /etc/exim4/conf.d/transport/40_exim4-config_mlmmj
@@ -1741,6 +1753,10 @@ function create_public_mailing_list {
       sed -i "/MLMMJ_HOME/a\domainlist mlmmj_domains = $PUBLIC_MAILING_LIST_DOMAIN_NAME" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
   fi
 
+
+  if ! grep -q "delay_warning_condition =" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs; then
+      sed -i '/domainlist mlmmj_domains =/a\delay_warning_condition = ${if match_domain{$domain}{+mlmmj_domains}{no}{yes}}' /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
+  fi
   if ! grep -q ": +mlmmj_domains" /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs; then
       sed -i 's/domainlist relay_to_domains = MAIN_RELAY_TO_DOMAINS/domainlist relay_to_domains = MAIN_RELAY_TO_DOMAINS : +mlmmj_domains/g' /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
   fi
@@ -1748,11 +1764,10 @@ function create_public_mailing_list {
   if ! grep -q "! +mlmmj_domains" /etc/exim4/conf.d/router/200_exim4-config_primary; then
       sed -i 's/domains = ! +local_domains/domains = ! +mlmmj_domains : ! +local_domains/g' /etc/exim4/conf.d/router/200_exim4-config_primary
   fi
-  service exim4 restart
   newaliases
-
-  # subscribe the user to the list
-  mlmmj-sub -f -c -L /var/spool/mlmmj/$PUBLIC_MAILING_LIST -a $MY_USERNAME@$DOMAIN_NAME
+  update-exim4.conf.template -r
+  update-exim4.conf
+  service exim4 restart
 
   mailinglistrule $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
 
