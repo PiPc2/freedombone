@@ -202,6 +202,9 @@ BACKUP_SCRIPT_NAME="backup"
 # name of a script used to backup to friends servers
 BACKUP_TO_FRIENDS_SCRIPT_NAME="backup2friends"
 
+# name of a script used to restore backed up data from a friend
+RESTORE_FROM_FRIEND_SCRIPT_NAME="restorefromfriend"
+
 # passphrase used for automatic backups to friends servers
 # this will be automatically generated
 BACKUP_TO_FRIENDS_PASSPHRASE=
@@ -470,7 +473,7 @@ function create_backup_script {
   echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'sync' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'umount $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'echo "Backup to USB drive is complete. You can now unplug it."' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
@@ -523,14 +526,14 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  rm -rf /home/$MY_USERNAME/tempfiles/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rm -rf /home/$MY_USERNAME/tempfiles/*" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  mkdir /home/$MY_USERNAME/tempfiles' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'echo "Restoring web content and miscellaneous files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "duplicity --force file://$USB_MOUNT/backup/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'rm -rf /home/$MY_USERNAME/tempfiles' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -543,7 +546,7 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo 'sync' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'umount $USB_MOUNT' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'echo "Restore from USB drive is complete. You can now remove it."' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -700,6 +703,78 @@ function backup_to_friends_servers {
   chmod +x /etc/cron.daily/backuptofriends
 
   echo 'backup_to_friends_servers' >> $COMPLETION_FILE
+}
+
+function restore_from_friend {
+  if grep -Fxq "restore_from_friend" $COMPLETION_FILE; then
+      return
+  fi
+
+  if [ ! $BACKUP_TO_FRIENDS_PASSPHRASE ]; then
+      BACKUP_TO_FRIENDS_PASSPHRASE=$(openssl rand -base64 32)
+  fi
+
+  echo '#!/bin/bash' > /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'SERVER_NAME=$1' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "PASSPHRASE='$BACKUP_TO_FRIENDS_PASSPHRASE'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'if [ ! $SERVER_NAME ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    echo '$RESTORE_FROM_FRIEND_SCRIPT_NAME [server]'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    exit 1' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    echo 'No friends list found at $FRIENDS_SERVERS_LIST'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    exit 2' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n 'if ! grep -q "$SERVER_NAME" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "$FRIENDS_SERVERS_LIST; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    echo "Server not found within the friends list"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    exit 3' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n 'SERVER=$(grep -i "$SERVER_NAME" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print $1}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n 'FTP_PASSWORD=$(grep -i "$SERVER_NAME" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print $2}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force $SERVER/publicmailinglist $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force $SERVER/xmpp $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  rm -rf /home/$MY_USERNAME/tempfiles/*" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'else' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'echo "Restoring web content and miscellaneous files"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "duplicity --force $SERVER/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force $SERVER/Maildir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force $SERVER/dlna /var/cache/minidlna" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'exit 0' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo 'restore_from_friend' >> $COMPLETION_FILE
 }
 
 function remove_default_user {
@@ -3925,6 +4000,7 @@ install_mediagoblin
 create_backup_script
 create_restore_script
 backup_to_friends_servers
+restore_from_friend
 install_final
 apt-get -y --force-yes autoremove
 echo 'Freedombone installation is complete'
