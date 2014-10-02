@@ -97,6 +97,8 @@ INSTALLED_WITHIN_DOCKER="no"
 PUBLIC_MAILING_LIST=
 # Optional different domain name for the public mailing list
 PUBLIC_MAILING_LIST_DOMAIN_NAME=
+# Directory where the public mailing list data is stored
+PUBLIC_MAILING_LIST_DIRECTORY="/var/spool/mlmmj"
 
 # If you want to run an encrypted mailing list specify its name here.
 # There should be no spaces in the name
@@ -201,6 +203,9 @@ MAX_PHP_MEMORY=32
 
 # default MariaDB password
 MARIADB_PASSWORD=
+
+# Directory where XMPP settings are stored
+XMPP_DIRECTORY="/var/lib/prosody"
 
 # file containing a list of remote locations to backup to
 FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
@@ -428,6 +433,13 @@ function search_for_attached_usb_drive {
               echo 'GPG public key found on USB drive'
               MY_GPG_PUBLIC_KEY=$USB_MOUNT/public_key.gpg
           fi
+      fi
+      if [ -d $USB_MOUNT/prosody ]; then
+          if [ ! -d $XMPP_DIRECTORY ]; then
+              mkdir $XMPP_DIRECTORY
+          fi
+          cp -r $USB_MOUNT/prosody/* $XMPP_DIRECTORY
+          chown -R prosody:prosody $XMPP_DIRECTORY
       fi
       if [ -d $USB_MOUNT/.ssh ]; then
           echo 'Importing ssh keys'
@@ -3657,13 +3669,27 @@ function backup_to_friends_servers {
   echo '    exit 2' >> /usr/bin/backup2friends
   echo 'fi' >> /usr/bin/backup2friends
   echo '' >> /usr/bin/backup2friends
+  echo "if [ ! -d /home/$MY_USERNAME/backups ]; then" >> /usr/bin/backup2friends
+  echo "  mkdir /home/$MY_USERNAME/backups" >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '# Backup the public mailing list' >> /usr/bin/backup2friends
+  echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/backup2friends
+  echo "  tar -czvf /home/$MY_USERNAME/backups/mailinglist.tar.gz $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '# Backup XMPP settings' >> /usr/bin/backup2friends
+  echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/backup2friends
+  echo "  tar -czvf /home/$MY_USERNAME/backups/xmpp.tar.gz $XMPP_DIRECTORY" >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
   echo 'while read remote_server' >> /usr/bin/backup2friends
   echo 'do' >> /usr/bin/backup2friends
-  echo '    SERVER="${* %%remote_server}"' >> /usr/bin/backup2friends
-  echo '    FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/backup2friends
-  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME $SERVER" >> /usr/bin/backup2friends
-  echo '    duplicity --ssh-askpass --force cleanup $SERVER' >> /usr/bin/backup2friends
-  echo '    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER' >> /usr/bin/backup2friends
+  echo '  SERVER="${* %%remote_server}"' >> /usr/bin/backup2friends
+  echo '  FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/backup2friends
+  echo "  duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME $SERVER" >> /usr/bin/backup2friends
+  echo '  duplicity --ssh-askpass --force cleanup $SERVER' >> /usr/bin/backup2friends
+  echo '  duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER' >> /usr/bin/backup2friends
   echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/backup2friends
   echo 'exit 0' >> /usr/bin/backup2friends
   chmod +x /usr/bin/backup2friends
