@@ -534,25 +534,32 @@ function create_restore_script {
   echo "duplicity --force file://$USB_MOUNT/backup/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  if [[ $MICROBLOG_INSTALLED == "yes" && -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]]; then
-      echo 'echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
-  if [[ $REDMATRIX_INSTALLED == "yes" && -f /home/$MY_USERNAME/tempfiles/redmatrix.sql ]]; then
-      echo 'echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  if [[ $REDMATRIX_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
-  if [[ $OWNCLOUD_INSTALLED == "yes" && /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]]; then
-      echo 'echo "Restoring Owncloud"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "tar -xzvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restoring Owncloud"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
-
-  if [[ $WIKI_INSTALLED == "yes" && /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]]; then
-      echo 'echo "Restoring Wiki / Blog"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "tar -xzvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  if [[ $WIKI_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restoring Wiki / Blog"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
   echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -800,6 +807,35 @@ function restore_from_friend {
   echo 'echo "Restoring web content and miscellaneous files"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "duplicity --force scp://$SERVER/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  fi
+
+  if [[ $REDMATRIX_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  fi
+
+  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  echo "Restoring Owncloud"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  fi
+
+  if [[ $WIKI_INSTALLED == "yes" ]]; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  echo "Restoring Wiki / Blog"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  fi
+
   echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
