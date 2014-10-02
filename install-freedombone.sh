@@ -319,11 +319,15 @@ function create_backup_script {
       # This is a compromise. backup needs access to things which the user
       # doesn't have access to, but also needs to be able to encrypt as the user
       # Perhaps there is some better way to do this.
+      # Maybe there should be a separate backup GPG key.  Discuss.
+      su -c "gpg --export-ownertrust > ~/temp_trust.txt" - $MY_USERNAME
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
       su -c "gpg --output ~/temp_private_key.txt --armor --export-secret-key $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+      gpg --import-ownertrust < /home/$MY_USERNAME/temp_trust.txt
       gpg --import $MY_GPG_PUBLIC_KEY
       gpg --allow-secret-key-import --import /home/$MY_USERNAME/temp_private_key.txt
       shred -zu /home/$MY_USERNAME/temp_private_key.txt
+      shred -zu /home/$MY_USERNAME/temp_trust.txt
   fi
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
