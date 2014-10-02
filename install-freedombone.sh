@@ -416,11 +416,11 @@ function create_backup_script {
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'duplicity --encrypt-key $GPG_KEY --force cleanup '
+  echo -n 'duplicity --encrypt-key $GPG_KEY --force cleanup ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Removing old backups"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'duplicity --encrypt-key $GPG_KEY --force remove-all-but-n-full 2 '
+  echo -n 'duplicity --encrypt-key $GPG_KEY --force remove-all-but-n-full 2 ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
