@@ -582,7 +582,9 @@ function backup_to_friends_servers {
       echo "To add friends servers create a file called $FRIENDS_SERVERS_LIST"
       echo 'and add entries like this:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      echo '  username@domainname//home/username password' >> /home/$MY_USERNAME/README
+      echo 'username1@domain1//home/username1 ssh_password1' >> /home/$MY_USERNAME/README
+      echo 'username2@domain2//home/username2 ssh_password2' >> /home/$MY_USERNAME/README
+      echo '...' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'The system will try to backup to these remote locations once per day.' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
@@ -3221,6 +3223,25 @@ function install_mariadb {
   echo 'install_mariadb' >> $COMPLETION_FILE
 }
 
+function backup_databases_script_header {
+  if [ ! -f /usr/bin/backupdatabases ]; then
+      echo '#!/bin/sh' > /usr/bin/backupdatabases
+      echo '' >> /usr/bin/backupdatabases
+      echo "EMAIL='$MY_USERNAME@$DOMAIN_NAME'" >> /usr/bin/backupdatabases
+      echo '' >> /usr/bin/backupdatabases
+      echo "MYSQL_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/backupdatabases
+      echo 'umask 0077' >> /usr/bin/backupdatabases
+      echo '' >> /usr/bin/backupdatabases
+      echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
+      echo "if [ -f $FRIENDS_SERVER_LIST ]; then" >> /usr/bin/backupdatabases
+      echo '  exit 1' >> /usr/bin/backupdatabases
+      echo 'fi' >> /usr/bin/backupdatabases
+
+      echo '#!/bin/sh' > /etc/cron.daily/backupdatabasesdaily
+      echo '/usr/bin/backupdatabases' >> /etc/cron.daily/backupdatabasesdaily
+  fi
+}
+
 function install_gnu_social {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       return
@@ -3628,6 +3649,36 @@ quit" > $INSTALL_DIR/batch.sql
   fi
   chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
   chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+
+  # Ensure that the database gets backed up locally, if remote
+  # backups are not being used
+  backup_databases_script_header
+  echo '' >> /usr/bin/backupdatabases
+  echo '# Backup the Red Matrix database' >> /usr/bin/backupdatabases
+  echo 'TEMPFILE=/root/redmatrix.sql' >> /usr/bin/backupdatabases
+  echo 'DAILYFILE=/var/backups/redmatrix_daily.sql' >> /usr/bin/backupdatabases
+  echo 'mysqldump --password=$MYSQL_PASSWORD redmatrix > $TEMPFILE' >> /usr/bin/backupdatabases
+  echo 'FILESIZE=$(stat -c%s $TEMPFILE)' >> /usr/bin/backupdatabases
+  echo 'if [ "$FILESIZE" -eq "0" ]; then' >> /usr/bin/backupdatabases
+  echo '    if [ -f $DAILYFILE ]; then' >> /usr/bin/backupdatabases
+  echo '        cp $DAILYFILE $TEMPFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '        # try to restore yesterdays database' >> /usr/bin/backupdatabases
+  echo '        mysql -u root --password=$MYSQL_PASSWORD redmatrix -o < $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '        # Send a warning email' >> /usr/bin/backupdatabases
+  echo '        echo "Unable to create a backup of the Red Matrix database. Attempted to restore from yesterdays backup" | mail -s "Red Matrix backup" $EMAIL' >> /usr/bin/backupdatabases
+  echo '    else' >> /usr/bin/backupdatabases
+  echo '        # Send a warning email' >> /usr/bin/backupdatabases
+  echo '        echo "Unable to create a backup of the Red Matrix database." | mail -s "Red Matrix backup" $EMAIL' >> /usr/bin/backupdatabases
+  echo '    fi' >> /usr/bin/backupdatabases
+  echo 'else' >> /usr/bin/backupdatabases
+  echo '    chmod 600 $TEMPFILE' >> /usr/bin/backupdatabases
+  echo '    mv $TEMPFILE $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '    # Make the backup readable only by root' >> /usr/bin/backupdatabases
+  echo '    chmod 600 $DAILYFILE' >> /usr/bin/backupdatabases
+  echo 'fi' >> /usr/bin/backupdatabases
 
   nginx_ensite $REDMATRIX_DOMAIN_NAME
   service php5-fpm restart
