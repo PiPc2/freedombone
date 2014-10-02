@@ -582,7 +582,7 @@ function backup_to_friends_servers {
       echo "To add friends servers create a file called $FRIENDS_SERVERS_LIST"
       echo 'and add entries like this:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      echo '  scp://username@other.host//home/username password' >> /home/$MY_USERNAME/README
+      echo '  username@domainname//home/username password' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'The system will try to backup to these remote locations once per day.' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
@@ -619,7 +619,7 @@ function backup_to_friends_servers {
   echo 'while read remote_server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'do' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Get the server and its password' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '  SERVER="${* %%remote_server}"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  SERVER="scp://${* %%remote_server}"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Backup the public mailing list' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -760,12 +760,12 @@ function restore_from_friend {
 
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  duplicity --force $SERVER/publicmailinglist $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force scp://$SERVER/publicmailinglist $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  duplicity --force $SERVER/xmpp $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force scp://$SERVER/xmpp $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -774,18 +774,18 @@ function restore_from_friend {
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'echo "Restoring web content and miscellaneous files"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "duplicity --force $SERVER/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "duplicity --force scp://$SERVER/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  duplicity --force $SERVER/Maildir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force scp://$SERVER/Maildir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  duplicity --force $SERVER/dlna /var/cache/minidlna" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  duplicity --force scp://$SERVER/dlna /var/cache/minidlna" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
