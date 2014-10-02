@@ -301,11 +301,12 @@ function check_hwrng {
   fi
 }
 
-function create_backup_script {
-  if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
-      return
+function import_gpg_key_to_root {
+  if [ ! $MY_GPG_PUBLIC_KEY ]; then
+      MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
   fi
-  apt-get -y --force-yes install duplicity gnupg
+
+  apt-get -y --force-yes install gnupg
 
   if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
@@ -313,9 +314,6 @@ function create_backup_script {
 
   # make sure that the root user has access to your gpg public key
   if [ $MY_GPG_PUBLIC_KEY_ID ]; then
-      if [ ! $MY_GPG_PUBLIC_KEY ]; then
-          MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
-      fi
       # This is a compromise. backup needs access to things which the user
       # doesn't have access to, but also needs to be able to encrypt as the user
       # Perhaps there is some better way to do this.
@@ -329,6 +327,15 @@ function create_backup_script {
       shred -zu /home/$MY_USERNAME/temp_private_key.txt
       shred -zu /home/$MY_USERNAME/temp_trust.txt
   fi
+}
+
+function create_backup_script {
+  if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install duplicity
+
+  import_gpg_key_to_root
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -466,6 +473,67 @@ function create_restore_script {
       return
   fi
   apt-get -y --force-yes install duplicity
+
+  import_gpg_key_to_root
+
+  echo '#!/bin/bash' > /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'GPG_KEY=$1' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "You need to specify a GPG key ID with which to restore from backup"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 1' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  GPG_KEY='$MY_GPG_PUBLIC_KEY_ID'" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ ! -b $USB_DRIVE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Please attach a USB drive"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  exit 1' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mkdir $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "No backup directory found on the USB drive."' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  exit 2' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  duplicity --force file://$USB_MOUNT/backup/publicmailinglist $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  duplicity --force file://$USB_MOUNT/backup/xmpp $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /home/$MY_USERNAME/tempfiles/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /home/$MY_USERNAME/tempfiles' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'echo "Restoring web content and miscellaneous files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "duplicity --force file://$USB_MOUNT/backup/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  duplicity --force file://$USB_MOUNT/backup/Maildir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  duplicity --force file://$USB_MOUNT/backup/dlna /var/cache/minidlna" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo 'echo "Restore completed"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
   echo 'create_restore_script' >> $COMPLETION_FILE
 }
 
