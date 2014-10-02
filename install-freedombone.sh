@@ -307,7 +307,7 @@ function create_backup_script {
   fi
   apt-get -y --force-yes install duplicity gnupg
 
-  if [ ! MY_GPG_PUBLIC_KEY_ID ]; then
+  if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
 	  MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
   fi
 
