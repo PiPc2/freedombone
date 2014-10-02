@@ -566,7 +566,19 @@ function backup_to_friends_servers {
           touch /home/$MY_USERNAME/README
       fi
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Backups' >> /home/$MY_USERNAME/README
+      echo '=======' >> /home/$MY_USERNAME/README
+      echo 'With a USB drive attached just type "backup" or "restore" when logged in as root.' >> /home/$MY_USERNAME/README
+      echo 'You will be asked to enter your GPG key passphrase.' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
       echo "Passphrase for backups on friends servers: $BACKUP_TO_FRIENDS_PASSPHRASE" >> /home/$MY_USERNAME/README
+      echo "To add friends servers create a file called $FRIENDS_SERVERS_LIST"
+      echo 'and add entries like this:' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo '  scp://username@other.host//home/username password' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'The system will try to backup to these remote locations once per day.' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
