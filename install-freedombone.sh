@@ -199,6 +199,13 @@ USB_MOUNT=/mnt/usb
 # Name of a script used to create a backup of the system on usb drive
 BACKUP_SCRIPT_NAME="backup"
 
+# name of a script used to backup to friends servers
+BACKUP_TO_FRIENDS_SCRIPT_NAME="backup2friends"
+
+# passphrase used for automatic backups to friends servers
+# this will be automatically generated
+BACKUP_TO_FRIENDS_PASSPHRASE=
+
 # Name of a script used to restore the system from usb drive
 RESTORE_SCRIPT_NAME="restore"
 
@@ -553,90 +560,122 @@ function backup_to_friends_servers {
 
   apt-get -y --force-yes install duplicity
 
-  # script to do backups
-  echo '#!/bin/bash' > /usr/bin/backup2friends
-  echo 'GPG_KEY=$1' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backup2friends
-  echo '    exit 1' >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/backup2friends
-  echo "    echo 'Unable to perform automated backup. You need to add a GPG key to /etc/cron.daily/backuptofriends' | mail -s 'Backup failure' $MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/backup2friends
-  echo '    exit 2' >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
+  if [ ! $BACKUP_TO_FRIENDS_PASSPHRASE ]; then
+      BACKUP_TO_FRIENDS_PASSPHRASE=$(openssl rand -base64 32)
+  fi
 
-  echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/backup2friends
-  echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/backup2friends
-  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
+  echo '#!/bin/bash' > /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "PASSPHRASE='$BACKUP_TO_FRIENDS_PASSPHRASE'" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    exit 1' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+
+  echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
-      echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/backup2friends
+      echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $REDMATRIX_INSTALLED == "yes" ]]; then
-      echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/backup2friends
+      echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data" >> /usr/bin/backup2friends
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $WIKI_INSTALLED == "yes" ]]; then
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/backup2friends
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
-  echo 'tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal' >> /usr/bin/backup2friends
+  echo 'tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
-  echo '' >> /usr/bin/backup2friends
-  echo 'while read remote_server' >> /usr/bin/backup2friends
-  echo 'do' >> /usr/bin/backup2friends
-  echo '  # Get the server and its password' >> /usr/bin/backup2friends
-  echo '  SERVER="${* %%remote_server}"' >> /usr/bin/backup2friends
-  echo '  FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '  # Backup the public mailing list' >> /usr/bin/backup2friends
-  echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/backup2friends
-  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems $PUBLIC_MAILING_LIST_DIRECTORY $SERVER/publicmailinglist" >> /usr/bin/backup2friends
-  echo '  fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '  # Backup xmpp settings' >> /usr/bin/backup2friends
-  echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/backup2friends
-  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems $XMPP_DIRECTORY $SERVER/xmpp" >> /usr/bin/backup2friends
-  echo '  fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '  # Backup web content and other stuff' >> /usr/bin/backup2friends
-  echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/backup2friends
-  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME/tempfiles $SERVER/tempfiles" >> /usr/bin/backup2friends
-  echo '  fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '  # Backup email' >> /usr/bin/backup2friends
-  echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/backup2friends
-  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME/Maildir $SERVER/Maildir" >> /usr/bin/backup2friends
-  echo '  fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '  # Backup DLNA cache' >> /usr/bin/backup2friends
-  echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/backup2friends
-  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /var/cache/minidlna $SERVER/dlna" >> /usr/bin/backup2friends
-  echo '  fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-
-  echo '  duplicity --ssh-askpass --force cleanup $SERVER' >> /usr/bin/backup2friends
-  echo '  duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER' >> /usr/bin/backup2friends
-  echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '# Remove temporary files' >> /usr/bin/backup2friends
-  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/backup2friends
-  echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo 'exit 0' >> /usr/bin/backup2friends
-  chmod +x /usr/bin/backup2friends
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'while read remote_server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'do' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  # Get the server and its password' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  SERVER="${* %%remote_server}"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  # Backup the public mailing list' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$PUBLIC_MAILING_LIST_DIRECTORY $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  # Backup xmpp settings' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$XMPP_DIRECTORY $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  # Backup web content and other stuff' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "/home/$MY_USERNAME/tempfiles $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  # Backup email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity incr --ssh-askpass $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "/home/$MY_USERNAME/Maildir $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  # Backup DLNA cache' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "/var/cache/minidlna $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force cleanup $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force cleanup $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force cleanup $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force cleanup $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force cleanup $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  echo "Removing old backups"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '# Remove temporary files' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'exit 0' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  chown root:root /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  chmod 400 /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  chmod +x /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   # update crontab
   echo '#!/bin/bash' > /etc/cron.daily/backuptofriends
-  if [ $MY_GPG_PUBLIC_KEY_ID ]; then
-      echo "GPG_KEY=$MY_GPG_PUBLIC_KEY_ID" >> /etc/cron.daily/backuptofriends
-  else
-      echo 'GPG_KEY=' >> /etc/cron.daily/backuptofriends
-  fi
-  echo '/usr/bin/backup2friends $GPG_KEY' >> /etc/cron.daily/backuptofriends
+  echo "/usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME" >> /etc/cron.daily/backuptofriends
   chmod +x /etc/cron.daily/backuptofriends
 
   echo 'backup_to_friends_servers' >> $COMPLETION_FILE
