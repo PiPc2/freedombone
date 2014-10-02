@@ -315,12 +315,12 @@ function create_backup_script {
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'GPG_KEY=$1' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'if [ ! "$GPG_KEY" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! '$MY_GPG_PUBLIC_KEY_ID' ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    echo "You need to specify a GPG key ID with which to create the backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    exit 1' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  GPG_KEY=$MY_GPG_PUBLIC_KEY_ID" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  GPG_KEY='$MY_GPG_PUBLIC_KEY_ID'" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ ! -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
