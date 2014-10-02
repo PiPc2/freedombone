@@ -309,6 +309,10 @@ function check_hwrng {
 }
 
 function import_gpg_key_to_root {
+  # This is a compromise. backup needs access to things which the user
+  # doesn't have access to, but also needs to be able to encrypt as the user
+  # Perhaps there is some better way to do this.
+  # Maybe there should be a separate backup GPG key.  Discuss.
   if [ ! $MY_GPG_PUBLIC_KEY ]; then
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
   fi
@@ -321,10 +325,6 @@ function import_gpg_key_to_root {
 
   # make sure that the root user has access to your gpg public key
   if [ $MY_GPG_PUBLIC_KEY_ID ]; then
-      # This is a compromise. backup needs access to things which the user
-      # doesn't have access to, but also needs to be able to encrypt as the user
-      # Perhaps there is some better way to do this.
-      # Maybe there should be a separate backup GPG key.  Discuss.
       su -c "gpg --export-ownertrust > ~/temp_trust.txt" - $MY_USERNAME
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
       su -c "gpg --output ~/temp_private_key.txt --armor --export-secret-key $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
