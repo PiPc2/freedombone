@@ -3263,6 +3263,60 @@ function backup_databases_script_header {
   fi
 }
 
+function repair_databases_script {
+  if grep -Fxq "repair_databases_script" $COMPLETION_FILE; then
+      return
+  fi
+  echo '#!/bin/bash' > /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo 'DATABASE=$1' >> /usr/bin/repairdatabase
+  echo "EMAIL=$MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo "MYSQL_ROOT_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/repairdatabase
+  echo 'TEMPFILE=/root/repairdatabase_$DATABASE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo 'umask 0077' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# check the database' >> /usr/bin/repairdatabase
+  echo 'mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# Attempt to repair the database if it contains errors' >> /usr/bin/repairdatabase
+  echo 'if grep -q "Error" "$TEMPFILE"; then' >> /usr/bin/repairdatabase
+  echo '    mysqlcheck -u root --password=$MYSQL_ROOT_PASSWORD --auto-repair $DATABASE' >> /usr/bin/repairdatabase
+  echo 'else' >> /usr/bin/repairdatabase
+  echo '    # No errors were found, so exit' >> /usr/bin/repairdatabase
+  echo '    rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '    exit 0' >> /usr/bin/repairdatabase
+  echo 'fi' >> /usr/bin/repairdatabase
+  echo 'rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# Check the database again' >> /usr/bin/repairdatabase
+  echo 'mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# If it still contains errors then restore from backup' >> /usr/bin/repairdatabase
+  echo 'if grep -q "Error" "$TEMPFILE"; then' >> /usr/bin/repairdatabase
+  echo '    mysql -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE -o < /var/backups/${DATABASE}_daily.sql' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '    # Send a warning email' >> /usr/bin/repairdatabase
+  echo '    echo "$DATABASE database corruption could not be repaired. Restored from backup." | mail -s "Freedombone database maintenance" $EMAIL' >> /usr/bin/repairdatabase
+  echo '    rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '    exit 1' >> /usr/bin/repairdatabase
+  echo 'fi' >> /usr/bin/repairdatabase
+  echo 'rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo 'exit 0' >> /usr/bin/repairdatabase
+  chmod 600 /usr/bin/repairdatabase
+  chmod +x /usr/bin/repairdatabase
+
+  echo '#!/bin/bash' > /etc/cron.hourly/repair
+  echo '' >> /etc/cron.hourly/repair
+  chmod 600 /etc/cron.hourly/repair
+  chmod +x /etc/cron.hourly/repair
+
+  echo 'repair_databases_script' >> $COMPLETION_FILE
+}
+
 function install_gnu_social {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       return
@@ -3276,6 +3330,7 @@ function install_gnu_social {
 
   install_mariadb
   get_mariadb_password
+  repair_databases_script
 
   apt-get -y --force-yes install php-gettext php5-curl php5-gd php5-mysql git
 
@@ -3488,6 +3543,8 @@ quit" > $INSTALL_DIR/batch.sql
   echo '  cp -f /var/backups/gnusocial_weekly.sql /var/backups/gnusocial_monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
   echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
 
+  echo '/usr/bin/repairdatabase gnusocial' >> /etc/cron.hourly/repair
+
   nginx_ensite $MICROBLOG_DOMAIN_NAME
   service php5-fpm restart
   service nginx restart
@@ -3552,6 +3609,7 @@ function install_redmatrix {
 
   install_mariadb
   get_mariadb_password
+  repair_databases_script
 
   apt-get -y --force-yes install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git git
 
@@ -3766,6 +3824,8 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'if [ -f /var/backups/redmatrix_weekly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
   echo '  cp -f /var/backups/redmatrix_weekly.sql /var/backups/redmatrix_monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
   echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
+
+  echo '/usr/bin/repairdatabase redmatrix' >> /etc/cron.hourly/repair
 
   nginx_ensite $REDMATRIX_DOMAIN_NAME
   service php5-fpm restart
