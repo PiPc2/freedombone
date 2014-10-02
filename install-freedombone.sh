@@ -315,8 +315,8 @@ function create_backup_script {
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'GPG_KEY=$1' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! "$GPG_KEY" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  if [ ! '$MY_GPG_PUBLIC_KEY_ID' ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    echo "You need to specify a GPG key ID with which to create the backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    exit 1' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -364,31 +364,36 @@ function create_backup_script {
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up the public mailing list"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems $PUBLIC_MAILING_LIST_DIRECTORY file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "$PUBLIC_MAILING_LIST_DIRECTORY file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up the XMPP settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems $XMPP_DIRECTORY file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "$XMPP_DIRECTORY file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup web content and other stuff' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up web content and miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME/tempfiles file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "/home/$MY_USERNAME/tempfiles file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup email' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up emails"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME/Maildir file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "/home/$MY_USERNAME/Maildir file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up DLNA cache"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /var/cache/minidlna file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "/var/cache/minidlna file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
