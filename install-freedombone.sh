@@ -115,6 +115,7 @@ MICROBLOG_DOMAIN_NAME=
 MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
 MICROBLOG_REPO="git://gitorious.org/social/mainline.git"
 MICROBLOG_ADMIN_PASSWORD=
+MICROBLOG_INSTALLED="no"
 
 # Domain name or redmatrix installation
 REDMATRIX_DOMAIN_NAME=
@@ -122,6 +123,7 @@ REDMATRIX_FREEDNS_SUBDOMAIN_CODE=
 REDMATRIX_REPO="https://github.com/friendica/red.git"
 REDMATRIX_ADDONS_REPO="https://github.com/friendica/red-addons.git"
 REDMATRIX_ADMIN_PASSWORD=
+REDMATRIX_INSTALLED="no"
 
 # Domain name or freedns subdomain for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
@@ -130,6 +132,7 @@ OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
 OWNCLOUD_ARCHIVE="owncloud-7.0.2.tar.bz2"
 OWNCLOUD_DOWNLOAD="https://download.owncloud.org/community/$OWNCLOUD_ARCHIVE"
 OWNCLOUD_HASH="ea07124a1b9632aa5227240d655e4d84967fb6dd49e4a16d3207d6179d031a3a"
+OWNCLOUD_INSTALLED="no"
 
 # Domain name or freedns subdomain for your wiki
 WIKI_FREEDNS_SUBDOMAIN_CODE=
@@ -137,6 +140,7 @@ WIKI_DOMAIN_NAME=
 WIKI_ARCHIVE="dokuwiki-stable.tgz"
 WIKI_DOWNLOAD="http://download.dokuwiki.org/src/dokuwiki/$WIKI_ARCHIVE"
 WIKI_HASH="a0e79986b87b2744421ce3c33b43a21f296deadd81b1789c25fa4bb095e8e470"
+WIKI_INSTALLED="no"
 
 # see https://www.dokuwiki.org/template:mnml-blog
 # https://andreashaerter.com/tmp/downloads/dokuwiki-template-mnml-blog/CHECKSUMS.asc
@@ -295,6 +299,105 @@ function check_hwrng {
       echo '/dev/hwrng.  There may be a problem with the installation or the Beaglebone hardware.'
       exit 75
   fi
+}
+
+function backup_to_friends_servers {
+  if grep -Fxq "backup_to_friends_servers" $COMPLETION_FILE; then
+      return
+  fi
+  if [ ! $FRIENDS_SERVERS_LIST ]; then
+      return
+  fi
+
+  apt-get -y --force-yes install duplicity
+
+  # script to do backups
+  echo '#!/bin/bash' > /usr/bin/backup2friends
+  echo 'GPG_KEY=$1' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backup2friends
+  echo '    exit 1' >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/backup2friends
+  echo "    echo 'Unable to perform automated backup. You need to add a GPG key to /etc/cron.daily/backuptofriends' | mail -s 'Backup failure' $MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/backup2friends
+  echo '    exit 2' >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+
+  echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/backup2friends
+  echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/backup2friends
+  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+      echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/backup2friends
+  fi
+  if [[ $REDMATRIX_INSTALLED == "yes" ]]; then
+      echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/backup2friends
+  fi
+  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data" >> /usr/bin/backup2friends
+  fi
+  if [[ $WIKI_INSTALLED == "yes" ]]; then
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/backup2friends
+  fi
+  echo 'tar -czvf /home/$MY_USERNAME/tempfiles/temp.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal' >> /usr/bin/backup2friends
+
+  echo '' >> /usr/bin/backup2friends
+  echo 'while read remote_server' >> /usr/bin/backup2friends
+  echo 'do' >> /usr/bin/backup2friends
+  echo '  # Get the server and its password' >> /usr/bin/backup2friends
+  echo '  SERVER="${* %%remote_server}"' >> /usr/bin/backup2friends
+  echo '  FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '  # Backup the public mailing list' >> /usr/bin/backup2friends
+  echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/backup2friends
+  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems $PUBLIC_MAILING_LIST_DIRECTORY $SERVER/publicmailinglist" >> /usr/bin/backup2friends
+  echo '  fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '  # Backup xmpp settings' >> /usr/bin/backup2friends
+  echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/backup2friends
+  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems $XMPP_DIRECTORY $SERVER/xmpp" >> /usr/bin/backup2friends
+  echo '  fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '  # Backup web content and other stuff' >> /usr/bin/backup2friends
+  echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/backup2friends
+  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME/tempfiles $SERVER/tempfiles" >> /usr/bin/backup2friends
+  echo '  fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '  # Backup email' >> /usr/bin/backup2friends
+  echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/backup2friends
+  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME/Maildir $SERVER/Maildir" >> /usr/bin/backup2friends
+  echo '  fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '  # Backup DLNA cache' >> /usr/bin/backup2friends
+  echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/backup2friends
+  echo "    duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /var/cache/minidlna $SERVER/dlna" >> /usr/bin/backup2friends
+  echo '  fi' >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+
+  echo '  duplicity --ssh-askpass --force cleanup $SERVER' >> /usr/bin/backup2friends
+  echo '  duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER' >> /usr/bin/backup2friends
+  echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/backup2friends
+  echo '' >> /usr/bin/backup2friends
+  echo '# Remove temporary files' >> /usr/bin/backup2friends
+  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/backup2friends
+  echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/backup2friends
+  echo 'fi' >> /usr/bin/backup2friends
+  echo 'exit 0' >> /usr/bin/backup2friends
+  chmod +x /usr/bin/backup2friends
+
+  # update crontab
+  echo '#!/bin/bash' > /etc/cron.daily/backuptofriends
+  if [ $MY_GPG_PUBLIC_KEY_ID ]; then
+      echo "GPG_KEY=$MY_GPG_PUBLIC_KEY_ID" >> /etc/cron.daily/backuptofriends
+  else
+      echo 'GPG_KEY=' >> /etc/cron.daily/backuptofriends
+  fi
+  echo '/usr/bin/backup2friends $GPG_KEY' >> /etc/cron.daily/backuptofriends
+  chmod +x /etc/cron.daily/backuptofriends
+
+  echo 'backup_to_friends_servers' >> $COMPLETION_FILE
 }
 
 function remove_default_user {
@@ -1918,6 +2021,7 @@ function import_email {
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
+          backup_to_friends_servers
           echo ''
           echo "$EMAIL_COMPLETE_MSG"
           if [ -d $USB_MOUNT ]; then
@@ -1941,6 +2045,7 @@ function import_email {
   fi
   echo 'import_email' >> $COMPLETION_FILE
   if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
+      backup_to_friends_servers
       apt-get -y --force-yes autoremove
       # unmount any attached usb drive
       echo ''
@@ -2003,6 +2108,8 @@ function install_owncloud {
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
+          backup_to_friends_servers
+          apt-get -y --force-yes autoremove
           # unmount any attached usb drive
           if [ -d $USB_MOUNT ]; then
               umount $USB_MOUNT
@@ -2172,9 +2279,12 @@ function install_owncloud {
       echo 'WARNING: No freeDNS subdomain code given for Owncloud. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
+  OWNCLOUD_INSTALLED="yes"
   echo 'install_owncloud' >> $COMPLETION_FILE
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
+      backup_to_friends_servers
+      apt-get -y --force-yes autoremove
       # unmount any attached usb drive
       if [ -d $USB_MOUNT ]; then
           umount $USB_MOUNT
@@ -2509,6 +2619,7 @@ function install_wiki {
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
+  WIKI_INSTALLED="yes"
   echo 'install_wiki' >> $COMPLETION_FILE
 }
 
@@ -2905,6 +3016,7 @@ quit" > $INSTALL_DIR/batch.sql
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
+  MICROBLOG_INSTALLED="yes"
   echo 'install_gnu_social' >> $COMPLETION_FILE
 }
 
@@ -3114,6 +3226,7 @@ quit" > $INSTALL_DIR/batch.sql
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
+  REDMATRIX_INSTALLED="yes"
   echo 'install_redmatrix' >> $COMPLETION_FILE
 }
 
@@ -3646,67 +3759,6 @@ IPT_NAME
   echo 'create_restore_script' >> $COMPLETION_FILE
 }
 
-function backup_to_friends_servers {
-  if grep -Fxq "backup_to_friends_servers" $COMPLETION_FILE; then
-      return
-  fi
-  if [ ! $FRIENDS_SERVERS_LIST ]; then
-      return
-  fi
-
-  apt-get -y --force-yes install duplicity
-
-  # script to do backups
-  echo '#!/bin/bash' > /usr/bin/backup2friends
-  echo 'GPG_KEY=$1' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backup2friends
-  echo '    exit 1' >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/backup2friends
-  echo "    echo 'Unable to perform automated backup. You need to add a GPG key to /etc/cron.daily/backuptofriends' | mail -s 'Backup failure' $MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/backup2friends
-  echo '    exit 2' >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo "if [ ! -d /home/$MY_USERNAME/backups ]; then" >> /usr/bin/backup2friends
-  echo "  mkdir /home/$MY_USERNAME/backups" >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '# Backup the public mailing list' >> /usr/bin/backup2friends
-  echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/backup2friends
-  echo "  tar -czvf /home/$MY_USERNAME/backups/mailinglist.tar.gz $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo '# Backup XMPP settings' >> /usr/bin/backup2friends
-  echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/backup2friends
-  echo "  tar -czvf /home/$MY_USERNAME/backups/xmpp.tar.gz $XMPP_DIRECTORY" >> /usr/bin/backup2friends
-  echo 'fi' >> /usr/bin/backup2friends
-  echo '' >> /usr/bin/backup2friends
-  echo 'while read remote_server' >> /usr/bin/backup2friends
-  echo 'do' >> /usr/bin/backup2friends
-  echo '  SERVER="${* %%remote_server}"' >> /usr/bin/backup2friends
-  echo '  FTP_PASSWORD="${remote_server%% *}"' >> /usr/bin/backup2friends
-  echo "  duplicity incr --ssh-askpass --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems /home/$MY_USERNAME $SERVER" >> /usr/bin/backup2friends
-  echo '  duplicity --ssh-askpass --force cleanup $SERVER' >> /usr/bin/backup2friends
-  echo '  duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER' >> /usr/bin/backup2friends
-  echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/backup2friends
-  echo 'exit 0' >> /usr/bin/backup2friends
-  chmod +x /usr/bin/backup2friends
-
-  # update crontab
-  echo '#!/bin/bash' > /etc/cron.daily/backuptofriends
-  if [ $MY_GPG_PUBLIC_KEY_ID ]; then
-      echo "GPG_KEY=$MY_GPG_PUBLIC_KEY_ID" >> /etc/cron.daily/backuptofriends
-  else
-      echo 'GPG_KEY=' >> /etc/cron.daily/backuptofriends
-  fi
-  echo '/usr/bin/backup2friends $GPG_KEY' >> /etc/cron.daily/backuptofriends
-  chmod +x /etc/cron.daily/backuptofriends
-
-  echo 'backup_to_friends_servers' >> $COMPLETION_FILE
-}
-
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -3787,5 +3839,6 @@ install_redmatrix
 install_dlna_server
 install_mediagoblin
 install_final
+apt-get -y --force-yes autoremove
 echo 'Freedombone installation is complete'
 exit 0
