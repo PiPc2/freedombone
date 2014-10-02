@@ -1632,56 +1632,56 @@ function folders_for_mailing_lists {
   if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
       return
   fi
-  echo '#!/bin/bash' > /usr/bin/mailinglistrule
-  echo 'MYUSERNAME=$1' >> /usr/bin/mailinglistrule
-  echo 'MAILINGLIST=$2' >> /usr/bin/mailinglistrule
-  echo 'SUBJECTTAG=$3' >> /usr/bin/mailinglistrule
-  echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/mailinglistrule
-  echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/mailinglistrule
-  echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/mailinglistrule
-  echo '' >> /usr/bin/mailinglistrule
-  echo '# Exit if the list was already added' >> /usr/bin/mailinglistrule
-  echo 'if grep -q "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/mailinglistrule
-  echo '  exit 1' >> /usr/bin/mailinglistrule
-  echo 'fi' >> /usr/bin/mailinglistrule
-  echo '' >> /usr/bin/mailinglistrule
-  echo 'if ! [[ $MYUSERNAME && $MAILINGLIST && $SUBJECTTAG ]]; then' >> /usr/bin/mailinglistrule
-  echo '  echo "mailinglistsrule [user name] [mailing list name] [subject tag]"' >> /usr/bin/mailinglistrule
-  echo '  exit 1' >> /usr/bin/mailinglistrule
-  echo 'fi' >> /usr/bin/mailinglistrule
-  echo '' >> /usr/bin/mailinglistrule
-  echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/mailinglistrule
-  echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/mailinglistrule
-  echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/mailinglistrule
-  echo '  mkdir -m 700 $LISTDIR/new' >> /usr/bin/mailinglistrule
-  echo '  mkdir -m 700 $LISTDIR/cur' >> /usr/bin/mailinglistrule
-  echo 'fi' >> /usr/bin/mailinglistrule
-  echo '' >> /usr/bin/mailinglistrule
-  echo 'chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR' >> /usr/bin/mailinglistrule
-  echo 'echo "" >> $PM' >> /usr/bin/mailinglistrule
-  echo 'echo ":0" >> $PM' >> /usr/bin/mailinglistrule
-  echo 'echo "  * ^Subject:.*()\[$SUBJECTTAG\]" >> $PM' >> /usr/bin/mailinglistrule
-  echo 'echo "$LISTDIR/new" >> $PM' >> /usr/bin/mailinglistrule
-  echo 'chown $MYUSERNAME:$MYUSERNAME $PM' >> /usr/bin/mailinglistrule
-  echo '' >> /usr/bin/mailinglistrule
-  echo 'if [ ! -f "$MUTTRC" ]; then' >> /usr/bin/mailinglistrule
-  echo '  cp /etc/Muttrc $MUTTRC' >> /usr/bin/mailinglistrule
-  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/mailinglistrule
-  echo 'fi' >> /usr/bin/mailinglistrule
-  echo '' >> /usr/bin/mailinglistrule
-  echo 'PROCMAILLOG=/home/$MYUSERNAME/log' >> /usr/bin/mailinglistrule
-  echo 'if [ ! -d $PROCMAILLOG ]; then' >> /usr/bin/mailinglistrule
-  echo '  mkdir $PROCMAILLOG' >> /usr/bin/mailinglistrule
-  echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/mailinglistrule
-  echo 'fi' >> /usr/bin/mailinglistrule
-  echo '' >> /usr/bin/mailinglistrule
-  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/mailinglistrule
-  echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/mailinglistrule
-  echo '  sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/mailinglistrule
-  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/mailinglistrule
-  echo 'fi' >> /usr/bin/mailinglistrule
-  echo 'exit 0' >> /usr/bin/mailinglistrule
-  chmod +x /usr/bin/mailinglistrule
+  echo '#!/bin/bash' > /usr/bin/addmailinglist
+  echo 'MYUSERNAME=$1' >> /usr/bin/addmailinglist
+  echo 'MAILINGLIST=$2' >> /usr/bin/addmailinglist
+  echo 'SUBJECTTAG=$3' >> /usr/bin/addmailinglist
+  echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/addmailinglist
+  echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/addmailinglist
+  echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/addmailinglist
+  echo '' >> /usr/bin/addmailinglist
+  echo '# Exit if the list was already added' >> /usr/bin/addmailinglist
+  echo 'if grep -q "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/addmailinglist
+  echo '  exit 1' >> /usr/bin/addmailinglist
+  echo 'fi' >> /usr/bin/addmailinglist
+  echo '' >> /usr/bin/addmailinglist
+  echo 'if ! [[ $MYUSERNAME && $MAILINGLIST && $SUBJECTTAG ]]; then' >> /usr/bin/addmailinglist
+  echo '  echo "mailinglistsrule [user name] [mailing list name] [subject tag]"' >> /usr/bin/addmailinglist
+  echo '  exit 1' >> /usr/bin/addmailinglist
+  echo 'fi' >> /usr/bin/addmailinglist
+  echo '' >> /usr/bin/addmailinglist
+  echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/addmailinglist
+  echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/addmailinglist
+  echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/addmailinglist
+  echo '  mkdir -m 700 $LISTDIR/new' >> /usr/bin/addmailinglist
+  echo '  mkdir -m 700 $LISTDIR/cur' >> /usr/bin/addmailinglist
+  echo 'fi' >> /usr/bin/addmailinglist
+  echo '' >> /usr/bin/addmailinglist
+  echo 'chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR' >> /usr/bin/addmailinglist
+  echo 'echo "" >> $PM' >> /usr/bin/addmailinglist
+  echo 'echo ":0" >> $PM' >> /usr/bin/addmailinglist
+  echo 'echo "  * ^Subject:.*()\[$SUBJECTTAG\]" >> $PM' >> /usr/bin/addmailinglist
+  echo 'echo "$LISTDIR/new" >> $PM' >> /usr/bin/addmailinglist
+  echo 'chown $MYUSERNAME:$MYUSERNAME $PM' >> /usr/bin/addmailinglist
+  echo '' >> /usr/bin/addmailinglist
+  echo 'if [ ! -f "$MUTTRC" ]; then' >> /usr/bin/addmailinglist
+  echo '  cp /etc/Muttrc $MUTTRC' >> /usr/bin/addmailinglist
+  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/addmailinglist
+  echo 'fi' >> /usr/bin/addmailinglist
+  echo '' >> /usr/bin/addmailinglist
+  echo 'PROCMAILLOG=/home/$MYUSERNAME/log' >> /usr/bin/addmailinglist
+  echo 'if [ ! -d $PROCMAILLOG ]; then' >> /usr/bin/addmailinglist
+  echo '  mkdir $PROCMAILLOG' >> /usr/bin/addmailinglist
+  echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/addmailinglist
+  echo 'fi' >> /usr/bin/addmailinglist
+  echo '' >> /usr/bin/addmailinglist
+  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/addmailinglist
+  echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/addmailinglist
+  echo '  sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/addmailinglist
+  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/addmailinglist
+  echo 'fi' >> /usr/bin/addmailinglist
+  echo 'exit 0' >> /usr/bin/addmailinglist
+  chmod +x /usr/bin/addmailinglist
   echo 'folders_for_mailing_lists' >> $COMPLETION_FILE
 }
 
@@ -1845,7 +1845,7 @@ function create_public_mailing_list {
       echo "cleartext email to $PUBLIC_MAILING_LIST+subscribe@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
   fi
 
-  mailinglistrule $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
+  addmailinglist $MY_USERNAME "$PUBLIC_MAILING_LIST" "$PUBLIC_MAILING_LIST"
 
   echo 'create_public_mailing_list' >> $COMPLETION_FILE
 }
