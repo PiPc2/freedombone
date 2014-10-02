@@ -562,6 +562,12 @@ function backup_to_friends_servers {
 
   if [ ! $BACKUP_TO_FRIENDS_PASSPHRASE ]; then
       BACKUP_TO_FRIENDS_PASSPHRASE=$(openssl rand -base64 32)
+      if [ ! -f /home/$MY_USERNAME/README ]; then
+          touch /home/$MY_USERNAME/README
+      fi
+      echo '' >> /home/$MY_USERNAME/README
+      echo "Passphrase for backups on friends servers: $BACKUP_TO_FRIENDS_PASSPHRASE" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
