@@ -416,12 +416,38 @@ function create_backup_script {
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'duplicity --encrypt-key $GPG_KEY --force cleanup ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Removing old backups"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'duplicity --encrypt-key $GPG_KEY --force remove-all-but-n-full 2 ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
