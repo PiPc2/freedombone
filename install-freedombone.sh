@@ -562,6 +562,9 @@ function backup_to_friends_servers {
 
   if [ ! $BACKUP_TO_FRIENDS_PASSPHRASE ]; then
       BACKUP_TO_FRIENDS_PASSPHRASE=$(openssl rand -base64 32)
+  fi
+
+  if ! grep -q "With a USB drive attached just type" /home/$MY_USERNAME/README; then
       if [ ! -f /home/$MY_USERNAME/README ]; then
           touch /home/$MY_USERNAME/README
       fi
@@ -2241,8 +2244,11 @@ function create_public_mailing_list {
   update-exim4.conf
   service exim4 restart
 
-  if grep -q "$PUBLIC_MAILING_LIST mailing list" /home/$MY_USERNAME/README; then
+  if ! grep -q "$PUBLIC_MAILING_LIST mailing list" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Public mailing list' >> /home/$MY_USERNAME/README
+      echo '===================' >> /home/$MY_USERNAME/README
       echo "To subscribe to the $PUBLIC_MAILING_LIST mailing list send a" >> /home/$MY_USERNAME/README
       echo "cleartext email to $PUBLIC_MAILING_LIST+subscribe@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
   fi
@@ -2670,6 +2676,10 @@ function install_xmpp {
   if ! grep -q "Your XMPP password is" /home/$MY_USERNAME/README; then
       XMPP_PASSWORD=$(openssl rand -base64 8)
       prosodyctl register $MY_USERNAME $DOMAIN_NAME $XMPP_PASSWORD
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'XMPP' >> /home/$MY_USERNAME/README
+      echo '====' >> /home/$MY_USERNAME/README
       echo "Your XMPP password is: $XMPP_PASSWORD" >> /home/$MY_USERNAME/README
       echo 'You can change it with: ' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
@@ -2920,6 +2930,9 @@ function install_wiki {
   # add some post-install instructions
   if ! grep -q "Once you have set up the wiki" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Wiki' >> /home/$MY_USERNAME/README
+      echo '====' >> /home/$MY_USERNAME/README
       echo 'Once you have set up the wiki then remove the install file:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo "  rm /var/www/$WIKI_DOMAIN_NAME/htdocs/install.php" >> /home/$MY_USERNAME/README
@@ -3031,6 +3044,9 @@ function install_blog {
 
   if ! grep -q "To set up your blog" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Blog' >> /home/$MY_USERNAME/README
+      echo '====' >> /home/$MY_USERNAME/README
       echo "To set up your blog go to" >> /home/$MY_USERNAME/README
       echo "https://$WIKI_DOMAIN_NAME/doku.php?id=start&do=admin&page=config" >> /home/$MY_USERNAME/README
       echo 'and set the template to mnml-blog' >> /home/$MY_USERNAME/README
@@ -3092,6 +3108,9 @@ function install_mariadb {
   if [ ! $MARIADB_PASSWORD ]; then
       MARIADB_PASSWORD=$(openssl rand -base64 32)
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'MariaDB / MySql' >> /home/$MY_USERNAME/README
+      echo '===============' >> /home/$MY_USERNAME/README
       echo "Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
@@ -3151,6 +3170,9 @@ function install_gnu_social {
   if [ ! $MICROBLOG_ADMIN_PASSWORD ]; then
       MICROBLOG_ADMIN_PASSWORD=$(openssl rand -base64 32)
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'GNU Social' >> /home/$MY_USERNAME/README
+      echo '==========' >> /home/$MY_USERNAME/README
       echo "Your MariaDB gnusocial admin password is: $MICROBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
@@ -3291,6 +3313,9 @@ quit" > $INSTALL_DIR/batch.sql
   # some post-install instructions for the user
   if ! grep -q "To set up your microblog" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Microblog' >> /home/$MY_USERNAME/README
+      echo '=========' >> /home/$MY_USERNAME/README
       echo "To set up your microblog go to" >> /home/$MY_USERNAME/README
       echo "https://$MICROBLOG_DOMAIN_NAME/install.php" >> /home/$MY_USERNAME/README
       echo 'and enter the following settings:' >> /home/$MY_USERNAME/README
@@ -3369,6 +3394,9 @@ function install_redmatrix {
   if [ ! $REDMATRIX_ADMIN_PASSWORD ]; then
       REDMATRIX_ADMIN_PASSWORD=$(openssl rand -base64 32)
       echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Red Matrix' >> /home/$MY_USERNAME/README
+      echo '==========' >> /home/$MY_USERNAME/README
       echo "Your MariaDB Red Matrix admin password is: $REDMATRIX_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
