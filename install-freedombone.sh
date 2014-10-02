@@ -882,6 +882,21 @@ function configure_firewall {
   ip6tables -P INPUT DROP
   iptables -A INPUT -i lo -j ACCEPT
   iptables -A INPUT -i eth0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+  # Make sure incoming tcp connections are SYN packets
+  iptables -A INPUT -p tcp ! --syn -m state --state NEW -j DROP
+
+  # Drop packets with incoming fragments
+  iptables -A INPUT -f -j DROP
+
+  # Drop bogons
+  iptables -A INPUT -p tcp --tcp-flags ALL ALL -j DROP
+  iptables -A INPUT -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
+  iptables -A INPUT -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
+
+  # Incoming malformed NULL packets:
+  iptables -A INPUT -p tcp --tcp-flags ALL NONE -j DROP
+
   echo 'configure_firewall' >> $COMPLETION_FILE
 }
 
