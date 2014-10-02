@@ -219,7 +219,7 @@ MARIADB_PASSWORD=
 XMPP_DIRECTORY="/var/lib/prosody"
 
 # file containing a list of remote locations to backup to
-FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
+FRIENDS_SERVERS_LIST="/home/$MY_USERNAME/backup.list"
 
 #list of encryption protocols
 SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
