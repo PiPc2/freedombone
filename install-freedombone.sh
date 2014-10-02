@@ -3225,6 +3225,7 @@ function install_mariadb {
 
 function backup_databases_script_header {
   if [ ! -f /usr/bin/backupdatabases ]; then
+      # daily
       echo '#!/bin/sh' > /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
       echo "EMAIL='$MY_USERNAME@$DOMAIN_NAME'" >> /usr/bin/backupdatabases
@@ -3236,9 +3237,21 @@ function backup_databases_script_header {
       echo "if [ -f $FRIENDS_SERVER_LIST ]; then" >> /usr/bin/backupdatabases
       echo '  exit 1' >> /usr/bin/backupdatabases
       echo 'fi' >> /usr/bin/backupdatabases
+      chmod 600 /usr/bin/backupdatabases
+      chmod +x /usr/bin/backupdatabases
 
       echo '#!/bin/sh' > /etc/cron.daily/backupdatabasesdaily
       echo '/usr/bin/backupdatabases' >> /etc/cron.daily/backupdatabasesdaily
+      chmod 600 /etc/cron.daily/backupdatabasesdaily
+      chmod +x /etc/cron.daily/backupdatabasesdaily
+
+      # weekly
+      echo '#!/bin/sh' > /etc/cron.weekly/backupdatabasesweekly
+      echo '' >> /etc/cron.weekly/backupdatabasesweekly
+      echo 'umask 0077' >> /etc/cron.weekly/backupdatabasesweekly
+
+      chmod 600 /etc/cron.weekly/backupdatabasesweekly
+      chmod +x /etc/cron.weekly/backupdatabasesweekly
   fi
 }
 
@@ -3448,6 +3461,19 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    # Make the backup readable only by root' >> /usr/bin/backupdatabases
   echo '    chmod 600 $DAILYFILE' >> /usr/bin/backupdatabases
   echo 'fi' >> /usr/bin/backupdatabases
+
+  echo '' >> /etc/cron.weekly/backupdatabasesweekly
+  echo '# GNU Social' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'if [ -f /var/backups/gnusocial_weekly.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
+  echo '  cp -f /var/backups/gnusocial_weekly.sql /var/backups/gnusocial_2weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'if [ -f /var/backups/gnusocial_daily.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
+  echo '  cp -f /var/backups/gnusocial_daily.sql /var/backups/gnusocial_weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
+
+# Friendica
+cp -f /var/backups/friendica_weekly.sql /var/backups/friendica_2weekly.sql
+cp -f /var/backups/friendica_daily.sql /var/backups/friendica_weekly.sql
 
   nginx_ensite $MICROBLOG_DOMAIN_NAME
   service php5-fpm restart
