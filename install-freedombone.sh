@@ -3805,7 +3805,6 @@ time_synchronisation
 configure_internet_protocol
 configure_ssh
 check_hwrng
-backup_to_friends_servers
 search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
@@ -3838,6 +3837,7 @@ install_gnu_social
 install_redmatrix
 install_dlna_server
 install_mediagoblin
+backup_to_friends_servers
 install_final
 apt-get -y --force-yes autoremove
 echo 'Freedombone installation is complete'
