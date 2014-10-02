@@ -3252,6 +3252,14 @@ function backup_databases_script_header {
 
       chmod 600 /etc/cron.weekly/backupdatabasesweekly
       chmod +x /etc/cron.weekly/backupdatabasesweekly
+
+      # monthly
+      echo '#!/bin/sh' > /etc/cron.monthly/backupdatabasesmonthly
+      echo '' >> /etc/cron.monthly/backupdatabasesmonthly
+      echo 'umask 0077' >> /etc/cron.monthly/backupdatabasesmonthly
+
+      chmod 600 /etc/cron.monthly/backupdatabasesmonthly
+      chmod +x /etc/cron.monthly/backupdatabasesmonthly
   fi
 }
 
@@ -3470,6 +3478,15 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'if [ -f /var/backups/gnusocial_daily.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
   echo '  cp -f /var/backups/gnusocial_daily.sql /var/backups/gnusocial_weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
   echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
+
+  echo '' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo '# GNU Social' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'if [ -f /var/backups/gnusocial_monthly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo '  cp -f /var/backups/gnusocial_monthly.sql /var/backups/gnusocial_2monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'if [ -f /var/backups/gnusocial_weekly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo '  cp -f /var/backups/gnusocial_weekly.sql /var/backups/gnusocial_monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
 
   nginx_ensite $MICROBLOG_DOMAIN_NAME
   service php5-fpm restart
