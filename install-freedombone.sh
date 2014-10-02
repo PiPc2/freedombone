@@ -3419,6 +3419,36 @@ quit" > $INSTALL_DIR/batch.sql
       makecert $MICROBLOG_DOMAIN_NAME
   fi
 
+  # Ensure that the database gets backed up locally, if remote
+  # backups are not being used
+  backup_databases_script_header
+  echo '' >> /usr/bin/backupdatabases
+  echo '# Backup the GNU Social database' >> /usr/bin/backupdatabases
+  echo 'TEMPFILE=/root/gnusocial.sql' >> /usr/bin/backupdatabases
+  echo 'DAILYFILE=/var/backups/gnusocial_daily.sql' >> /usr/bin/backupdatabases
+  echo 'mysqldump --password=$MYSQL_PASSWORD gnusocial > $TEMPFILE' >> /usr/bin/backupdatabases
+  echo 'FILESIZE=$(stat -c%s $TEMPFILE)' >> /usr/bin/backupdatabases
+  echo 'if [ "$FILESIZE" -eq "0" ]; then' >> /usr/bin/backupdatabases
+  echo '    if [ -f $DAILYFILE ]; then' >> /usr/bin/backupdatabases
+  echo '        cp $DAILYFILE $TEMPFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '        # try to restore yesterdays database' >> /usr/bin/backupdatabases
+  echo '        mysql -u root --password=$MYSQL_PASSWORD gnusocial -o < $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '        # Send a warning email' >> /usr/bin/backupdatabases
+  echo '        echo "Unable to create a backup of the GNU Social database. Attempted to restore from yesterdays backup" | mail -s "GNU Social backup" $EMAIL' >> /usr/bin/backupdatabases
+  echo '    else' >> /usr/bin/backupdatabases
+  echo '        # Send a warning email' >> /usr/bin/backupdatabases
+  echo '        echo "Unable to create a backup of the GNU Social database." | mail -s "GNU Social backup" $EMAIL' >> /usr/bin/backupdatabases
+  echo '    fi' >> /usr/bin/backupdatabases
+  echo 'else' >> /usr/bin/backupdatabases
+  echo '    chmod 600 $TEMPFILE' >> /usr/bin/backupdatabases
+  echo '    mv $TEMPFILE $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '    # Make the backup readable only by root' >> /usr/bin/backupdatabases
+  echo '    chmod 600 $DAILYFILE' >> /usr/bin/backupdatabases
+  echo 'fi' >> /usr/bin/backupdatabases
+
   nginx_ensite $MICROBLOG_DOMAIN_NAME
   service php5-fpm restart
   service nginx restart
