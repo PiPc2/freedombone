@@ -307,7 +307,21 @@ function create_backup_script {
   fi
   apt-get -y --force-yes install duplicity gnupg
 
+  if [ ! MY_GPG_PUBLIC_KEY_ID ]; then
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}'" - $MY_USERNAME)
+  fi
+
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'GPG_KEY=$1' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    echo "You need to specify a GPG key ID with which to create the backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 1' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  GPG_KEY=$MY_GPG_PUBLIC_KEY_ID" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ ! -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Please attach a USB drive"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -328,19 +342,19 @@ function create_backup_script {
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
-	  echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if [[ $REDMATRIX_INSTALLED == "yes" ]]; then
-	  echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
-	  echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if [[ $WIKI_INSTALLED == "yes" ]]; then
-	  echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -2122,8 +2136,8 @@ function import_email {
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
-		  create_backup_script
-		  create_restore_script
+          create_backup_script
+          create_restore_script
           backup_to_friends_servers
           echo ''
           echo "$EMAIL_COMPLETE_MSG"
@@ -2148,8 +2162,8 @@ function import_email {
   fi
   echo 'import_email' >> $COMPLETION_FILE
   if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
-	  create_backup_script
-	  create_restore_script
+      create_backup_script
+      create_restore_script
       backup_to_friends_servers
       apt-get -y --force-yes autoremove
       # unmount any attached usb drive
@@ -2213,8 +2227,8 @@ function install_owncloud {
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
-		  create_backup_script
-		  create_restore_script
+          create_backup_script
+          create_restore_script
           backup_to_friends_servers
           apt-get -y --force-yes autoremove
           # unmount any attached usb drive
@@ -2390,8 +2404,8 @@ function install_owncloud {
   echo 'install_owncloud' >> $COMPLETION_FILE
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
-	  create_backup_script
-	  create_restore_script
+      create_backup_script
+      create_restore_script
       backup_to_friends_servers
       apt-get -y --force-yes autoremove
       # unmount any attached usb drive
