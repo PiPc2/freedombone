@@ -344,7 +344,7 @@ function create_backup_script {
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -378,9 +378,9 @@ function create_backup_script {
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'duplicity --force cleanup file://$USB_MOUNT/backup' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "duplicity --force cleanup file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'echo "Removing old backups"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
