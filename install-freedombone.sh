@@ -1692,49 +1692,49 @@ function folders_for_email_addresses {
   if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
       return
   fi
-  echo '#!/bin/bash' > /usr/bin/emailrule
-  echo 'MYUSERNAME=$1' >> /usr/bin/emailrule
-  echo 'EMAILADDRESS=$2' >> /usr/bin/emailrule
-  echo 'MAILINGLIST=$3' >> /usr/bin/emailrule
-  echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/emailrule
-  echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/emailrule
-  echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/emailrule
-  echo '' >> /usr/bin/emailrule
-  echo 'if ! [[ $MYUSERNAME && $EMAILADDRESS && $MAILINGLIST ]]; then' >> /usr/bin/emailrule
-  echo '  echo "emailrule [user name] [email address] [mailing list name]"' >> /usr/bin/emailrule
-  echo '  exit 1' >> /usr/bin/emailrule
-  echo 'fi' >> /usr/bin/emailrule
-  echo '' >> /usr/bin/emailrule
-  echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/emailrule
-  echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/emailrule
-  echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/emailrule
-  echo '  mkdir -m 700 $LISTDIR/new' >> /usr/bin/emailrule
-  echo '  mkdir -m 700 $LISTDIR/cur' >> /usr/bin/emailrule
-  echo 'fi' >> /usr/bin/emailrule
-  echo 'chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR' >> /usr/bin/emailrule
-  echo 'echo "" >> $PM' >> /usr/bin/emailrule
-  echo 'echo ":0" >> $PM' >> /usr/bin/emailrule
-  echo 'echo "  * ^From: $EMAILADDRESS" >> $PM' >> /usr/bin/emailrule
-  echo 'echo "$LISTDIR/new" >> $PM' >> /usr/bin/emailrule
-  echo 'chown $MYUSERNAME:$MYUSERNAME $PM' >> /usr/bin/emailrule
-  echo 'if [ ! -f "$MUTTRC" ]; then' >> /usr/bin/emailrule
-  echo '  cp /etc/Muttrc $MUTTRC' >> /usr/bin/emailrule
-  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/emailrule
-  echo 'fi' >> /usr/bin/emailrule
-  echo 'PROCMAILLOG=/home/$MYUSERNAME/log' >> /usr/bin/emailrule
-  echo 'if [ ! -d $PROCMAILLOG ]; then' >> /usr/bin/emailrule
-  echo '  mkdir $PROCMAILLOG' >> /usr/bin/emailrule
-  echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/emailrule
-  echo 'fi' >> /usr/bin/emailrule
-  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/emailrule
-  echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/emailrule
-  echo '  if ! grep -q "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/emailrule
-  echo '    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/emailrule
-  echo '    chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/emailrule
-  echo '  fi' >> /usr/bin/emailrule
-  echo 'fi' >> /usr/bin/emailrule
-  echo 'exit 0' >> /usr/bin/emailrule
-  chmod +x /usr/bin/emailrule
+  echo '#!/bin/bash' > /usr/bin/addemailtofolder
+  echo 'MYUSERNAME=$1' >> /usr/bin/addemailtofolder
+  echo 'EMAILADDRESS=$2' >> /usr/bin/addemailtofolder
+  echo 'MAILINGLIST=$3' >> /usr/bin/addemailtofolder
+  echo 'MUTTRC=/home/$MYUSERNAME/.muttrc' >> /usr/bin/addemailtofolder
+  echo 'PM=/home/$MYUSERNAME/.procmailrc' >> /usr/bin/addemailtofolder
+  echo 'LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST' >> /usr/bin/addemailtofolder
+  echo '' >> /usr/bin/addemailtofolder
+  echo 'if ! [[ $MYUSERNAME && $EMAILADDRESS && $MAILINGLIST ]]; then' >> /usr/bin/addemailtofolder
+  echo '  echo "addemailtofolder [user name] [email address] [mailing list name]"' >> /usr/bin/addemailtofolder
+  echo '  exit 1' >> /usr/bin/addemailtofolder
+  echo 'fi' >> /usr/bin/addemailtofolder
+  echo '' >> /usr/bin/addemailtofolder
+  echo 'if [ ! -d "$LISTDIR" ]; then' >> /usr/bin/addemailtofolder
+  echo '  mkdir -m 700 $LISTDIR' >> /usr/bin/addemailtofolder
+  echo '  mkdir -m 700 $LISTDIR/tmp' >> /usr/bin/addemailtofolder
+  echo '  mkdir -m 700 $LISTDIR/new' >> /usr/bin/addemailtofolder
+  echo '  mkdir -m 700 $LISTDIR/cur' >> /usr/bin/addemailtofolder
+  echo 'fi' >> /usr/bin/addemailtofolder
+  echo 'chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR' >> /usr/bin/addemailtofolder
+  echo 'echo "" >> $PM' >> /usr/bin/addemailtofolder
+  echo 'echo ":0" >> $PM' >> /usr/bin/addemailtofolder
+  echo 'echo "  * ^From: $EMAILADDRESS" >> $PM' >> /usr/bin/addemailtofolder
+  echo 'echo "$LISTDIR/new" >> $PM' >> /usr/bin/addemailtofolder
+  echo 'chown $MYUSERNAME:$MYUSERNAME $PM' >> /usr/bin/addemailtofolder
+  echo 'if [ ! -f "$MUTTRC" ]; then' >> /usr/bin/addemailtofolder
+  echo '  cp /etc/Muttrc $MUTTRC' >> /usr/bin/addemailtofolder
+  echo '  chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/addemailtofolder
+  echo 'fi' >> /usr/bin/addemailtofolder
+  echo 'PROCMAILLOG=/home/$MYUSERNAME/log' >> /usr/bin/addemailtofolder
+  echo 'if [ ! -d $PROCMAILLOG ]; then' >> /usr/bin/addemailtofolder
+  echo '  mkdir $PROCMAILLOG' >> /usr/bin/addemailtofolder
+  echo '  chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG' >> /usr/bin/addemailtofolder
+  echo 'fi' >> /usr/bin/addemailtofolder
+  echo 'MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/addemailtofolder
+  echo 'if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then' >> /usr/bin/addemailtofolder
+  echo '  if ! grep -q "=$MAILINGLIST" $MUTTRC; then' >> /usr/bin/addemailtofolder
+  echo '    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC' >> /usr/bin/addemailtofolder
+  echo '    chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/addemailtofolder
+  echo '  fi' >> /usr/bin/addemailtofolder
+  echo 'fi' >> /usr/bin/addemailtofolder
+  echo 'exit 0' >> /usr/bin/addemailtofolder
+  chmod +x /usr/bin/addemailtofolder
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
 
@@ -1882,7 +1882,7 @@ function create_private_mailing_list {
   sed -i 's/#smtp_port: 25/smtp_port: 465/g' /etc/schleuder/schleuder.conf
   sed -i 's/#superadminaddr: root@localhost/superadminaddr: root@localhost' /etc/schleuder/schleuder.conf
   schleuder-newlist $PRIVATE_MAILING_LIST@$DOMAIN_NAME -realname "$PRIVATE_MAILING_LIST" -adminaddress $MY_USERNAME@$DOMAIN_NAME -initmember $MY_USERNAME@$DOMAIN_NAME -initmemberkey $MY_GPG_PUBLIC_KEY -nointeractive
-  emailrule $MY_USERNAME $PRIVATE_MAILING_LIST@$DOMAIN_NAME $PRIVATE_MAILING_LIST
+  addemailtofolder $MY_USERNAME $PRIVATE_MAILING_LIST@$DOMAIN_NAME $PRIVATE_MAILING_LIST
 
   echo 'schleuder:' > /etc/exim4/conf.d/router/550_exim4-config_schleuder
   echo '  debug_print = "R: schleuder for $local_part@$domain"' >> /etc/exim4/conf.d/router/550_exim4-config_schleuder
