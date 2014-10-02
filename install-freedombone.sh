@@ -520,6 +520,8 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'echo "Restoring web content and miscellaneous files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "duplicity --force file://$USB_MOUNT/backup/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'rm -rf /home/$MY_USERNAME/tempfiles' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
