@@ -301,6 +301,61 @@ function check_hwrng {
   fi
 }
 
+function create_backup_script {
+  if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install duplicity
+
+  echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ ! -b $USB_DRIVE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Please attach a USB drive"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  exit 1' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  mkdir $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  mount $USB_DRIVE $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  mkdir $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+      echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
+  if [[ $REDMATRIX_INSTALLED == "yes" ]]; then
+      echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
+  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
+  if [[ $WIKI_INSTALLED == "yes" ]]; then
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
+  echo 'tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+
+
+  echo 'exit 0' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo 'create_backup_script' >> $COMPLETION_FILE
+}
+
+function create_restore_script {
+  if grep -Fxq "create_restore_script" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install duplicity
+  echo 'create_restore_script' >> $COMPLETION_FILE
+}
+
 function backup_to_friends_servers {
   if grep -Fxq "backup_to_friends_servers" $COMPLETION_FILE; then
       return
@@ -341,7 +396,7 @@ function backup_to_friends_servers {
   if [[ $WIKI_INSTALLED == "yes" ]]; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/backup2friends
   fi
-  echo 'tar -czvf /home/$MY_USERNAME/tempfiles/temp.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal' >> /usr/bin/backup2friends
+  echo 'tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal' >> /usr/bin/backup2friends
 
   echo '' >> /usr/bin/backup2friends
   echo 'while read remote_server' >> /usr/bin/backup2friends
@@ -2021,6 +2076,8 @@ function import_email {
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
+		  create_backup_script
+		  create_restore_script
           backup_to_friends_servers
           echo ''
           echo "$EMAIL_COMPLETE_MSG"
@@ -2045,6 +2102,8 @@ function import_email {
   fi
   echo 'import_email' >> $COMPLETION_FILE
   if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
+	  create_backup_script
+	  create_restore_script
       backup_to_friends_servers
       apt-get -y --force-yes autoremove
       # unmount any attached usb drive
@@ -2108,6 +2167,8 @@ function install_owncloud {
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
+		  create_backup_script
+		  create_restore_script
           backup_to_friends_servers
           apt-get -y --force-yes autoremove
           # unmount any attached usb drive
@@ -2283,6 +2344,8 @@ function install_owncloud {
   echo 'install_owncloud' >> $COMPLETION_FILE
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
+	  create_backup_script
+	  create_restore_script
       backup_to_friends_servers
       apt-get -y --force-yes autoremove
       # unmount any attached usb drive
@@ -3511,7 +3574,7 @@ function install_mediagoblin {
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
 
-function create_backup_script {
+function create_backup_script_old {
   if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
       return
   fi
@@ -3645,7 +3708,7 @@ function create_backup_script {
   echo 'create_backup_script' >> $COMPLETION_FILE
 }
 
-function create_restore_script {
+function create_restore_script_old {
   if grep -Fxq "create_restore_script" $COMPLETION_FILE; then
       return
   fi
@@ -3799,8 +3862,6 @@ update_the_kernel
 enable_zram
 random_number_generator
 set_your_domain_name
-create_backup_script
-create_restore_script
 time_synchronisation
 configure_internet_protocol
 configure_ssh
@@ -3837,6 +3898,8 @@ install_gnu_social
 install_redmatrix
 install_dlna_server
 install_mediagoblin
+create_backup_script
+create_restore_script
 backup_to_friends_servers
 install_final
 apt-get -y --force-yes autoremove
