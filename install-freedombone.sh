@@ -710,6 +710,23 @@ function restore_from_friend {
       return
   fi
 
+  if ! grep -q "Restoring from Backups" /home/$MY_USERNAME/README; then
+      if [ ! -f /home/$MY_USERNAME/README ]; then
+          touch /home/$MY_USERNAME/README
+      fi
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Restoring from Backups' >> /home/$MY_USERNAME/README
+      echo '======================' >> /home/$MY_USERNAME/README
+      echo 'To restore from USB backup plug in the USB drive then log in' >> /home/$MY_USERNAME/README
+      echo 'as root and just type "restore".' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "To restore from a friend's server use the command:" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "  $RESTORE_FROM_FRIEND_SCRIPT_NAME [server]" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
   if [ ! $BACKUP_TO_FRIENDS_PASSPHRASE ]; then
       BACKUP_TO_FRIENDS_PASSPHRASE=$(openssl rand -base64 32)
   fi
