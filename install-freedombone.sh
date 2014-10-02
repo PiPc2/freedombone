@@ -3758,6 +3758,15 @@ quit" > $INSTALL_DIR/batch.sql
   echo '  cp -f /var/backups/redmatrix_daily.sql /var/backups/redmatrix_weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
   echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
 
+  echo '' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo '# Red Matrix' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'if [ -f /var/backups/redmatrix_monthly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo '  cp -f /var/backups/redmatrix_monthly.sql /var/backups/redmatrix_2monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'if [ -f /var/backups/redmatrix_weekly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo '  cp -f /var/backups/redmatrix_weekly.sql /var/backups/redmatrix_monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
+  echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
+
   nginx_ensite $REDMATRIX_DOMAIN_NAME
   service php5-fpm restart
   service nginx restart
