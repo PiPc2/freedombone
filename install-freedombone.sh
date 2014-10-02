@@ -168,6 +168,9 @@ GPG_KEYS_IMPORTED="no"
 MY_GPG_PUBLIC_KEY=
 MY_GPG_PRIVATE_KEY=
 
+# optionally specify your public key ID
+MY_GPG_PUBLIC_KEY_ID=
+
 # If you have existing mail within a Maildir
 # you can specify the directory here and the files
 # will be imported
@@ -1373,6 +1376,7 @@ function configure_gpg {
   # if gpg keys directory was previously imported from usb
   if [[ $GPG_KEYS_IMPORTED == "yes" && -d /home/$MY_USERNAME/.gnupg ]]; then
       sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}'" - $MY_USERNAME)
       echo 'configure_gpg' >> $COMPLETION_FILE
       return
   fi
@@ -1409,6 +1413,7 @@ function configure_gpg {
       su -c "gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY" - $MY_USERNAME
       # for security ensure that the private key file doesn't linger around
       shred -zu $MY_GPG_PRIVATE_KEY
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}'" - $MY_USERNAME)
   else
       # Generate a GPG key
       echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
@@ -1421,7 +1426,7 @@ function configure_gpg {
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
       su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $DOMAIN_NAME | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}'" - $MY_USERNAME)
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}'" - $MY_USERNAME)
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
   fi
@@ -3643,12 +3648,12 @@ function backup_to_friends_servers {
   echo '#!/bin/bash' > /usr/bin/backup2friends
   echo 'GPG_KEY=$1' >> /usr/bin/backup2friends
   echo '' >> /usr/bin/backup2friends
-  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/backup2friends
-  echo '    echo "No GPG key specified"' >> /usr/bin/backup2friends
+  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backup2friends
   echo '    exit 1' >> /usr/bin/backup2friends
   echo 'fi' >> /usr/bin/backup2friends
   echo '' >> /usr/bin/backup2friends
-  echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backup2friends
+  echo 'if [ ! $GPG_KEY ]; then' >> /usr/bin/backup2friends
+  echo "    echo 'Unable to perform automated backup. You need to add a GPG key to /etc/cron.daily/backuptofriends' | mail -s 'Backup failure' $MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/backup2friends
   echo '    exit 2' >> /usr/bin/backup2friends
   echo 'fi' >> /usr/bin/backup2friends
   echo '' >> /usr/bin/backup2friends
@@ -3665,7 +3670,11 @@ function backup_to_friends_servers {
 
   # update crontab
   echo '#!/bin/bash' > /etc/cron.daily/backuptofriends
-  echo 'GPG_KEY=' >> /etc/cron.daily/backuptofriends
+  if [ $MY_GPG_PUBLIC_KEY_ID ]; then
+      echo "GPG_KEY=$MY_GPG_PUBLIC_KEY_ID" >> /etc/cron.daily/backuptofriends
+  else
+      echo 'GPG_KEY=' >> /etc/cron.daily/backuptofriends
+  fi
   echo '/usr/bin/backup2friends $GPG_KEY' >> /etc/cron.daily/backuptofriends
   chmod +x /etc/cron.daily/backuptofriends
 
