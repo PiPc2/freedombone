@@ -3471,10 +3471,6 @@ quit" > $INSTALL_DIR/batch.sql
   echo '  cp -f /var/backups/gnusocial_daily.sql /var/backups/gnusocial_weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
   echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
 
-# Friendica
-cp -f /var/backups/friendica_weekly.sql /var/backups/friendica_2weekly.sql
-cp -f /var/backups/friendica_daily.sql /var/backups/friendica_weekly.sql
-
   nginx_ensite $MICROBLOG_DOMAIN_NAME
   service php5-fpm restart
   service nginx restart
@@ -3735,6 +3731,15 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    # Make the backup readable only by root' >> /usr/bin/backupdatabases
   echo '    chmod 600 $DAILYFILE' >> /usr/bin/backupdatabases
   echo 'fi' >> /usr/bin/backupdatabases
+
+  echo '' >> /etc/cron.weekly/backupdatabasesweekly
+  echo '# Red Matrix' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'if [ -f /var/backups/redmatrix_weekly.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
+  echo '  cp -f /var/backups/redmatrix_weekly.sql /var/backups/redmatrix_2weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'if [ -f /var/backups/redmatrix_daily.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
+  echo '  cp -f /var/backups/redmatrix_daily.sql /var/backups/redmatrix_weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
+  echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
 
   nginx_ensite $REDMATRIX_DOMAIN_NAME
   service php5-fpm restart
