@@ -308,7 +308,22 @@ function create_backup_script {
   apt-get -y --force-yes install duplicity gnupg
 
   if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
-	  MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+  fi
+
+  # make sure that the root user has access to your gpg public key
+  if [ $MY_GPG_PUBLIC_KEY_ID ]; then
+      if [ ! $MY_GPG_PUBLIC_KEY ]; then
+          MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
+      fi
+      # This is a compromise. backup needs access to things which the user
+      # doesn't have access to, but also needs to be able to encrypt as the user
+      # Perhaps there is some better way to do this.
+      su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+      su -c "gpg --output ~/temp_private_key.txt --armor --export-secret-key $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+      gpg --import $MY_GPG_PUBLIC_KEY
+      gpg --allow-secret-key-import --import /home/$MY_USERNAME/temp_private_key.txt
+      shred -zu /home/$MY_USERNAME/temp_private_key.txt
   fi
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
@@ -397,9 +412,12 @@ function create_backup_script {
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "duplicity --force cleanup file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n 'duplicity --encrypt-key $GPG_KEY --force cleanup '
+  echo "file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo 'echo "Removing old backups"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n 'duplicity --encrypt-key $GPG_KEY --force remove-all-but-n-full 2 '
+  echo "file://$USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -1611,7 +1629,7 @@ function configure_gpg {
   # if gpg keys directory was previously imported from usb
   if [[ $GPG_KEYS_IMPORTED == "yes" && -d /home/$MY_USERNAME/.gnupg ]]; then
       sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
-	  MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
       echo 'configure_gpg' >> $COMPLETION_FILE
       return
   fi
@@ -1648,7 +1666,7 @@ function configure_gpg {
       su -c "gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY" - $MY_USERNAME
       # for security ensure that the private key file doesn't linger around
       shred -zu $MY_GPG_PRIVATE_KEY
-	  MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
   else
       # Generate a GPG key
       echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
@@ -1661,7 +1679,7 @@ function configure_gpg {
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
       su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
-	  MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
   fi
