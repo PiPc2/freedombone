@@ -26,10 +26,10 @@
 MICROSD_DRIVE=$1
 
 # IP address of the router (gateway)
-ROUTER_IP_ADDRESS="192.168.2.1"
+ROUTER_IP_ADDRESS="192.168.1.254"
 
 # The fixed IP address of the Beaglebone Black on your local network
-BBB_FIXED_IP_ADDRESS="192.168.2.200"
+BBB_FIXED_IP_ADDRESS="192.168.1.60"
 
 MICROSD_MOUNT_POINT="/media/$USER"
 
