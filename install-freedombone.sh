@@ -83,6 +83,16 @@ VARIANT_MEDIA="media"
 
 SSH_PORT=2222
 
+# Why use Google as a time source?
+# The thinking here is that it's likely to be reliable and fast.
+# The ping doesn't reveal any information other than that the server
+# is running, and if anyone maliciously alters the time on Google's
+# servers then that would certainly be newsworthy and they'd be
+# likely to do something about it quickly.
+# If you have better time sources then change them here.
+TLS_TIME_SOURCE1="google.com"
+TLS_TIME_SOURCE2="www.ptb.de"
+
 # kernel specifically tweaked for the Beaglebone Black
 KERNEL_VERSION="v3.15.10-bone7"
 
@@ -1329,8 +1339,8 @@ function time_synchronisation {
   apt-get -y remove ntpdate
 
   echo '#!/bin/bash' > /usr/bin/updatedate
-  echo 'TIMESOURCE=google.com' >> /usr/bin/updatedate
-  echo 'TIMESOURCE2=www.ptb.de' >> /usr/bin/updatedate
+  echo "TIMESOURCE='TLS_TIME_SOURCE1'" >> /usr/bin/updatedate
+  echo "TIMESOURCE2='TLS_TIME_SOURCE2'" >> /usr/bin/updatedate
   echo 'LOGFILE=/var/log/tlsdate.log' >> /usr/bin/updatedate
   echo 'TIMEOUT=5' >> /usr/bin/updatedate
   echo "EMAIL=$MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/updatedate
