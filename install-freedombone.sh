@@ -2179,7 +2179,7 @@ function encrypt_all_email {
   echo '     unlink "/tmp/msg_$USERNAME"' >> /usr/bin/encmaildir
   echo 'done' >> /usr/bin/encmaildir
   echo '' >> /usr/bin/encmaildir
-  echo '#Remove Dovecot index and uids for regeneration.' >> /usr/bin/encmaildir
+  echo '# Remove Dovecot index and uids for regeneration.' >> /usr/bin/encmaildir
   echo 'if [ -f "/tmp/rebuild_index_$USERNAME" ]; then' >> /usr/bin/encmaildir
   echo '  echo "Removing Dovecot indexes and uids"' >> /usr/bin/encmaildir
   echo -n '  find "$MAIL_DIR" -type f -regex ' >> /usr/bin/encmaildir
@@ -2193,6 +2193,25 @@ function encrypt_all_email {
   echo 'fi' >> /usr/bin/encmaildir
   echo 'exit 0' >> /usr/bin/encmaildir
   chmod +x /usr/bin/encmaildir
+
+  if [ ! /home/$MY_USERNAME/README ]; then
+      touch /home/$MY_USERNAME/README
+  fi
+  if ! grep -q "If you have imported legacy email" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Encrypting legacy email' >> /home/$MY_USERNAME/README
+      echo '=======================' >> /home/$MY_USERNAME/README
+      echo 'If you have imported legacy email which is not encrypted' >> /home/$MY_USERNAME/README
+      echo 'then it can be encrypted with the command:' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo '  encmaildir' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'But be warned that depending upon how much email you have' >> /home/$MY_USERNAME/README
+      echo 'this could take a seriously LONG time on the Beaglebone' >> /home/$MY_USERNAME/README
+      echo 'and may be better done on a faster machine.' >> /home/$MY_USERNAME/README
+  fi
+
   echo 'encrypt_all_email' >> $COMPLETION_FILE
 }
 
