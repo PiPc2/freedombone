@@ -2095,25 +2095,28 @@ function encrypt_all_email {
   echo '#!/bin/bash' > /usr/bin/encmaildir
   echo '#' >> /usr/bin/encmaildir
   echo '# GPLv2' >> /usr/bin/encmaildir
-  echo '# GPG Encrypt a Maildir using gpgit.pl, removing any S= or W= virtual flags.' >> /usr/bin/encmaildir
+  echo '# GPG Encrypt a Maildir using gpgit.pl' >> /usr/bin/encmaildir
   echo '# Oct 03, 2014' >> /usr/bin/encmaildir
   echo '#' >> /usr/bin/encmaildir
   echo '# Change log:' >> /usr/bin/encmaildir
-  echo '#     Sep 03, 2011' >> /usr/bin/encmaildir
-  echo '#               - Temporary file is based on file_owner to avoid issues with permission differences.' >> /usr/bin/encmaildir
-  echo '#               - Temporary file is removed after run.' >> /usr/bin/encmaildir
-  echo '#               - Optional arguments passed to "find".' >> /usr/bin/encmaildir
-  echo '#               - Full paths to binaries.' >> /usr/bin/encmaildir
-  echo '#               - Removed unneccessary need of "cat", "grep", etc.' >> /usr/bin/encmaildir
-  echo '#     Sep 04, 2011' >> /usr/bin/encmaildir
-  echo '#               - Dont remove Dovecot index/uid unless messages have been GPG encrypted.' >> /usr/bin/encmaildir
-  echo '#               - Adjust file tests to not just use -e' >> /usr/bin/encmaildir
-  echo '#               - Quote all file operations' >> /usr/bin/encmaildir
-  echo '#     Sep 05, 2011' >> /usr/bin/encmaildir
-  echo '#               - Dont arbitrarily copy files, only overwrite the file in ~/Maildir if it differs after calling gpgencmail.pl' >> /usr/bin/encmaildir
-  echo '#               - Only rebuild the index if we have modified ~/Maildir' >> /usr/bin/encmaildir
-  echo '#     Oct 03, 2014' >> /usr/bin/encmaildir
-  echo '#               - Minor modifications for use with Freedombone' >> /usr/bin/encmaildir
+  echo '#   Sep 03, 2011' >> /usr/bin/encmaildir
+  echo '#     - Temporary file is based on file_owner to avoid' >> /usr/bin/encmaildir
+  echo '#        issues with permission differences.' >> /usr/bin/encmaildir
+  echo '#     - Temporary file is removed after run.' >> /usr/bin/encmaildir
+  echo '#     - Optional arguments passed to "find".' >> /usr/bin/encmaildir
+  echo '#     - Full paths to binaries.' >> /usr/bin/encmaildir
+  echo '#     - Removed unneccessary need of "cat", "grep", etc.' >> /usr/bin/encmaildir
+  echo '#   Sep 04, 2011' >> /usr/bin/encmaildir
+  echo '#     - Dont remove Dovecot index/uid unless messages' >> /usr/bin/encmaildir
+  echo '#       have been GPG encrypted.' >> /usr/bin/encmaildir
+  echo '#     - Adjust file tests to not just use -e' >> /usr/bin/encmaildir
+  echo '#     - Quote all file operations' >> /usr/bin/encmaildir
+  echo '#   Sep 05, 2011' >> /usr/bin/encmaildir
+  echo '#     - Dont arbitrarily copy files, only overwrite the file' >> /usr/bin/encmaildir
+  echo '#       in ~/Maildir if it differs after calling gpgencmail.pl' >> /usr/bin/encmaildir
+  echo '#     - Only rebuild the index if we have modified ~/Maildir' >> /usr/bin/encmaildir
+  echo '#   Oct 03, 2014' >> /usr/bin/encmaildir
+  echo '#     - Minor modifications for use with Freedombone' >> /usr/bin/encmaildir
   echo '' >> /usr/bin/encmaildir
   echo 'if [[ -z "$1" || -z "$2" || -z "$3" ]]; then' >> /usr/bin/encmaildir
   echo '  echo "Usage is ./encmaildir.sh    {optional arguments passed to find for messages such as -mtime 0}"' >> /usr/bin/encmaildir
