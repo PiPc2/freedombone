@@ -209,6 +209,9 @@ USB_MOUNT=/mnt/usb
 # Name of a script used to create a backup of the system on usb drive
 BACKUP_SCRIPT_NAME="backup"
 
+# Name of a script used to restore the system from usb drive
+RESTORE_SCRIPT_NAME="restore"
+
 # name of a script used to backup to friends servers
 BACKUP_TO_FRIENDS_SCRIPT_NAME="backup2friends"
 
@@ -218,9 +221,6 @@ RESTORE_FROM_FRIEND_SCRIPT_NAME="restorefromfriend"
 # passphrase used for automatic backups to friends servers
 # this will be automatically generated
 BACKUP_TO_FRIENDS_PASSPHRASE=
-
-# Name of a script used to restore the system from usb drive
-RESTORE_SCRIPT_NAME="restore"
 
 # memory limit for php in MB
 MAX_PHP_MEMORY=32
@@ -232,6 +232,8 @@ MARIADB_PASSWORD=
 XMPP_DIRECTORY="/var/lib/prosody"
 
 # file containing a list of remote locations to backup to
+# Format: [username@friendsdomain//home/username] [ssh_password]
+# With the only space character being between the server and the password
 FRIENDS_SERVERS_LIST="/home/$MY_USERNAME/backup.list"
 
 #list of encryption protocols
@@ -2078,6 +2080,117 @@ function encrypt_outgoing_email {
   service exim4 restart
 
   echo 'encrypt_outgoing_email' >> $COMPLETION_FILE
+}
+
+function encrypt_all_email {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+      return
+  fi
+  if grep -Fxq "encrypt_all_email" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $GPG_ENCRYPT_STORED_EMAIL != "yes" ]]; then
+      return
+  fi
+  echo '#!/bin/bash' > /usr/bin/encmaildir
+  echo '#' >> /usr/bin/encmaildir
+  echo '# GPLv2' >> /usr/bin/encmaildir
+  echo '# GPG Encrypt a Maildir using gpgit.pl, removing any S= or W= virtual flags.' >> /usr/bin/encmaildir
+  echo '# Oct 03, 2014' >> /usr/bin/encmaildir
+  echo '#' >> /usr/bin/encmaildir
+  echo '# Change log:' >> /usr/bin/encmaildir
+  echo '#     Sep 03, 2011' >> /usr/bin/encmaildir
+  echo '#               - Temporary file is based on file_owner to avoid issues with permission differences.' >> /usr/bin/encmaildir
+  echo '#               - Temporary file is removed after run.' >> /usr/bin/encmaildir
+  echo '#               - Optional arguments passed to "find".' >> /usr/bin/encmaildir
+  echo '#               - Full paths to binaries.' >> /usr/bin/encmaildir
+  echo '#               - Removed unneccessary need of "cat", "grep", etc.' >> /usr/bin/encmaildir
+  echo '#     Sep 04, 2011' >> /usr/bin/encmaildir
+  echo '#               - Dont remove Dovecot index/uid unless messages have been GPG encrypted.' >> /usr/bin/encmaildir
+  echo '#               - Adjust file tests to not just use -e' >> /usr/bin/encmaildir
+  echo '#               - Quote all file operations' >> /usr/bin/encmaildir
+  echo '#     Sep 05, 2011' >> /usr/bin/encmaildir
+  echo '#               - Dont arbitrarily copy files, only overwrite the file in ~/Maildir if it differs after calling gpgencmail.pl' >> /usr/bin/encmaildir
+  echo '#               - Only rebuild the index if we have modified ~/Maildir' >> /usr/bin/encmaildir
+  echo '#     Oct 03, 2014' >> /usr/bin/encmaildir
+  echo '#               - Minor modifications for use with Freedombone' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo 'if [[ -z "$1" || -z "$2" || -z "$3" ]]; then' >> /usr/bin/encmaildir
+  echo '  echo "Usage is ./encmaildir.sh    {optional arguments passed to find for messages such as -mtime 0}"' >> /usr/bin/encmaildir
+  echo '  exit 0' >> /usr/bin/encmaildir
+  echo 'fi' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo 'MAIL_DIR=$1' >> /usr/bin/encmaildir
+  echo 'EMAIL_ADDRESS=$2' >> /usr/bin/encmaildir
+  echo 'USERNAME=$3' >> /usr/bin/encmaildir
+  echo 'if [ ! -d "$MAIL_DIR" ]; then' >> /usr/bin/encmaildir
+  echo "  MAIL_DIR='/home/$MY_USERNAME/Maildir'" >> /usr/bin/encmaildir
+  echo 'fi' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo 'if [ ! $EMAIL_ADDRESS ]; then' >> /usr/bin/encmaildir
+  echo "  EMAIL_ADDRESS='$MY_USERNAME@$DOMAIN_NAME'" >> /usr/bin/encmaildir
+  echo 'fi' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo 'if [ ! $USERNAME ]; then' >> /usr/bin/encmaildir
+  echo "  USERNAME='$MY_USERNAME'" >> /usr/bin/encmaildir
+  echo 'fi' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '# Does this key exist?' >> /usr/bin/encmaildir
+  echo 'gpg --list-keys "$EMAIL_ADDRESS" > /dev/null 2>&1' >> /usr/bin/encmaildir
+  echo 'if [ $? -gt 0 ]; then' >> /usr/bin/encmaildir
+  echo '  echo "A GPG key for $EMAIL_ADDRESS could not be found!"' >> /usr/bin/encmaildir
+  echo '  exit 0' >> /usr/bin/encmaildir
+  echo 'fi' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '# Find all files in the Maildir specified.' >> /usr/bin/encmaildir
+  echo 'echo "Calling find"' >> /usr/bin/encmaildir
+  echo -n 'find "$MAIL_DIR" -type f -regex ' >> /usr/bin/encmaildir
+  echo -n "'.*/\(cur\|new\)/.*' " >> /usr/bin/encmaildir
+  echo '$4|while read line; do' >> /usr/bin/encmaildir
+  echo '     gpgit.pl --encrypt-mode prefer-inline "$EMAIL_ADDRESS"  "/tmp/msg_$USERNAME"' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '     # Check to see if there are differences between the existing' >> /usr/bin/encmaildir
+  echo '     # Maildir file and what was created by gpgit.pl' >> /usr/bin/encmaildir
+  echo '     diff -qa "$line" "/tmp/msg_$USERNAME" > /dev/null 2>&1;' >> /usr/bin/encmaildir
+  echo '     if [ $? -gt 0 ]; then' >> /usr/bin/encmaildir
+  echo '       # Preserve timestamps, set ownership.' >> /usr/bin/encmaildir
+  echo '       chown $USERNAME:$USERNAME "/tmp/msg_$USERNAME"' >> /usr/bin/encmaildir
+  echo '       chmod 600   "/tmp/msg_$USERNAME"' >> /usr/bin/encmaildir
+  echo '       touch   "/tmp/msg_$USERNAME" --reference="$line"' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '       # Unlink the original Maildir message' >> /usr/bin/encmaildir
+  echo '       unlink "$line"' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '       # Strip message sizes, retain experimental flags' >> /usr/bin/encmaildir
+  echo '       # and status flags, and copy the file over.' >> /usr/bin/encmaildir
+  echo '       STRIPSIZES=$(/bin/echo "$line"|/bin/sed -e "s/W=[[:digit:]]*//" -e "s/S=[[:digit:]]*//" -e "s/,,//" -e "s/,:2/:2/")' >> /usr/bin/encmaildir
+  echo '       cp -av "/tmp/msg_$USERNAME" "$STRIPSIZES"' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '       #Indexes must be rebuilt, weve modified Maildir.' >> /usr/bin/encmaildir
+  echo '       touch "/tmp/rebuild_index_$USERNAME"' >> /usr/bin/encmaildir
+  echo '     else' >> /usr/bin/encmaildir
+  echo '       echo "Not copying, no differences between /tmp/msg_$USERNAME and $line"' >> /usr/bin/encmaildir
+  echo '     fi' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '     # Remove the temporary file' >> /usr/bin/encmaildir
+  echo '     unlink "/tmp/msg_$USERNAME"' >> /usr/bin/encmaildir
+  echo 'done' >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '#Remove Dovecot index and uids for regeneration.' >> /usr/bin/encmaildir
+  echo 'if [ -f "/tmp/rebuild_index_$USERNAME" ]; then' >> /usr/bin/encmaildir
+  echo '  echo "Removing Dovecot indexes and uids"' >> /usr/bin/encmaildir
+  echo -n '  find "$MAIL_DIR" -type f -regex ' >> /usr/bin/encmaildir
+  echo "'.*\(dovecot-\|dovecot\.\|\.uidvalidity\).*' -delete" >> /usr/bin/encmaildir
+  echo '' >> /usr/bin/encmaildir
+  echo '  # Remove the temporary file' >> /usr/bin/encmaildir
+  echo '  unlink "/tmp/rebuild_index_$USERNAME"' >> /usr/bin/encmaildir
+  echo 'else' >> /usr/bin/encmaildir
+  echo '  echo "No messages found needing GPG encryption, not' >> /usr/bin/encmaildir
+  echo '  echo "removing Dovecot indexes and UIDs."' >> /usr/bin/encmaildir
+  echo 'fi' >> /usr/bin/encmaildir
+  echo 'exit 0' >> /usr/bin/encmaildir
+  chmod +x /usr/bin/encmaildir
+  echo 'encrypt_all_email' >> $COMPLETION_FILE
 }
 
 function email_client {
@@ -4265,6 +4378,7 @@ folders_for_email_addresses
 dynamic_dns_freedns
 create_public_mailing_list
 #create_private_mailing_list
+encrypt_all_email
 import_email
 script_for_attaching_usb_drive
 install_web_server
