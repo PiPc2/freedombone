@@ -2210,6 +2210,7 @@ function encrypt_all_email {
       echo 'But be warned that depending upon how much email you have' >> /home/$MY_USERNAME/README
       echo 'this could take a seriously LONG time on the Beaglebone' >> /home/$MY_USERNAME/README
       echo 'and may be better done on a faster machine.' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
   echo 'encrypt_all_email' >> $COMPLETION_FILE
