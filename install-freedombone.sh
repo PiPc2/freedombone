@@ -2094,9 +2094,6 @@ function configure_imap {
 }
 
 function configure_gpg {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
-      return
-  fi
   if grep -Fxq "configure_gpg" $COMPLETION_FILE; then
       return
   fi
