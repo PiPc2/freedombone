@@ -168,7 +168,7 @@ WIKI_DOMAIN_NAME=
 WIKI_FREEDNS_SUBDOMAIN_CODE=
 WIKI_ARCHIVE="dokuwiki-stable.tgz"
 WIKI_DOWNLOAD="http://download.dokuwiki.org/src/dokuwiki/$WIKI_ARCHIVE"
-WIKI_HASH="a0e79986b87b2744421ce3c33b43a21f296deadd81b1789c25fa4bb095e8e470"
+WIKI_HASH="941b6954d39de57530efbb27d0734b6bc9a49aaa3c781b39f6ecb305322534eb"
 WIKI_INSTALLED="no"
 
 # see https://www.dokuwiki.org/template:mnml-blog
