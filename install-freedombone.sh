@@ -1086,15 +1086,8 @@ function change_debian_repos {
 
   # ensure that there is a security repo
   if ! grep -q "security" /etc/apt/sources.list; then
-      if grep -q "jessie" /etc/apt/sources.list; then
-          echo "deb http://security.debian.org/ jessie/updates main contrib" >> /etc/apt/sources.list
-          echo "#deb-src http://security.debian.org/ jessie/updates main contrib" >> /etc/apt/sources.list
-      else
-          if grep -q "wheezy" /etc/apt/sources.list; then
-              echo "deb http://security.debian.org/ wheezy/updates main contrib" >> /etc/apt/sources.list
-              echo "#deb-src http://security.debian.org/ wheezy/updates main contrib" >> /etc/apt/sources.list
-          fi
-      fi
+      echo "deb http://security.debian.org/ $DEBIAN_VERSION/updates main contrib" >> /etc/apt/sources.list
+      echo "#deb-src http://security.debian.org/ $DEBIAN_VERSION/updates main contrib" >> /etc/apt/sources.list
   fi
 
   apt-get update
@@ -1198,8 +1191,8 @@ function enable_backports {
   if grep -Fxq "enable_backports" $COMPLETION_FILE; then
       return
   fi
-  if ! grep -Fxq "deb http://$DEBIAN_REPO/debian jessie-backports main" /etc/apt/sources.list; then
-    echo "deb http://$DEBIAN_REPO/debian jessie-backports main" >> /etc/apt/sources.list
+  if ! grep -Fxq "deb http://$DEBIAN_REPO/debian $DEBIAN_VERSION-backports main" /etc/apt/sources.list; then
+    echo "deb http://$DEBIAN_REPO/debian $DEBIAN_VERSION-backports main" >> /etc/apt/sources.list
   fi
   echo 'enable_backports' >> $COMPLETION_FILE
 }
