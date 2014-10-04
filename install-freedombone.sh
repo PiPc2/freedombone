@@ -1188,6 +1188,7 @@ function install_editor {
   echo '' >> /home/$MY_USERNAME/.emacs
   echo "(require 'epa)" >> /home/$MY_USERNAME/.emacs
   echo '(epa-file-enable)' >> /home/$MY_USERNAME/.emacs
+  cp /home/$MY_USERNAME/.emacs /root/.emacs
   chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
 
   echo 'install_editor' >> $COMPLETION_FILE
