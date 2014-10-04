@@ -3826,6 +3826,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
