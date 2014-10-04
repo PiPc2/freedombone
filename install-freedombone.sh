@@ -242,7 +242,7 @@ RESTORE_FROM_FRIEND_SCRIPT_NAME="restorefromfriend"
 BACKUP_TO_FRIENDS_PASSPHRASE=
 
 # memory limit for php in MB
-MAX_PHP_MEMORY=32
+MAX_PHP_MEMORY=64
 
 # default MariaDB password
 MARIADB_PASSWORD=
