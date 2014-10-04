@@ -81,6 +81,9 @@ VARIANT_NONMAILBOX="nonmailbox"
 VARIANT_SOCIAL="social"
 VARIANT_MEDIA="media"
 
+# An optional configuration file which overrides some of these variables
+CONFIGURATION_FILE="freedombone.cfg"
+
 SSH_PORT=2222
 
 # Why use Google as a time source?
@@ -304,6 +307,62 @@ function argument_checks {
       if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_NONMAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL && $SYSTEM_TYPE != $VARIANT_MEDIA ]]; then
           echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
           exit 30
+      fi
+  fi
+}
+
+function read_configuration {
+  if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "INSTALLING_ON_BBB" $CONFIGURATION_FILE; then
+          INSTALLING_ON_BBB=$(grep "INSTALLING_ON_BBB" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "SSH_PORT" $CONFIGURATION_FILE; then
+          SSH_PORT=$(grep "SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "INSTALLED_WITHIN_DOCKER" $CONFIGURATION_FILE; then
+          INSTALLED_WITHIN_DOCKER=$(grep "INSTALLED_WITHIN_DOCKER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "PUBLIC_MAILING_LIST" $CONFIGURATION_FILE; then
+          PUBLIC_MAILING_LIST=$(grep "PUBLIC_MAILING_LIST" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "MICROBLOG_DOMAIN_NAME" $CONFIGURATION_FILE; then
+          MICROBLOG_DOMAIN_NAME=$(grep "MICROBLOG_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "MICROBLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
+          MICROBLOG_FREEDNS_SUBDOMAIN_CODE=$(grep "MICROBLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "REDMATRIX_DOMAIN_NAME" $CONFIGURATION_FILE; then
+          REDMATRIX_DOMAIN_NAME=$(grep "REDMATRIX_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "REDMATRIX_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
+          REDMATRIX_FREEDNS_SUBDOMAIN_CODE=$(grep "REDMATRIX_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "OWNCLOUD_DOMAIN_NAME" $CONFIGURATION_FILE; then
+          OWNCLOUD_DOMAIN_NAME=$(grep "OWNCLOUD_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "OWNCLOUD_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
+          OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=$(grep "OWNCLOUD_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIKI_DOMAIN_NAME" $CONFIGURATION_FILE; then
+          WIKI_DOMAIN_NAME=$(grep "WIKI_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIKI_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
+          WIKI_FREEDNS_SUBDOMAIN_CODE=$(grep "WIKI_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE; then
+          GPG_ENCRYPT_STORED_EMAIL=$(grep "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "MY_GPG_PUBLIC_KEY" $CONFIGURATION_FILE; then
+          MY_GPG_PUBLIC_KEY=$(grep "MY_GPG_PUBLIC_KEY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "MY_GPG_PRIVATE_KEY" $CONFIGURATION_FILE; then
+          MY_GPG_PRIVATE_KEY=$(grep "MY_GPG_PRIVATE_KEY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "USB_DRIVE" $CONFIGURATION_FILE; then
+          USB_DRIVE=$(grep "USB_DRIVE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "MAX_PHP_MEMORY" $CONFIGURATION_FILE; then
+          MAX_PHP_MEMORY=$(grep "MAX_PHP_MEMORY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
   fi
 }
@@ -4428,6 +4487,7 @@ function install_final {
   reboot
 }
 
+read_configuration
 argument_checks
 remove_default_user
 configure_firewall
