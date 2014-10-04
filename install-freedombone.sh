@@ -484,7 +484,7 @@ function create_backup_script {
   fi
   if [[ $WIKI_INSTALLED == "yes" ]]; then
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -735,7 +735,7 @@ function backup_to_friends_servers {
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $WIKI_INSTALLED == "yes" ]]; then
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
