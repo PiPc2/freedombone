@@ -380,6 +380,12 @@ function read_configuration {
       if grep -q "MAX_PHP_MEMORY" $CONFIGURATION_FILE; then
           MAX_PHP_MEMORY=$(grep "MAX_PHP_MEMORY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
+      if grep -q "TLS_TIME_SOURCE1" $CONFIGURATION_FILE; then
+          TLS_TIME_SOURCE1=$(grep "TLS_TIME_SOURCE1" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "TLS_TIME_SOURCE2" $CONFIGURATION_FILE; then
+          TLS_TIME_SOURCE2=$(grep "TLS_TIME_SOURCE2" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
   fi
 }
 
