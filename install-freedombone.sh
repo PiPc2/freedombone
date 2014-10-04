@@ -1109,6 +1109,7 @@ function initial_setup {
   apt-get -y remove --purge apache*
   apt-get -y dist-upgrade
   apt-get -y install ca-certificates emacs24
+
   echo 'initial_setup' >> $COMPLETION_FILE
 }
 
@@ -1117,6 +1118,78 @@ function install_editor {
       return
   fi
   update-alternatives --set editor /usr/bin/emacs24
+
+  # A minimal emacs configuration
+  echo "(add-to-list 'load-path "~/.emacs.d/")" > /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Remove trailing whitepace ======================================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ";;(add-hook 'before-save-hook 'delete-trailing-whitespace)" >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; Goto a line number with CTRL-l' >> /home/$MY_USERNAME/.emacs
+  echo -n '(global-set-key "\C-l" ' >> /home/$MY_USERNAME/.emacs
+  echo "'goto-line)" >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Show line numbers ==============================================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo "(add-hook 'find-file-hook (lambda () (linum-mode 1)))" >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Enable line wrapping in org-mode ===============================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo " (add-hook 'org-mode-hook" >> /home/$MY_USERNAME/.emacs
+  echo "           '(lambda ()" >> /home/$MY_USERNAME/.emacs
+  echo "              (visual-line-mode 1)))" >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Enable shift select in org mode ================================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo '(setq org-support-shift-select t)' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Set standard indent to 4 rather that 4 ========================='
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo '(setq standard-indent 4)' >> /home/$MY_USERNAME/.emacs
+  echo '(setq-default tab-width 4)' >> /home/$MY_USERNAME/.emacs
+  echo '(setq c-basic-offset 4)' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Support Wheel Mouse Scrolling ==================================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo '(mouse-wheel-mode t)' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Place Backup Files in Specific Directory =======================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo '(setq make-backup-files t)' >> /home/$MY_USERNAME/.emacs
+  echo '(setq version-control t)' >> /home/$MY_USERNAME/.emacs
+  echo '(setq backup-directory-alist (quote ((".*" . "~/.emacs_backups/"))))' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Make Text mode the default mode for new buffers ================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo "(setq default-major-mode 'text-mode)" >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Line length ====================================================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo '(setq-default fill-column 72)' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Enable Line and Column Numbering ===============================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo '(line-number-mode 1)' >> /home/$MY_USERNAME/.emacs
+  echo '(column-number-mode 1)' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Turn on Auto Fill mode automatically in all modes ==============' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; Auto-fill-mode the the automatic wrapping of lines and insertion of' >> /home/$MY_USERNAME/.emacs
+  echo ';; newlines when the cursor goes over the column limit.' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; This should actually turn on auto-fill-mode by default in all major' >> /home/$MY_USERNAME/.emacs
+  echo ';; modes. The other way to do this is to turn on the fill for specific modes' >> /home/$MY_USERNAME/.emacs
+  echo ';; via hooks.' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo '(setq auto-fill-mode 1)' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo ';; ===== Enable GPG encryption =========================================' >> /home/$MY_USERNAME/.emacs
+  echo '' >> /home/$MY_USERNAME/.emacs
+  echo "(require 'epa)" >> /home/$MY_USERNAME/.emacs
+  echo '(epa-file-enable)' >> /home/$MY_USERNAME/.emacs
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
+
   echo 'install_editor' >> $COMPLETION_FILE
 }
 
