@@ -4119,12 +4119,12 @@ quit" > $INSTALL_DIR/batch.sql
   if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3 ]; then
       mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
   fi
-  if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data] ]; then
-      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]
+  if [ ! -d "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]" ]; then
+      mkdir "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]"
   fi
-  if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3 ]; then
-      mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
-      chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3
+  if [ ! -d "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3" ]; then
+      mkdir "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3"
+      chmod 777 "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3"
   fi
   chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
   chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
