@@ -480,7 +480,7 @@ function create_backup_script {
   fi
   if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if [[ $WIKI_INSTALLED == "yes" ]]; then
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -732,7 +732,7 @@ function backup_to_friends_servers {
       echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $WIKI_INSTALLED == "yes" ]]; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -3031,6 +3031,15 @@ function install_owncloud {
       fi
   else
       echo 'WARNING: No freeDNS subdomain code given for Owncloud. It is assumed that you are using some other dynamic DNS provider.'
+  fi
+
+  if ! grep -q "After creating an administrator account" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Owncloud' >> /home/$MY_USERNAME/README
+      echo '========' >> /home/$MY_USERNAME/README
+      echo 'After creating an administrator account then create a user account via' >> /home/$MY_USERNAME/README
+      echo 'the Users dropdown menu entry. The username should be "$MY_USERNAME".' >> /home/$MY_USERNAME/README
   fi
 
   OWNCLOUD_INSTALLED="yes"
