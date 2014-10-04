@@ -62,6 +62,22 @@
 #
 # If you are not using a Beaglebone Black then just prepare the
 # target system with a fresh installation of Debian Jessie.
+#
+# Configuration file
+# ==================
+# If you don't want to edit this script directly then you can
+# create a configuration file called freedombone.cfg, which should
+# be in the same directory as install-freedombone.sh.
+# Within the configuration file you can specify the main settings
+# such as:
+#
+# INSTALLING_ON_BBB=yes
+# SSH_PORT=2222
+# MICROBLOG_DOMAIN_NAME=mydomain
+# MICROBLOG_FREEDNS_SUBDOMAIN_CODE=[code]
+# ...
+#
+# Note that there are no spaces around the equals.
 
 DOMAIN_NAME=$1
 MY_USERNAME=$2
