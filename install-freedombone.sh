@@ -374,6 +374,9 @@ function read_configuration {
       if grep -q "MY_GPG_PRIVATE_KEY" $CONFIGURATION_FILE; then
           MY_GPG_PRIVATE_KEY=$(grep "MY_GPG_PRIVATE_KEY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
+      if grep -q "MY_GPG_PUBLIC_KEY_ID" $CONFIGURATION_FILE; then
+          MY_GPG_PUBLIC_KEY_ID=$(grep "MY_GPG_PUBLIC_KEY_ID" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "USB_DRIVE" $CONFIGURATION_FILE; then
           USB_DRIVE=$(grep "USB_DRIVE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
