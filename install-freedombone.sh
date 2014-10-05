@@ -3209,6 +3209,19 @@ function install_irc_server {
   sed -i "s/;Name = TheOper/Name = $MY_USERNAME/g" /etc/ngircd/ngircd.conf
   sed -i "s/;Password = ThePwd/Password = $IRC_OPERATOR_PASSWORD/g" /etc/ngircd/ngircd.conf
   service ngircd restart
+
+  if grep -q "IRC Server" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'IRC Server' >> /home/$MY_USERNAME/README
+      echo '==========' >> /home/$MY_USERNAME/README
+      echo 'To connect to your IRC server in irssi:' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "  /server add -auto -ssl $DOMAIN_NAME 6697" >> /home/$MY_USERNAME/README
+      echo "  /connect $DOMAIN_NAME" >> /home/$MY_USERNAME/README
+      echo '  /join #freedombone' >> /home/$MY_USERNAME/README
+  fi
+
   echo 'install_irc_server' >> $COMPLETION_FILE
 }
 
