@@ -726,10 +726,18 @@ function backup_to_friends_servers {
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
-      echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ -f /var/backups/gnusocial_daily.sql ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "  cp /var/backups/gnusocial_daily.sql /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "  mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $REDMATRIX_INSTALLED == "yes" ]]; then
-      echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ -f /var/backups/redmatrix_daily.sql ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "  cp /var/backups/redmatrix_daily.sql /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "  mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
