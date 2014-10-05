@@ -3210,7 +3210,7 @@ function install_irc_server {
   sed -i "s/;Password = ThePwd/Password = $IRC_OPERATOR_PASSWORD/g" /etc/ngircd/ngircd.conf
   service ngircd restart
 
-  if grep -q "IRC Server" /home/$MY_USERNAME/README; then
+  if ! grep -q "IRC Server" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'IRC Server' >> /home/$MY_USERNAME/README
