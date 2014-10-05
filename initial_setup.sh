@@ -20,6 +20,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+# Version number of this script
+VERSION="1.00"
 
 # typically /dev/sdb or /dev/sdc, depending upon how
 # many drives there are on your system

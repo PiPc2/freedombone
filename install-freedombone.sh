@@ -87,6 +87,9 @@ SYSTEM_TYPE=$4
 # Are we installing on a Beaglebone Black (BBB) or some other system?
 INSTALLING_ON_BBB="yes"
 
+# Version number of this script
+VERSION="1.00"
+
 # Different system variants which may be specified within
 # the SYSTEM_TYPE option
 VARIANT_WRITER="writer"
