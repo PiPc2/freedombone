@@ -419,6 +419,14 @@ function import_gpg_key_to_root {
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
   fi
 
+  # if the above fails because the key has an unexpected email address
+  if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
+      # copy the whole keyring from the user
+      cp -r /home/$MY_USERNAME/.gnupg /root
+      # get the first entry, which we assume to be the imported key
+      MY_GPG_PUBLIC_KEY_ID=$(gpg --list-keys | grep "pub " | head -n 1 | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+  fi
+
   # make sure that the root user has access to your gpg public key
   if [ $MY_GPG_PUBLIC_KEY_ID ]; then
       su -c "gpg --export-ownertrust > ~/temp_trust.txt" - $MY_USERNAME
