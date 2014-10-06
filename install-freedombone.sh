@@ -1706,6 +1706,7 @@ function configure_firewall_for_irc {
       return
   fi
   iptables -A INPUT -i eth0 -p tcp --dport 6697  -j ACCEPT
+  iptables -I INPUT -i eth0 -p tcp --dport 1024:65535 --sport 6697 -j ACCEPT
   iptables -A INPUT -i eth0 -p tcp --dport 9999 -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_irc' >> $COMPLETION_FILE
@@ -3177,7 +3178,7 @@ function install_irc_server {
       exit 53
   fi
 
-  if [ ! "/etc/ssl/private/ngircd.key" ]; then
+  if [ ! -f /etc/ssl/private/ngircd.key ]; then
       makecert ngircd
   fi
 
