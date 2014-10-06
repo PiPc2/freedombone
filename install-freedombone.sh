@@ -3200,7 +3200,7 @@ function install_irc_server {
   sed -i 's/;Topic = Our ngircd testing channel/Topic = Freedombone chat channel/g' /etc/ngircd/ngircd.conf
   sed -i 's/;MaxUsers = 23/MaxUsers = 23/g' /etc/ngircd/ngircd.conf
   sed -i 's|;KeyFile = /etc/ngircd/#chan.key|KeyFile = /etc/ngircd/#freedombone.key|g' /etc/ngircd/ngircd.conf
-  sed -i 's/;CloakHost = cloaked.host/CloakHost = cloaked.host/g' /etc/ngircd/ngircd.conf
+  sed -i 's/;CloakHost = cloaked.host/CloakHost = freedombone/g' /etc/ngircd/ngircd.conf
   IRC_SALT=$(openssl rand -base64 32)
   IRC_OPERATOR_PASSWORD=$(openssl rand -base64 8)
   sed -i "s|;CloakHostSalt = abcdefghijklmnopqrstuvwxyz|CloakHostSalt = $IRC_SALT|g" /etc/ngircd/ngircd.conf
