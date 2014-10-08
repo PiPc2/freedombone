@@ -27,6 +27,7 @@ To get started you will need:
  - USB thumb drive (for backups or storing media)
  - A subdomain created on https://freedns.afraid.org
  - A purchased domain name and SSL certificate (only needed for Red Matrix)
+ - A laptop or desktop machine with the ability to write to a microSD card (might need an adaptor)
 
 You will also need to know, or find out, the IP address of your internet router and have a suitable static IP address for the Beaglebone on your local network. The router should allow you to forward ports to the Beaglebone (often this is under firewall or "advanced" settings).
 
