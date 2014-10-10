@@ -228,6 +228,9 @@ USB_DRIVE=/dev/sda1
 # Location where the USB drive is mounted to
 USB_MOUNT=/mnt/usb
 
+# name of a script used to upgrade the system
+UPGRADE_SCRIPT_NAME="freedombone-upgrade"
+
 # Name of a script used to create a backup of the system on usb drive
 BACKUP_SCRIPT_NAME="backup"
 
@@ -4501,6 +4504,35 @@ function install_mediagoblin {
   echo 'install_mediagoblin' >> $COMPLETION_FILE
 }
 
+function create_upgrade_script {
+  if grep -Fxq "create_upgrade_script" $COMPLETION_FILE; then
+      return
+  fi
+  echo '#!/bin/bash' > /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo 'apt-get -y update' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo 'apt-get -y --force-yes upgrade' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  if [ $REDMATRIX_DOMAIN_NAME ]; then
+      echo "cd /var/www/$REDMATRIX_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo "cd /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/addon" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  fi
+  if [ $MICROBLOG_DOMAIN_NAME ]; then
+      echo "cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  fi
+  echo 'exit 0' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  chmod +x /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo 'create_upgrade_script' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -4549,6 +4581,7 @@ check_hwrng
 search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
+create_upgrade_script
 configure_email
 create_procmail
 #spam_filtering
