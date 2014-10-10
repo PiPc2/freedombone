@@ -267,6 +267,9 @@ SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 # list of ciphers to use.  See bettercrypto.org recommendations
 SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA"
 
+# the default email address
+MY_EMAIL_ADDRESS=$MY_USERNAME@$DOMAIN_NAME
+
 export DEBIAN_FRONTEND=noninteractive
 
 # File which keeps track of what has already been installed
@@ -335,6 +338,9 @@ function argument_checks {
 
 function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "MY_EMAIL_ADDRESS" $CONFIGURATION_FILE; then
+          MY_EMAIL_ADDRESS=$(grep "MY_EMAIL_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "INSTALLING_ON_BBB" $CONFIGURATION_FILE; then
           INSTALLING_ON_BBB=$(grep "INSTALLING_ON_BBB" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -425,7 +431,7 @@ function import_gpg_key_to_root {
   apt-get -y --force-yes install gnupg
 
   if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
   fi
 
   # if the above fails because the key has an unexpected email address
@@ -1518,7 +1524,7 @@ function time_synchronisation {
   echo "TIMESOURCE2='TLS_TIME_SOURCE2'" >> /usr/bin/updatedate
   echo 'LOGFILE=/var/log/tlsdate.log' >> /usr/bin/updatedate
   echo 'TIMEOUT=5' >> /usr/bin/updatedate
-  echo "EMAIL=$MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/updatedate
+  echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/updatedate
   echo '# File which contains the previous date as a number' >> /usr/bin/updatedate
   echo 'BEFORE_DATE_FILE=/var/log/tlsdateprevious.txt' >> /usr/bin/updatedate
   echo '# File which contains the previous date as a string' >> /usr/bin/updatedate
@@ -2130,7 +2136,7 @@ function configure_gpg {
   # if gpg keys directory was previously imported from usb
   if [[ $GPG_KEYS_IMPORTED == "yes" && -d /home/$MY_USERNAME/.gnupg ]]; then
       sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
       echo 'configure_gpg' >> $COMPLETION_FILE
       return
   fi
@@ -2167,20 +2173,20 @@ function configure_gpg {
       su -c "gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY" - $MY_USERNAME
       # for security ensure that the private key file doesn't linger around
       shred -zu $MY_GPG_PRIVATE_KEY
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
   else
       # Generate a GPG key
       echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo "Name-Real:  $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
-      echo "Name-Email: $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo "Name-Real:  $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
+      echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
       su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$DOMAIN_NAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
   fi
@@ -2213,7 +2219,7 @@ function encrypt_incoming_email {
   if ! grep -q "/usr/bin/gpgit.pl" /home/$MY_USERNAME/.procmailrc; then
       echo '' >> /home/$MY_USERNAME/.procmailrc
       echo ':0 f' >> /home/$MY_USERNAME/.procmailrc
-      echo "| /usr/bin/gpgit.pl $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/.procmailrc
+      echo "| /usr/bin/gpgit.pl $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/.procmailrc
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.procmailrc
   fi
   echo 'encrypt_incoming_email' >> $COMPLETION_FILE
@@ -2304,7 +2310,7 @@ function encrypt_all_email {
   echo 'fi' >> /usr/bin/encmaildir
   echo '' >> /usr/bin/encmaildir
   echo 'if [ ! $EMAIL_ADDRESS ]; then' >> /usr/bin/encmaildir
-  echo "  EMAIL_ADDRESS='$MY_USERNAME@$DOMAIN_NAME'" >> /usr/bin/encmaildir
+  echo "  EMAIL_ADDRESS='$MY_EMAIL_ADDRESS'" >> /usr/bin/encmaildir
   echo 'fi' >> /usr/bin/encmaildir
   echo '' >> /usr/bin/encmaildir
   echo 'if [ ! $USERNAME ]; then' >> /usr/bin/encmaildir
@@ -2760,7 +2766,7 @@ function create_private_mailing_list {
   ln -s /var/lib/gems/2.1.0/gems/schleuder-2.2.4 /var/lib/schleuder
   sed -i 's/#smtp_port: 25/smtp_port: 465/g' /etc/schleuder/schleuder.conf
   sed -i 's/#superadminaddr: root@localhost/superadminaddr: root@localhost' /etc/schleuder/schleuder.conf
-  schleuder-newlist $PRIVATE_MAILING_LIST@$DOMAIN_NAME -realname "$PRIVATE_MAILING_LIST" -adminaddress $MY_USERNAME@$DOMAIN_NAME -initmember $MY_USERNAME@$DOMAIN_NAME -initmemberkey $MY_GPG_PUBLIC_KEY -nointeractive
+  schleuder-newlist $PRIVATE_MAILING_LIST@$DOMAIN_NAME -realname "$PRIVATE_MAILING_LIST" -adminaddress $MY_EMAIL_ADDRESS -initmember $MY_EMAIL_ADDRESS -initmemberkey $MY_GPG_PUBLIC_KEY -nointeractive
   addemailtofolder $MY_USERNAME $PRIVATE_MAILING_LIST@$DOMAIN_NAME $PRIVATE_MAILING_LIST
 
   echo 'schleuder:' > /etc/exim4/conf.d/router/550_exim4-config_schleuder
@@ -3163,7 +3169,7 @@ function install_xmpp {
       echo "Your XMPP password is: $XMPP_PASSWORD" >> /home/$MY_USERNAME/README
       echo 'You can change it with: ' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      echo "    prosodyctl passwd $MY_USERNAME@$DOMAIN_NAME" >> /home/$MY_USERNAME/README
+      echo "    prosodyctl passwd $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
   echo 'install_xmpp' >> $COMPLETION_FILE
@@ -3193,7 +3199,7 @@ function install_irc_server {
   echo '*               Freedom in the Cloud             *' >> /etc/ngircd/motd
   echo '**************************************************' >> /etc/ngircd/motd
   sed -i 's|MotdFile = /etc/ngircd/ngircd.motd|MotdFile = /etc/ngircd/motd|g' /etc/ngircd/ngircd.conf
-  sed -i "s/irc@irc.example.com/$MY_USERNAME@$DOMAIN_NAME/g" /etc/ngircd/ngircd.conf
+  sed -i "s/irc@irc.example.com/$MY_EMAIL_ADDRESS/g" /etc/ngircd/ngircd.conf
   sed -i "s/irc.example.net/$DOMAIN_NAME/g" /etc/ngircd/ngircd.conf
   sed -i "s|Yet another IRC Server running on Debian GNU/Linux|IRC Server of $DOMAIN_NAME|g" /etc/ngircd/ngircd.conf
   sed -i 's/;Password = wealllikedebian/Password =/g' /etc/ngircd/ngircd.conf
@@ -3627,7 +3633,7 @@ function backup_databases_script_header {
       # daily
       echo '#!/bin/sh' > /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
-      echo "EMAIL='$MY_USERNAME@$DOMAIN_NAME'" >> /usr/bin/backupdatabases
+      echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
       echo "MYSQL_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/backupdatabases
       echo 'umask 0077' >> /usr/bin/backupdatabases
@@ -3669,7 +3675,7 @@ function repair_databases_script {
   echo '#!/bin/bash' > /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
   echo 'DATABASE=$1' >> /usr/bin/repairdatabase
-  echo "EMAIL=$MY_USERNAME@$DOMAIN_NAME" >> /usr/bin/repairdatabase
+  echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
   echo "MYSQL_ROOT_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/repairdatabase
   echo 'TEMPFILE=/root/repairdatabase_$DATABASE' >> /usr/bin/repairdatabase
@@ -4445,7 +4451,7 @@ function install_mediagoblin {
   ln -s /etc/uwsgi/apps-available/mg.yaml /etc/uwsgi/apps-enabled/
 
   # change settings
-  sed -i "s/notice@mediagoblin.example.org/$MY_USERNAME@$DOMAIN_NAME/g" $MEDIAGOBLIN_PATH/mediagoblin_local.ini
+  sed -i "s/notice@mediagoblin.example.org/$MY_EMAIL_ADDRESS/g" $MEDIAGOBLIN_PATH/mediagoblin_local.ini
   sed -i 's/email_debug_mode = true/email_debug_mode = false/g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
   sed -i 's|# sql_engine = postgresql:///mediagoblin|sql_engine = postgresql:///mediagoblin|g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
 
