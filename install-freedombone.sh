@@ -259,7 +259,7 @@ XMPP_DIRECTORY="/var/lib/prosody"
 # file containing a list of remote locations to backup to
 # Format: [username@friendsdomain//home/username] [ssh_password]
 # With the only space character being between the server and the password
-FRIENDS_SERVERS_LIST="/home/$MY_USERNAME/backup.list"
+FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
 
 #list of encryption protocols
 SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
@@ -3876,14 +3876,14 @@ quit" > $INSTALL_DIR/batch.sql
   echo '# Backup the GNU Social database' >> /usr/bin/backupdatabases
   echo 'TEMPFILE=/root/gnusocial.sql' >> /usr/bin/backupdatabases
   echo 'DAILYFILE=/var/backups/gnusocial_daily.sql' >> /usr/bin/backupdatabases
-  echo 'mysqldump --password=$MYSQL_PASSWORD gnusocial > $TEMPFILE' >> /usr/bin/backupdatabases
+  echo 'mysqldump --password="$MYSQL_PASSWORD" gnusocial > $TEMPFILE' >> /usr/bin/backupdatabases
   echo 'FILESIZE=$(stat -c%s $TEMPFILE)' >> /usr/bin/backupdatabases
   echo 'if [ "$FILESIZE" -eq "0" ]; then' >> /usr/bin/backupdatabases
   echo '    if [ -f $DAILYFILE ]; then' >> /usr/bin/backupdatabases
   echo '        cp $DAILYFILE $TEMPFILE' >> /usr/bin/backupdatabases
   echo '' >> /usr/bin/backupdatabases
   echo '        # try to restore yesterdays database' >> /usr/bin/backupdatabases
-  echo '        mysql -u root --password=$MYSQL_PASSWORD gnusocial -o < $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '        mysql -u root --password="$MYSQL_PASSWORD" gnusocial -o < $DAILYFILE' >> /usr/bin/backupdatabases
   echo '' >> /usr/bin/backupdatabases
   echo '        # Send a warning email' >> /usr/bin/backupdatabases
   echo '        echo "Unable to create a backup of the GNU Social database. Attempted to restore from yesterdays backup" | mail -s "GNU Social backup" $EMAIL' >> /usr/bin/backupdatabases
@@ -4158,14 +4158,14 @@ quit" > $INSTALL_DIR/batch.sql
   echo '# Backup the Red Matrix database' >> /usr/bin/backupdatabases
   echo 'TEMPFILE=/root/redmatrix.sql' >> /usr/bin/backupdatabases
   echo 'DAILYFILE=/var/backups/redmatrix_daily.sql' >> /usr/bin/backupdatabases
-  echo 'mysqldump --password=$MYSQL_PASSWORD redmatrix > $TEMPFILE' >> /usr/bin/backupdatabases
+  echo 'mysqldump --password="$MYSQL_PASSWORD" redmatrix > $TEMPFILE' >> /usr/bin/backupdatabases
   echo 'FILESIZE=$(stat -c%s $TEMPFILE)' >> /usr/bin/backupdatabases
   echo 'if [ "$FILESIZE" -eq "0" ]; then' >> /usr/bin/backupdatabases
   echo '    if [ -f $DAILYFILE ]; then' >> /usr/bin/backupdatabases
   echo '        cp $DAILYFILE $TEMPFILE' >> /usr/bin/backupdatabases
   echo '' >> /usr/bin/backupdatabases
   echo '        # try to restore yesterdays database' >> /usr/bin/backupdatabases
-  echo '        mysql -u root --password=$MYSQL_PASSWORD redmatrix -o < $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '        mysql -u root --password="$MYSQL_PASSWORD" redmatrix -o < $DAILYFILE' >> /usr/bin/backupdatabases
   echo '' >> /usr/bin/backupdatabases
   echo '        # Send a warning email' >> /usr/bin/backupdatabases
   echo '        echo "Unable to create a backup of the Red Matrix database. Attempted to restore from yesterdays backup" | mail -s "Red Matrix backup" $EMAIL' >> /usr/bin/backupdatabases
