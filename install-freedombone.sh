@@ -155,33 +155,17 @@ REDMATRIX_REPO="https://github.com/friendica/red.git"
 REDMATRIX_ADDONS_REPO="https://github.com/friendica/red-addons.git"
 REDMATRIX_ADMIN_PASSWORD=
 
-# Domain name or freedns subdomain for Owncloud installation
+# Domain name and freedns subdomain for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
-# Freedns dynamic dns code for owncloud
 OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
 
-# Domain name or freedns subdomain for your wiki
+# Domain name and freedns subdomain for your wiki
 WIKI_DOMAIN_NAME=
-# Freedns dynamic dns code for the wiki
 WIKI_FREEDNS_SUBDOMAIN_CODE=
 
-# see https://www.dokuwiki.org/template:mnml-blog
-# https://andreashaerter.com/tmp/downloads/dokuwiki-template-mnml-blog/CHECKSUMS.asc
-WIKI_MNML_BLOG_ADDON_ARCHIVE="mnml-blog.tar.gz"
-WIKI_MNML_BLOG_ADDON="https://andreashaerter.com/downloads/dokuwiki-template-mnml-blog/latest"
-WIKI_MNML_BLOG_ADDON_HASH="428c280d09ee14326fef5cd6f6772ecfcd532f7b6779cd992ff79a97381cf39f"
-
-# see https://www.dokuwiki.org/plugin:blogtng
-WIKI_BLOGTNG_ADDON_NAME="dokufreaks-plugin-blogtng-93a3fec"
-WIKI_BLOGTNG_ADDON_ARCHIVE="$WIKI_BLOGTNG_ADDON_NAME.zip"
-WIKI_BLOGTNG_ADDON="https://github.com/dokufreaks/plugin-blogtng/zipball/master"
-WIKI_BLOGTNG_ADDON_HASH="212b3ad918fdc92b2d49ef5d36bc9e086eab27532931ba6b87e05f35fd402a27"
-
-# see https://www.dokuwiki.org/plugin:sqlite
-WIKI_SQLITE_ADDON_NAME="cosmocode-sqlite-7be4003"
-WIKI_SQLITE_ADDON_ARCHIVE="$WIKI_SQLITE_ADDON_NAME.tar.gz"
-WIKI_SQLITE_ADDON="https://github.com/cosmocode/sqlite/tarball/master"
-WIKI_SQLITE_ADDON_HASH="930335e647c7e62f3068689c256ee169fad2426b64f8360685d391ecb5eeda0c"
+# Domain name and freedns subdomain for your blog
+BLOG_DOMAIN_NAME=
+BLOG_FREEDNS_SUBDOMAIN_CODE=
 
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
@@ -368,6 +352,12 @@ function read_configuration {
       if grep -q "WIKI_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
           WIKI_FREEDNS_SUBDOMAIN_CODE=$(grep "WIKI_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
+      if grep -q "BLOG_DOMAIN_NAME" $CONFIGURATION_FILE; then
+          BLOG_DOMAIN_NAME=$(grep "BLOG_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "BLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
+          BLOG_FREEDNS_SUBDOMAIN_CODE=$(grep "BLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE; then
           GPG_ENCRYPT_STORED_EMAIL=$(grep "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -499,6 +489,10 @@ function create_backup_script {
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
+  if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$BLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -667,8 +661,15 @@ function create_restore_script {
 
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  echo "Restoring Wiki / Blog"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restoring Wiki"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  fi
+
+  if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/blog.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restoring blog"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/blog.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
@@ -764,6 +765,9 @@ function backup_to_friends_servers {
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  fi
+  if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$BLOG_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -952,8 +956,15 @@ function restore_from_friend {
 
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring Wiki / Blog"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  echo "Restoring Wiki"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  fi
+
+  if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      echo "if [ -f /home/$MY_USERNAME/tempfiles/blog.tar.gz ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  echo "Restoring Blog"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/blog.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
@@ -3447,121 +3458,103 @@ function install_blog {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       return
   fi
-  # if everything is being installed or if this is exclusively a writer setup
-  if [[ ! $SYSTEM_TYPE || $SYSTEM_TYPE == "$VARIANT_WRITER" ]]; then
-      WIKI_DOMAIN_NAME=$DOMAIN_NAME
-      WIKI_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
-  fi
-  if [ ! $WIKI_DOMAIN_NAME ]; then
-      return
+  if [ ! $BLOG_DOMAIN_NAME ]; then
+	  return
   fi
 
-  apt-get -y --force-yes install unzip
-
-  # download mnml-blog
-  cd $INSTALL_DIR
-  rm -f latest
-  wget $WIKI_MNML_BLOG_ADDON
-  if [ ! -f "$INSTALL_DIR/latest" ]; then
-      echo 'Dokuwiki mnml-blog addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_MNML_BLOG_ADDON at the top of this script as needed.'
-      exit 21
-  fi
-  mv latest $WIKI_MNML_BLOG_ADDON_ARCHIVE
-
-  # Check that the mnml-blog download hash is correct
-  CHECKSUM=$(sha256sum $WIKI_MNML_BLOG_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
-  if [[ $CHECKSUM != $WIKI_MNML_BLOG_ADDON_HASH ]]; then
-      echo 'The sha256 hash of the mnml-blog download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki mnmlblog web site and alter WIKI_MNML_BLOG_ADDON_HASH if needed.'
-      echo $CHECKSUM
-      echo $WIKI_MNML_BLOG_ADDON_HASH
-      exit 22
+  if [ ! -d /var/www/$BLOG_DOMAIN_NAME ]; then
+	  mkdir /var/www/$BLOG_DOMAIN_NAME
   fi
 
-  # download blogTNG
-  wget $WIKI_BLOGTNG_ADDON
-  if [ ! -f "$INSTALL_DIR/master" ]; then
-      echo 'Dokuwiki blogTNG addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_BLOGTNG_ADDON at the top of this script as needed.'
-      exit 23
-  fi
-  mv master $WIKI_BLOGTNG_ADDON_ARCHIVE
+  cd /var/www/$BLOG_DOMAIN_NAME
+  git clone https://github.com/danpros/htmly htdocs
 
-  # Check that the blogTNG hash is correct
-  CHECKSUM=$(sha256sum $WIKI_BLOGTNG_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
-  if [[ $CHECKSUM != $WIKI_BLOGTNG_ADDON_HASH ]]; then
-      echo 'The sha256 hash of the blogTNG download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki blogTNG web site and alter WIKI_BLOGTNG_ADDON_HASH if needed.'
-      echo $CHECKSUM
-      echo $WIKI_BLOGTNG_ADDON_HASH
-      exit 24
+  if [ ! -f /etc/ssl/private/$BLOG_DOMAIN_NAME.key ]; then
+      makecert $BLOG_DOMAIN_NAME
   fi
 
-  # download dokuwiki sqlite plugin
-  wget $WIKI_SQLITE_ADDON
-  if [ ! -f "$INSTALL_DIR/master" ]; then
-      echo 'Dokuwiki sqlite addon could not be downloaded. Check the Dokuwiki web site and alter WIKI_SQLITE_ADDON at the top of this script as needed.'
-      exit 25
-  fi
-  mv master $WIKI_SQLITE_ADDON_ARCHIVE
+  echo 'server {' > /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  listen 80;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  index index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '     deny all;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  location / {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo 'server {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  listen 443;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access_ssl.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  index index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    ssl on;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$BLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$BLOG_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$BLOG_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '     deny all;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  location / {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
 
-  # Check that the sqlite plugin hash is correct
-  CHECKSUM=$(sha256sum $WIKI_SQLITE_ADDON_ARCHIVE | awk -F ' ' '{print $1}')
-  if [[ $CHECKSUM != $WIKI_SQLITE_ADDON_HASH ]]; then
-      echo 'The sha256 hash of the Dokuwiki sqlite download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki sqlite plugin web site and alter WIKI_SQLITE_ADDON_HASH if needed.'
-      echo $CHECKSUM
-      echo $WIKI_SQLITE_ADDON_HASH
-      exit 26
-  fi
+  configure_php
 
-  # install dokuwiki sqlite plugin
-  tar -xzvf $WIKI_SQLITE_ADDON_ARCHIVE
-  if [ -d "$INSTALL_DIR/sqlite" ]; then
-      rm -rf $INSTALL_DIR/sqlite
-  fi
-  mv $WIKI_SQLITE_ADDON_NAME sqlite
-  cp -r sqlite /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
+  nginx_ensite $BLOG_DOMAIN_NAME
+  service php5-fpm restart
+  service nginx restart
 
-  # install blogTNG
-  if [ -d "$INSTALL_DIR/$WIKI_BLOGTNG_ADDON_NAME" ]; then
-      rm -rf $INSTALL_DIR/$WIKI_BLOGTNG_ADDON_NAME
-  fi
-  unzip $WIKI_BLOGTNG_ADDON_ARCHIVE
-  if [ -d "$INSTALL_DIR/blogtng" ]; then
-      rm -rf $INSTALL_DIR/blogtng
-  fi
-  mv $WIKI_BLOGTNG_ADDON_NAME blogtng
-  cp -r blogtng /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/
-
-  # install mnml-blog
-  tar -xzvf $WIKI_MNML_BLOG_ADDON_ARCHIVE
-  cp -r mnml-blog /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl
-  cp -r /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/tpl/mnml-blog/blogtng-tpl/* /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/default/
-
-  # make a "freedombone" template so that if the default template gets
-  # changed after an upgrade to blogTNG this doesn't necessarily change the appearance
-  cp -r /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/default /var/www/$WIKI_DOMAIN_NAME/htdocs/lib/plugins/blogtng/tpl/freedombone
-
-  if ! grep -q "To set up your blog" /home/$MY_USERNAME/README; then
-      echo '' >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      echo 'Blog' >> /home/$MY_USERNAME/README
-      echo '====' >> /home/$MY_USERNAME/README
-      echo "To set up your blog go to" >> /home/$MY_USERNAME/README
-      echo "https://$WIKI_DOMAIN_NAME/doku.php?id=start&do=admin&page=config" >> /home/$MY_USERNAME/README
-      echo 'and set the template to mnml-blog' >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      echo 'To edit things on the right hand sidebar (links, blogroll, etc) go to' >> /home/$MY_USERNAME/README
-      echo "https://$WIKI_DOMAIN_NAME/doku.php?id=wiki:navigation_sidebar" >> /home/$MY_USERNAME/README
-      echo 'and edit the page' >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      echo 'To edit things to a header bar (home, contacts, etc) go to' >> /home/$MY_USERNAME/README
-      echo "https://$WIKI_DOMAIN_NAME/doku.php?id=wiki:navigation_header" >> /home/$MY_USERNAME/README
-      echo 'and select the "create this page" at the bottom.' >> /home/$MY_USERNAME/README
-      echo 'You can then add somethething like:' >> /home/$MY_USERNAME/README
-      echo '  * [[:start|Home]]' >> /home/$MY_USERNAME/README
-      echo '  * [[:wiki|Wiki]]' >> /home/$MY_USERNAME/README
-      echo '  * [[:contact|Contact]]' >> /home/$MY_USERNAME/README
-      echo "Go to https://$WIKI_DOMAIN_NAME/doku.php?id=start&do=admin&page=config" >> /home/$MY_USERNAME/README
-      echo 'and check "Show header navigation" to ensure that the header shows' >> /home/$MY_USERNAME/README
-      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  # update the dynamic DNS
+  if [ $BLOG_FREEDNS_SUBDOMAIN_CODE ]; then
+      if [[ $BLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+          if ! grep -q "$BLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
+              echo "# $BLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
+              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$BLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+          fi
+      fi
+  else
+      echo 'WARNING: No freeDNS subdomain code given for blog installation. It is assumed that you are using some other dynamic DNS provider.'
   fi
 
   echo 'install_blog' >> $COMPLETION_FILE
@@ -4514,7 +4507,7 @@ function create_upgrade_script {
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y update' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y --force-yes upgrade' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  if [ $REDMATRIX_DOMAIN_NAME ]; then
+  if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo "cd /var/www/$REDMATRIX_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
@@ -4524,8 +4517,14 @@ function create_upgrade_script {
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
-  if [ $MICROBLOG_DOMAIN_NAME ]; then
+  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo "cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  fi
+  if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      echo "cd /var/www/$BLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
