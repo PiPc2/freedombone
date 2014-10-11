@@ -4557,7 +4557,7 @@ function intrusion_detection {
 
   reset-tripwire
   sed -i 's/SYSLOGREPORTING =true/#SYSLOGREPORTING =false/g' /etc/tripwire/twcfg.txt
-  sed -i '/# These files change the behavior of the root account/,/}/ s/.*/d' /etc/tripwire/twpol.txt
+  sed -i '/# These files change the behavior of the root account/,/}/ s/.*//g' /etc/tripwire/twpol.txt
   reset-tripwire
 
   echo 'intrusion_detection' >> $COMPLETION_FILE
