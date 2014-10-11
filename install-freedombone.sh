@@ -3839,11 +3839,11 @@ function install_blog {
 
   # blog settings
   cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/site.url.*/site.url = 'https://$FULLBLOG_DOMAIN_NAME'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/blog.title.*/blog.title = '$MY_BLOG_TITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/blog.tagline.*/blog.tagline = '$MY_BLOG_SUBTITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s|site.url.*|site.url = 'https://$FULLBLOG_DOMAIN_NAME'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s|blog.title.*|blog.title = '$MY_BLOG_TITLE'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s|blog.tagline.*|blog.tagline = '$MY_BLOG_SUBTITLE'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/Your name/$MY_NAME/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s|Your name|$MY_NAME|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
 
   # create a user password
   get_blog_admin_password
@@ -3862,7 +3862,7 @@ function install_blog {
 
   # create a user
   cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/username.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-  HASHED_BLOG_PASSWORD="$(echo -n '$FULLBLOG_ADMIN_PASSWORD' | sha256sum)"
+  HASHED_BLOG_PASSWORD="$(echo -n '$FULLBLOG_ADMIN_PASSWORD' | sha256sum  | awk -F ' ' '{print $1}')"
   sed -i "s|yourpassword|'$HASHED_BLOG_PASSWORD'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
   sed -i 's/encryption = clear/encryption = sha256/g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
 
