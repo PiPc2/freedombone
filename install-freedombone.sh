@@ -583,13 +583,14 @@ function create_backup_script {
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'sync' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Removing temporary files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'sync' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'echo "Backup to USB drive is complete. You can now unplug it."' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$BACKUP_SCRIPT_NAME
   chmod 400 /usr/bin/$BACKUP_SCRIPT_NAME
@@ -694,6 +695,7 @@ function create_restore_script {
 
   echo 'sync' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'echo "Restore from USB drive is complete. You can now remove it."' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
   chmod 400 /usr/bin/$RESTORE_SCRIPT_NAME
