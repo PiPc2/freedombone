@@ -3868,6 +3868,36 @@ function install_blog {
   sed -i "s|yourpassword|$HASHED_BLOG_PASSWORD|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
   sed -i 's/encryption = clear/encryption = "sha256"/g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
 
+  # Ensure that the database gets backed up locally, if remote
+  # backups are not being used
+  backup_databases_script_header
+  echo '' >> /usr/bin/backupdatabases
+  echo '# Backup Owncloud database' >> /usr/bin/backupdatabases
+  echo 'TEMPFILE=/root/owncloud.sql' >> /usr/bin/backupdatabases
+  echo 'DAILYFILE=/var/backups/owncloud_daily.sql' >> /usr/bin/backupdatabases
+  echo 'mysqldump --password="$MYSQL_PASSWORD" owncloud > $TEMPFILE' >> /usr/bin/backupdatabases
+  echo 'FILESIZE=$(stat -c%s $TEMPFILE)' >> /usr/bin/backupdatabases
+  echo 'if [ "$FILESIZE" -eq "0" ]; then' >> /usr/bin/backupdatabases
+  echo '    if [ -f $DAILYFILE ]; then' >> /usr/bin/backupdatabases
+  echo '        cp $DAILYFILE $TEMPFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '        # try to restore yesterdays database' >> /usr/bin/backupdatabases
+  echo '        mysql -u root --password="$MYSQL_PASSWORD" owncloud -o < $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '        # Send a warning email' >> /usr/bin/backupdatabases
+  echo '        echo "Unable to create a backup of the Owncloud database. Attempted to restore from yesterdays backup" | mail -s "Owncloud backup" $EMAIL' >> /usr/bin/backupdatabases
+  echo '    else' >> /usr/bin/backupdatabases
+  echo '        # Send a warning email' >> /usr/bin/backupdatabases
+  echo '        echo "Unable to create a backup of the Owncloud database." | mail -s "Owncloud backup" $EMAIL' >> /usr/bin/backupdatabases
+  echo '    fi' >> /usr/bin/backupdatabases
+  echo 'else' >> /usr/bin/backupdatabases
+  echo '    chmod 600 $TEMPFILE' >> /usr/bin/backupdatabases
+  echo '    mv $TEMPFILE $DAILYFILE' >> /usr/bin/backupdatabases
+  echo '' >> /usr/bin/backupdatabases
+  echo '    # Make the backup readable only by root' >> /usr/bin/backupdatabases
+  echo '    chmod 600 $DAILYFILE' >> /usr/bin/backupdatabases
+  echo 'fi' >> /usr/bin/backupdatabases
+
   nginx_ensite $FULLBLOG_DOMAIN_NAME
   service php5-fpm restart
   service nginx restart
