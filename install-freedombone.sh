@@ -592,6 +592,8 @@ function create_backup_script {
   echo "umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'echo "Backup to USB drive is complete. You can now unplug it."' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  chmod 400 /usr/bin/$BACKUP_SCRIPT_NAME
+  chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'create_backup_script' >> $COMPLETION_FILE
 }
@@ -694,6 +696,8 @@ function create_restore_script {
   echo "umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'echo "Restore from USB drive is complete. You can now remove it."' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  chmod 400 /usr/bin/$RESTORE_SCRIPT_NAME
+  chmod +x /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo 'create_restore_script' >> $COMPLETION_FILE
 }
