@@ -3856,6 +3856,8 @@ function install_blog {
       echo "Your blog username: $MY_USERNAME" >> /home/$MY_USERNAME/README
       echo "Your blog password is: $FULLBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
       echo "Log into your blog at https://$FULLBLOG_DOMAIN_NAME/login" >> /home/$MY_USERNAME/README
+      echo 'Edit your blog title and time zone at:' >> /home/$MY_USERNAME/README
+	  echo "  /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
@@ -3863,8 +3865,8 @@ function install_blog {
   # create a user
   cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/username.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
   HASHED_BLOG_PASSWORD="$(echo -n '$FULLBLOG_ADMIN_PASSWORD' | sha256sum  | awk -F ' ' '{print $1}')"
-  sed -i "s|yourpassword|'$HASHED_BLOG_PASSWORD'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-  sed -i 's/encryption = clear/encryption = sha256/g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+  sed -i "s|yourpassword|$HASHED_BLOG_PASSWORD|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+  sed -i 's/encryption = clear/encryption = "sha256"/g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
 
   nginx_ensite $FULLBLOG_DOMAIN_NAME
   service php5-fpm restart
