@@ -162,10 +162,8 @@ OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
 
 # Domain name or freedns subdomain for your wiki
 WIKI_DOMAIN_NAME=
+# Freedns dynamic dns code for the wiki
 WIKI_FREEDNS_SUBDOMAIN_CODE=
-WIKI_ARCHIVE="dokuwiki-stable.tgz"
-WIKI_DOWNLOAD="http://download.dokuwiki.org/src/dokuwiki/$WIKI_ARCHIVE"
-WIKI_HASH="941b6954d39de57530efbb27d0734b6bc9a49aaa3c781b39f6ecb305322534eb"
 
 # see https://www.dokuwiki.org/template:mnml-blog
 # https://andreashaerter.com/tmp/downloads/dokuwiki-template-mnml-blog/CHECKSUMS.asc
@@ -3227,45 +3225,19 @@ function install_wiki {
   if [ ! $WIKI_DOMAIN_NAME ]; then
       return
   fi
-  apt-get -y --force-yes install php5 php5-gd php-xml-parser php5-intl wget
-  apt-get -y --force-yes install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl bzip2
+  apt-get -y --force-yes instal dokuwiki
 
   if [ ! -d /var/www/$WIKI_DOMAIN_NAME ]; then
       mkdir /var/www/$WIKI_DOMAIN_NAME
   fi
-  if [ ! -d /var/www/$WIKI_DOMAIN_NAME/htdocs ]; then
-      mkdir /var/www/$WIKI_DOMAIN_NAME/htdocs
+  if [ -d /var/www/$WIKI_DOMAIN_NAME/htdocs ]; then
+      rm -rf /var/www/$WIKI_DOMAIN_NAME/htdocs
   fi
-
   if [ ! -f /etc/ssl/private/$WIKI_DOMAIN_NAME.key ]; then
       makecert $WIKI_DOMAIN_NAME
   fi
 
-  # download the archive
-  cd $INSTALL_DIR
-  if [ ! -f $INSTALL_DIR/$WIKI_ARCHIVE ]; then
-      wget $WIKI_DOWNLOAD
-  fi
-  if [ ! -f $INSTALL_DIR/$WIKI_ARCHIVE ]; then
-      echo 'Dokuwiki could not be downloaded.  Check that it exists at '
-      echo $WIKI_DOWNLOAD
-      echo 'And if neccessary update the version number and hash within this script'
-      exit 18
-  fi
-  # Check that the hash is correct
-  CHECKSUM=$(sha256sum $WIKI_ARCHIVE | awk -F ' ' '{print $1}')
-  if [[ $CHECKSUM != $WIKI_HASH ]]; then
-      echo 'The sha256 hash of the Dokuwiki download is incorrect. Possibly the file may have been tampered with. Check the hash on the Dokuwiki web site.'
-      echo $CHECKSUM
-      echo $WIKI_HASH
-      exit 21
-  fi
-
-  tar -xzvf $WIKI_ARCHIVE
-  cd dokuwiki-*
-  mv * /var/www/$WIKI_DOMAIN_NAME/htdocs/
-  chmod -R 755 /var/www/$WIKI_DOMAIN_NAME/htdocs
-  chown -R www-data:www-data /var/www/$WIKI_DOMAIN_NAME/htdocs
+  ln -s /usr/share/dokuwiki /var/www/$WIKI_DOMAIN_NAME/htdocs
 
   if ! grep -q "video/ogg" /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
       echo 'ogv     video/ogg' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
