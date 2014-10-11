@@ -239,7 +239,7 @@ XMPP_DIRECTORY="/var/lib/prosody"
 # With the only space character being between the server and the password
 FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
 
-#list of encryption protocols
+# list of encryption protocols
 SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 
 # list of ciphers to use.  See bettercrypto.org recommendations
@@ -247,6 +247,9 @@ SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRS
 
 # the default email address
 MY_EMAIL_ADDRESS=$MY_USERNAME@$DOMAIN_NAME
+
+# optionally specify your name to appear on the blog
+MY_NAME=$DOMAIN_NAME
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -316,6 +319,9 @@ function argument_checks {
 
 function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "MY_NAME" $CONFIGURATION_FILE; then
+          MY_NAME=$(grep "MY_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "MY_EMAIL_ADDRESS" $CONFIGURATION_FILE; then
           MY_EMAIL_ADDRESS=$(grep "MY_EMAIL_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -3823,10 +3829,11 @@ function install_blog {
 
   configure_php
   cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/site.url.*/site.url = '$FULLBLOG_DOMAIN_NAME'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/site.url.*/site.url = 'https://$FULLBLOG_DOMAIN_NAME'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i "s/blog.title.*/blog.title = '$MY_BLOG_TITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i "s/blog.tagline.*/blog.tagline = '$MY_BLOG_SUBTITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/Your name/$MY_NAME/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
 
   nginx_ensite $FULLBLOG_DOMAIN_NAME
   service php5-fpm restart
