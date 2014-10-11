@@ -2931,7 +2931,7 @@ function install_owncloud {
           return
       fi
   fi
-  apt-get -y --force-yes owncloud
+  apt-get -y --force-yes install owncloud
 
   if [ ! -d /var/www/$OWNCLOUD_DOMAIN_NAME ]; then
       mkdir /var/www/$OWNCLOUD_DOMAIN_NAME
@@ -3236,7 +3236,7 @@ function install_wiki {
   if [ ! $WIKI_DOMAIN_NAME ]; then
       return
   fi
-  apt-get -y --force-yes instal dokuwiki
+  apt-get -y --force-yes install dokuwiki
 
   if [ ! -d /var/www/$WIKI_DOMAIN_NAME ]; then
       mkdir /var/www/$WIKI_DOMAIN_NAME
@@ -4534,6 +4534,27 @@ function create_upgrade_script {
   echo 'create_upgrade_script' >> $COMPLETION_FILE
 }
 
+function intrusion_detection {
+  if grep -Fxq "intrusion_detection" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get install tripwire
+  apt-get -y --force-yes autoremove
+  cd /etc/tripwire
+  cp arm-local.key $DOMAIN_NAME-local.key
+  cp site.key $DOMAIN_NAME-site.key
+  echo ''
+  echo ''
+  echo '*** Installing intrusion detection. You should create a couple of passwords for this. ***'
+  echo ''
+  echo ''
+  tripwire --init
+  tripwire --update-policy --secure-mode low /etc/tripwire/twpol.txt
+  tripwire --check
+
+  echo 'intrusion_detection' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -4543,7 +4564,6 @@ function install_final {
       umount $USB_MOUNT
       rm -rf $USB_MOUNT
   fi
-  apt-get -y --force-yes autoremove
   echo 'install_final' >> $COMPLETION_FILE
   echo ''
   echo '  *** Freedombone installation is complete. Rebooting... ***'
@@ -4617,7 +4637,7 @@ create_backup_script
 create_restore_script
 backup_to_friends_servers
 restore_from_friend
+intrusion_detection
 install_final
-apt-get -y --force-yes autoremove
 echo 'Freedombone installation is complete'
 exit 0
