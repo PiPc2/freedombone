@@ -4542,11 +4542,10 @@ function intrusion_detection {
   apt-get -y --force-yes install tripwire
   apt-get -y --force-yes autoremove
   cd /etc/tripwire
-  cp arm-local.key $DOMAIN_NAME-local.key
   cp site.key $DOMAIN_NAME-site.key
   echo ''
   echo ''
-  echo '*** Installing intrusion detection. You should create a couple of passwords for this. ***'
+  echo '*** Installing intrusion detection. Press Enter when asked for the local and site passphrases. ***'
   echo ''
   echo ''
   tripwire --init
@@ -4558,7 +4557,7 @@ function intrusion_detection {
 
   reset-tripwire
   sed -i 's/SYSLOGREPORTING =true/#SYSLOGREPORTING =false/g' /etc/tripwire/twcfg.txt
-  sed -i '/# These files change the behavior of the root account/,/}/ s/# *//' /etc/tripwire/twpol.txt
+  sed -i '/# These files change the behavior of the root account/,/}/ s/.*/d' /etc/tripwire/twpol.txt
   reset-tripwire
 
   echo 'intrusion_detection' >> $COMPLETION_FILE
