@@ -4542,7 +4542,6 @@ function intrusion_detection {
   apt-get -y --force-yes install tripwire
   apt-get -y --force-yes autoremove
   cd /etc/tripwire
-  cp "-local.key" $DOMAIN_NAME-local.key
   cp site.key $DOMAIN_NAME-site.key
   echo ''
   echo ''
