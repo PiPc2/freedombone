@@ -4550,14 +4550,16 @@ function intrusion_detection {
   echo ''
   echo ''
   tripwire --init
-  sed -i 's/SYSLOGREPORTING =true/#SYSLOGREPORTING =false/g' /etc/tripwire/twcfg.txt
-  sed -i '/# These files change the behavior of the root account/,/}/ s/# *//' /etc/tripwire/twpol.txt
-  tripwire --update-policy --secure-mode low /etc/tripwire/twpol.txt
 
   # make a script for easy resetting of the tripwire
   echo '#!/bin/sh' > /usr/bin/reset-tripwire
   echo 'tripwire --update-policy --secure-mode low /etc/tripwire/twpol.txt' >> /usr/bin/reset-tripwire
   chmod +x /usr/bin/reset-tripwire
+
+  reset-tripwire
+  sed -i 's/SYSLOGREPORTING =true/#SYSLOGREPORTING =false/g' /etc/tripwire/twcfg.txt
+  sed -i '/# These files change the behavior of the root account/,/}/ s/# *//' /etc/tripwire/twpol.txt
+  reset-tripwire
 
   echo 'intrusion_detection' >> $COMPLETION_FILE
 }
