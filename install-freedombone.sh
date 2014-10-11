@@ -3643,6 +3643,14 @@ function install_wiki {
   echo 'install_wiki' >> $COMPLETION_FILE
 }
 
+function get_blog_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "Your blog password is" /home/$MY_USERNAME/README; then
+          FULLBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Your blog password is" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
 function install_blog {
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       return
@@ -3828,12 +3836,35 @@ function install_blog {
   echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
 
   configure_php
+
+  # blog settings
   cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i "s/site.url.*/site.url = 'https://$FULLBLOG_DOMAIN_NAME'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i "s/blog.title.*/blog.title = '$MY_BLOG_TITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i "s/blog.tagline.*/blog.tagline = '$MY_BLOG_SUBTITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
   sed -i "s/Your name/$MY_NAME/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+
+  # create a user password
+  get_blog_admin_password
+  if [ ! $FULLBLOG_ADMIN_PASSWORD ]; then
+      FULLBLOG_ADMIN_PASSWORD=$(openssl rand -base64 32)
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'HTMLy Blog' >> /home/$MY_USERNAME/README
+      echo '==========' >> /home/$MY_USERNAME/README
+      echo "Your blog username: $MY_USERNAME" >> /home/$MY_USERNAME/README
+      echo "Your blog password is: $FULLBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo "Log into your blog at https://$FULLBLOG_DOMAIN_NAME/login" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  # create a user
+  cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/username.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+  HASHED_BLOG_PASSWORD=$(sha256sum $FULLBLOG_ADMIN_PASSWORD)
+  sed -i "s/yourpassword/$HASHED_BLOG_PASSWORD/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+  sed -i 's/encryption = clear/encryption = sha256/g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
 
   nginx_ensite $FULLBLOG_DOMAIN_NAME
   service php5-fpm restart
