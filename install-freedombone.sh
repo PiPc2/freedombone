@@ -4539,7 +4539,7 @@ function intrusion_detection {
   if grep -Fxq "intrusion_detection" $COMPLETION_FILE; then
       return
   fi
-  apt-get install tripwire
+  apt-get -y --force-yes install tripwire
   apt-get -y --force-yes autoremove
   cd /etc/tripwire
   cp arm-local.key $DOMAIN_NAME-local.key
