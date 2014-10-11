@@ -3653,11 +3653,11 @@ function install_blog {
 
   echo 'server {' > /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '  listen 80;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  access_log /var/www/$FULLBLOG_DOMAIN_NAME/access.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  error_log /var/www/$FULLBLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '  index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -3679,11 +3679,11 @@ function install_blog {
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo 'server {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '  listen 443;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  access_log /var/www/$FULLBLOG_DOMAIN_NAME/access_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  error_log /var/www/$FULLBLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '  index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
