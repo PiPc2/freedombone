@@ -164,8 +164,8 @@ WIKI_DOMAIN_NAME=
 WIKI_FREEDNS_SUBDOMAIN_CODE=
 
 # Domain name and freedns subdomain for your blog
-BLOG_DOMAIN_NAME=
-BLOG_FREEDNS_SUBDOMAIN_CODE=
+FULLBLOG_DOMAIN_NAME=
+FULLBLOG_FREEDNS_SUBDOMAIN_CODE=
 
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
@@ -352,11 +352,11 @@ function read_configuration {
       if grep -q "WIKI_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
           WIKI_FREEDNS_SUBDOMAIN_CODE=$(grep "WIKI_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
-      if grep -q "BLOG_DOMAIN_NAME" $CONFIGURATION_FILE; then
-          BLOG_DOMAIN_NAME=$(grep "BLOG_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      if grep -q "FULLBLOG_DOMAIN_NAME" $CONFIGURATION_FILE; then
+          FULLBLOG_DOMAIN_NAME=$(grep "FULLBLOG_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
-      if grep -q "BLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
-          BLOG_FREEDNS_SUBDOMAIN_CODE=$(grep "BLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      if grep -q "FULLBLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
+          FULLBLOG_FREEDNS_SUBDOMAIN_CODE=$(grep "FULLBLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE; then
           GPG_ENCRYPT_STORED_EMAIL=$(grep "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -492,7 +492,7 @@ function create_backup_script {
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$BLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -767,7 +767,7 @@ function backup_to_friends_servers {
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$BLOG_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -3459,99 +3459,99 @@ function install_blog {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       return
   fi
-  if [ ! $BLOG_DOMAIN_NAME ]; then
+  if [ ! $FULLBLOG_DOMAIN_NAME ]; then
       return
   fi
 
-  if [ ! -d /var/www/$BLOG_DOMAIN_NAME ]; then
-      mkdir /var/www/$BLOG_DOMAIN_NAME
+  if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME ]; then
+      mkdir /var/www/$FULLBLOG_DOMAIN_NAME
   fi
 
-  cd /var/www/$BLOG_DOMAIN_NAME
+  cd /var/www/$FULLBLOG_DOMAIN_NAME
   git clone https://github.com/danpros/htmly htdocs
 
-  if [ ! -f /etc/ssl/private/$BLOG_DOMAIN_NAME.key ]; then
-      makecert $BLOG_DOMAIN_NAME
+  if [ ! -f /etc/ssl/private/$FULLBLOG_DOMAIN_NAME.key ]; then
+      makecert $FULLBLOG_DOMAIN_NAME
   fi
 
-  echo 'server {' > /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  listen 80;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  index index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '     deny all;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  location / {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '}' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo 'server {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  listen 443;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access_ssl.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  index index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    ssl on;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "    ssl_certificate /etc/ssl/certs/$BLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "    ssl_certificate_key /etc/ssl/private/$BLOG_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "    ssl_dhparam /etc/ssl/certs/$BLOG_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '     deny all;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  location / {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
-  echo '}' >> /etc/nginx/sites-available/$BLOG_DOMAIN_NAME
+  echo 'server {' > /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  listen 80;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '     deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo 'server {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  listen 443;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  server_name $BLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  root /var/www/$BLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  access_log /var/www/$BLOG_DOMAIN_NAME/access_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  error_log /var/www/$BLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$BLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$BLOG_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$BLOG_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '     deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
 
   configure_php
 
-  nginx_ensite $BLOG_DOMAIN_NAME
+  nginx_ensite $FULLBLOG_DOMAIN_NAME
   service php5-fpm restart
   service nginx restart
 
   # update the dynamic DNS
-  if [ $BLOG_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $BLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$BLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $BLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$BLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
+  if [ $FULLBLOG_FREEDNS_SUBDOMAIN_CODE ]; then
+      if [[ $FULLBLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
+          if ! grep -q "$FULLBLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
+              echo "# $FULLBLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
+              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$FULLBLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
           fi
       fi
   else
