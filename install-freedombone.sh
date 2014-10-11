@@ -158,6 +158,7 @@ REDMATRIX_ADMIN_PASSWORD=
 # Domain name and freedns subdomain for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
 OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
+OWNCLOUD_ADMIN_PASSWORD=
 
 # Domain name and freedns subdomain for your wiki
 WIKI_DOMAIN_NAME=
@@ -2895,6 +2896,167 @@ function configure_php {
   sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
 }
 
+function get_mariadb_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
+          MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function get_mariadb_gnusocial_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
+          MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function get_mariadb_redmatrix_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB Red Matrix admin password" /home/$MY_USERNAME/README; then
+          REDMATRIX_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Red Matrix admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function get_mariadb_owncloud_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB Owncloud admin password" /home/$MY_USERNAME/README; then
+          OWNCLOUD_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Owncloud admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function install_mariadb {
+  if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y --force-yes install python-software-properties debconf-utils
+  apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xcbcb082a1bb943db
+  add-apt-repository 'deb http://mariadb.biz.net.id//repo/10.1/debian sid main'
+  apt-get -y --force-yes install software-properties-common
+  apt-get -y update
+
+  get_mariadb_password
+  if [ ! $MARIADB_PASSWORD ]; then
+      MARIADB_PASSWORD=$(openssl rand -base64 32)
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'MariaDB / MySql' >> /home/$MY_USERNAME/README
+      echo '===============' >> /home/$MY_USERNAME/README
+      echo "Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  debconf-set-selections <<< "mariadb-server mariadb-server/root_password password $MARIADB_PASSWORD"
+  debconf-set-selections <<< "mariadb-server mariadb-server/root_password_again password $MARIADB_PASSWORD"
+  apt-get -y --force-yes install mariadb-server
+
+  if [ ! -d /etc/mysql ]; then
+      echo "ERROR: mariadb-server does not appear to have installed. $CHECK_MESSAGE"
+      exit 54
+  fi
+
+  mysqladmin -u root password "$MARIADB_PASSWORD"
+  echo 'install_mariadb' >> $COMPLETION_FILE
+}
+
+function backup_databases_script_header {
+  if [ ! -f /usr/bin/backupdatabases ]; then
+      # daily
+      echo '#!/bin/sh' > /usr/bin/backupdatabases
+      echo '' >> /usr/bin/backupdatabases
+      echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
+      echo '' >> /usr/bin/backupdatabases
+      echo "MYSQL_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/backupdatabases
+      echo 'umask 0077' >> /usr/bin/backupdatabases
+      echo '' >> /usr/bin/backupdatabases
+      echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
+      echo "if [ -f $FRIENDS_SERVER_LIST ]; then" >> /usr/bin/backupdatabases
+      echo '  exit 1' >> /usr/bin/backupdatabases
+      echo 'fi' >> /usr/bin/backupdatabases
+      chmod 600 /usr/bin/backupdatabases
+      chmod +x /usr/bin/backupdatabases
+
+      echo '#!/bin/sh' > /etc/cron.daily/backupdatabasesdaily
+      echo '/usr/bin/backupdatabases' >> /etc/cron.daily/backupdatabasesdaily
+      chmod 600 /etc/cron.daily/backupdatabasesdaily
+      chmod +x /etc/cron.daily/backupdatabasesdaily
+
+      # weekly
+      echo '#!/bin/sh' > /etc/cron.weekly/backupdatabasesweekly
+      echo '' >> /etc/cron.weekly/backupdatabasesweekly
+      echo 'umask 0077' >> /etc/cron.weekly/backupdatabasesweekly
+
+      chmod 600 /etc/cron.weekly/backupdatabasesweekly
+      chmod +x /etc/cron.weekly/backupdatabasesweekly
+
+      # monthly
+      echo '#!/bin/sh' > /etc/cron.monthly/backupdatabasesmonthly
+      echo '' >> /etc/cron.monthly/backupdatabasesmonthly
+      echo 'umask 0077' >> /etc/cron.monthly/backupdatabasesmonthly
+
+      chmod 600 /etc/cron.monthly/backupdatabasesmonthly
+      chmod +x /etc/cron.monthly/backupdatabasesmonthly
+  fi
+}
+
+function repair_databases_script {
+  if grep -Fxq "repair_databases_script" $COMPLETION_FILE; then
+      return
+  fi
+  echo '#!/bin/bash' > /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo 'DATABASE=$1' >> /usr/bin/repairdatabase
+  echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo "MYSQL_ROOT_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/repairdatabase
+  echo 'TEMPFILE=/root/repairdatabase_$DATABASE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo 'umask 0077' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# check the database' >> /usr/bin/repairdatabase
+  echo 'mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# Attempt to repair the database if it contains errors' >> /usr/bin/repairdatabase
+  echo 'if grep -q "Error" "$TEMPFILE"; then' >> /usr/bin/repairdatabase
+  echo '    mysqlcheck -u root --password=$MYSQL_ROOT_PASSWORD --auto-repair $DATABASE' >> /usr/bin/repairdatabase
+  echo 'else' >> /usr/bin/repairdatabase
+  echo '    # No errors were found, so exit' >> /usr/bin/repairdatabase
+  echo '    rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '    exit 0' >> /usr/bin/repairdatabase
+  echo 'fi' >> /usr/bin/repairdatabase
+  echo 'rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# Check the database again' >> /usr/bin/repairdatabase
+  echo 'mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '# If it still contains errors then restore from backup' >> /usr/bin/repairdatabase
+  echo 'if grep -q "Error" "$TEMPFILE"; then' >> /usr/bin/repairdatabase
+  echo '    mysql -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE -o < /var/backups/${DATABASE}_daily.sql' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '    # Send a warning email' >> /usr/bin/repairdatabase
+  echo '    echo "$DATABASE database corruption could not be repaired. Restored from backup." | mail -s "Freedombone database maintenance" $EMAIL' >> /usr/bin/repairdatabase
+  echo '    rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo '    exit 1' >> /usr/bin/repairdatabase
+  echo 'fi' >> /usr/bin/repairdatabase
+  echo 'rm -f $TEMPFILE' >> /usr/bin/repairdatabase
+  echo '' >> /usr/bin/repairdatabase
+  echo 'exit 0' >> /usr/bin/repairdatabase
+  chmod 600 /usr/bin/repairdatabase
+  chmod +x /usr/bin/repairdatabase
+
+  echo '#!/bin/bash' > /etc/cron.hourly/repair
+  echo '' >> /etc/cron.hourly/repair
+  chmod 600 /etc/cron.hourly/repair
+  chmod +x /etc/cron.hourly/repair
+
+  echo 'repair_databases_script' >> $COMPLETION_FILE
+}
+
 function install_owncloud {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       return
@@ -2933,6 +3095,28 @@ function install_owncloud {
       fi
   fi
   apt-get -y --force-yes install owncloud
+  install_mariadb
+  get_mariadb_password
+
+  get_mariadb_owncloud_admin_password
+  if [ ! $OWNCLOUD_ADMIN_PASSWORD ]; then
+      OWNCLOUD_ADMIN_PASSWORD=$(openssl rand -base64 32)
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Owncloud' >> /home/$MY_USERNAME/README
+      echo '========' >> /home/$MY_USERNAME/README
+      echo "Your MariaDB Owncloud admin password is: $OWNCLOUD_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  echo "create database owncloud;
+CREATE USER 'owncloudadmin'@'localhost' IDENTIFIED BY '$OWNCLOUD_ADMIN_PASSWORD';
+GRANT ALL PRIVILEGES ON owncloud.* TO 'owncloudadmin'@'localhost';
+quit" > $INSTALL_DIR/batch.sql
+  chmod 600 $INSTALL_DIR/batch.sql
+  mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
+  shred -zu $INSTALL_DIR/batch.sql
 
   if [ ! -d /var/www/$OWNCLOUD_DOMAIN_NAME ]; then
       mkdir /var/www/$OWNCLOUD_DOMAIN_NAME
@@ -3559,159 +3743,6 @@ function install_blog {
   fi
 
   echo 'install_blog' >> $COMPLETION_FILE
-}
-
-function get_mariadb_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
-          MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-      fi
-  fi
-}
-
-function get_mariadb_gnusocial_admin_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
-          MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-      fi
-  fi
-}
-
-function get_mariadb_redmatrix_admin_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "MariaDB Red Matrix admin password" /home/$MY_USERNAME/README; then
-          REDMATRIX_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Red Matrix admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-      fi
-  fi
-}
-
-function install_mariadb {
-  if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
-      return
-  fi
-  apt-get -y --force-yes install python-software-properties debconf-utils
-  apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xcbcb082a1bb943db
-  add-apt-repository 'deb http://mariadb.biz.net.id//repo/10.1/debian sid main'
-  apt-get -y --force-yes install software-properties-common
-  apt-get -y update
-
-  get_mariadb_password
-  if [ ! $MARIADB_PASSWORD ]; then
-      MARIADB_PASSWORD=$(openssl rand -base64 32)
-      echo '' >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      echo 'MariaDB / MySql' >> /home/$MY_USERNAME/README
-      echo '===============' >> /home/$MY_USERNAME/README
-      echo "Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-  fi
-
-  debconf-set-selections <<< "mariadb-server mariadb-server/root_password password $MARIADB_PASSWORD"
-  debconf-set-selections <<< "mariadb-server mariadb-server/root_password_again password $MARIADB_PASSWORD"
-  apt-get -y --force-yes install mariadb-server
-
-  if [ ! -d /etc/mysql ]; then
-      echo "ERROR: mariadb-server does not appear to have installed. $CHECK_MESSAGE"
-      exit 54
-  fi
-
-  mysqladmin -u root password "$MARIADB_PASSWORD"
-  echo 'install_mariadb' >> $COMPLETION_FILE
-}
-
-function backup_databases_script_header {
-  if [ ! -f /usr/bin/backupdatabases ]; then
-      # daily
-      echo '#!/bin/sh' > /usr/bin/backupdatabases
-      echo '' >> /usr/bin/backupdatabases
-      echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
-      echo '' >> /usr/bin/backupdatabases
-      echo "MYSQL_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/backupdatabases
-      echo 'umask 0077' >> /usr/bin/backupdatabases
-      echo '' >> /usr/bin/backupdatabases
-      echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
-      echo "if [ -f $FRIENDS_SERVER_LIST ]; then" >> /usr/bin/backupdatabases
-      echo '  exit 1' >> /usr/bin/backupdatabases
-      echo 'fi' >> /usr/bin/backupdatabases
-      chmod 600 /usr/bin/backupdatabases
-      chmod +x /usr/bin/backupdatabases
-
-      echo '#!/bin/sh' > /etc/cron.daily/backupdatabasesdaily
-      echo '/usr/bin/backupdatabases' >> /etc/cron.daily/backupdatabasesdaily
-      chmod 600 /etc/cron.daily/backupdatabasesdaily
-      chmod +x /etc/cron.daily/backupdatabasesdaily
-
-      # weekly
-      echo '#!/bin/sh' > /etc/cron.weekly/backupdatabasesweekly
-      echo '' >> /etc/cron.weekly/backupdatabasesweekly
-      echo 'umask 0077' >> /etc/cron.weekly/backupdatabasesweekly
-
-      chmod 600 /etc/cron.weekly/backupdatabasesweekly
-      chmod +x /etc/cron.weekly/backupdatabasesweekly
-
-      # monthly
-      echo '#!/bin/sh' > /etc/cron.monthly/backupdatabasesmonthly
-      echo '' >> /etc/cron.monthly/backupdatabasesmonthly
-      echo 'umask 0077' >> /etc/cron.monthly/backupdatabasesmonthly
-
-      chmod 600 /etc/cron.monthly/backupdatabasesmonthly
-      chmod +x /etc/cron.monthly/backupdatabasesmonthly
-  fi
-}
-
-function repair_databases_script {
-  if grep -Fxq "repair_databases_script" $COMPLETION_FILE; then
-      return
-  fi
-  echo '#!/bin/bash' > /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo 'DATABASE=$1' >> /usr/bin/repairdatabase
-  echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo "MYSQL_ROOT_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/repairdatabase
-  echo 'TEMPFILE=/root/repairdatabase_$DATABASE' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo 'umask 0077' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo '# check the database' >> /usr/bin/repairdatabase
-  echo 'mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo '# Attempt to repair the database if it contains errors' >> /usr/bin/repairdatabase
-  echo 'if grep -q "Error" "$TEMPFILE"; then' >> /usr/bin/repairdatabase
-  echo '    mysqlcheck -u root --password=$MYSQL_ROOT_PASSWORD --auto-repair $DATABASE' >> /usr/bin/repairdatabase
-  echo 'else' >> /usr/bin/repairdatabase
-  echo '    # No errors were found, so exit' >> /usr/bin/repairdatabase
-  echo '    rm -f $TEMPFILE' >> /usr/bin/repairdatabase
-  echo '    exit 0' >> /usr/bin/repairdatabase
-  echo 'fi' >> /usr/bin/repairdatabase
-  echo 'rm -f $TEMPFILE' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo '# Check the database again' >> /usr/bin/repairdatabase
-  echo 'mysqlcheck -c -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE > $TEMPFILE' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo '# If it still contains errors then restore from backup' >> /usr/bin/repairdatabase
-  echo 'if grep -q "Error" "$TEMPFILE"; then' >> /usr/bin/repairdatabase
-  echo '    mysql -u root --password=$MYSQL_ROOT_PASSWORD $DATABASE -o < /var/backups/${DATABASE}_daily.sql' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo '    # Send a warning email' >> /usr/bin/repairdatabase
-  echo '    echo "$DATABASE database corruption could not be repaired. Restored from backup." | mail -s "Freedombone database maintenance" $EMAIL' >> /usr/bin/repairdatabase
-  echo '    rm -f $TEMPFILE' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo '    exit 1' >> /usr/bin/repairdatabase
-  echo 'fi' >> /usr/bin/repairdatabase
-  echo 'rm -f $TEMPFILE' >> /usr/bin/repairdatabase
-  echo '' >> /usr/bin/repairdatabase
-  echo 'exit 0' >> /usr/bin/repairdatabase
-  chmod 600 /usr/bin/repairdatabase
-  chmod +x /usr/bin/repairdatabase
-
-  echo '#!/bin/bash' > /etc/cron.hourly/repair
-  echo '' >> /etc/cron.hourly/repair
-  chmod 600 /etc/cron.hourly/repair
-  chmod +x /etc/cron.hourly/repair
-
-  echo 'repair_databases_script' >> $COMPLETION_FILE
 }
 
 function install_gnu_social {
