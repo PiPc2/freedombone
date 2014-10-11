@@ -147,7 +147,6 @@ MICROBLOG_DOMAIN_NAME=
 MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
 MICROBLOG_REPO="git://gitorious.org/social/mainline.git"
 MICROBLOG_ADMIN_PASSWORD=
-MICROBLOG_INSTALLED="no"
 
 # Domain name or redmatrix installation
 REDMATRIX_DOMAIN_NAME=
@@ -492,7 +491,7 @@ function create_backup_script {
   echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
@@ -652,7 +651,7 @@ function create_restore_script {
   echo "duplicity --force file://$USB_MOUNT/backup/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -753,7 +752,7 @@ function backup_to_friends_servers {
   echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo 'if [ -f /var/backups/gnusocial_daily.sql ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  cp /var/backups/gnusocial_daily.sql /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -937,7 +936,7 @@ function restore_from_friend {
   echo "duplicity --force scp://$SERVER/tempfiles /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
-  if [[ $MICROBLOG_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -3966,7 +3965,6 @@ quit" > $INSTALL_DIR/batch.sql
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
-  MICROBLOG_INSTALLED="yes"
   echo 'install_gnu_social' >> $COMPLETION_FILE
 }
 
