@@ -3862,7 +3862,7 @@ function install_blog {
 
   # create a user
   cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/username.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-  HASHED_BLOG_PASSWORD="$(sha256sum $FULLBLOG_ADMIN_PASSWORD)"
+  HASHED_BLOG_PASSWORD="$(echo -n '$FULLBLOG_ADMIN_PASSWORD' | sha256sum)"
   sed -i "s|yourpassword|'$HASHED_BLOG_PASSWORD'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
   sed -i 's/encryption = clear/encryption = sha256/g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
 
