@@ -2922,8 +2922,8 @@ function get_mariadb_redmatrix_admin_password {
 
 function get_mariadb_owncloud_admin_password {
   if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "MariaDB Owncloud admin password" /home/$MY_USERNAME/README; then
-          OWNCLOUD_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Owncloud admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      if grep -q "Owncloud database password" /home/$MY_USERNAME/README; then
+          OWNCLOUD_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Owncloud database password" | awk -F ':' '{print $2}' | sed 's/^ *//')
       fi
   fi
 }
@@ -3101,13 +3101,19 @@ function install_owncloud {
   get_mariadb_owncloud_admin_password
   if [ ! $OWNCLOUD_ADMIN_PASSWORD ]; then
       OWNCLOUD_ADMIN_PASSWORD=$(openssl rand -base64 32)
+  fi
+
+  if ! grep -q "Database user: owncloudadmin" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'Owncloud' >> /home/$MY_USERNAME/README
       echo '========' >> /home/$MY_USERNAME/README
-      echo "Your MariaDB Owncloud admin password is: $OWNCLOUD_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo 'Owncloud database user: owncloudadmin' >> /home/$MY_USERNAME/README
+      echo "Owncloud database password: $OWNCLOUD_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo 'Owncloud database name: owncloud' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+      echo 'After creating an administrator account then create a user account via' >> /home/$MY_USERNAME/README
+      echo "the Users dropdown menu entry. The username should be '$MY_USERNAME'." >> /home/$MY_USERNAME/README
   fi
 
   echo "create database owncloud;
@@ -3132,17 +3138,17 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo 'server {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    root /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_certificate_key /etc/ssl/private/$OWNCLOUD_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_dhparam /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3153,49 +3159,45 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    # if you want to be able to access the site via HTTP' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    # then replace the above with the following:' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    # add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
   echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        allow all;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    client_max_body_size 10G; # set max upload size' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    rewrite ^/caldav(.*)$ /remote.php/caldav$1 redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    rewrite ^/carddav(.*)$ /remote.php/carddav$1 redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    rewrite ^/webdav(.*)$ /remote.php/webdav$1 redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    location = /robots.txt {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        allow all;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        log_not_found off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    location ~ ^/(data|config|\.ht|db_structure\.xml|README) {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        deny all;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    location / {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        # The following 2 rules are only needed with webfinger' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        rewrite ^/.well-known/host-meta /public.php?service=host-meta last;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        rewrite ^/.well-known/host-meta.json /public.php?service=host-meta-json last;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
   echo '        rewrite ^/.well-known/carddav /remote.php/carddav/ redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        rewrite ^/.well-known/caldav /remote.php/caldav/ redirect;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
   echo '        rewrite ^(/core/doc/[^\/]+/)$ $1/index.html;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
   echo '        try_files $uri $uri/ index.php;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    location ~ ^(.+?\.php)(/.*)?$ {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        try_files $1 =404;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3206,7 +3208,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '        fastcgi_param PATH_INFO $2;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        fastcgi_param HTTPS on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    # Optional: set long EXPIRES header on static assets' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    location ~* ^.+\.(jpg|jpeg|gif|bmp|ico|png|css|js|swf)$ {' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '        expires 30d;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3235,15 +3237,6 @@ quit" > $INSTALL_DIR/batch.sql
       fi
   else
       echo 'WARNING: No freeDNS subdomain code given for Owncloud. It is assumed that you are using some other dynamic DNS provider.'
-  fi
-
-  if ! grep -q "After creating an administrator account" /home/$MY_USERNAME/README; then
-      echo '' >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      echo 'Owncloud' >> /home/$MY_USERNAME/README
-      echo '========' >> /home/$MY_USERNAME/README
-      echo 'After creating an administrator account then create a user account via' >> /home/$MY_USERNAME/README
-      echo 'the Users dropdown menu entry. The username should be "$MY_USERNAME".' >> /home/$MY_USERNAME/README
   fi
 
   echo 'install_owncloud' >> $COMPLETION_FILE
