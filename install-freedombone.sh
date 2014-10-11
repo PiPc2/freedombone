@@ -3848,7 +3848,7 @@ function install_blog {
   # create a user password
   get_blog_admin_password
   if [ ! $FULLBLOG_ADMIN_PASSWORD ]; then
-      FULLBLOG_ADMIN_PASSWORD=$(openssl rand -base64 32)
+      FULLBLOG_ADMIN_PASSWORD=$(openssl rand -base64 16)
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'HTMLy Blog' >> /home/$MY_USERNAME/README
@@ -3864,7 +3864,7 @@ function install_blog {
 
   # create a user
   cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/username.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-  HASHED_BLOG_PASSWORD="$(echo '$FULLBLOG_ADMIN_PASSWORD' | sha256sum  | awk -F ' ' '{print $1}')"
+  HASHED_BLOG_PASSWORD="$(echo '$FULLBLOG_ADMIN_PASSWORD\n' | sha256sum  | awk -F ' ' '{print $1}')"
   sed -i "s|yourpassword|$HASHED_BLOG_PASSWORD|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
   sed -i 's/encryption = clear/encryption = "sha256"/g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
 
