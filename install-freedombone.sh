@@ -671,6 +671,8 @@ function create_restore_script {
       echo "if [ -f /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mysql -u root --password=$MARIADB_PASSWORD owncloud -o < /home/$MY_USERNAME/tempfiles/owncloud.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
@@ -966,6 +968,8 @@ function restore_from_friend {
       echo "if [ -f /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring Owncloud"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  mysql -u root --password=$MARIADB_PASSWORD owncloud -o < /home/$MY_USERNAME/tempfiles/owncloud.sql" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
