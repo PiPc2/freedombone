@@ -3687,19 +3687,19 @@ function install_blog {
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '  index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    ssl on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "    ssl_certificate /etc/ssl/certs/$BLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "    ssl_certificate_key /etc/ssl/private/$BLOG_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "    ssl_dhparam /etc/ssl/certs/$BLOG_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  ssl on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  ssl_certificate /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  ssl_certificate_key /etc/ssl/private/$FULLBLOG_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  ssl_dhparam /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "  ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '  add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '     deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -4549,7 +4549,7 @@ function create_upgrade_script {
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
-      echo "cd /var/www/$BLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo "cd /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
