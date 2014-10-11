@@ -167,6 +167,8 @@ WIKI_FREEDNS_SUBDOMAIN_CODE=
 # Domain name and freedns subdomain for your blog
 FULLBLOG_DOMAIN_NAME=
 FULLBLOG_FREEDNS_SUBDOMAIN_CODE=
+MY_BLOG_TITLE="My Blog"
+MY_BLOG_SUBTITLE="Another Freedombone Blog"
 
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
@@ -358,6 +360,12 @@ function read_configuration {
       fi
       if grep -q "FULLBLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE; then
           FULLBLOG_FREEDNS_SUBDOMAIN_CODE=$(grep "FULLBLOG_FREEDNS_SUBDOMAIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "MY_BLOG_TITLE" $CONFIGURATION_FILE; then
+          MY_BLOG_TITLE=$(grep "MY_BLOG_TITLE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "MY_BLOG_SUBTITLE" $CONFIGURATION_FILE; then
+          MY_BLOG_SUBTITLE=$(grep "MY_BLOG_SUBTITLE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE; then
           GPG_ENCRYPT_STORED_EMAIL=$(grep "GPG_ENCRYPT_STORED_EMAIL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -3652,72 +3660,173 @@ function install_blog {
   fi
 
   echo 'server {' > /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  listen 80;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    listen 80;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  access_log /var/www/$FULLBLOG_DOMAIN_NAME/access.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  error_log /var/www/$FULLBLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '     deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo 'server {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  listen 443;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  access_log /var/www/$FULLBLOG_DOMAIN_NAME/access_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  error_log /var/www/$FULLBLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$FULLBLOG_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  ssl on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  ssl_certificate /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  ssl_certificate_key /etc/ssl/private/$FULLBLOG_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  ssl_dhparam /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  ssl_session_cache  builtin:1000  shared:SSL:10m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "  ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  location ~ /config/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '     deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '    try_files $uri $uri/ /index.php?$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        fastcgi_pass   127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        fastcgi_index  index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        fastcgi_param  SCRIPT_FILENAME   $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '        include        fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo '  }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
 
   configure_php
+  cp /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/site.url.*/site.url = '$FULLBLOG_DOMAIN_NAME'/g" /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/blog.title.*/blog.title = '$MY_BLOG_TITLE'/g" /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/blog.tagline.*/blog.tagline = '$MY_BLOG_SUBTITLE'/g" /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
 
   nginx_ensite $FULLBLOG_DOMAIN_NAME
   service php5-fpm restart
