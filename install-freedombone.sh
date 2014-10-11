@@ -162,7 +162,6 @@ OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
 OWNCLOUD_ARCHIVE="owncloud-7.0.2.tar.bz2"
 OWNCLOUD_DOWNLOAD="https://download.owncloud.org/community/$OWNCLOUD_ARCHIVE"
 OWNCLOUD_HASH="ea07124a1b9632aa5227240d655e4d84967fb6dd49e4a16d3207d6179d031a3a"
-OWNCLOUD_INSTALLED="no"
 
 # Domain name or freedns subdomain for your wiki
 WIKI_DOMAIN_NAME=
@@ -499,7 +498,7 @@ function create_backup_script {
       echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
-  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
@@ -665,7 +664,7 @@ function create_restore_script {
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
-  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -766,7 +765,7 @@ function backup_to_friends_servers {
       echo "  mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
-  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if [[ $WIKI_INSTALLED == "yes" ]]; then
@@ -950,7 +949,7 @@ function restore_from_friend {
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
-  if [[ $OWNCLOUD_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring Owncloud"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -3080,7 +3079,6 @@ function install_owncloud {
       echo 'the Users dropdown menu entry. The username should be "$MY_USERNAME".' >> /home/$MY_USERNAME/README
   fi
 
-  OWNCLOUD_INSTALLED="yes"
   echo 'install_owncloud' >> $COMPLETION_FILE
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
