@@ -3822,11 +3822,11 @@ function install_blog {
   echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
 
   configure_php
-  cp /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/site.url.*/site.url = '$FULLBLOG_DOMAIN_NAME'/g" /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/blog.title.*/blog.title = '$MY_BLOG_TITLE'/g" /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i "s/blog.tagline.*/blog.tagline = '$MY_BLOG_SUBTITLE'/g" /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
-  sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/site.url.*/site.url = '$FULLBLOG_DOMAIN_NAME'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/blog.title.*/blog.title = '$MY_BLOG_TITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i "s/blog.tagline.*/blog.tagline = '$MY_BLOG_SUBTITLE'/g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+  sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
 
   nginx_ensite $FULLBLOG_DOMAIN_NAME
   service php5-fpm restart
