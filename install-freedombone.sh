@@ -159,9 +159,6 @@ REDMATRIX_ADMIN_PASSWORD=
 OWNCLOUD_DOMAIN_NAME=
 # Freedns dynamic dns code for owncloud
 OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
-OWNCLOUD_ARCHIVE="owncloud-7.0.2.tar.bz2"
-OWNCLOUD_DOWNLOAD="https://download.owncloud.org/community/$OWNCLOUD_ARCHIVE"
-OWNCLOUD_HASH="ea07124a1b9632aa5227240d655e4d84967fb6dd49e4a16d3207d6179d031a3a"
 
 # Domain name or freedns subdomain for your wiki
 WIKI_DOMAIN_NAME=
@@ -2925,13 +2922,16 @@ function install_owncloud {
           return
       fi
   fi
-  apt-get -y --force-yes install php5 php5-gd php-xml-parser php5-intl wget
-  apt-get -y --force-yes install php5-sqlite php5-mysql smbclient curl libcurl3 php5-curl bzip2
+  apt-get -y --force-yes owncloud
 
   if [ ! -d /var/www/$OWNCLOUD_DOMAIN_NAME ]; then
       mkdir /var/www/$OWNCLOUD_DOMAIN_NAME
-      mkdir /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
   fi
+  if [ -d /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs ]; then
+      rm -rf /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
+  fi
+
+  ln -s /usr/share/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
 
   echo 'server {' > /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    listen 80;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3026,32 +3026,6 @@ function install_owncloud {
   if [ ! -f /etc/ssl/private/$OWNCLOUD_DOMAIN_NAME.key ]; then
       makecert $OWNCLOUD_DOMAIN_NAME
   fi
-
-  # download owncloud
-  cd $INSTALL_DIR
-  if [ ! -f $INSTALL_DIR/$OWNCLOUD_ARCHIVE ]; then
-      wget $OWNCLOUD_DOWNLOAD
-  fi
-  if [ ! -f $INSTALL_DIR/$OWNCLOUD_ARCHIVE ]; then
-      echo 'Owncloud could not be downloaded.  Check that it exists at '
-      echo $OWNCLOUD_DOWNLOAD
-      echo 'And if neccessary update the version number and hash within this script'
-      exit 18
-  fi
-  # Check that the hash is correct
-  CHECKSUM=$(sha256sum $OWNCLOUD_ARCHIVE | awk -F ' ' '{print $1}')
-  if [[ $CHECKSUM != $OWNCLOUD_HASH ]]; then
-      echo 'The sha256 hash of the owncloud download is incorrect. Possibly the file may have been tampered with. Check the hash on the Owncloud web site.'
-      echo $CHECKSUM
-      echo $OWNCLOUD_HASH
-      exit 19
-  fi
-  tar -xjf $OWNCLOUD_ARCHIVE
-  echo 'Copying files...'
-  cp -r owncloud/* /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
-  chown -R www-data:www-data /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/apps
-  chown -R www-data:www-data /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/config
-  chown www-data:www-data /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
 
   nginx_ensite $OWNCLOUD_DOMAIN_NAME
   service php5-fpm restart
