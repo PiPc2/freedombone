@@ -3121,7 +3121,7 @@ function install_owncloud {
       OWNCLOUD_ADMIN_PASSWORD=$(openssl rand -base64 32)
   fi
 
-  if ! grep -q "Database user: owncloudadmin" /home/$MY_USERNAME/README; then
+  if ! grep -q "Owncloud database user" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'Owncloud' >> /home/$MY_USERNAME/README
