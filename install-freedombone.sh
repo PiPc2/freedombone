@@ -2814,6 +2814,7 @@ function import_email {
           create_backup_script
           create_restore_script
           backup_to_friends_servers
+          intrusion_detection
           echo ''
           echo "$EMAIL_COMPLETE_MSG"
           if [ -d $USB_MOUNT ]; then
@@ -2840,7 +2841,7 @@ function import_email {
       create_backup_script
       create_restore_script
       backup_to_friends_servers
-      apt-get -y --force-yes autoremove
+      intrusion_detection
       # unmount any attached usb drive
       echo ''
       echo "$EMAIL_COMPLETE_MSG"
@@ -2905,7 +2906,7 @@ function install_owncloud {
           create_backup_script
           create_restore_script
           backup_to_friends_servers
-          apt-get -y --force-yes autoremove
+          intrusion_detection
           # unmount any attached usb drive
           if [ -d $USB_MOUNT ]; then
               umount $USB_MOUNT
@@ -3067,7 +3068,7 @@ function install_owncloud {
       create_backup_script
       create_restore_script
       backup_to_friends_servers
-      apt-get -y --force-yes autoremove
+      intrusion_detection
       # unmount any attached usb drive
       if [ -d $USB_MOUNT ]; then
           umount $USB_MOUNT
@@ -3459,11 +3460,11 @@ function install_blog {
       return
   fi
   if [ ! $BLOG_DOMAIN_NAME ]; then
-	  return
+      return
   fi
 
   if [ ! -d /var/www/$BLOG_DOMAIN_NAME ]; then
-	  mkdir /var/www/$BLOG_DOMAIN_NAME
+      mkdir /var/www/$BLOG_DOMAIN_NAME
   fi
 
   cd /var/www/$BLOG_DOMAIN_NAME
@@ -4549,8 +4550,14 @@ function intrusion_detection {
   echo ''
   echo ''
   tripwire --init
+  sed -i 's/SYSLOGREPORTING =true/#SYSLOGREPORTING =false/g' /etc/tripwire/twcfg.txt
+  sed -i '/# These files change the behavior of the root account/,/}/ s/# *//' /etc/tripwire/twpol.txt
   tripwire --update-policy --secure-mode low /etc/tripwire/twpol.txt
-  tripwire --check
+
+  # make a script for easy resetting of the tripwire
+  echo '#!/bin/sh' > /usr/bin/reset-tripwire
+  echo 'tripwire --update-policy --secure-mode low /etc/tripwire/twpol.txt' >> /usr/bin/reset-tripwire
+  chmod +x /usr/bin/reset-tripwire
 
   echo 'intrusion_detection' >> $COMPLETION_FILE
 }
