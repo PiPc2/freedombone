@@ -169,7 +169,6 @@ WIKI_FREEDNS_SUBDOMAIN_CODE=
 WIKI_ARCHIVE="dokuwiki-stable.tgz"
 WIKI_DOWNLOAD="http://download.dokuwiki.org/src/dokuwiki/$WIKI_ARCHIVE"
 WIKI_HASH="941b6954d39de57530efbb27d0734b6bc9a49aaa3c781b39f6ecb305322534eb"
-WIKI_INSTALLED="no"
 
 # see https://www.dokuwiki.org/template:mnml-blog
 # https://andreashaerter.com/tmp/downloads/dokuwiki-template-mnml-blog/CHECKSUMS.asc
@@ -502,7 +501,7 @@ function create_backup_script {
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
-  if [[ $WIKI_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
@@ -671,7 +670,7 @@ function create_restore_script {
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
-  if [[ $WIKI_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Wiki / Blog"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -768,7 +767,7 @@ function backup_to_friends_servers {
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
-  if [[ $WIKI_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -956,7 +955,7 @@ function restore_from_friend {
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
-  if [[ $WIKI_INSTALLED == "yes" ]]; then
+  if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring Wiki / Blog"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -3440,7 +3439,6 @@ function install_wiki {
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
-  WIKI_INSTALLED="yes"
   echo 'install_wiki' >> $COMPLETION_FILE
 }
 
