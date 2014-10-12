@@ -4362,6 +4362,7 @@ quit" > $INSTALL_DIR/batch.sql
       chmod 777 "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3"
   fi
   chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl
+  chown -R www-data:www-dat "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store"
   chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
 
   # Ensure that the database gets backed up locally, if remote
