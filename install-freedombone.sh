@@ -3948,7 +3948,7 @@ function install_gnu_social {
   get_mariadb_password
   repair_databases_script
 
-  apt-get -y --force-yes install php-gettext php5-curl php5-gd php5-mysql git
+  apt-get -y --force-yes install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
 
   if [ ! -d /var/www/$MICROBLOG_DOMAIN_NAME ]; then
       mkdir /var/www/$MICROBLOG_DOMAIN_NAME
@@ -4350,6 +4350,9 @@ quit" > $INSTALL_DIR/batch.sql
 
   if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3 ]; then
       mkdir /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/view/tpl/smarty3
+  fi
+  if [ ! -d "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store" ]; then
+      mkdir "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store"
   fi
   if [ ! -d "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]" ]; then
       mkdir "/var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]"
