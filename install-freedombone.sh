@@ -2889,6 +2889,18 @@ function install_web_server {
   # install nginx
   apt-get -y --force-yes install nginx php5-fpm git
 
+  # limit the number of php processes
+  sed -i 's/; process.max = 128/process.max = 32/g' /etc/php5/fpm/php-fpm.conf
+  sed -i 's/;process_control_timeout = 0/process_control_timeout = 300/g' /etc/php5/fpm/php-fpm.conf
+
+  if ! grep -q "pm.max_children" /etc/php5/fpm/php-fpm.conf; then
+      echo 'pm.max_children = 10' >> /etc/php5/fpm/php-fpm.conf
+      echo 'pm.start_servers = 2' >> /etc/php5/fpm/php-fpm.conf
+      echo 'pm.min_spare_servers = 2' >> /etc/php5/fpm/php-fpm.conf
+      echo 'pm.max_spare_servers = 5' >> /etc/php5/fpm/php-fpm.conf
+      echo 'pm.max_requests = 50' >> /etc/php5/fpm/php-fpm.conf
+  fi
+
   if [ ! -d /etc/nginx ]; then
       echo "ERROR: nginx does not appear to have installed. $CHECK_MESSAGE"
       exit 51
