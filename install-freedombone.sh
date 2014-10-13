@@ -496,6 +496,8 @@ function create_backup_script {
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Archiving Red Matrix settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/redmatrix.tar.gz /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/.htconfig.php /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -664,6 +666,7 @@ function create_restore_script {
       echo "if [ -f /home/$MY_USERNAME/tempfiles/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/redmatrix.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
@@ -776,7 +779,8 @@ function backup_to_friends_servers {
       echo 'else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  mysqldump --password=$MARIADB_PASSWORD redmatrix > /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  fi
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/redmatrix.tar.gz /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/.htconfig.php /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+ fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
@@ -961,6 +965,7 @@ function restore_from_friend {
       echo "if [ -f /home/$MY_USERNAME/tempfiles/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < /home/$MY_USERNAME/tempfiles/redmatrix.sql" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/redmatrix.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
