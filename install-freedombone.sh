@@ -3493,6 +3493,18 @@ function install_wiki {
 
   ln -s /usr/share/dokuwiki /var/www/$WIKI_DOMAIN_NAME/htdocs
 
+  mkdir /var/lib/dokuwiki/custom
+  cp /etc/dokuwiki/local.php.dist /var/lib/dokuwiki/custom/local.php
+  ln -s /var/lib/dokuwiki/custom/local.php /etc/dokuwiki/local.php
+
+  chown www-data /var/lib/dokuwiki/custom
+  chown www-data /var/lib/dokuwiki/custom/local.php
+  chmod 600 /var/lib/dokuwiki/custom/local.php
+
+  sed -i "s|//$conf['useacl']|$conf['useacl']|g" /var/lib/dokuwiki/custom/local.php
+  sed -i "s|//$conf['superuser']|$conf['superuser']|g" /var/lib/dokuwiki/custom/local.php
+  sed -i "s|joe|$MY_USERNAME|g" /var/lib/dokuwiki/custom/local.php
+
   if ! grep -q "video/ogg" /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
       echo 'ogv     video/ogg' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
       echo 'mp4     video/mp4' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
