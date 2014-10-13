@@ -505,7 +505,7 @@ function create_backup_script {
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/lib/dokuwiki/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -785,7 +785,7 @@ function backup_to_friends_servers {
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
-      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/www/$WIKI_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/lib/dokuwiki/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
