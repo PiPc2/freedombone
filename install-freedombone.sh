@@ -163,6 +163,8 @@ OWNCLOUD_ADMIN_PASSWORD=
 # Domain name and freedns subdomain for your wiki
 WIKI_DOMAIN_NAME=
 WIKI_FREEDNS_SUBDOMAIN_CODE=
+WIKI_ADMIN_PASSWORD=
+WIKI_TITLE="Freedombone Wiki"
 
 # Domain name and freedns subdomain for your blog
 FULLBLOG_DOMAIN_NAME=
@@ -319,6 +321,9 @@ function argument_checks {
 
 function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "WIKI_TITLE" $CONFIGURATION_FILE; then
+          WIKI_TITLE=$(grep "WIKI_TITLE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "MY_NAME" $CONFIGURATION_FILE; then
           MY_NAME=$(grep "MY_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -3464,6 +3469,14 @@ function install_irc_server {
   echo 'install_irc_server' >> $COMPLETION_FILE
 }
 
+function get_wiki_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "Wiki password" /home/$MY_USERNAME/README; then
+          WIKI_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Wiki password:" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
 function install_wiki {
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       return
@@ -3501,9 +3514,36 @@ function install_wiki {
   chown www-data /var/lib/dokuwiki/custom/local.php
   chmod 600 /var/lib/dokuwiki/custom/local.php
 
-  sed -i "s|//$conf['useacl']|$conf['useacl']|g" /var/lib/dokuwiki/custom/local.php
-  sed -i "s|//$conf['superuser']|$conf['superuser']|g" /var/lib/dokuwiki/custom/local.php
+  sed -i 's|//$conf|$conf|g' /var/lib/dokuwiki/custom/local.php
   sed -i "s|joe|$MY_USERNAME|g" /var/lib/dokuwiki/custom/local.php
+
+  sed -i "s|Debian DokuWiki|$WIKI_TITLE|g" /etc/dokuwiki/local.php
+
+  # set the admin user
+  sed -i "s/@admin/$MY_USERNAME/g" /etc/dokuwiki/local.php
+
+  # disallow registration of new users
+  if ! grep -q "disableactions" /etc/dokuwiki/local.php; then
+      echo "$conf['disableactions'] = 'register'" >> /etc/dokuwiki/local.php
+  fi
+  if ! grep -q "disableactions" /var/lib/dokuwiki/custom/local.php; then
+      echo "$conf['disableactions'] = 'register';" >> /var/lib/dokuwiki/custom/local.php
+  fi
+
+  if ! grep -q "authtype" /var/lib/dokuwiki/custom/local.php; then
+      echo "$conf['authtype'] = 'plain';" >> /var/lib/dokuwiki/custom/local.php
+  fi
+  if ! grep -q "authtype" /etc/dokuwiki/local.php; then
+      echo "$conf['authtype'] = 'plain';" >> /etc/dokuwiki/local.php
+  fi
+
+  get_wiki_admin_password
+  if [ ! $WIKI_ADMIN_PASSWORD ]; then
+      WIKI_ADMIN_PASSWORD=$(openssl rand -base64 16)
+  fi
+  HASHED_WIKI_PASSWORD=$(echo -n "$WIKI_ADMIN_PASSWORD" | md5sum)
+  echo -n "$MY_USERNAME:$HASHED_WIKI_PASSWORD:$MY_NAME:$MY_EMAIL:admin,user,upload" > /var/lib/dokuwiki/acl/users.auth.php
+  chmod 640 /var/lib/dokuwiki/acl/users.auth.php
 
   if ! grep -q "video/ogg" /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
       echo 'ogv     video/ogg' >> /var/www/$WIKI_DOMAIN_NAME/htdocs/conf/mime.conf
@@ -3697,6 +3737,9 @@ function install_wiki {
       echo '' >> /home/$MY_USERNAME/README
       echo 'Wiki' >> /home/$MY_USERNAME/README
       echo '====' >> /home/$MY_USERNAME/README
+      echo "Wiki username: $MY_USERNAME" >> /home/$MY_USERNAME/README
+      echo "Wiki password: $WIKI_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
       echo 'Once you have set up the wiki then remove the install file:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo "  rm /var/www/$WIKI_DOMAIN_NAME/htdocs/install.php" >> /home/$MY_USERNAME/README
