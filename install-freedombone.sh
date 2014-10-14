@@ -3541,7 +3541,7 @@ function install_wiki {
   if [ ! $WIKI_ADMIN_PASSWORD ]; then
       WIKI_ADMIN_PASSWORD=$(openssl rand -base64 16)
   fi
-  HASHED_WIKI_PASSWORD=$(echo -n "$WIKI_ADMIN_PASSWORD" | md5sum)
+  HASHED_WIKI_PASSWORD=$(echo -n "$WIKI_ADMIN_PASSWORD" | md5sum | awk -F ' ' '{print $1}')
   echo -n "$MY_USERNAME:$HASHED_WIKI_PASSWORD:$MY_NAME:$MY_EMAIL:admin,user,upload" > /var/lib/dokuwiki/acl/users.auth.php
   chmod 640 /var/lib/dokuwiki/acl/users.auth.php
 
