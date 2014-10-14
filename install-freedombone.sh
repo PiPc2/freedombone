@@ -3732,7 +3732,7 @@ function install_wiki {
   fi
 
   # add some post-install instructions
-  if ! grep -q "Once you have set up the wiki" /home/$MY_USERNAME/README; then
+  if ! grep -q "Wiki password" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'Wiki' >> /home/$MY_USERNAME/README
