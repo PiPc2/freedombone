@@ -3452,7 +3452,7 @@ function install_irc_server {
   sed -i 's/;RequireAuthPing = no/RequireAuthPing = no/g' /etc/ngircd/ngircd.conf
   sed -i "s/;Name = TheOper/Name = $MY_USERNAME/g" /etc/ngircd/ngircd.conf
   sed -i "s/;Password = ThePwd/Password = $IRC_OPERATOR_PASSWORD/g" /etc/ngircd/ngircd.conf
-  service ngircd restart
+  service ngircd start
 
   if ! grep -q "IRC Server" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
@@ -3531,10 +3531,10 @@ function install_wiki {
   fi
 
   if ! grep -q "authtype" /var/lib/dokuwiki/custom/local.php; then
-      echo "$conf['authtype'] = 'plain';" >> /var/lib/dokuwiki/custom/local.php
+      echo "$conf['authtype'] = 'authplain';" >> /var/lib/dokuwiki/custom/local.php
   fi
   if ! grep -q "authtype" /etc/dokuwiki/local.php; then
-      echo "$conf['authtype'] = 'plain';" >> /etc/dokuwiki/local.php
+      echo "$conf['authtype'] = 'authplain';" >> /etc/dokuwiki/local.php
   fi
 
   get_wiki_admin_password
