@@ -4088,14 +4088,14 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    root /var/www/$MICROBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    index index.php index.html index.htm;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '    location /index.php {' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '        fastcgi_buffer_size 128k;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '        fastcgi_buffers 4 256k;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo '        fastcgi_busy_buffers_size 256k;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
