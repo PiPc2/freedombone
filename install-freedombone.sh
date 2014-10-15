@@ -4017,19 +4017,17 @@ function install_gnu_social {
       mkdir /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
   fi
 
-  if [ ! -f /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/index.php ]; then
-      cd $INSTALL_DIR
-      git clone $MICROBLOG_REPO gnusocial
+  cd $INSTALL_DIR
+  git clone $MICROBLOG_REPO gnusocial
 
-      rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-      mv gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-      chown www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/avatar
-      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/background
-      chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/file
-      chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
-  fi
+  rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  mv gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  chown www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/avatar
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/background
+  chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/file
+  chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
 
   get_mariadb_gnusocial_admin_password
   if [ ! $MICROBLOG_ADMIN_PASSWORD ]; then
