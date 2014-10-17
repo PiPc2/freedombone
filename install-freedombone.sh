@@ -3014,7 +3014,7 @@ function backup_databases_script_header {
       echo 'umask 0077' >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
       echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
-      echo "if [ -f $FRIENDS_SERVER_LIST ]; then" >> /usr/bin/backupdatabases
+      echo "if [ -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backupdatabases
       echo '  exit 1' >> /usr/bin/backupdatabases
       echo 'fi' >> /usr/bin/backupdatabases
       chmod 600 /usr/bin/backupdatabases
