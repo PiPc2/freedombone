@@ -3154,6 +3154,13 @@ function install_owncloud {
       echo '' >> /home/$MY_USERNAME/README
       echo 'After creating an administrator account then create a user account via' >> /home/$MY_USERNAME/README
       echo "the Users dropdown menu entry. The username should be '$MY_USERNAME'." >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'On mobile devices you can download the Owncloud client via F-Droid.' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'To synchronise calendar entries with Android "install CalDAV Sync Adapter"' >> /home/$MY_USERNAME/README
+      echo 'using F-Droid then go to settings/accounts and add a CalDav account with' >> /home/$MY_USERNAME/README
+      echo "the URL https://$OWNCLOUD_DOMAIN_NAME/remote.php/caldav/principals/$MY_USERNAME" >> /home/$MY_USERNAME/README
+      echo 'and the username and password shown above.' >> /home/$MY_USERNAME/README
   fi
 
   echo "create database owncloud;
