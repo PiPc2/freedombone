@@ -3125,6 +3125,32 @@ function repair_databases_script {
   echo 'repair_databases_script' >> $COMPLETION_FILE
 }
 
+function install_owncloud_music_app {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+      return
+  fi
+  if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
+      return
+  fi
+
+  cd /usr/share/owncloud/apps
+  git clone https://github.com/owncloud/music music
+
+  if grep -q "Music player in Owncloud" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Music player in Owncloud' >> /home/$MY_USERNAME/README
+      echo '========================' >> /home/$MY_USERNAME/README
+      echo 'To enable the music app within ouwncloud log in to the Owncloud' >> /home/$MY_USERNAME/README
+      echo 'administrator account then go to Apps on the left hand dropdown' >> /home/$MY_USERNAME/README
+      echo 'menu and enable the music app.  You can then log out and log back' >> /home/$MY_USERNAME/README
+      echo 'in as your Owncloud user and select music from the left hand' >> /home/$MY_USERNAME/README
+      echo 'dropdown menu.' >> /home/$MY_USERNAME/README
+  fi
+
+  echo 'install_owncloud_music_app' >> $COMPLETION_FILE
+}
+
 function install_owncloud {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       return
@@ -3133,6 +3159,7 @@ function install_owncloud {
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
+		  install_owncloud_music_app
           create_backup_script
           create_restore_script
           backup_to_friends_servers
@@ -3347,6 +3374,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'install_owncloud' >> $COMPLETION_FILE
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
+      install_owncloud_music_app
       create_backup_script
       create_restore_script
       backup_to_friends_servers
@@ -4846,6 +4874,12 @@ function create_upgrade_script {
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
+  if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
+      echo "cd /usr/share/owncloud/apps/music" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  fi
   echo 'exit 0' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   chmod +x /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'create_upgrade_script' >> $COMPLETION_FILE
@@ -4947,6 +4981,7 @@ script_for_attaching_usb_drive
 install_web_server
 configure_firewall_for_web_server
 install_owncloud
+install_owncloud_music_app
 install_xmpp
 configure_firewall_for_xmpp
 install_irc_server
