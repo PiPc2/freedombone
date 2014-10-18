@@ -3159,7 +3159,7 @@ function install_owncloud {
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
-		  install_owncloud_music_app
+          install_owncloud_music_app
           create_backup_script
           create_restore_script
           backup_to_friends_servers
@@ -4276,7 +4276,9 @@ quit" > $INSTALL_DIR/batch.sql
       echo ' - Subscribe to announcements: ticked' >> /home/$MY_USERNAME/README
       echo ' - Site profile: Community' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      echo "Navigate to https://$MICROBLOG_DOMAIN_NAME and you can then " >> /home/$MY_USERNAME/README
+      echo 'When the install is complete you will see a lot of warnings' >> /home/$MY_USERNAME/README
+      echo 'but just ignore those and navigate to ' >> /home/$MY_USERNAME/README
+      echo "https://$MICROBLOG_DOMAIN_NAME and you can then " >> /home/$MY_USERNAME/README
       echo 'complete the configuration via the *Admin* section on the header' >> /home/$MY_USERNAME/README
       echo 'bar.  Some recommended admin settings are:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
