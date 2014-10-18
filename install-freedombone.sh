@@ -2226,6 +2226,24 @@ function configure_gpg {
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+
+      if grep -q "configure_email" $COMPLETION_FILE; then
+          if grep -q "Change your GPG password" /home/$MY_USERNAME/README; then
+              echo '' >> /home/$MY_USERNAME/README
+              echo '' >> /home/$MY_USERNAME/README
+              echo 'Change your GPG password' >> /home/$MY_USERNAME/README
+              echo '========================' >> /home/$MY_USERNAME/README
+              echo "It's very important to add a password to your GPG key so that" >> /home/$MY_USERNAME/README
+              echo "if anyone does get access to your email they still won't be able" >> /home/$MY_USERNAME/README
+              echo 'to read them without knowning the GPG password.' >> /home/$MY_USERNAME/README
+              echo 'You can change the it with:' >> /home/$MY_USERNAME/README
+              echo '' >> /home/$MY_USERNAME/README
+              echo "  gpg --edit-keys $MY_GPG_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+              echo '  passwd' >> /home/$MY_USERNAME/README
+              echo '  save' >> /home/$MY_USERNAME/README
+              echo '  quit' >> /home/$MY_USERNAME/README
+          fi
+      fi
   fi
 
   echo 'configure_gpg' >> $COMPLETION_FILE
