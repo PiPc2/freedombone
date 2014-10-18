@@ -497,6 +497,7 @@ function create_backup_script {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/gnusocial.tar.gz /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/config.php" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -664,6 +665,7 @@ function create_restore_script {
       echo "if [ -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/gnusocial.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
@@ -777,6 +779,7 @@ function backup_to_friends_servers {
       echo 'else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  mysqldump --password=$MARIADB_PASSWORD gnusocial > /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "tar -czvf /home/$MY_USERNAME/tempfiles/gnusocial.tar.gz /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/config.php" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo 'if [ -f /var/backups/redmatrix_daily.sql ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -963,6 +966,7 @@ function restore_from_friend {
       echo "if [ -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  tar -xzvf /home/$MY_USERNAME/tempfiles/gnusocial.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
