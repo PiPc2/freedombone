@@ -2228,7 +2228,7 @@ function configure_gpg {
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
 
       if grep -q "configure_email" $COMPLETION_FILE; then
-          if grep -q "Change your GPG password" /home/$MY_USERNAME/README; then
+          if ! grep -q "Change your GPG password" /home/$MY_USERNAME/README; then
               echo '' >> /home/$MY_USERNAME/README
               echo '' >> /home/$MY_USERNAME/README
               echo 'Change your GPG password' >> /home/$MY_USERNAME/README
@@ -2243,7 +2243,7 @@ function configure_gpg {
               echo '  save' >> /home/$MY_USERNAME/README
               echo '  quit' >> /home/$MY_USERNAME/README
           fi
-          if grep -q "Publish your GPG public key" /home/$MY_USERNAME/README; then
+          if ! grep -q "Publish your GPG public key" /home/$MY_USERNAME/README; then
               echo '' >> /home/$MY_USERNAME/README
               echo '' >> /home/$MY_USERNAME/README
               echo 'Publish your GPG public key' >> /home/$MY_USERNAME/README
