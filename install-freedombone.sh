@@ -2238,10 +2238,20 @@ function configure_gpg {
               echo 'to read them without knowning the GPG password.' >> /home/$MY_USERNAME/README
               echo 'You can change the it with:' >> /home/$MY_USERNAME/README
               echo '' >> /home/$MY_USERNAME/README
-              echo "  gpg --edit-keys $MY_GPG_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+              echo "  gpg --edit-key $MY_GPG_PUBLIC_KEY" >> /home/$MY_USERNAME/README
               echo '  passwd' >> /home/$MY_USERNAME/README
               echo '  save' >> /home/$MY_USERNAME/README
               echo '  quit' >> /home/$MY_USERNAME/README
+          fi
+          if grep -q "Publish your GPG public key" /home/$MY_USERNAME/README; then
+              echo '' >> /home/$MY_USERNAME/README
+              echo '' >> /home/$MY_USERNAME/README
+              echo 'Publish your GPG public key' >> /home/$MY_USERNAME/README
+              echo '===========================' >> /home/$MY_USERNAME/README
+              echo 'So that others can send emails to you securely you should' >> /home/$MY_USERNAME/README
+              echo 'publish your GPG public key with the command:' >> /home/$MY_USERNAME/README
+              echo '' >> /home/$MY_USERNAME/README
+              echo "  gpg --send-keys $MY_GPG_PUBLIC_KEY" >> /home/$MY_USERNAME/README
           fi
       fi
   fi
