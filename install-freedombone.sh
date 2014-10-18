@@ -4269,8 +4269,8 @@ quit" > $INSTALL_DIR/batch.sql
       echo ' - Hostname: localhost' >> /home/$MY_USERNAME/README
       echo ' - Type: MySql/MariaDB' >> /home/$MY_USERNAME/README
       echo ' - Name: gnusocial' >> /home/$MY_USERNAME/README
-      echo ' - DB username: gnusocialadmin' >> /home/$MY_USERNAME/README
-      echo " - DB Password; $MICROBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo ' - DB username: root' >> /home/$MY_USERNAME/README
+      echo " - DB Password; $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
       echo " - Administrator nickname: $MY_USERNAME" >> /home/$MY_USERNAME/README
       echo " - Administrator password: $MICROBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
       echo ' - Subscribe to announcements: ticked' >> /home/$MY_USERNAME/README
