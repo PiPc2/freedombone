@@ -4993,7 +4993,7 @@ function route_outgoing_traffic_through_tor {
       iptables -t nat -A PREROUTING -i $_int_if -d $_clearnet -j RETURN
   done
 
-  #redirect all other pre-routing and output to Tor
+  # Redirect all other pre-routing and output to Tor
   iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports $_trans_port
   iptables -t nat -A PREROUTING -i $_int_if -p udp --dport 53 -j REDIRECT --to-ports 53
   iptables -t nat -A PREROUTING -i $_int_if -p tcp --syn -j REDIRECT --to-ports $_trans_port
@@ -5012,21 +5012,23 @@ function route_outgoing_traffic_through_tor {
 
   save_firewall_settings
 
+  if ! grep -q "fs.file-max" /etc/sysctl.conf; then
+	  echo "fs.file-max=100000" >> /etc/sysctl.conf
+	  /sbin/sysctl -p
+  fi
+
   echo 'domain localdomain' > /etc/resolv.conf
   echo 'search localdomain' >> /etc/resolv.conf
   echo 'nameserver 127.0.0.1' >> /etc/resolv.conf
 
-  sed -i 's|VirtualAddrNetworkIPv4*|VirtualAddrNetworkIPv4 10.192.0.0/10|g' /etc/tor/torrc
   if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
       echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
   fi
 
-  sed -i 's|AutomapHostsOnResolve*|AutomapHostsOnResolve 1|g' /etc/tor/torrc
   if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
       echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
   fi
 
-  sed -i 's|TransPort*|TransPort 9040|g' /etc/tor/torrc
   if ! grep -q "TransPort" /etc/tor/torrc; then
       echo 'TransPort 9040' >> /etc/tor/torrc
   fi
@@ -5039,7 +5041,6 @@ function route_outgoing_traffic_through_tor {
       echo "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
 
-  sed -i 's|DNSPort*|DNSPort 53|g' /etc/tor/torrc
   if ! grep -q "DNSPort" /etc/tor/torrc; then
       echo 'DNSPort 53' >> /etc/tor/torrc
   fi
