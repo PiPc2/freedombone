@@ -4973,9 +4973,8 @@ function route_outgoing_traffic_through_tor {
   # Destinations you don't want routed through Tor
   _non_tor="192.168.1.0/24 192.168.0.0/24"
 
-  # The UID that Tor runs as (varies from system to system)
-  # TODO this changes every time tor is started, so won't work
-  _tor_uid=$(ps -ef | grep /usr/bin/tor | grep -v grep | awk -F ' ' '{print $2}')
+  # The user that Tor runs as
+  _tor_uid="debian-+"
 
   # Tor's TransPort
   _trans_port="9040"
