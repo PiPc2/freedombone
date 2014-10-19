@@ -4974,7 +4974,7 @@ function route_outgoing_traffic_through_tor {
   _non_tor="192.168.1.0/24 192.168.0.0/24"
 
   # The user that Tor runs as
-  _tor_uid="debian-+"
+  _tor_uid="debian-tor"
 
   # Tor's TransPort
   _trans_port="9040"
