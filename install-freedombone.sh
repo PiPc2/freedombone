@@ -105,6 +105,12 @@ CONFIGURATION_FILE="freedombone.cfg"
 
 SSH_PORT=2222
 
+# The static IP address of the system within the local network
+FIXED_IP_ADDRESS="192.168.1.60"
+
+# whether to route outgoing traffic through Tor
+ROUTE_THROUGH_TOR="no"
+
 # Why use Google as a time source?
 # The thinking here is that it's likely to be reliable and fast.
 # The ping doesn't reveal any information other than that the server
@@ -321,6 +327,12 @@ function argument_checks {
 
 function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "FIXED_IP_ADDRESS" $CONFIGURATION_FILE; then
+          FIXED_IP_ADDRESS=$(grep "FIXED_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "ROUTE_THROUGH_TOR" $CONFIGURATION_FILE; then
+          ROUTE_THROUGH_TOR=$(grep "ROUTE_THROUGH_TOR" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "WIKI_TITLE" $CONFIGURATION_FILE; then
           WIKI_TITLE=$(grep "WIKI_TITLE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1680,6 +1692,8 @@ function configure_firewall {
   ip6tables -P INPUT ACCEPT
   iptables -F
   ip6tables -F
+  iptables -t nat -F
+  ip6tables -t nat -F
   iptables -X
   ip6tables -X
   iptables -P INPUT DROP
@@ -4944,6 +4958,104 @@ function intrusion_detection {
   echo 'intrusion_detection' >> $COMPLETION_FILE
 }
 
+# see https://trac.torproject.org/projects/tor/wiki/doc/TransparentProxy
+# Local Redirection and Anonymizing Middlebox
+function route_outgoing_traffic_through_tor {
+  if grep -Fxq "route_outgoing_traffic_through_tor" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $ROUTE_THROUGH_TOR != "yes" ]]; then
+      return
+  fi
+  apt-get -y --force-yes install tor
+
+  ### set variables
+  # Destinations you don't want routed through Tor
+  _non_tor="192.168.1.0/24 192.168.0.0/24"
+
+  # The UID that Tor runs as (varies from system to system)
+  # TODO this changes every time tor is started, so won't work
+  _tor_uid=$(ps -ef | grep /usr/bin/tor | grep -v grep | awk -F ' ' '{print $2}')
+
+  # Tor's TransPort
+  _trans_port="9040"
+
+  # Your internal interface
+  _int_if="eth0"
+
+  ### Set iptables *nat
+  iptables -t nat -A OUTPUT -o lo -j RETURN
+  iptables -t nat -A OUTPUT -m owner --uid-owner $_tor_uid -j RETURN
+  iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 53
+
+  # Allow clearnet access for hosts in $_non_tor
+  for _clearnet in $_non_tor; do
+      iptables -t nat -A OUTPUT -d $_clearnet -j RETURN
+      iptables -t nat -A PREROUTING -i $_int_if -d $_clearnet -j RETURN
+  done
+
+  #redirect all other pre-routing and output to Tor
+  iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports $_trans_port
+  iptables -t nat -A PREROUTING -i $_int_if -p udp --dport 53 -j REDIRECT --to-ports 53
+  iptables -t nat -A PREROUTING -i $_int_if -p tcp --syn -j REDIRECT --to-ports $_trans_port
+
+  ### set iptables *filter
+  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+  # Allow clearnet access for hosts in $_non_tor
+  for _clearnet in $_non_tor 127.0.0.0/8; do
+      iptables -A OUTPUT -d $_clearnet -j ACCEPT
+  done
+
+  # Allow only Tor output
+  iptables -A OUTPUT -m owner --uid-owner $_tor_uid -j ACCEPT
+  iptables -A OUTPUT -j REJECT
+
+  save_firewall_settings
+
+  echo 'domain localdomain' > /etc/resolv.conf
+  echo 'search localdomain' >> /etc/resolv.conf
+  echo 'nameserver 127.0.0.1' >> /etc/resolv.conf
+
+  sed -i 's|VirtualAddrNetworkIPv4*|VirtualAddrNetworkIPv4 10.192.0.0/10|g' /etc/tor/torrc
+  if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
+      echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
+  fi
+
+  sed -i 's|AutomapHostsOnResolve*|AutomapHostsOnResolve 1|g' /etc/tor/torrc
+  if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
+      echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
+  fi
+
+  sed -i 's|TransPort*|TransPort 9040|g' /etc/tor/torrc
+  if ! grep -q "TransPort" /etc/tor/torrc; then
+      echo 'TransPort 9040' >> /etc/tor/torrc
+  fi
+
+  if ! grep -q "TransListenAddress 127.0.0.1" /etc/tor/torrc; then
+      echo 'TransListenAddress 127.0.0.1' >> /etc/tor/torrc
+  fi
+
+  if ! grep -q "TransListenAddress $FIXED_IP_ADDRESS" /etc/tor/torrc; then
+      echo "TransListenAddress $FIXED_IP_ADDRESS" >> /etc/tor/torrc
+  fi
+
+  sed -i 's|DNSPort*|DNSPort 53|g' /etc/tor/torrc
+  if ! grep -q "DNSPort" /etc/tor/torrc; then
+      echo 'DNSPort 53' >> /etc/tor/torrc
+  fi
+
+  if ! grep -q "DNSListenAddress 127.0.0.1" /etc/tor/torrc; then
+      echo 'DNSListenAddress 127.0.0.1' >> /etc/tor/torrc
+  fi
+
+  if ! grep -q "DNSListenAddress $FIXED_IP_ADDRESS" /etc/tor/torrc; then
+      echo "DNSListenAddress $FIXED_IP_ADDRESS" >> /etc/tor/torrc
+  fi
+
+  echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -4992,6 +5104,7 @@ search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
 create_upgrade_script
+route_outgoing_traffic_through_tor
 configure_email
 create_procmail
 #spam_filtering
