@@ -4661,9 +4661,17 @@ function install_dlna_server {
   sed -i 's/#friendly_name=/friendly_name="Freedombone Media"/g' /etc/minidlna.conf
   sed -i 's|#db_dir=/var/cache/minidlna|db_dir=/var/cache/minidlna|g' /etc/minidlna.conf
   sed -i 's/#inotify=yes/inotify=yes/g' /etc/minidlna.conf
+  sed -i 's/#notify_interval=895/notify_interval=300/g' /etc/minidlna.conf
   sed -i "s|#presentation_url=/|presentation_url=http://localhost:8200|g" /etc/minidlna.conf
   service minidlna force-reload
   service minidlna reload
+
+  sed -i 's/fs.inotify.max_user_watches*/fs.inotify.max_user_watches=65536/g' /etc/sysctl.conf
+  if ! grep -q "max_user_watches" $COMPLETION_FILE; then
+      echo 'fs.inotify.max_user_watches=65536' >> /etc/sysctl.conf
+  fi
+  /sbin/sysctl -p
+
 
   echo 'install_dlna_server' >> $COMPLETION_FILE
 }
