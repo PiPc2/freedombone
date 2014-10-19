@@ -69,7 +69,7 @@ The syntax of the *install-freedombone.sh* script is:
 
 If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory as *install-freedombone.sh*.
 
-Installation is not quick, and depends upon which variant you choose and your internet bandwidth. Allow about three hours for a full installation on the Beaglebone Black. On the Beaglebone installation is in two parts, since a reboot is needed to enable the hardware random number generator.
+Installation is not quick, and depends upon which variant you choose and your internet bandwidth. Allow about three hours for a full installation on the Beaglebone Black. On the Beaglebone installation is in two parts, since a reboot is needed to enable the hardware random number generator and zram.
 
 When done you can ssh into the Freedombone with:
 
