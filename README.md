@@ -59,9 +59,17 @@ When the initial setup is done follow the instructions on screen to run the main
     MY_GPG_PUBLIC_KEY=
     MY_GPG_PRIVATE_KEY=
 
+The GPG public/private key variables are for the filenames of exported GPG keys, and if a private key filename is given then it will be automatically shredded after import.
+
 The FreeDNS subdomain codes can be found under "Dynamic DNS" and "quick cron example". On the last line it will be the string located between the '?' and the '==' characters.
 
-Installation is not quick, and depends upon which variant you choose and your internet bandwidth. Allow at least a couple of hours for it to finish.
+The syntax of the *install-freedombone.sh* script is:
+
+    ./install-freedombone.sh [domain name] [username] [FreeDNS subdomain code] [optional variant type]
+
+If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory as *install-freedombone.sh*.
+
+Installation is not quick, and depends upon which variant you choose and your internet bandwidth. Allow about three hours for a full installation on the Beaglebone Black. On the Beaglebone installation is in two parts, since a reboot is needed to enable the hardware random number generator.
 
 When done you can ssh into the Freedombone with:
 
