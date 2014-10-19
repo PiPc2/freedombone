@@ -106,7 +106,7 @@ CONFIGURATION_FILE="freedombone.cfg"
 SSH_PORT=2222
 
 # The static IP address of the system within the local network
-FIXED_IP_ADDRESS="192.168.1.60"
+LOCAL_NETWORK_STATIC_IP_ADDRESS="192.168.1.60"
 
 # whether to route outgoing traffic through Tor
 ROUTE_THROUGH_TOR="no"
@@ -327,8 +327,8 @@ function argument_checks {
 
 function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
-      if grep -q "FIXED_IP_ADDRESS" $CONFIGURATION_FILE; then
-          FIXED_IP_ADDRESS=$(grep "FIXED_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
+          LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "ROUTE_THROUGH_TOR" $CONFIGURATION_FILE; then
           ROUTE_THROUGH_TOR=$(grep "ROUTE_THROUGH_TOR" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -5035,8 +5035,8 @@ function route_outgoing_traffic_through_tor {
       echo 'TransListenAddress 127.0.0.1' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "TransListenAddress $FIXED_IP_ADDRESS" /etc/tor/torrc; then
-      echo "TransListenAddress $FIXED_IP_ADDRESS" >> /etc/tor/torrc
+  if ! grep -q "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+      echo "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
 
   sed -i 's|DNSPort*|DNSPort 53|g' /etc/tor/torrc
@@ -5048,8 +5048,8 @@ function route_outgoing_traffic_through_tor {
       echo 'DNSListenAddress 127.0.0.1' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "DNSListenAddress $FIXED_IP_ADDRESS" /etc/tor/torrc; then
-      echo "DNSListenAddress $FIXED_IP_ADDRESS" >> /etc/tor/torrc
+  if ! grep -q "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+      echo "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
 
   echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
