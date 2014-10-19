@@ -1713,6 +1713,23 @@ function save_firewall_settings {
   chmod +x /etc/network/if-up.d/iptables
 }
 
+function configure_firewall_for_dlna {
+  if grep -Fxq "configure_firewall_for_dlna" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+      # docker does its own firewalling
+      return
+  fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+      return
+  fi
+  iptables -A INPUT -i eth0 -p udp --dport 1900 -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport 8200 -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_dlna' >> $COMPLETION_FILE
+}
+
 function configure_firewall_for_dns {
   if grep -Fxq "configure_firewall_for_dns" $COMPLETION_FILE; then
       return
@@ -4997,6 +5014,7 @@ install_blog
 install_gnu_social
 install_redmatrix
 install_dlna_server
+configure_firewall_for_dlna
 install_mediagoblin
 create_backup_script
 create_restore_script
