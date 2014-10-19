@@ -39,15 +39,25 @@ Plug the microSD card into your laptop/desktop and then run the *initial_setup.s
 
 where /dev/sdX is the device name for the microSD card. Often it's /dev/sdb or /dev/sdc, depending upon how many drives there are on your system. The script will download the Debian installer and update the microSD card. It can take a while, so be patient.
 
-When the initial setup is done follow the instructions on screen to run the main Freedombone script. Edit the *install-freedombone.sh* script and change the following as needed. If you don't want those services then just leave them as they are.
+When the initial setup is done follow the instructions on screen to run the main Freedombone script. You can either edit the variables within the *install-freedombone.sh* script directly, or create a separate configuration file called *freedombone.cfg* which contains those variables. Variables which you might want to put into a *freedombone.cfg* file are:
 
-    MICROBLOG_DOMAIN_NAME
-    MICROBLOG_FREEDNS_SUBDOMAIN_CODE
-	OWNCLOUD_DOMAIN_NAME
-	OWNCLOUD_FREEDNS_SUBDOMAIN_CODE
-	WIKI_DOMAIN_NAME
-	WIKI_FREEDNS_SUBDOMAIN_CODE
-	REDMATRIX_DOMAIN_NAME
+    MY_EMAIL_ADDRESS=
+    MY_NAME=
+    MY_BLOG_TITLE=
+    MY_BLOG_SUBTITLE=
+    SSH_PORT=
+    FULLBLOG_DOMAIN_NAME=
+    FULLBLOG_FREEDNS_SUBDOMAIN_CODE=
+    MICROBLOG_DOMAIN_NAME=
+    MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
+    REDMATRIX_DOMAIN_NAME=
+    OWNCLOUD_DOMAIN_NAME=
+    OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
+    WIKI_TITLE=
+    WIKI_DOMAIN_NAME=
+    WIKI_FREEDNS_SUBDOMAIN_CODE=
+    MY_GPG_PUBLIC_KEY=
+    MY_GPG_PRIVATE_KEY=
 
 The FreeDNS subdomain codes can be found under "Dynamic DNS" and "quick cron example". On the last line it will be the string located between the '?' and the '==' characters.
 
