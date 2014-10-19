@@ -1278,7 +1278,7 @@ function install_editor {
   update-alternatives --set editor /usr/bin/emacs24
 
   # A minimal emacs configuration
-  echo "(add-to-list 'load-path "~/.emacs.d/")" > /home/$MY_USERNAME/.emacs
+  echo "(add-to-list 'load-path '~/.emacs.d/')" > /home/$MY_USERNAME/.emacs
   echo '' >> /home/$MY_USERNAME/.emacs
   echo ';; ===== Remove trailing whitepace ======================================' >> /home/$MY_USERNAME/.emacs
   echo '' >> /home/$MY_USERNAME/.emacs
