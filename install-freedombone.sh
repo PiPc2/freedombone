@@ -1302,7 +1302,7 @@ function install_editor {
   echo '' >> /home/$MY_USERNAME/.emacs
   echo '(setq org-support-shift-select t)' >> /home/$MY_USERNAME/.emacs
   echo '' >> /home/$MY_USERNAME/.emacs
-  echo ';; ===== Set standard indent to 4 rather that 4 ========================='
+  echo ';; ===== Set standard indent to 4 rather that 4 =========================' >> /home/$MY_USERNAME/.emacs
   echo '' >> /home/$MY_USERNAME/.emacs
   echo '(setq standard-indent 4)' >> /home/$MY_USERNAME/.emacs
   echo '(setq-default tab-width 4)' >> /home/$MY_USERNAME/.emacs
