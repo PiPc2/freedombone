@@ -4606,15 +4606,14 @@ function script_for_attaching_usb_drive {
       return
   fi
   echo '#!/bin/bash' > /usr/bin/attach-music
-  echo "if [ -d $USB_MOUNT ]; then" >> /usr/bin/attach-music
-  echo "  umount $USB_MOUNT" >> /usr/bin/attach-music
-  echo 'fi' >> /usr/bin/attach-music
+  echo 'remove-music' >> /usr/bin/attach-music
   echo "if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/attach-music
   echo "  mkdir $USB_MOUNT" >> /usr/bin/attach-music
   echo 'fi' >> /usr/bin/attach-music
   echo "mount /dev/sda1 $USB_MOUNT" >> /usr/bin/attach-music
   echo "chown root:root $USB_MOUNT" >> /usr/bin/attach-music
   echo "chown -R minidlna:minidlna $USB_MOUNT/*" >> /usr/bin/attach-music
+  echo 'service minidlna restart' >> /usr/bin/attach-music
   echo 'minidlnad -R' >> /usr/bin/attach-music
   chmod +x /usr/bin/attach-music
   ln -s /usr/bin/attach-music /usr/bin/attach-usb
