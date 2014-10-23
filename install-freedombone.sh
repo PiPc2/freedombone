@@ -4341,7 +4341,7 @@ function install_redmatrix {
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       return
   fi
-  # if this is exclusively a writer setup
+  # if this is exclusively a social setup
   if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
       REDMATRIX_DOMAIN_NAME=$DOMAIN_NAME
       REDMATRIX_FREEDNS_SUBDOMAIN_CODE=$FREEDNS_SUBDOMAIN_CODE
@@ -4354,7 +4354,7 @@ function install_redmatrix {
   get_mariadb_password
   repair_databases_script
 
-  apt-get -y --force-yes install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git git
+  apt-get -y --force-yes install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
 
   if [ ! -d /var/www/$REDMATRIX_DOMAIN_NAME ]; then
       mkdir /var/www/$REDMATRIX_DOMAIN_NAME
