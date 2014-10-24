@@ -217,6 +217,9 @@ USB_MOUNT=/mnt/usb
 # name of a script used to upgrade the system
 UPGRADE_SCRIPT_NAME="freedombone-upgrade"
 
+# name of a script which keeps running processes going even if they crash
+WATCHDOG_SCRIPT_NAME="keepon"
+
 # Name of a script used to create a backup of the system on usb drive
 BACKUP_SCRIPT_NAME="backup"
 
@@ -3506,6 +3509,23 @@ function install_xmpp {
   echo 'install_xmpp' >> $COMPLETION_FILE
 }
 
+function install_watchdog_script {
+  if grep -Fxq "install_watchdog_script" $COMPLETION_FILE; then
+      return
+  fi
+  echo '#!/bin/bash' > /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'LOGFILE=/var/log/keepon.log' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'CURRENT_DATE=$(date)' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  # application specific stuff is added later
+  chmod +x /usr/bin/$WATCHDOG_SCRIPT_NAME
+
+  if ! grep -q "/usr/bin/$WATCHDOG_SCRIPT_NAME" /etc/crontab; then
+      echo "*/1            * *   *   *   root /usr/bin/$WATCHDOG_SCRIPT_NAME" >> /etc/crontab
+  fi
+
+  echo 'install_watchdog_script' >> $COMPLETION_FILE
+}
+
 function install_irc_server {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       return
@@ -3552,6 +3572,16 @@ function install_irc_server {
   sed -i "s/;Name = TheOper/Name = $MY_USERNAME/g" /etc/ngircd/ngircd.conf
   sed -i "s/;Password = ThePwd/Password = $IRC_OPERATOR_PASSWORD/g" /etc/ngircd/ngircd.conf
   service ngircd start
+
+  # keep the daemon running
+  echo '' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '# keep irc daemon running' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'IRC_RUNNING=$(pgrep ngircd > /dev/null && echo Running)' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'if [ ! $IRC_RUNNING ]; then' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '  service ngircd start' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '  echo -n $CURRENT_DATE >> $LOGFILE' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '  echo " IRC daemon restarted" >> $LOGFILE' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
 
   if ! grep -q "IRC Server" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
@@ -5105,6 +5135,7 @@ regenerate_ssh_keys
 script_to_make_self_signed_certificates
 create_upgrade_script
 route_outgoing_traffic_through_tor
+install_watchdog_script
 configure_email
 create_procmail
 #spam_filtering
