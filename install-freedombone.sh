@@ -2632,7 +2632,7 @@ function folders_for_mailing_lists {
   echo 'fi' >> /usr/bin/addmailinglist
   echo '' >> /usr/bin/addmailinglist
   echo 'if ! [[ $MYUSERNAME && $MAILINGLIST && $SUBJECTTAG ]]; then' >> /usr/bin/addmailinglist
-  echo '  echo "mailinglistsrule [user name] [mailing list name] [subject tag]"' >> /usr/bin/addmailinglist
+  echo '  echo "addmailinglist [user name] [mailing list name] [subject tag]"' >> /usr/bin/addmailinglist
   echo '  exit 1' >> /usr/bin/addmailinglist
   echo 'fi' >> /usr/bin/addmailinglist
   echo '' >> /usr/bin/addmailinglist
