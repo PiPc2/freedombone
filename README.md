@@ -25,7 +25,7 @@ To get started you will need:
  - Optionally a 5V 2A power supply for the Beaglebone Black
  - Access to the internet via a router with ethernet sockets
  - USB thumb drive (for backups or storing media)
- - A subdomain created on https://freedns.afraid.org
+ - One or more subdomains created on https://freedns.afraid.org
  - A purchased domain name and SSL certificate (only needed for Red Matrix)
  - A laptop or desktop machine with the ability to write to a microSD card (might need an adaptor)
 
@@ -81,4 +81,4 @@ Any manual post-installation setup instructions or passwords can be found in /ho
 
 Non-Beaglebone hardware
 =======================
-It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within the *install-freedombone.sh* script. Obviously, you don't need to run the *initial_setup.sh* script on non-Beaglebone systems.
+It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within *freedombone.cfg* or the *install-freedombone.sh* script. Obviously, you don't need to run the *initial_setup.sh* script on non-Beaglebone systems.
