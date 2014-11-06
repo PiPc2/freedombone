@@ -122,7 +122,8 @@ TLS_TIME_SOURCE1="google.com"
 TLS_TIME_SOURCE2="www.ptb.de"
 
 # kernel specifically tweaked for the Beaglebone Black
-KERNEL_VERSION="v3.15.10-bone7"
+# See http://rcn-ee.net/deb/jessie-armhf/
+KERNEL_VERSION="v3.15.10-bone8"
 
 # Whether or not to use the beaglebone's hardware random number generator
 USE_HWRNG="yes"
@@ -3894,6 +3895,7 @@ function install_blog {
 
   cd /var/www/$FULLBLOG_DOMAIN_NAME
   git clone https://github.com/danpros/htmly htdocs
+  chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
 
   if [ ! -f /etc/ssl/private/$FULLBLOG_DOMAIN_NAME.key ]; then
       makecert $FULLBLOG_DOMAIN_NAME
