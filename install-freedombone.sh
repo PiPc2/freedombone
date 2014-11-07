@@ -99,6 +99,7 @@ VARIANT_MAILBOX="mailbox"
 VARIANT_NONMAILBOX="nonmailbox"
 VARIANT_SOCIAL="social"
 VARIANT_MEDIA="media"
+VARIANT_TOR_DONGLE="tordongle"
 
 # An optional configuration file which overrides some of these variables
 CONFIGURATION_FILE="freedombone.cfg"
@@ -299,7 +300,7 @@ function show_help {
   echo '-----------'
   echo 'This can either be blank if you wish to install the full system,'
   echo "or for more specialised variants you can specify '$VARIANT_MAILBOX', '$VARIANT_CLOUD',"
-  echo "'$VARIANT_CHAT', '$VARIANT_SOCIAL', '$VARIANT_MEDIA' or '$VARIANT_WRITER'."
+  echo "'$VARIANT_CHAT', '$VARIANT_SOCIAL', '$VARIANT_MEDIA', '$VARIANT_TOR_DONGLE' or '$VARIANT_WRITER'."
   echo "If you wish to install everything except email then use the '$VARIANT_NONMAILBOX' variaint."
 
 }
@@ -322,7 +323,7 @@ function argument_checks {
       exit 4
   fi
   if [ $SYSTEM_TYPE ]; then
-      if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_NONMAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL && $SYSTEM_TYPE != $VARIANT_MEDIA ]]; then
+      if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_NONMAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL && $SYSTEM_TYPE != $VARIANT_MEDIA && $SYSTEM_TYPE != $VARIANT_TOR_DONGLE ]]; then
           echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
           exit 30
       fi
@@ -1106,6 +1107,15 @@ function change_login_message {
       echo "             '    '  -' --'  - -' -'   -'-'  - " >> /etc/motd
   fi
 
+  if [[ $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
+      echo '          .---.         .--.               .     ' >> /etc/motd
+      echo '            |           |   :              |     ' >> /etc/motd
+      echo '            | .-. .--.  |   | .-. .--. .-..| .-. ' >> /etc/motd
+      echo "            |(   )|     |   ;(   )|  |(   ||(.-' " >> /etc/motd
+      echo "            '  -' '     '--'   -' '   - - | - --'" >> /etc/motd
+      echo "                                       ._.'      " >> /etc/motd
+  fi
+
   echo '' >> /etc/motd
   echo '                  Freedom in the Cloud' >> /etc/motd
   echo '' >> /etc/motd
@@ -1116,6 +1126,9 @@ function search_for_attached_usb_drive {
   # If a USB drive is attached then search for email,
   # gpg, ssh keys and emacs configuration
   if grep -Fxq "search_for_attached_usb_drive" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if [ -b $USB_DRIVE ]; then
@@ -1728,7 +1741,7 @@ function configure_firewall_for_dlna {
       # docker does its own firewalling
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   iptables -A INPUT -i eth0 -p udp --dport 1900 -j ACCEPT
@@ -1855,7 +1868,7 @@ function configure_firewall_for_git {
 }
 
 function configure_firewall_for_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
@@ -1938,7 +1951,7 @@ function script_to_make_self_signed_certificates {
 }
 
 function configure_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "configure_email" $COMPLETION_FILE; then
@@ -2044,7 +2057,7 @@ function configure_email {
 }
 
 function create_procmail {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "create_procmail" $COMPLETION_FILE; then
@@ -2061,7 +2074,7 @@ function create_procmail {
 
 function spam_filtering {
   # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
@@ -2156,7 +2169,7 @@ function spam_filtering {
 }
 
 function configure_imap {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "configure_imap" $COMPLETION_FILE; then
@@ -2294,7 +2307,7 @@ function encrypt_incoming_email {
   # encrypts incoming mail using your GPG public key
   # so even if an attacker gains access to the data at rest they still need
   # to know your GPG key password to be able to read anything
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "encrypt_incoming_email" $COMPLETION_FILE; then
@@ -2325,7 +2338,7 @@ function encrypt_outgoing_email {
   # encrypts outgoing mail using your GPG public key
   # so even if an attacker gains access to the data at rest they still need
   # to know your GPG key password to be able to read sent mail
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "encrypt_outgoing_email" $COMPLETION_FILE; then
@@ -2358,7 +2371,7 @@ function encrypt_outgoing_email {
 }
 
 function encrypt_all_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "encrypt_all_email" $COMPLETION_FILE; then
@@ -2492,7 +2505,7 @@ function encrypt_all_email {
 }
 
 function email_client {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "email_client" $COMPLETION_FILE; then
@@ -2604,7 +2617,7 @@ function email_client {
 }
 
 function folders_for_mailing_lists {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
@@ -2664,7 +2677,7 @@ function folders_for_mailing_lists {
 }
 
 function folders_for_email_addresses {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
@@ -2736,7 +2749,7 @@ function dynamic_dns_freedns {
 }
 
 function create_public_mailing_list {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "create_public_mailing_list" $COMPLETION_FILE; then
@@ -2832,7 +2845,7 @@ function create_public_mailing_list {
 }
 
 function create_private_mailing_list {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   # This installation doesn't work, results in ruby errors
@@ -2893,7 +2906,7 @@ function create_private_mailing_list {
 }
 
 function import_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
@@ -2944,7 +2957,7 @@ function import_email {
 }
 
 function install_web_server {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_web_server" $COMPLETION_FILE; then
@@ -3157,7 +3170,7 @@ function repair_databases_script {
 }
 
 function install_owncloud_music_app {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
@@ -3183,7 +3196,7 @@ function install_owncloud_music_app {
 }
 
 function install_owncloud {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   OWNCLOUD_COMPLETION_MSG1=" *** Freedombone $SYSTEM_TYPE is now installed ***"
@@ -3423,7 +3436,7 @@ quit" > $INSTALL_DIR/batch.sql
 }
 
 function install_xmpp {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_xmpp" $COMPLETION_FILE; then
@@ -3519,7 +3532,7 @@ function install_watchdog_script {
 }
 
 function install_irc_server {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_irc_server" $COMPLETION_FILE; then
@@ -3599,7 +3612,7 @@ function get_wiki_admin_password {
 }
 
 function install_wiki {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
@@ -3879,7 +3892,7 @@ function get_blog_admin_password {
 }
 
 function install_blog {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
@@ -4119,7 +4132,7 @@ function install_gnu_social {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if [ ! $MICROBLOG_DOMAIN_NAME ]; then
@@ -4361,7 +4374,7 @@ function install_redmatrix {
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   # if this is exclusively a social setup
@@ -4667,7 +4680,7 @@ function install_dlna_server {
   if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   apt-get -y --force-yes install minidlna
@@ -4719,7 +4732,7 @@ function install_mediagoblin {
   if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   # if this is exclusively a writer setup
@@ -4981,16 +4994,83 @@ function intrusion_detection {
   echo 'intrusion_detection' >> $COMPLETION_FILE
 }
 
+# see http://adammelton.com/tor_dongle.php
+# Attach the BeagleBone to a PC via USB and then have an enthernet
+# connection to the internet router
+function create_tor_dongle {
+  if grep -Fxq "create_tor_dongle" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE != "$VARIANT_TOR_DONGLE" ]]; then
+      return
+  fi
+
+  apt-get -y --force-yes install tor tor-arm
+
+  # firewall
+  iptables -A INPUT -i usb0 -p tcp --dport 9050 -j ACCEPT
+  iptables -A INPUT -i usb0 -p tcp --dport 9051 -j ACCEPT
+  save_firewall_settings
+
+  # tor settings
+  sed -i "s/#SocksPort 192.168.0.1:9100/SocksPort 192.168.7.2:9050/g" /etc/tor/torrc
+  sed -i 's/#ControlPort 9051/ControlPort 9051/g' /etc/tor/torrc
+  sed -i 's/#CookieAuthentication 1/CookieAuthentication 1/g' /etc/tor/torrc
+  if ! grep -q "DisableDebuggerAttachment" /etc/tor/torrc; then
+      echo 'DisableDebuggerAttachment 0' >> /etc/tor/torrc
+  fi
+
+  # ensure that USB networking is enabled
+  echo '# The loopback network interface' > /etc/network/interfaces
+  echo 'auto lo' >> /etc/network/interfaces
+  echo 'iface lo inet loopback' >> /etc/network/interfaces
+  echo '' >> /etc/network/interfaces
+  echo '# The primary network interface' >> /etc/network/interfaces
+  echo 'auto eth0' >> /etc/network/interfaces
+  echo 'iface eth0 inet dhcp' >> /etc/network/interfaces
+  echo '' >> /etc/network/interfaces
+  echo '# USB network interface' >> /etc/network/interfaces
+  echo 'iface usb0 inet static' >> /etc/network/interfaces
+  echo '    address 192.168.7.2' >> /etc/network/interfaces
+  echo '    netmask 255.255.255.0' >> /etc/network/interfaces
+  echo '    network 192.168.7.0' >> /etc/network/interfaces
+  echo '    gateway 192.168.7.1' >> /etc/network/interfaces
+
+  if ! grep -q "Tor Dongle" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Tor Dongle' >> /home/$MY_USERNAME/README
+      echo '==========' >> /home/$MY_USERNAME/README
+      echo 'Connect your PC to the Beaglebone via the USB cable' >> /home/$MY_USERNAME/README
+      echo 'and the Beaglebone ethernet to your internet router.' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Within your network proxy settings set the SOCKS host' >> /home/$MY_USERNAME/README
+      echo 'to 192.168.7.2 and the port to 9050, with remote' >> /home/$MY_USERNAME/README
+      echo 'DNS enabled. There should be no proxying for localhost' >> /home/$MY_USERNAME/README
+      echo 'and 127.0.0.1' >> /home/$MY_USERNAME/README
+  fi
+
+  echo 'Freedombone Tor Dongle installation is complete'
+  cat /home/$MY_USERNAME/README
+
+  service networking restart
+  service tor restart
+  exit 873
+}
+
 # see https://trac.torproject.org/projects/tor/wiki/doc/TransparentProxy
 # Local Redirection and Anonymizing Middlebox
 function route_outgoing_traffic_through_tor {
   if grep -Fxq "route_outgoing_traffic_through_tor" $COMPLETION_FILE; then
       return
   fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
+      return
+  fi
   if [[ $ROUTE_THROUGH_TOR != "yes" ]]; then
       return
   fi
-  apt-get -y --force-yes install tor
+  apt-get -y --force-yes install tor tor-arm
 
   ### set variables
   # Destinations you don't want routed through Tor
@@ -5036,8 +5116,8 @@ function route_outgoing_traffic_through_tor {
   save_firewall_settings
 
   if ! grep -q "fs.file-max" /etc/sysctl.conf; then
-	  echo "fs.file-max=100000" >> /etc/sysctl.conf
-	  /sbin/sysctl -p
+      echo "fs.file-max=100000" >> /etc/sysctl.conf
+      /sbin/sysctl -p
   fi
 
   echo 'domain localdomain' > /etc/resolv.conf
@@ -5165,6 +5245,7 @@ create_backup_script
 create_restore_script
 backup_to_friends_servers
 restore_from_friend
+create_tor_dongle
 intrusion_detection
 install_final
 echo 'Freedombone installation is complete'
