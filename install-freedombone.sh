@@ -3493,7 +3493,9 @@ function install_xmpp {
   sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
   sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"/g' /etc/prosody/prosody.cfg.lua
   sed -i 's/enabled = false -- Remove this line to enable this host//g' /etc/prosody/prosody.cfg.lua
-  sed -i 's/example.com/$DOMAIN_NAME/g' /etc/prosody/prosody.cfg.lua
+  sed -i 's|key = "/etc/prosody/certs/example.com.key"|key = "/etc/ssl/private/xmpp.key"|g' /etc/prosody/prosody.cfg.lua
+  sed -i 's|certificate = "/etc/prosody/certs/example.com.crt"|certificate = "/etc/ssl/certs/xmpp.crt"|g' /etc/prosody/prosody.cfg.lua
+  sed -i "s/example.com/$DOMAIN_NAME/g" /etc/prosody/prosody.cfg.lua
 
   service prosody restart
   touch /home/$MY_USERNAME/README
