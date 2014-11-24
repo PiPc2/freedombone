@@ -3282,6 +3282,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'server {' > /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    listen 80;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3289,6 +3290,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    root /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3691,6 +3693,7 @@ function install_wiki {
   echo '    listen 80;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    root /var/www/$WIKI_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    server_name $WIKI_DOMAIN_NAME;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    error_log /var/www/$WIKI_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -3765,6 +3768,7 @@ function install_wiki {
   echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    root /var/www/$WIKI_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    server_name $WIKI_DOMAIN_NAME;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    error_log /var/www/$WIKI_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -3920,6 +3924,7 @@ function install_blog {
   echo '    listen 80;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -3994,6 +3999,7 @@ function install_blog {
   echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -4213,6 +4219,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    listen 80;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "    server_name $MICROBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "    root /var/www/$MICROBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "    error_log /var/www/$MICROBLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -4224,6 +4231,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    server_name $MICROBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "    root /var/www/$MICROBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    index index.php index.html index.htm;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -4265,7 +4273,6 @@ quit" > $INSTALL_DIR/batch.sql
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '  client_max_body_size      15m;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo "  access_log /var/www/$MICROBLOG_DOMAIN_NAME/access_ssl.log;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "  error_log /var/www/$MICROBLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
 
@@ -4451,6 +4458,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    listen 80;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    server_name $REDMATRIX_DOMAIN_NAME;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    root /var/www/$REDMATRIX_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
@@ -4466,6 +4474,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
@@ -4807,7 +4816,6 @@ function install_mediagoblin {
   echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo "        server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        access_log /var/log/nginx/mg.access.log;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '        error_log /var/log/nginx/mg.error.log error;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
   echo '        #include global/common.conf;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
