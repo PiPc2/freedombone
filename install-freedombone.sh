@@ -3004,6 +3004,8 @@ function install_web_server {
   fi
 
   sed -i "s/worker_processes 4;/worker_processes $CPU_CORES;/g" /etc/nginx/nginx.conf
+  sed -i 's/worker_connections 768;/worker_connections 50;/g' /etc/nginx/nginx.conf
+  sed -i 's/# server_tokens off;/server_tokens off;/g' /etc/nginx/nginx.conf
 
   # install a script to easily enable and disable nginx virtual hosts
   if [ ! -d $INSTALL_DIR ]; then
