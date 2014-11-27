@@ -3003,9 +3003,82 @@ function install_web_server {
       exit 51
   fi
 
-  sed -i "s/worker_processes 4;/worker_processes $CPU_CORES;/g" /etc/nginx/nginx.conf
-  sed -i 's/worker_connections 768;/worker_connections 50;/g' /etc/nginx/nginx.conf
-  sed -i 's/# server_tokens off;/server_tokens off;/g' /etc/nginx/nginx.conf
+  # Nginx settings
+  echo 'user www-data;' > /etc/nginx/nginx.conf
+  echo "worker_processes; $CPU_CORES" >> /etc/nginx/nginx.conf
+  echo 'pid /run/nginx.pid;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo 'events {' >> /etc/nginx/nginx.conf
+  echo '        worker_connections 50;' >> /etc/nginx/nginx.conf
+  echo '        # multi_accept on;' >> /etc/nginx/nginx.conf
+  echo '}' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo 'http {' >> /etc/nginx/nginx.conf
+  echo '        # limit the number of connections per single IP' >> /etc/nginx/nginx.conf
+  echo '        limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # limit the number of requests for a given session' >> /etc/nginx/nginx.conf
+  echo '        limit_req_zone $binary_remote_addr zone=req_limit_per_ip:10m rate=5r/s;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # if the request body size is more than the buffer size, then the entire (or partial) request body is written into a temporary file' >> /etc/nginx/nginx.conf
+  echo '        client_body_buffer_size  128k;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # headerbuffer size for the request header from client, its set for testing purpose' >> /etc/nginx/nginx.conf
+  echo '        client_header_buffer_size 3m;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # maximum number and size of buffers for large headers to read from client request' >> /etc/nginx/nginx.conf
+  echo '        large_client_header_buffers 4 256k;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # read timeout for the request body from client, its set for testing purpose' >> /etc/nginx/nginx.conf
+  echo '        client_body_timeout   3m;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # how long to wait for the client to send a request header, its set for testing purpose' >> /etc/nginx/nginx.conf
+  echo '        client_header_timeout 3m;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        ##' >> /etc/nginx/nginx.conf
+  echo '        # Basic Settings' >> /etc/nginx/nginx.conf
+  echo '        ##' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        sendfile on;' >> /etc/nginx/nginx.conf
+  echo '        tcp_nopush on;' >> /etc/nginx/nginx.conf
+  echo '        tcp_nodelay on;' >> /etc/nginx/nginx.conf
+  echo '        keepalive_timeout 65;' >> /etc/nginx/nginx.conf
+  echo '        types_hash_max_size 2048;' >> /etc/nginx/nginx.conf
+  echo '        server_tokens off;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # server_names_hash_bucket_size 64;' >> /etc/nginx/nginx.conf
+  echo '        # server_name_in_redirect off;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        include /etc/nginx/mime.types;' >> /etc/nginx/nginx.conf
+  echo '        default_type application/octet-stream;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        ##' >> /etc/nginx/nginx.conf
+  echo '        # Logging Settings' >> /etc/nginx/nginx.conf
+  echo '        ##' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        access_log /var/log/nginx/access.log;' >> /etc/nginx/nginx.conf
+  echo '        error_log /var/log/nginx/error.log;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        ###' >> /etc/nginx/nginx.conf
+  echo '        # Gzip Settings' >> /etc/nginx/nginx.conf
+  echo '        ##' >> /etc/nginx/nginx.conf
+  echo '        gzip on;' >> /etc/nginx/nginx.conf
+  echo '        gzip_disable "msie6";' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        # gzip_vary on;' >> /etc/nginx/nginx.conf
+  echo '        # gzip_proxied any;' >> /etc/nginx/nginx.conf
+  echo '        # gzip_comp_level 6;' >> /etc/nginx/nginx.conf
+  echo '        # gzip_buffers 16 8k;' >> /etc/nginx/nginx.conf
+  echo '        # gzip_http_version 1.1;' >> /etc/nginx/nginx.conf
+  echo '        # gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        ##' >> /etc/nginx/nginx.conf
+  echo '        # Virtual Host Configs' >> /etc/nginx/nginx.conf
+  echo '        ##' >> /etc/nginx/nginx.conf
+  echo '' >> /etc/nginx/nginx.conf
+  echo '        include /etc/nginx/conf.d/*.conf;' >> /etc/nginx/nginx.conf
+  echo '        include /etc/nginx/sites-enabled/*;' >> /etc/nginx/nginx.conf
+  echo '}' >> /etc/nginx/nginx.conf
 
   # install a script to easily enable and disable nginx virtual hosts
   if [ ! -d $INSTALL_DIR ]; then
@@ -3303,6 +3376,8 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    error_log /var/www/$OWNCLOUD_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3312,6 +3387,10 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    error_log /var/www/$OWNCLOUD_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3721,6 +3800,9 @@ function install_wiki {
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    location / {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -3795,6 +3877,9 @@ function install_wiki {
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$WIKI_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
@@ -3952,6 +4037,9 @@ function install_blog {
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -4026,6 +4114,9 @@ function install_blog {
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -4243,6 +4334,9 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    access_log off;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "    error_log /var/www/$MICROBLOG_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -4253,6 +4347,9 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    root /var/www/$MICROBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    index index.php index.html index.htm;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -4481,6 +4578,8 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    root /var/www/$REDMATRIX_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
@@ -4496,6 +4595,9 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
