@@ -266,6 +266,12 @@ MY_NAME=$DOMAIN_NAME
 
 export DEBIAN_FRONTEND=noninteractive
 
+# logging level for Nginx
+WEBSERVER_LOG_LEVEL='crit'
+
+# used to limit CPU usage
+CPULIMIT='/usr/bin/cpulimit -l 20 -e'
+
 # File which keeps track of what has already been installed
 COMPLETION_FILE=$HOME/freedombone-completed.txt
 if [ ! -f $COMPLETION_FILE ]; then
@@ -334,6 +340,9 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WEBSERVER_LOG_LEVEL" $CONFIGURATION_FILE; then
+          WEBSERVER_LOG_LEVEL=$(grep "WEBSERVER_LOG_LEVEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "ROUTE_THROUGH_TOR" $CONFIGURATION_FILE; then
           ROUTE_THROUGH_TOR=$(grep "ROUTE_THROUGH_TOR" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -1271,7 +1280,7 @@ function initial_setup {
   fi
   apt-get -y remove --purge apache*
   apt-get -y dist-upgrade
-  apt-get -y install ca-certificates emacs24
+  apt-get -y install ca-certificates emacs24 cpulimit
 
   echo 'initial_setup' >> $COMPLETION_FILE
 }
@@ -3283,6 +3292,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    listen 80;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    error_log /var/www/$OWNCLOUD_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3291,6 +3301,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    root /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    server_name $OWNCLOUD_DOMAIN_NAME;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
+  echo "    error_log /var/www/$OWNCLOUD_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
@@ -3925,7 +3936,7 @@ function install_blog {
   echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -4000,7 +4011,7 @@ function install_blog {
   echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-  echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+  echo "    error_log /var/www/$FULLBLOG_DOMAIN_NAME/error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
@@ -4220,7 +4231,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    server_name $MICROBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo "    root /var/www/$MICROBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo "    error_log /var/www/$MICROBLOG_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo "    error_log /var/www/$MICROBLOG_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -4273,7 +4284,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '  client_max_body_size      15m;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
-  echo "  error_log /var/www/$MICROBLOG_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+  echo "  error_log /var/www/$MICROBLOG_DOMAIN_NAME/error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
 
   configure_php
@@ -4459,7 +4470,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo "    server_name $REDMATRIX_DOMAIN_NAME;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    root /var/www/$REDMATRIX_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    access_log off;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
-  echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error.log;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
@@ -4469,7 +4480,7 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    root /var/www/$REDMATRIX_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo "    server_name $REDMATRIX_DOMAIN_NAME;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
-  echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error_ssl.log;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
+  echo "    error_log /var/www/$REDMATRIX_DOMAIN_NAME/error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    index index.php;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    charset utf-8;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    client_max_body_size 20m;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
