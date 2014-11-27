@@ -3391,7 +3391,6 @@ quit" > $INSTALL_DIR/batch.sql
   echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo '    ssl on;' >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_certificate /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
   echo "    ssl_certificate_key /etc/ssl/private/$OWNCLOUD_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME
