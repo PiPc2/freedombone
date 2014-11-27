@@ -106,6 +106,9 @@ CONFIGURATION_FILE="freedombone.cfg"
 
 SSH_PORT=2222
 
+# number of CPU cores
+CPU_CORES=1
+
 # The static IP address of the system within the local network
 LOCAL_NETWORK_STATIC_IP_ADDRESS="192.168.1.60"
 
@@ -340,6 +343,9 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "CPU_CORES" $CONFIGURATION_FILE; then
+          CPU_CORES=$(grep "CPU_CORES" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "WEBSERVER_LOG_LEVEL" $CONFIGURATION_FILE; then
           WEBSERVER_LOG_LEVEL=$(grep "WEBSERVER_LOG_LEVEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -2996,6 +3002,8 @@ function install_web_server {
       echo "ERROR: nginx does not appear to have installed. $CHECK_MESSAGE"
       exit 51
   fi
+
+  sed -i "s/worker_processes 4;/worker_processes $CPU_CORES;/g" /etc/nginx/nginx.conf
 
   # install a script to easily enable and disable nginx virtual hosts
   if [ ! -d $INSTALL_DIR ]; then
