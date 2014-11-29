@@ -3018,7 +3018,8 @@ function install_web_server {
   echo '        limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;' >> /etc/nginx/nginx.conf
   echo '' >> /etc/nginx/nginx.conf
   echo '        # limit the number of requests for a given session' >> /etc/nginx/nginx.conf
-  echo '        limit_req_zone $binary_remote_addr zone=req_limit_per_ip:10m rate=5r/s;' >> /etc/nginx/nginx.conf
+  echo '        # Note that the Owncloud web interface seems to require a rate of around 140r/s' >> /etc/nginx/nginx.conf
+  echo '        limit_req_zone $binary_remote_addr zone=req_limit_per_ip:10m rate=140r/s;' >> /etc/nginx/nginx.conf
   echo '' >> /etc/nginx/nginx.conf
   echo '        # if the request body size is more than the buffer size, then the entire (or partial) request body is written into a temporary file' >> /etc/nginx/nginx.conf
   echo '        client_body_buffer_size  128k;' >> /etc/nginx/nginx.conf
