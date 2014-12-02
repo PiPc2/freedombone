@@ -275,6 +275,9 @@ WEBSERVER_LOG_LEVEL='crit'
 # used to limit CPU usage
 CPULIMIT='/usr/bin/cpulimit -l 20 -e'
 
+# command to create a git repository
+CREATE_GIT_PROJECT_COMMAND='create-project'
+
 # File which keeps track of what has already been installed
 COMPLETION_FILE=$HOME/freedombone-completed.txt
 if [ ! -f $COMPLETION_FILE ]; then
@@ -5292,6 +5295,37 @@ function route_outgoing_traffic_through_tor {
   echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
 }
 
+# A command to create a git repository for a project
+function create_git_project {
+  if grep -Fxq "create_git_project" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y install git
+  echo '#!/bin/bash' > /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'GIT_PROJECT_NAME=$1' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'if [ ! $GIT_PROJECT_NAME ]; then' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '  echo "Please specify a project name, without any spaces"' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '  exit 1' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'fi' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'if [ ! -d /home/$USER/projects/$GIT_PROJECT_NAME ]; then' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '  mkdir -p /home/$USER/projects/$GIT_PROJECT_NAME' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'fi' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'cd /home/$USER/projects/$GIT_PROJECT_NAME' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'git init --bare' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo -n 'echo "Your project has been created, ' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'use the following command to clone the repository"' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo -n "  git clone ssh://$MY_USERNAME@$DOMAIN_NAME:$SSH_PORT" >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '/home/$USER/projects/$GIT_PROJECT_NAME' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  echo 'exit 0' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+
+  echo 'create_git_project' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -5311,6 +5345,7 @@ function install_final {
   fi
   reboot
 }
+
 
 read_configuration
 argument_checks
@@ -5334,6 +5369,7 @@ random_number_generator
 set_your_domain_name
 time_synchronisation
 configure_internet_protocol
+create_git_project
 configure_ssh
 check_hwrng
 search_for_attached_usb_drive
