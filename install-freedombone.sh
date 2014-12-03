@@ -284,6 +284,12 @@ if [ ! -f $COMPLETION_FILE ]; then
     touch $COMPLETION_FILE
 fi
 
+# Your github username
+GITHUB_USERNAME=
+
+# Directory where github projects will be backed up
+GITHUB_BACKUP_DIRECTORY=/var/backups/github
+
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
@@ -346,6 +352,12 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GITHUB_USERNAME" $CONFIGURATION_FILE; then
+          GITHUB_USERNAME=$(grep "GITHUB_USERNAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GITHUB_BACKUP_DIRECTORY" $CONFIGURATION_FILE; then
+          GITHUB_BACKUP_DIRECTORY=$(grep "GITHUB_BACKUP_DIRECTORY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "CPU_CORES" $CONFIGURATION_FILE; then
           CPU_CORES=$(grep "CPU_CORES" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -5328,6 +5340,43 @@ function create_git_project {
   echo 'create_git_project' >> $COMPLETION_FILE
 }
 
+# Create daily backups of any projects on Github
+# Then if Github goes away, turns evil, is censored or has
+# outages then you still have access to your projects
+function backup_github_projects {
+  if grep -Fxq "backup_github_projects" $COMPLETION_FILE; then
+      return
+  fi
+  if [ ! $GITHUB_USERNAME ]; then
+      return 731
+  fi
+  if [ ! $GITHUB_BACKUP_DIRECTORY ]; then
+      return 732
+  fi
+  apt-get -y install git
+
+  # create a github backups directory if needed
+  if [ ! -d $GITHUB_BACKUP_DIRECTORY ]; then
+      mkdir -p $GITHUB_BACKUP_DIRECTORY
+  fi
+
+  # get the backup utility
+  cd $INSTALL_DIR
+  git clone https://github.com/josegonzalez/python-github-backup
+
+  # install it
+  cd $INSTALL_DIR/python-github-backup
+  python setup.py install
+
+  # add a daily cron entry
+  echo '#!/bin/bash' > /etc/cron.daily/github
+  echo "github-backup $GITHUB_USERNAME -o $GITHUB_BACKUP_DIRECTORY --repositories" >> /etc/cron.daily/github
+  echo 'exit 0' >> /etc/cron.daily/github
+  chmod +x /etc/cron.daily/github
+
+  echo 'backup_github_projects' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -5372,6 +5421,7 @@ set_your_domain_name
 time_synchronisation
 configure_internet_protocol
 create_git_project
+backup_github_projects
 configure_ssh
 check_hwrng
 search_for_attached_usb_drive
