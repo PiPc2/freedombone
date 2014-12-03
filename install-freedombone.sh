@@ -5374,6 +5374,9 @@ function backup_github_projects {
   echo 'exit 0' >> /etc/cron.daily/github
   chmod +x /etc/cron.daily/github
 
+  # do an initial backup
+  /etc/cron.daily/github
+
   echo 'backup_github_projects' >> $COMPLETION_FILE
 }
 
