@@ -553,7 +553,7 @@ function create_backup_script {
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/projects /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -827,7 +827,7 @@ function backup_to_friends_servers {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
-  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /home/$MY_USERNAME/projects /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'while read remote_server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
