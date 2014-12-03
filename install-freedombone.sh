@@ -5301,6 +5301,7 @@ function create_git_project {
       return
   fi
   apt-get -y install git
+
   echo '#!/bin/bash' > /usr/bin/$CREATE_GIT_PROJECT_COMMAND
   echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
   echo 'GIT_PROJECT_NAME=$1' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
@@ -5322,6 +5323,7 @@ function create_git_project {
   echo '/home/$USER/projects/$GIT_PROJECT_NAME' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
   echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
   echo 'exit 0' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+  chmod +x /usr/bin/$CREATE_GIT_PROJECT_COMMAND
 
   echo 'create_git_project' >> $COMPLETION_FILE
 }
