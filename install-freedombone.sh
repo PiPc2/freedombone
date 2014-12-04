@@ -4549,6 +4549,9 @@ function install_redmatrix {
       mv redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
       chown -R www-data:www-data /var/www/$REDMATRIX_DOMAIN_NAME/htdocs
       git clone $REDMATRIX_ADDONS_REPO /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/addon
+      # some extra themes
+      git clone https://github.com/DeadSuperHero/redmatrix-themes /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/redmatrix-themes1
+      cp -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/redmatrix-themes1/* view/theme/
   fi
 
   get_mariadb_redmatrix_admin_password
