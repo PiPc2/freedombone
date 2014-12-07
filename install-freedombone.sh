@@ -3073,7 +3073,7 @@ function install_web_server {
 
   # Nginx settings
   echo 'user www-data;' > /etc/nginx/nginx.conf
-  echo "worker_processes; $CPU_CORES" >> /etc/nginx/nginx.conf
+  #echo "worker_processes; $CPU_CORES" >> /etc/nginx/nginx.conf
   echo 'pid /run/nginx.pid;' >> /etc/nginx/nginx.conf
   echo '' >> /etc/nginx/nginx.conf
   echo 'events {' >> /etc/nginx/nginx.conf
