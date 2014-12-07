@@ -112,6 +112,9 @@ CPU_CORES=1
 # The static IP address of the system within the local network
 LOCAL_NETWORK_STATIC_IP_ADDRESS="192.168.1.60"
 
+# IP address of the router (gateway)
+ROUTER_IP_ADDRESS="192.168.1.254"
+
 # whether to route outgoing traffic through Tor
 ROUTE_THROUGH_TOR="no"
 
@@ -353,6 +356,9 @@ function read_configuration {
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
+      if grep -q "ROUTER_IP_ADDRESS" $CONFIGURATION_FILE; then
+          ROUTER_IP_ADDRESS=$(grep "ROUTER_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "GITHUB_USERNAME" $CONFIGURATION_FILE; then
           GITHUB_USERNAME=$(grep "GITHUB_USERNAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -450,6 +456,53 @@ function read_configuration {
           TLS_TIME_SOURCE2=$(grep "TLS_TIME_SOURCE2" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
   fi
+}
+
+function install_not_on_BBB {
+  if grep -Fxq "install_not_on_BBB" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ INSTALLING_ON_BBB == "yes" ]]; then
+      return
+  fi
+
+  echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
+  echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
+  echo '' >> /etc/network/interfaces
+  echo '# The loopback network interface' >> /etc/network/interfaces
+  echo 'auto lo' >> /etc/network/interfaces
+  echo 'iface lo inet loopback' >> /etc/network/interfaces
+  echo '' >> /etc/network/interfaces
+  echo '# The primary network interface' >> /etc/network/interfaces
+  echo 'auto eth0' >> /etc/network/interfaces
+  echo 'iface eth0 inet static' >> /etc/network/interfaces
+  echo "    address $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/network/interfaces
+  echo '    netmask 255.255.255.0' >> /etc/network/interfaces
+  echo "    gateway $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
+  echo '    dns-nameservers 213.73.91.35 85.214.20.141' >> /etc/network/interfaces
+  echo '# Example to keep MAC address between reboots' >> /etc/network/interfaces
+  echo '#hwaddress ether DE:AD:BE:EF:CA:FE' >> /etc/network/interfaces
+  echo '' >> /etc/network/interfaces
+  echo '# The secondary network interface' >> /etc/network/interfaces
+  echo '#auto eth1' >> /etc/network/interfaces
+  echo '#iface eth1 inet dhcp' >> /etc/network/interfaces
+  echo '' >> /etc/network/interfaces
+  echo '# WiFi Example' >> /etc/network/interfaces
+  echo '#auto wlan0' >> /etc/network/interfaces
+  echo '#iface wlan0 inet dhcp' >> /etc/network/interfaces
+  echo '#    wpa-ssid "essid"' >> /etc/network/interfaces
+  echo '#    wpa-psk  "password"' >> /etc/network/interfaces
+  echo '' >> /etc/network/interfaces
+  echo '# Ethernet/RNDIS gadget (g_ether)' >> /etc/network/interfaces
+  echo '# ... or on host side, usbnet and random hwaddr' >> /etc/network/interfaces
+  echo '# Note on some boards, usb0 is automaticly setup with an init script' >> /etc/network/interfaces
+  echo '#iface usb0 inet static' >> /etc/network/interfaces
+  echo '#    address 192.168.7.2' >> /etc/network/interfaces
+  echo '#    netmask 255.255.255.0' >> /etc/network/interfaces
+  echo '#    network 192.168.7.0' >> /etc/network/interfaces
+  echo '#    gateway 192.168.7.1' >> /etc/network/interfaces
+
+  echo 'install_not_on_BBB' >> $COMPLETION_FILE
 }
 
 function check_hwrng {
@@ -5406,6 +5459,7 @@ function install_final {
 
 read_configuration
 argument_checks
+install_not_on_BBB
 remove_default_user
 configure_firewall
 configure_firewall_for_ssh
