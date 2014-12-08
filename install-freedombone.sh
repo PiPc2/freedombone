@@ -352,6 +352,13 @@ function argument_checks {
 }
 
 function read_configuration {
+  # if not installing on a Beaglebone then use sdb as the USB drive by default
+  if [ ! $INSTALLING_ON_BBB ]; then
+      if [[ $USB_DRIVE == /dev/sda1 ]]; then
+          USB_DRIVE=/dev/sdb1
+      fi
+  fi
+
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
