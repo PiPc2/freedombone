@@ -3390,7 +3390,7 @@ function install_owncloud {
       return
   fi
   if ! [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
-      if [ ! $SYSTEM_TYPE ]; then
+      if [ $SYSTEM_TYPE ]; then
           return
       fi
   fi
