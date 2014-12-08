@@ -595,6 +595,12 @@ function create_backup_script {
   echo "if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  mkdir $USB_MOUNT/backup" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  echo 'There was a problem making the directory $USB_MOUNT/backup.'" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  exit 27' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/$BACKUP_SCRIPT_NAME
