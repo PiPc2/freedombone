@@ -240,10 +240,6 @@ BACKUP_TO_FRIENDS_SCRIPT_NAME="backup2friends"
 # name of a script used to restore backed up data from a friend
 RESTORE_FROM_FRIEND_SCRIPT_NAME="restorefromfriend"
 
-# passphrase used for automatic backups to friends servers
-# this will be automatically generated
-BACKUP_TO_FRIENDS_PASSPHRASE=
-
 # memory limit for php in MB
 MAX_PHP_MEMORY=64
 
@@ -631,7 +627,7 @@ function create_backup_script {
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /var/lib/mysql/mysql /var/www /etc/nginx/sites-available /etc/ssl/private /etc/ssl/certs $GITHUB_BACKUP_DIRECTORY /home/$MY_USERNAME/projects /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /root/backupkey /var/lib/mysql/mysql /var/www /etc/nginx/sites-available /etc/ssl/private /etc/ssl/certs $GITHUB_BACKUP_DIRECTORY /home/$MY_USERNAME/projects /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -845,17 +841,13 @@ function backup_to_friends_servers {
   fi
 
   apt-get -y --force-yes install duplicity
-
-  if [ ! $BACKUP_TO_FRIENDS_PASSPHRASE ]; then
-      BACKUP_TO_FRIENDS_PASSPHRASE=$(openssl rand -base64 32)
-  fi
-
+  
   if ! grep -q "backups on friends servers" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'Backups' >> /home/$MY_USERNAME/README
       echo '=======' >> /home/$MY_USERNAME/README
-      echo "Passphrase for backups on friends servers: $BACKUP_TO_FRIENDS_PASSPHRASE" >> /home/$MY_USERNAME/README
+      echo 'Key file: /root/backupkey' >> /home/$MY_USERNAME/README
       echo "To add friends servers create a file called $FRIENDS_SERVERS_LIST"
       echo 'and add entries like this:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
@@ -869,7 +861,20 @@ function backup_to_friends_servers {
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "PASSPHRASE='$BACKUP_TO_FRIENDS_PASSPHRASE'" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+
+  echo '# Generate an ssh key used for encrypting backups' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "if [ ! -f /root/backupkey ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  ssh-keygen -t rsa -f /root/backupkey -q -N ""' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  sed -i "s/-----BEGIN RSA PRIVATE KEY-----//g" /root/backupkey' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME 
+  echo '  sed -i "s/-----END RSA PRIVATE KEY-----//g" /root/backupkey' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME 
+  echo '  sed -i "s/==//g" /root/backupkey' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME 
+  echo '  chmod 400 /root/backupkey' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  rm /root/backupkey.pub' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+
+  echo '# Passphrase is the ssh private key' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "PASSPHRASE=$(</root/backupkey)" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ ! -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    exit 1' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -905,7 +910,7 @@ function backup_to_friends_servers {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
-  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /var/lib/mysql/mysql /var/www /etc/nginx/sites-available /etc/ssl/private /etc/ssl/certs $GITHUB_BACKUP_DIRECTORY /home/$MY_USERNAME/projects /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /root/backupkey /var/lib/mysql/mysql /var/www /etc/nginx/sites-available /etc/ssl/private /etc/ssl/certs $GITHUB_BACKUP_DIRECTORY /home/$MY_USERNAME/projects /home/$MY_USERNAME/personal /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'while read remote_server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1013,14 +1018,18 @@ function restore_from_friend {
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
-  if [ ! $BACKUP_TO_FRIENDS_PASSPHRASE ]; then
-      BACKUP_TO_FRIENDS_PASSPHRASE=$(openssl rand -base64 32)
-  fi
-
   echo '#!/bin/bash' > /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'SERVER_NAME=$1' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "PASSPHRASE='$BACKUP_TO_FRIENDS_PASSPHRASE'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo '# Check that a backup key exists' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "if [ ! -f /root/backupkey ]; then" >> /usr/bin/$RESTORE_FROM_FRIENDS_SCRIPT_NAME
+  echo '  echo "No backup key was found in /root/backupkey"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  exit 84' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo "PASSPHRASE=$(</root/backupkey)" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'if [ ! $SERVER_NAME ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "    echo '$RESTORE_FROM_FRIEND_SCRIPT_NAME [server]'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
