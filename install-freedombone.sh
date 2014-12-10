@@ -687,19 +687,19 @@ function create_backup_script {
 
   echo 'echo "Removing old backups"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -971,20 +971,20 @@ function backup_to_friends_servers {
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Removing old backups"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 3 $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 3
 3 $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 3 $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 3 $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 3 $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
