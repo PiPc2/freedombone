@@ -234,6 +234,9 @@ BACKUP_SCRIPT_NAME="backup"
 # Name of a script used to restore the system from usb drive
 RESTORE_SCRIPT_NAME="restore"
 
+# The command used for backups
+BACKUP_COMMAND="duplicity"
+
 # name of a script used to backup to friends servers
 BACKUP_TO_FRIENDS_SCRIPT_NAME="backup2friends"
 
@@ -633,70 +636,70 @@ function create_backup_script {
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up the public mailing list"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity full remove-all-but-n-full 3 --encrypt-key $GPG_KEY --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "$PUBLIC_MAILING_LIST_DIRECTORY file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up the XMPP settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity full remove-all-but-n-full 3 --encrypt-key $GPG_KEY --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "$XMPP_DIRECTORY file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup web content and other stuff' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up web content and miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity full remove-all-but-n-full 3 --encrypt-key $GPG_KEY --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "/home/$MY_USERNAME/tempfiles file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup email' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up emails"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity full remove-all-but-n-full 3 --encrypt-key $GPG_KEY --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "/home/$MY_USERNAME/Maildir file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up DLNA cache"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '  duplicity incr --encrypt-key $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n '  duplicity full remove-all-but-n-full 3 --encrypt-key $GPG_KEY --exclude-other-filesystems ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "/var/cache/minidlna file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full remove-all-but-n-full 3 --force cleanup file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full remove-all-but-n-full 3 --force cleanup file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full remove-all-but-n-full 3 --force cleanup file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full remove-all-but-n-full 3 --force cleanup file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force cleanup file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full remove-all-but-n-full 3 --force cleanup file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo 'echo "Removing old backups"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full remove-all-but-n-full 3 --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/Maildir" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full --force remove-all-but-n-full 3 file://$USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  duplicity --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  duplicity full --force remove-all-but-n-full 2 file://$USB_MOUNT/backup/publicmailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -921,66 +924,67 @@ function backup_to_friends_servers {
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Backup the public mailing list' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity full --ssh-askpass --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "$PUBLIC_MAILING_LIST_DIRECTORY $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Backup xmpp settings' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity full --ssh-askpass --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "$XMPP_DIRECTORY $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Backup web content and other stuff' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity full --ssh-askpass --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "/home/$MY_USERNAME/tempfiles $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Backup email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    duplicity incr --ssh-askpass $GPG_KEY --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity full --ssh-askpass $GPG_KEY --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "/home/$MY_USERNAME/Maildir $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Backup DLNA cache' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    duplicity incr --ssh-askpass --full-if-older-than 4W --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    duplicity full --ssh-askpass --exclude-other-filesystems ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "/var/cache/minidlna $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Cleaning up backup files"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force cleanup $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force cleanup $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force cleanup $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force cleanup $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force cleanup $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force cleanup $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force cleanup $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force cleanup $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force cleanup $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force cleanup $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Removing old backups"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/Maildir" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 2
+3 $SERVER/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    duplicity --ssh-askpass --force remove-all-but-n-full 2 $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    duplicity full --ssh-askpass --force remove-all-but-n-full 3 $SERVER/publicmailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
