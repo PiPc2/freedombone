@@ -1027,7 +1027,7 @@ function restore_from_friend {
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo '# Check that a backup key exists' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo 'if [ ! -f /root/backupkey ]; then' >> /usr/bin/$RESTORE_FROM_FRIENDS_SCRIPT_NAME
+  echo 'if [ ! -f /root/backupkey ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "No backup key was found in /root/backupkey"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  exit 84' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
