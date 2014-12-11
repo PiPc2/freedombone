@@ -730,20 +730,22 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  echo "if [ -f $USB_MOUNT/backup/key.gpg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    rm $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp $USB_MOUNT/backup/key.gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -f /root/tempbackupkey ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    echo "Backup key decrypted"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    cp /root/tempbackupkey $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    shred -zu /root/tempbackupkey" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    chmod 400 $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  else' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    echo "Unable to decrypt the backup key"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    exit 735' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -f $USB_MOUNT/backup/key.gpg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      rm $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp $USB_MOUNT/backup/key.gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    if [ -f /root/tempbackupkey ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '      echo "Backup key decrypted"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      cp /root/tempbackupkey $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      shred -zu /root/tempbackupkey" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      chmod 400 $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    else' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '      echo "Unable to decrypt the backup key"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '      exit 735' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1086,15 +1088,6 @@ function restore_from_friend {
   echo 'SERVER_NAME=$1' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
-  echo '# Check that a backup key exists' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo 'if [ ! -f /root/backupkey ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  echo "No backup key was found in /root/backupkey"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  exit 84' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-
-  echo 'PASSPHRASE=$(</root/backupkey)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'if [ ! $SERVER_NAME ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "    echo '$RESTORE_FROM_FRIEND_SCRIPT_NAME [server]'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 1' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -1115,6 +1108,13 @@ function restore_from_friend {
   echo "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print $1}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n 'FTP_PASSWORD=$(grep -i "$SERVER_NAME" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print $2}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo '# Check that a backup key exists' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'if [ ! -f $BACKUP_CERTIFICATE ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  echo 'No backup key was found in $BACKUP_CERTIFICATE'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  exit 84' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo 'echo "Restoring certificates"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
