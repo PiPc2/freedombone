@@ -557,7 +557,7 @@ function create_backup_script {
   echo '  exit 27' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  
+
   echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    echo "Creating backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    makecert backup' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -607,9 +607,9 @@ function create_backup_script {
   echo '  echo "Backing up certificates"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/ssl.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/ssl.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /etc/ssl $USB_MOUNT/backup/ssl $USB_MOUNT/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r /etc/ssl $USB_MOUNT/backup/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup projects' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -617,9 +617,9 @@ function create_backup_script {
   echo '  echo "Backing up projects"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/projects ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/projects" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/projects.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/projects.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects $USB_MOUNT/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup personal settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -627,9 +627,9 @@ function create_backup_script {
   echo '  echo "Backing up personal settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/personal.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/personal.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal $USB_MOUNT/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -637,9 +637,9 @@ function create_backup_script {
   echo '  echo "Backing up the public mailing list"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/mailinglist ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/mailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/mailinglist.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/mailinglist.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist $USB_MOUNT/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -647,27 +647,27 @@ function create_backup_script {
   echo '  echo "Backing up the XMPP settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/xmpp ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/xmpp.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/xmpp.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp $USB_MOUNT/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo '# Backup web content' >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo 'echo "Backing up web content"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo "if [ ! -d $USB_MOUNT/backup/www ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo "  mkdir -p $USB_MOUNT/backup/www" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo "  touch $USB_MOUNT/www.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  #echo "  touch $USB_MOUNT/backup/www.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo "rsyncrypto  -r /var/www $USB_MOUNT/backup/www $USB_MOUNT/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  #echo "rsyncrypto  -r /var/www $USB_MOUNT/backup/www $USB_MOUNT/backup/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup other stuff' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/misc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/misc" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/misc.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/misc.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup email' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -675,9 +675,9 @@ function create_backup_script {
   echo '  echo "Backing up emails"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/mail ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/mail" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/mail.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/mail.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail $USB_MOUNT/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -685,9 +685,9 @@ function create_backup_script {
   echo '  echo "Backing up DLNA cache"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  if [ ! -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    touch $USB_MOUNT/dlna.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    touch $USB_MOUNT/backup/dlna.keys" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /var/cache/minidlna $USB_MOUNT/backup/dlna $USB_MOUNT/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -r /var/cache/minidlna $USB_MOUNT/backup/dlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -750,34 +750,34 @@ function create_restore_script {
   echo '    exit 563' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  
+
   echo "if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/ssl /etc/ssl $USB_MOUNT/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -d -r $USB_MOUNT/backup/ssl /etc/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/projects ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring projects"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/projects /home/$MY_USERNAME/projects $USB_MOUNT/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -d -r $USB_MOUNT/backup/projects /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring personal settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal $USB_MOUNT/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -d -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/mailinglist $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -d -r $USB_MOUNT/backup/mailinglist $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/xmpp $XMPP_DIRECTORY $USB_MOUNT/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -d -r $USB_MOUNT/backup/xmpp $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -793,7 +793,7 @@ function create_restore_script {
   #echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo 'echo "Restoring miscellaneous files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "rsyncrypto -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "rsyncrypto -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -846,13 +846,13 @@ function create_restore_script {
 
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/mail /home/$MY_USERNAME/Maildir $USB_MOUNT/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -d -r $USB_MOUNT/backup/mail /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/dlna /var/cache/minidlna $USB_MOUNT/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -d -r $USB_MOUNT/backup/dlna /var/cache/minidlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -952,9 +952,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up certificates"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SEVER/backup/ssl ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/certs" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/certs" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/backup/ssl.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r /etc/ssl $SERVER/backup/ssl $SERVER/keys/ssl $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r /etc/ssl $SERVER/backup/ssl $SERVER/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -963,9 +963,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up projects"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SERVER/backup/projects ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/projects" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/projects" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/projects.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r /home/$MY_USERNAME/projects $SERVER/backup/projects $SERVER/keys/projects $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r /home/$MY_USERNAME/projects $SERVER/backup/projects $SERVER/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -974,9 +974,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up personal settings"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SERVER/backup/personal ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/personal" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/personal" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/backup/personal.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r /home/$MY_USERNAME/personal $SERVER/backup/personal $SERVER/keys/personal $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r /home/$MY_USERNAME/personal $SERVER/backup/personal $SERVER/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -985,9 +985,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up the public mailing list"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SERVER/backup/mailinglist ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/mailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/mailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/backup/mailinglist.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r $PUBLIC_MAILING_LIST_DIRECTORY $SERVER/backup/mailinglist $SERVER/keys/mailinglist $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r $PUBLIC_MAILING_LIST_DIRECTORY $SERVER/backup/mailinglist $SERVER/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -996,9 +996,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up the XMPP settings"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SERVER/backup/xmpp ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/backup/xmpp.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r $XMPP_DIRECTORY $SERVER/backup/xmpp $SERVER/keys/xmpp $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r $XMPP_DIRECTORY $SERVER/backup/xmpp $SERVER/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -1006,9 +1006,9 @@ function backup_to_friends_servers {
   #echo '  echo "Backing up web content"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   #echo "  if [ ! -d $SERVER/backup/www ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   #echo "    mkdir -p $SERVER/backup/www" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  #echo "    mkdir -p $SERVER/keys/www" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  #echo "    touch $SERVER/backup/www.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   #echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  #echo "  rsyncrypto  -r /var/www $SERVER/backup/www $SERVER/keys/www $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  #echo "  rsyncrypto  -r /var/www $SERVER/backup/www $SERVER/backup/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   #echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   echo '  # Backup miscellaneous stuff' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1016,9 +1016,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up miscellaneous files"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SERVER/backup/misc ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/misc" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/misc" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/backup/misc.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r /home/$MY_USERNAME/tempfiles $SERVER/backup/misc $SERVER/keys/misc $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r /home/$MY_USERNAME/tempfiles $SERVER/backup/misc $SERVER/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -1027,9 +1027,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up emails"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SERVER/backup/mail ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/mail" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/mail" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/backup/mail.keys" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r /home/$MY_USERNAME/Maildir $SERVER/backup/mail $SERVER/keys/mail $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r /home/$MY_USERNAME/Maildir $SERVER/backup/mail $SERVER/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -1038,9 +1038,9 @@ function backup_to_friends_servers {
   echo '    echo "Backing up DLNA cache"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    if [ ! -d $SERVER/backup/dlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "      mkdir -p $SERVER/backup/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "      mkdir -p $SERVER/keys/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "      touch $SERVER/keys/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    rsyncrypto  -r /var/cache/minidlna $SERVER/backup/dlna $SERVER/keys/dlna $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    rsyncrypto  -r /var/cache/minidlna $SERVER/backup/dlna $SERVER/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1115,26 +1115,26 @@ function restore_from_friend {
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo 'echo "Restoring certificates"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "rsyncrypto -d -r scp://$SERVER/backup/ssl /etc/ssl scp://$SERVER/keys/ssl $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "rsyncrypto -d -r scp://$SERVER/backup/ssl /etc/ssl scp://$SERVER/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo 'echo "Restoring projects"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "rsyncrypto -d -r scp://$SERVER/backup/projects /home/$MY_USERNAME/projects scp://$SERVER/keys/projects $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "rsyncrypto -d -r scp://$SERVER/backup/projects /home/$MY_USERNAME/projects scp://$SERVER/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo 'echo "Restoring personal settings"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "rsyncrypto -d -r scp://$SERVER/backup/personal /home/$MY_USERNAME/personal scp://$SERVER/keys/personal $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "rsyncrypto -d -r scp://$SERVER/backup/personal /home/$MY_USERNAME/personal scp://$SERVER/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  rsyncrypto -d -r scp://$SERVER/backup/mailinglist $PUBLIC_MAILING_LIST_DIRECTORY scp://$SERVER/keys/mailinglist $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  rsyncrypto -d -r scp://$SERVER/backup/mailinglist $PUBLIC_MAILING_LIST_DIRECTORY scp://$SERVER/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  rsyncrypto -d -r scp://$SERVER/backup/xmpp $XMPP_DIRECTORY scp://$SERVER/keys/xmpp $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  rsyncrypto -d -r scp://$SERVER/backup/xmpp $XMPP_DIRECTORY scp://$SERVER/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
@@ -1150,7 +1150,7 @@ function restore_from_friend {
   #echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo 'echo "Restoring miscellaneous files"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "rsyncrypto -d -r scp://$SERVER/backup/misc /home/$MY_USERNAME/tempfiles scp://$SERVER/keys/misc $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "rsyncrypto -d -r scp://$SERVER/backup/misc /home/$MY_USERNAME/tempfiles scp://$SERVER/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
@@ -1203,13 +1203,13 @@ function restore_from_friend {
 
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  rsyncrypto -d -r scp://$SERVER/backup/mail /home/$MY_USERNAME/Maildir scp://$SERVER/keys/mail $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  rsyncrypto -d -r scp://$SERVER/backup/mail /home/$MY_USERNAME/Maildir scp://$SERVER/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  rsyncrypto -d -r scp://$SERVER/backup/dlna /var/cache/minidlna scp://$SERVER/keys/dlna $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  rsyncrypto -d -r scp://$SERVER/backup/dlna /var/cache/minidlna scp://$SERVER/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
