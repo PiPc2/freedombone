@@ -734,10 +734,13 @@ function create_restore_script {
   echo "  if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  gpg $USB_MOUNT/backup/key.gpg -o $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp $USB_MOUNT/backup/key.gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -f /root/tempbackupkey ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    echo "Backup key decrypted"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    mv $BACKUP_CERTIFICATE.new $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp /root/tempbackupkey $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    shred -zu /root/tempbackupkey" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    chmod 400 $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  else' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    echo "Unable to decrypt the backup key"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    exit 735' >> /usr/bin/$RESTORE_SCRIPT_NAME
