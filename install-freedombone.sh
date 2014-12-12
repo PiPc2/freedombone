@@ -581,8 +581,12 @@ function create_backup_script {
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > $USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  echo "GNU social database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 379' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -590,30 +594,38 @@ function create_backup_script {
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > $USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  echo "Red Matrix database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 378' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up Red Matrix installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD owncloud > $USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  echo "Owncloud database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 377' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto -r /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/wiki ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/wiki" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto -r /var/www/$WIKI_DOMAIN_NAME/htdocs $USB_MOUNT/backup/wiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /var/www/$WIKI_DOMAIN_NAME/htdocs $USB_MOUNT/backup/wiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backupblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backupblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /var/lib/mysql/mysql /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -625,7 +637,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /etc/ssl $USB_MOUNT/backup/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /etc/ssl $USB_MOUNT/backup/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup projects' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -634,7 +646,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/projects ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/projects" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup personal settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -643,7 +655,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -652,7 +664,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/mailinglist ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/mailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -661,7 +673,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/xmpp ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo '# Backup web content' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -669,7 +681,7 @@ function create_backup_script {
   #echo "if [ ! -d $USB_MOUNT/backup/www ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo "  mkdir -p $USB_MOUNT/backup/www" >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo "rsyncrypto  -r /var/www $USB_MOUNT/backup/www $USB_MOUNT/backup/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  #echo "rsyncrypto  -v -r /var/www $USB_MOUNT/backup/www $USB_MOUNT/backup/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup other stuff' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -677,7 +689,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/misc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/misc" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup email' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -686,7 +698,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/mail ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/mail" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -695,7 +707,7 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -r /var/cache/minidlna $USB_MOUNT/backup/dlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /var/cache/minidlna $USB_MOUNT/backup/dlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -766,31 +778,31 @@ function create_restore_script {
 
   echo "if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/ssl /etc/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssl /etc/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/projects ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring projects"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/projects /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/projects /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring personal settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/mailinglist $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mailinglist $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/xmpp $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/xmpp $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -802,11 +814,11 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   #echo 'echo "Restoring web content"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  #echo "rsyncrypto -d -r $USB_MOUNT/backup/www /var/www $USB_MOUNT/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  #echo "rsyncrypto -v -d -r $USB_MOUNT/backup/www /var/www $USB_MOUNT/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   #echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo 'echo "Restoring miscellaneous files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "rsyncrypto -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "rsyncrypto -v -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -815,7 +827,7 @@ function create_restore_script {
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < $USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -d -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -825,7 +837,7 @@ function create_restore_script {
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < $USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -d -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -835,7 +847,7 @@ function create_restore_script {
       echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD owncloud -o < $USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -d -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -843,7 +855,7 @@ function create_restore_script {
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Wiki installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -d -r $USB_MOUNT/backup/wiki /var/www/$WIKI_DOMAIN_NAME/htdocs $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/wiki /var/www/$WIKI_DOMAIN_NAME/htdocs $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -851,7 +863,7 @@ function create_restore_script {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/blog.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring blog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -d -r $USB_MOUNT/backup/blog /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/blog /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -862,13 +874,13 @@ function create_restore_script {
 
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/mail /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mail /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -d -r $USB_MOUNT/backup/dlna /var/cache/minidlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/dlna /var/cache/minidlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
