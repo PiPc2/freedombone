@@ -779,6 +779,11 @@ function create_restore_script {
   fi
   apt-get -y --force-yes install rsyncrypto
 
+  get_mariadb_password
+  get_mariadb_gnusocial_admin_password
+  get_mariadb_redmatrix_admin_password
+  get_mariadb_owncloud_admin_password
+
   echo '#!/bin/bash' > /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "if [ ! -b $USB_DRIVE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -949,7 +954,7 @@ function backup_to_friends_servers {
       return
   fi
 
-  apt-get -y --force-yes install duplicity
+  apt-get -y --force-yes install rsyncrypto
 
   get_mariadb_password
   get_mariadb_gnusocial_admin_password
@@ -1137,6 +1142,13 @@ function restore_from_friend {
   if grep -Fxq "restore_from_friend" $COMPLETION_FILE; then
       return
   fi
+
+  apt-get -y --force-yes install rsyncrypto
+
+  get_mariadb_password
+  get_mariadb_gnusocial_admin_password
+  get_mariadb_redmatrix_admin_password
+  get_mariadb_owncloud_admin_password
 
   if ! grep -q "restore from a friend's server" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
