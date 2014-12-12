@@ -576,14 +576,13 @@ function create_backup_script {
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
-      #echo "tar -czvf /home/$MY_USERNAME/tempfiles/gnusocial.tar.gz /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/config.php" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > $USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto  -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -592,8 +591,7 @@ function create_backup_script {
       echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > $USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up Red Matrix installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto  -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      #echo "tar -czvf /home/$MY_USERNAME/tempfiles/redmatrix.tar.gz /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/.htconfig.php /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -601,24 +599,21 @@ function create_backup_script {
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "mysqldump --password=$MARIADB_PASSWORD owncloud > $USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      #echo "tar -czvf /home/$MY_USERNAME/tempfiles/owncloud.tar.gz /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs/data/$MY_USERNAME" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto  -r /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -r /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/wiki ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/wiki" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      #echo "tar -czvf /home/$MY_USERNAME/tempfiles/wiki.tar.gz /var/lib/dokuwiki/data" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto  -r /var/www/$WIKI_DOMAIN_NAME/htdocs $USB_MOUNT/backup/wiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -r /var/www/$WIKI_DOMAIN_NAME/htdocs $USB_MOUNT/backup/wiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      #echo "tar -czvf /home/$MY_USERNAME/tempfiles/blog.tar.gz /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto  -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backupblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backupblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /var/lib/mysql/mysql /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
