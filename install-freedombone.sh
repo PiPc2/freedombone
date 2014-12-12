@@ -874,7 +874,7 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
-      echo "if [ -f /home/$MY_USERNAME/tempfiles/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ -f $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < $USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -884,7 +884,7 @@ function create_restore_script {
   fi
 
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
-      echo "if [ -f /home/$MY_USERNAME/tempfiles/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ -f $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < $USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -894,7 +894,7 @@ function create_restore_script {
   fi
 
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
-      echo "if [ -f /home/$MY_USERNAME/tempfiles/owncloud.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ -f $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mysql -u root --password=$MARIADB_PASSWORD owncloud -o < $USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
