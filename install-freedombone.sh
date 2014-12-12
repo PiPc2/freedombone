@@ -529,12 +529,49 @@ function check_hwrng {
   fi
 }
 
+function get_mariadb_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
+          MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function get_mariadb_gnusocial_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
+          MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function get_mariadb_redmatrix_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB Red Matrix admin password" /home/$MY_USERNAME/README; then
+          REDMATRIX_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Red Matrix admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function get_mariadb_owncloud_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "Owncloud database password" /home/$MY_USERNAME/README; then
+          OWNCLOUD_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Owncloud database password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
 # For rsyncrypto usage see http://archive09.linux.com/feature/125322
 function create_backup_script {
   if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
       return
   fi
   apt-get -y --force-yes install rsyncrypto
+
+  get_mariadb_password
+  get_mariadb_gnusocial_admin_password
+  get_mariadb_redmatrix_admin_password
+  get_mariadb_owncloud_admin_password
 
   echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -583,6 +620,9 @@ function create_backup_script {
       echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > $USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "GNU social database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 379' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -596,6 +636,9 @@ function create_backup_script {
       echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > $USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Red Matrix database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 378' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up Red Matrix installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -608,6 +651,9 @@ function create_backup_script {
       echo "mysqldump --password=$MARIADB_PASSWORD owncloud > $USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Owncloud database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 377' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -904,6 +950,11 @@ function backup_to_friends_servers {
   fi
 
   apt-get -y --force-yes install duplicity
+
+  get_mariadb_password
+  get_mariadb_gnusocial_admin_password
+  get_mariadb_redmatrix_admin_password
+  get_mariadb_owncloud_admin_password
 
   if ! grep -q "backups on friends servers" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
@@ -3337,38 +3388,6 @@ function configure_php {
   sed -i "s/memory_limit = -1/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php5/cli/php.ini
   sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
   sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
-}
-
-function get_mariadb_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
-          MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-      fi
-  fi
-}
-
-function get_mariadb_gnusocial_admin_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
-          MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-      fi
-  fi
-}
-
-function get_mariadb_redmatrix_admin_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "MariaDB Red Matrix admin password" /home/$MY_USERNAME/README; then
-          REDMATRIX_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Red Matrix admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-      fi
-  fi
-}
-
-function get_mariadb_owncloud_admin_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "Owncloud database password" /home/$MY_USERNAME/README; then
-          OWNCLOUD_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Owncloud database password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-      fi
-  fi
 }
 
 function install_mariadb {
