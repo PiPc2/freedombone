@@ -629,7 +629,7 @@ function create_backup_script {
       echo "$USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "GNU social database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -649,7 +649,7 @@ function create_backup_script {
       echo "$USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Red Matrix database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -668,7 +668,7 @@ function create_backup_script {
       echo "$USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Owncloud database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
