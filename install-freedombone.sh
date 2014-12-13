@@ -616,7 +616,8 @@ function create_backup_script {
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "DATABASE_PASSWORD=$MARIADB_PASSWORD" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '# MariaDB password' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "DATABASE_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
@@ -869,7 +870,7 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '# MariaDB password' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "DATABASE_PASSWORD=$MARIADB_PASSWORD" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "DATABASE_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
