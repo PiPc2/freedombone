@@ -909,7 +909,7 @@ function create_restore_script {
       echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rsyncrypto -v -d -r $USB_MOUNT/backup/mariadb /root/tempmariadb $USB_MOUNT/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Get the MariaDB password from the backup"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    if [ ! -f /root/tempmariadb/usb/backup/mariadb/db ]; then'
+      echo '    if [ ! -f /root/tempmariadb/usb/backup/mariadb/db ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '      echo "MariaDB password file not found"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '      exit 495' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
