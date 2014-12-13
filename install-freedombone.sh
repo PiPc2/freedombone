@@ -902,8 +902,8 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
-      echo 'echo "Restoring mysql settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "if [ ! -d $USB_MOUNT/backup/mariadb ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Restoring mysql settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    if [ ! -d /root/tempmariadb ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '        mkdir /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -930,7 +930,7 @@ function create_restore_script {
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssl /root/tempssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  mv /root/tempssl/usb/backup/ssl /etc' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  cp -r /root/tempssl/usb/backup/ssl /etc' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -939,6 +939,9 @@ function create_restore_script {
   echo '  echo "Restoring projects"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempprojects' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/projects /root/tempprojects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/projects ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /home/$MY_USERNAME/projects' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  mv /root/tempprojects/usb/backup/projects/$MY_USERNAME/projects /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempprojects' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -948,6 +951,9 @@ function create_restore_script {
   echo '  echo "Restoring personal settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/temppersonal' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/personal /root/temppersonal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -d /home/$MY_USERNAME/personal ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /home/$MY_USERNAME/personal' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  mv /root/temppersonal/usb/backup/personal/$MY_USERNAME/personal /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/temppersonal' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -957,7 +963,7 @@ function create_restore_script {
   echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempmailinglist' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mailinglist /root/tempmailinglist $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  mv /root/tempmailinglist/usb/backup/mailinglist/spool/mlmmj/* $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempmailinglist/usb/backup/mailinglist/spool/mlmmj/* $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempmailinglist' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -966,7 +972,7 @@ function create_restore_script {
   echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempxmpp' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/xmpp /root/tempxmpp $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  mv /root/tempxmpp/usb/backup/xmpp/lib/prosody/* $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempxmpp/usb/backup/xmpp/lib/prosody/* $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempxmpp' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -982,11 +988,14 @@ function create_restore_script {
   echo "  mkdir -p /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "rsyncrypto -v -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "tar -xzvf /home/$MY_USERNAME/tempfiles/usb/backup/misc/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "tar -xzvf /home/$MY_USERNAME/tempfiles/usb/backup/misc/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'if [ -d /home/$MY_USERNAME/.gnupg ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  cp -r /home/$MY_USERNAME/.gnupg /root' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'echo "Removing temporary files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
@@ -1093,10 +1102,6 @@ function create_restore_script {
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
-
-  echo 'echo "Removing temporary files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/mail ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
