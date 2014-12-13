@@ -1020,7 +1020,7 @@ function create_restore_script {
       echo '    mkdir /root/tempgnusocial' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocial /root/tempgnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mv /root/tempgnusocial/usb/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempgnusocial/usb/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempgnusocial' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1048,7 +1048,7 @@ function create_restore_script {
       echo '    mkdir /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /root/tempredmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mv /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs /var/www/$REDMATRIX_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs /var/www/$REDMATRIX_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1074,7 +1074,7 @@ function create_restore_script {
       echo '    mkdir /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud /root/tempowncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mv /root/tempowncloud/usb/backup/owncloud/www/$OWNCLOUD_DOMAIN_NAME/htdocs /var/www/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempowncloud/usb/backup/owncloud/www/$OWNCLOUD_DOMAIN_NAME/htdocs /var/www/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1086,7 +1086,7 @@ function create_restore_script {
       echo '  echo "Restoring Wiki installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  mkdir /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/wiki /root/tempwiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mv /root/tempwiki/usb/backup/wiki/www/$WIKI_DOMAIN_NAME/htdocs /var/www/$WIKI_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempwiki/usb/backup/wiki/www/$WIKI_DOMAIN_NAME/htdocs /var/www/$WIKI_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1097,7 +1097,7 @@ function create_restore_script {
       echo '  echo "Restoring blog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  mkdir /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/blog /root/tempblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mv /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1107,7 +1107,7 @@ function create_restore_script {
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mail /root/tempmail $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  mv /root/tempmail/usb/backup/blog/$MY_USERNAME/Maildir /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempmail/usb/backup/blog/$MY_USERNAME/Maildir /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1117,7 +1117,7 @@ function create_restore_script {
   echo '    echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    mkdir /root/tempdlna' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rsyncrypto -v -d -r $USB_MOUNT/backup/dlna /root/tempdlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    mv /root/tempdlna/usb/backup/dlna/cache/minidlna /var/cache" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp -r /root/tempdlna/usb/backup/dlna/cache/minidlna /var/cache" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    rm -rf /root/tempdlna' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
