@@ -680,17 +680,27 @@ function create_backup_script {
       echo "if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo -n 'mysqldump --password=$DATABASE_PASSWORD owncloud > ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "$USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "if [ ! -s $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d $USB_MOUNT/backup/ownclouddata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p $USB_MOUNT/backup/ownclouddata" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d /root/tempownclouddata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p /root/tempownclouddata" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'mysqldump --password=$DATABASE_PASSWORD owncloud > /root/tempownclouddata/owncloud.sql' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s /root/tempownclouddata/owncloud.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Owncloud database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  shred -zu /root/tempownclouddata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 377' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /root/tempownclouddata $USB_MOUNT/backup/ownclouddata $USB_MOUNT/backup/ownclouddata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'shred -zu /root/tempownclouddata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'rm -rf /root/tempownclouddata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
