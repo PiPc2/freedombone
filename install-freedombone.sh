@@ -622,8 +622,8 @@ function create_backup_script {
       echo "if [ ! -d $USB_MOUNT/backup/gnusocialdata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/gnusocialdata" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "if [ ! -d /root/tempgnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  mkdir -p /root/tempgnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d /root/tempgnusocialdata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p /root/tempgnusocialdata" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'mysqldump --password=$DATABASE_PASSWORD gnusocial > /root/tempgnusocialdata/gnusocial.sql' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -633,16 +633,14 @@ function create_backup_script {
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  rm -rf /root/tempgnusocial' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 379' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto -v -r /root/tempgnusocial $USB_MOUNT/backup/gnusocialdata $USB_MOUNT/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /root/tempgnusocialdata $USB_MOUNT/backup/gnusocialdata $USB_MOUNT/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'rm -rf /root/tempgnusocial' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -652,18 +650,28 @@ function create_backup_script {
       echo "if [ ! -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/redmatrix" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d $USB_MOUNT/backup/redmatrixdata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p $USB_MOUNT/backup/redmatrixdata" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d /root/tempredmatrixdata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p /root/tempredmatrixdata" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo -n 'mysqldump --password=$DATABASE_PASSWORD redmatrix > ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "$USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "if [ ! -s $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'mysqldump --password=$DATABASE_PASSWORD redmatrix > /root/tempredmatrixdata/redmatrix.sql' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s /root/tempredmatrixdata/redmatrix.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Red Matrix database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  shred -zu /root/tempredmatrixdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  rm -rf /root/tempredmatrixdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 378' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /root/tempredmatrixdata $USB_MOUNT/backup/redmatrixdata $USB_MOUNT/backup/redmatrixdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'shred -zu /root/tempredmatrixdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'rm -rf /root/tempredmatrixdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up Red Matrix installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
