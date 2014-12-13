@@ -716,7 +716,7 @@ function create_backup_script {
       echo "  mkdir -p $USB_MOUNT/backup/blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "rsyncrypto -v -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backupblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/blog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
