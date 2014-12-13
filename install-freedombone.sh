@@ -975,6 +975,7 @@ function create_restore_script {
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocialdata /root/tempgnusocialdata $USB_MOUNT/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -f /root/tempgnusocialdata/gnusocial.sql ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Unable to restore GNU social database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 503' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -991,8 +992,20 @@ function create_restore_script {
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo "if [ -f $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo -n '  mysql -u root --password=$DATABASE_PASSWORD redmatrix -o < ' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "$USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempredmatrixdata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mkdir /root/tempredmatrixdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrixdata /root/tempredmatrixdata $USB_MOUNT/backup/redmatrixdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -f /root/tempredmatrixdata/redmatrix.sql ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Unable to restore Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    rm -rf /root/tempredmatrixdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 504' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysql -u root --password=$DATABASE_PASSWORD redmatrix -o < /root/tempredmatrixdata/redmatrix.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  shred -zu /root/tempredmatrixdata/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempredmatrixdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
