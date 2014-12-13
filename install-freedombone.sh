@@ -616,13 +616,16 @@ function create_backup_script {
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "DATABASE_PASSWORD=$MARIADB_PASSWORD" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
       echo "if [ ! -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "mysqldump --password=$MARIADB_PASSWORD gnusocial > $USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo -n 'mysqldump --password=$DATABASE_PASSWORD gnusocial > ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "$USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "GNU social database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -641,7 +644,8 @@ function create_backup_script {
       echo "  mkdir -p $USB_MOUNT/backup/redmatrix" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Red Matrix database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "mysqldump --password=$MARIADB_PASSWORD redmatrix > $USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo -n 'mysqldump --password=$DATABASE_PASSWORD redmatrix > ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "$USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Red Matrix database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -659,7 +663,8 @@ function create_backup_script {
       echo "if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "mysqldump --password=$MARIADB_PASSWORD owncloud > $USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo -n 'mysqldump --password=$DATABASE_PASSWORD owncloud > ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "$USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -s $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Owncloud database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -772,13 +777,25 @@ function create_backup_script {
 
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
       echo '# Mysql settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "mysqldump --password=$MARIADB_PASSWORD mysql user > $USB_MOUNT/backup/mysql.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "if [ ! -s $USB_MOUNT/backup/mysql.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d $USB_MOUNT/backup/mariadb ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p $USB_MOUNT/backup/mariadb" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! -d /root/tempmariadb ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '    mkdir /root/tempmariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'mysqldump --password=$DATABASE_PASSWORD mysql user > /root/tempmariadb/mysql.sql' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s /root/tempmariadb/mysql.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "Unable to backup mysql settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  rm -rf /root/tempmariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 653' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "$DATABASE_PASSWORD" > /root/tempmariadb/db' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'chmod 400 /root/tempmariadb/db' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /root/tempmariadb $USB_MOUNT/backup/mariadb $USB_MOUNT/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'shred -zu /root/tempmariadb/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'rm -rf /root/tempmariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
 
@@ -856,15 +873,23 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
-      echo '  echo "Restoring mysql settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  if [ ! -d /root/tempmariadb ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '      mkdir /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mariadb /root/tempmariadb $USB_MOUNT/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/mysql.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  shred -zu /root/tempmariadb/mysql.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mysql -u root --password=$DATABASE_PASSWORD "flush privileges;"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'echo "Restoring mysql settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ ! -d $USB_MOUNT/backup/mariadb ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    if [ ! -d /root/tempmariadb ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '        mkdir /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rsyncrypto -v -d -r $USB_MOUNT/backup/mariadb /root/tempmariadb $USB_MOUNT/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Get the MariaDB password from the backup"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    BACKUP_MARIADB_PASSWORD=$(</root/tempmariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/mysql.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    shred -zu /root/tempmariadb/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Apply the new MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mysql -u root --password=$DATABASE_PASSWORD "flush privileges;"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Change the MariaDB password to the backup version"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
