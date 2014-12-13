@@ -611,11 +611,6 @@ function create_backup_script {
   echo "cp $BACKUP_CERTIFICATE.gpg $USB_MOUNT/backup/key.gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
-  echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# MariaDB password' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "DATABASE_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -747,14 +742,22 @@ function create_backup_script {
   #echo "rsyncrypto  -v -r /var/www $USB_MOUNT/backup/www $USB_MOUNT/backup/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup other stuff' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'echo "Backing up miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ ! -d $USB_MOUNT/backup/misc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  mkdir -p $USB_MOUNT/backup/misc" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "rsyncrypto  -v -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  if [ ! -d $USB_MOUNT/backup/misc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    mkdir -p $USB_MOUNT/backup/misc" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Removing temporary files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  shred -zu /home/$MY_USERNAME/tempfiles/*" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup email' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -801,11 +804,6 @@ function create_backup_script {
   fi
 
   echo 'sync' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Removing temporary files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'echo "Backup to USB drive is complete. You can now unplug it."' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -924,18 +922,16 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rm -rf /home/$MY_USERNAME/tempfiles/*" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  mkdir -p /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
-
   #echo 'echo "Restoring web content"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   #echo "rsyncrypto -v -d -r $USB_MOUNT/backup/www /var/www $USB_MOUNT/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   #echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo 'echo "Restoring miscellaneous files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  shred -zu /home/$MY_USERNAME/tempfiles/*" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mkdir -p /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "rsyncrypto -v -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
