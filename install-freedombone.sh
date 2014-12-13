@@ -619,20 +619,33 @@ function create_backup_script {
       echo "if [ ! -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d $USB_MOUNT/backup/gnusocialdata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p $USB_MOUNT/backup/gnusocialdata" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d /root/tempgnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p /root/tempgnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining GNU Social database backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo -n 'mysqldump --password=$DATABASE_PASSWORD gnusocial > ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "$USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "if [ ! -s $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'mysqldump --password=$DATABASE_PASSWORD gnusocial > /root/tempgnusocialdata/gnusocial.sql' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s /root/tempgnusocialdata/gnusocial.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  echo "GNU social database could not be saved"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  rm -rf /root/tempgnusocial' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 379' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /root/tempgnusocial $USB_MOUNT/backup/gnusocialdata $USB_MOUNT/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'rm -rf /root/tempgnusocial' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
