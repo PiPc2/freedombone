@@ -292,6 +292,9 @@ GITHUB_USERNAME=
 # Directory where github projects will be backed up
 GITHUB_BACKUP_DIRECTORY=/var/backups/github
 
+# Used to indicate whether the backup contains MariaDB databases or not
+BACKUP_INCLUDES_DATABASES="no"
+
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
@@ -612,7 +615,9 @@ function create_backup_script {
   echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
+      BACKUP_INCLUDES_DATABASES="yes"
       echo "if [ ! -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -623,12 +628,15 @@ function create_backup_script {
       echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 379' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
+      BACKUP_INCLUDES_DATABASES="yes"
       echo "if [ ! -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/redmatrix" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -639,12 +647,15 @@ function create_backup_script {
       echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 378' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up Red Matrix installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
+      BACKUP_INCLUDES_DATABASES="yes"
       echo "if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -654,6 +665,8 @@ function create_backup_script {
       echo "  if [ ! $MARIADB_PASSWORD ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 377' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -673,8 +686,6 @@ function create_backup_script {
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backupblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
-  echo 'echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /var/lib/mysql/mysql /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup certificates' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -735,6 +746,8 @@ function create_backup_script {
   echo "  if [ ! -d $USB_MOUNT/backup/misc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p $USB_MOUNT/backup/misc" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Archiving miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -755,8 +768,20 @@ function create_backup_script {
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /var/cache/minidlna $USB_MOUNT/backup/dlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
+      echo '# Mysql settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "mysqldump --password=$MARIADB_PASSWORD mysql user > $USB_MOUNT/backup/mysql.sql" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -s $USB_MOUNT/backup/mysql.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  echo "Unable to backup mysql settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 653' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
+
   echo 'sync' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -826,6 +851,22 @@ function create_restore_script {
   echo '    exit 563' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '# MariaDB password' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "DATABASE_PASSWORD=$MARIADB_PASSWORD" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
+      echo '  echo "Restoring mysql settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempmariadb ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '      mkdir /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mariadb /root/tempmariadb $USB_MOUNT/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/mysql.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  shred -zu /root/tempmariadb/mysql.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysql -u root --password=$DATABASE_PASSWORD "flush privileges;"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  fi
 
   echo "if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -876,7 +917,8 @@ function create_restore_script {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo "if [ -f $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mysql -u root --password=$MARIADB_PASSWORD gnusocial -o < $USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo -n '  mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < ' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "$USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -886,7 +928,8 @@ function create_restore_script {
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       echo "if [ -f $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mysql -u root --password=$MARIADB_PASSWORD redmatrix -o < $USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo -n '  mysql -u root --password=$DATABASE_PASSWORD redmatrix -o < ' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "$USB_MOUNT/backup/redmatrix.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -896,7 +939,8 @@ function create_restore_script {
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo "if [ -f $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mysql -u root --password=$MARIADB_PASSWORD owncloud -o < $USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo -n '  mysql -u root --password=$DATABASE_PASSWORD owncloud -o < ' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "$USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -923,7 +967,7 @@ function create_restore_script {
   echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ -d $USB_MOUNT/backup/mail ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mail /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
