@@ -909,10 +909,14 @@ function create_restore_script {
       echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rsyncrypto -v -d -r $USB_MOUNT/backup/mariadb /root/tempmariadb $USB_MOUNT/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Get the MariaDB password from the backup"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    BACKUP_MARIADB_PASSWORD=$(</root/tempmariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    if [ ! -f /root/tempmariadb/usb/backup/mariadb/db ]; then'
+      echo '      echo "MariaDB password file not found"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '      exit 495' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    BACKUP_MARIADB_PASSWORD=$(</root/tempmariadb/usb/backup/mariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/mysql.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    shred -zu /root/tempmariadb/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/mysql.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    shred -zu /root/tempmariadb/usb/backup/mariadb/db' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Apply the new MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mysql -u root --password=$DATABASE_PASSWORD "flush privileges;"' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -924,31 +928,46 @@ function create_restore_script {
 
   echo "if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssl /etc/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssl /root/tempssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mv /root/tempssl/usb/backup/ssl /etc' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/projects ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring projects"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/projects /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempprojects' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/projects /root/tempprojects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mv /root/tempprojects/usb/backup/projects/$MY_USERNAME/projects /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempprojects' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/personal ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring personal settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/personal /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/temppersonal' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/personal /root/temppersonal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mv /root/temppersonal/usb/backup/personal/$MY_USERNAME/personal /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/temppersonal' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring public mailing list"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mailinglist $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempmailinglist' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mailinglist /root/tempmailinglist $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mv /root/tempmailinglist/usb/backup/mailinglist/spool/mlmmj/* $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempmailinglist' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring XMPP settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/xmpp $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempxmpp' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/xmpp /root/tempxmpp $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mv /root/tempxmpp/usb/backup/xmpp/lib/prosody/* $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempxmpp' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -963,7 +982,11 @@ function create_restore_script {
   echo "  mkdir -p /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "rsyncrypto -v -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "tar -xzvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "tar -xzvf /home/$MY_USERNAME/tempfiles/usb/backup/misc/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'if [ -d /home/$MY_USERNAME/.gnupg ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  cp -r /home/$MY_USERNAME/.gnupg /root' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
@@ -982,9 +1005,14 @@ function create_restore_script {
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  shred -zu /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  rm -rf /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempgnusocial ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mkdir /root/tempgnusocial' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocial /root/tempgnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mv /root/tempgnusocial/usb/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempgnusocial' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -1007,7 +1035,12 @@ function create_restore_script {
       echo '  shred -zu /root/tempredmatrixdata/usb/backup/redmatrixdata/tempredmatrixdata/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempredmatrixdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempredmatrix ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mkdir /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /root/tempredmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mv /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs /var/www/$REDMATRIX_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -1028,7 +1061,12 @@ function create_restore_script {
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  mysql -u root --password=$DATABASE_PASSWORD owncloud -o < /root/tempownclouddata/usb/backup/ownclouddata/tempownclouddata/owncloud.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempowncloud ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mkdir /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud /root/tempowncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mv /root/tempowncloud/usb/backup/owncloud/www/$OWNCLOUD_DOMAIN_NAME/htdocs /var/www/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1037,7 +1075,10 @@ function create_restore_script {
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Wiki installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/wiki /var/www/$WIKI_DOMAIN_NAME/htdocs $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mkdir /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/wiki /root/tempwiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mv /root/tempwiki/usb/backup/wiki/www/$WIKI_DOMAIN_NAME/htdocs /var/www/$WIKI_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -1045,7 +1086,10 @@ function create_restore_script {
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "if [ -f /home/$MY_USERNAME/tempfiles/blog.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring blog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/blog /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mkdir /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/blog /root/tempblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  mv /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -1056,13 +1100,21 @@ function create_restore_script {
 
   echo "if [ -d $USB_MOUNT/backup/mail ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mail /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mail /root/tempmail $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  mv /root/tempmail/usb/backup/blog/$MY_USERNAME/Maildir /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/dlna /var/cache/minidlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -d $USB_MOUNT/backup/dlna ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    mkdir /root/tempdlna' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rsyncrypto -v -d -r $USB_MOUNT/backup/dlna /root/tempdlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    mv /root/tempdlna/usb/backup/dlna/cache/minidlna /var/cache" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /root/tempdlna' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
