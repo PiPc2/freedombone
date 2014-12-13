@@ -969,8 +969,19 @@ function create_restore_script {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo "if [ -f $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo -n '  mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < ' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "$USB_MOUNT/backup/gnusocial.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempgnusocialdata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mkdir /root/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocialdata /root/tempgnusocialdata $USB_MOUNT/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -f /root/tempgnusocialdata/gnusocial.sql ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Unable to restore GNU social database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 503' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < /root/tempgnusocialdata/gnusocial.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
