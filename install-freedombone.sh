@@ -967,14 +967,14 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
-      echo "if [ -f $USB_MOUNT/backup/gnusocial.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -d /root/tempgnusocialdata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mkdir /root/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocialdata /root/tempgnusocialdata $USB_MOUNT/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -f /root/tempgnusocialdata/gnusocial.sql ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    echo "Unable to restore GNU social database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Unable to restore microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -990,7 +990,7 @@ function create_restore_script {
   fi
 
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
-      echo "if [ -f $USB_MOUNT/backup/redmatrix.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -d /root/tempredmatrixdata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mkdir /root/tempredmatrixdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1013,12 +1013,23 @@ function create_restore_script {
   fi
 
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
-      echo "if [ -f $USB_MOUNT/backup/owncloud.sql ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo -n '  mysql -u root --password=$DATABASE_PASSWORD owncloud -o < ' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "$USB_MOUNT/backup/owncloud.sql" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempownclouddata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mkdir /root/tempownclouddata' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ownclouddata /root/tempownclouddata $USB_MOUNT/backup/ownclouddata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -f /root/tempownclouddata/owncloud.sql ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Unable to restore Owncloud database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 505' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysql -u root --password=$DATABASE_PASSWORD owncloud -o < /root/tempownclouddata/owncloud.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud /var/www/$OWNCLOUD_DOMAIN_NAME/htdocs $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
