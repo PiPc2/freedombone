@@ -921,7 +921,7 @@ function create_restore_script {
       echo '    exit 495' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  BACKUP_MARIADB_PASSWORD=$(</root/tempmariadb/usb/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  if [[ $BACKUP_MARIADB_PASSWORD != DATABASE_PASSWORD ]]; then'
+      echo '  if [[ $BACKUP_MARIADB_PASSWORD != DATABASE_PASSWORD ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
