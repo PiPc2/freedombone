@@ -916,14 +916,22 @@ function create_restore_script {
       echo '  BACKUP_MARIADB_PASSWORD=$(</root/tempmariadb/usb/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  if [ ! "$mysqlsuccess" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [[ "$mysqlsuccess" == "ERROR"* ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 962' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  shred -zu /root/tempmariadb/usb/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Apply the new MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mysql -u root --password=$DATABASE_PASSWORD "flush privileges;"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD "flush privileges;")' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [[ "$mysqlsuccess" == "ERROR"* ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 963' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Change the MariaDB password to the backup version"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1020,7 +1028,13 @@ function create_restore_script {
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 503' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [[ "$mysqlsuccess" == "ERROR"* ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 964' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  shred -zu /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1049,7 +1063,13 @@ function create_restore_script {
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 504' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mysql -u root --password=$DATABASE_PASSWORD redmatrix -o < /root/tempredmatrixdata/usb/backup/redmatrixdata/tempredmatrixdata/redmatrix.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD redmatrix -o < /root/tempredmatrixdata/usb/backup/redmatrixdata/tempredmatrixdata/redmatrix.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [[ "$mysqlsuccess" == "ERROR"* ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 965' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  shred -zu /root/tempredmatrixdata/usb/backup/redmatrixdata/tempredmatrixdata/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempredmatrixdata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1078,7 +1098,13 @@ function create_restore_script {
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 505' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mysql -u root --password=$DATABASE_PASSWORD owncloud -o < /root/tempownclouddata/usb/backup/ownclouddata/tempownclouddata/owncloud.sql' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD owncloud -o < /root/tempownclouddata/usb/backup/ownclouddata/tempownclouddata/owncloud.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [[ "$mysqlsuccess" == "ERROR"* ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 965' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Owncloud installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -d /root/tempowncloud ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mkdir /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
