@@ -1207,9 +1207,10 @@ function create_restore_script {
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    exit 276' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /root/tempssh' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 664' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  rm -rf /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempssh' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
