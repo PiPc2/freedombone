@@ -1152,7 +1152,7 @@ function create_restore_script {
   echo '  echo "Restoring gnupg settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempgnupg' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnupg /root/tempgnupg $USB_MOUNT/backup/gnupg.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp -r /root/tempmutt/usb/backup/gnupg/$MY_USERNAME/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempgnupg/usb/backup/gnupg/$MY_USERNAME/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
