@@ -924,14 +924,16 @@ function create_restore_script {
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  shred -zu /root/tempmariadb/usb/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  echo "Apply the new MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD "flush privileges;")' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    exit 963' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  echo "Restarting database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  service mysql restart' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo '  echo "Apply the new MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD "flush privileges;")' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo '    exit 963' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      #echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Change the MariaDB password to the backup version"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
