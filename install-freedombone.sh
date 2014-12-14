@@ -1160,7 +1160,7 @@ function create_restore_script {
   echo '    exit 276' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempgnupg' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  cp -r /home/$MY_USERNAME/.gnupg /root' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /home/$MY_USERNAME/.gnupg /root" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
