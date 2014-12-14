@@ -978,6 +978,7 @@ function create_restore_script {
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/xmpp /root/tempxmpp $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  cp -r /root/tempxmpp/usb/backup/xmpp/lib/prosody/* $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempxmpp' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  service prosody restart' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -1002,7 +1003,10 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
+  BACKUP_INCLUDES_WEBSITES="no"
+
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
+      BACKUP_INCLUDES_WEBSITES="yes"
       echo "if [ -d $USB_MOUNT/backup/gnusocial ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -d /root/tempgnusocialdata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1031,6 +1035,7 @@ function create_restore_script {
   fi
 
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
+      BACKUP_INCLUDES_WEBSITES="yes"
       echo "if [ -d $USB_MOUNT/backup/redmatrix ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -d /root/tempredmatrixdata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1059,6 +1064,7 @@ function create_restore_script {
   fi
 
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
+      BACKUP_INCLUDES_WEBSITES="yes"
       echo "if [ -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! -d /root/tempownclouddata ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1128,8 +1134,17 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo 'sync' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "# Unmount the USB drive" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  if [[ $BACKUP_INCLUDES_WEBSITES == "yes" ]]; then
+      echo "# Restart the web server" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "service nginx restart" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "service php5-fpm restart" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  fi
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'echo "Restore from USB drive is complete. You can now remove it."' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
   chmod 400 /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1188,6 +1203,7 @@ function backup_to_friends_servers {
   echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       echo 'if [ -f /var/backups/gnusocial_daily.sql ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  cp /var/backups/gnusocial_daily.sql /home/$MY_USERNAME/tempfiles/gnusocial.sql" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
