@@ -850,6 +850,21 @@ function create_backup_script {
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
+  echo '# Backup ssh keys' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/.ssh ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Backing up ssh keys"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup/ssh ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p $USB_MOUNT/backup/ssh" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/.ssh $USB_MOUNT/backup/ssh $USB_MOUNT/backup/ssh.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 731' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo '# Backup web sites' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /etc/nginx ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up web settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -1184,6 +1199,20 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
+  echo "if [ -d $USB_MOUNT/backup/ssh ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring ssh keys"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempssh' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssh /root/tempssh $USB_MOUNT/backup/ssh.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempssh/usb/backup/ssh/$MY_USERNAME/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 276' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
   echo "if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1465,6 +1494,9 @@ function create_restore_script {
       echo "service nginx restart" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "service php5-fpm restart" >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'echo "Setting permissions"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'echo "Restore from USB drive is complete. You can now remove it."' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$RESTORE_SCRIPT_NAME
