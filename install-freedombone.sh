@@ -1196,7 +1196,8 @@ function create_restore_script {
       echo '  echo "Restoring blog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  mkdir /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/blog /root/tempblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  cp -r /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs/* /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rm -rf /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
