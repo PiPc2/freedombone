@@ -925,6 +925,10 @@ function create_restore_script {
       echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '      echo "Try again using the password obtained from backup"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '      mysqlsuccess=$(mysql -u root --password=$BACKUP_MARIADB_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '      echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "      umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "      rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
