@@ -774,6 +774,7 @@ function create_backup_script {
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo '# Backup projects' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/projects ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up projects"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -788,6 +789,7 @@ function create_backup_script {
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo '# Backup personal settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/personal ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up personal settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -802,6 +804,7 @@ function create_backup_script {
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up the public mailing list"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -816,6 +819,7 @@ function create_backup_script {
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up the XMPP settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -830,41 +834,102 @@ function create_backup_script {
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo '# Backup web content' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo 'echo "Backing up web content"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo "if [ ! -d $USB_MOUNT/backup/www ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo "  mkdir -p $USB_MOUNT/backup/www" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo "rsyncrypto  -v -r /var/www $USB_MOUNT/backup/www $USB_MOUNT/backup/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  #echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '# Backup other stuff' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '# Put some files into a temporary directory so that they can be easily backed up' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ ! -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  mkdir /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'echo "Backing up miscellaneous files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ ! -d $USB_MOUNT/backup/misc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  mkdir -p $USB_MOUNT/backup/misc" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  exit 495' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "rsyncrypto  -v -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  exit 496' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Removing temporary files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  shred -zu /home/$MY_USERNAME/tempfiles/*" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo '# Backup gpg keys' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /home/$MY_USERNAME/.gnupg ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Backing up gpg keys"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup/gnupg ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p $USB_MOUNT/backup/gnupg" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/.gnupg $USB_MOUNT/backup/gnupg $USB_MOUNT/backup/gnupg.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 491' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo '# Backup web sites' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -d /etc/nginx ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Backing up web settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup/web ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p $USB_MOUNT/backup/web" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /etc/nginx/sites-available $USB_MOUNT/backup/web $USB_MOUNT/backup/web.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 848' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo '# Backup README file' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -f /home/$MY_USERNAME/README ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Backing up README"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup/readme ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p $USB_MOUNT/backup/readme" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d /home/$MY_USERNAME/tempbackup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup $USB_MOUNT/backup/readme $USB_MOUNT/backup/readme.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 848' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rm -rf /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo '# Backup Mutt settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -f /home/$MY_USERNAME/.muttrc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Backing up Mutt settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d /home/$MY_USERNAME/tempbackup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  cp /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ -f /etc/Muttrc ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    cp /etc/Muttrc /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup/mutt ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p $USB_MOUNT/backup/mutt" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup $USB_MOUNT/backup/mutt $USB_MOUNT/backup/mutt.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    rm -rf /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 492' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  rm -rf /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
+  echo '# Backup procmail settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "if [ -f /home/$MY_USERNAME/.procmailrc ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  echo "Backing up procmail settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d /home/$MY_USERNAME/tempbackup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  cp /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  if [ ! -d $USB_MOUNT/backup/procmail ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    mkdir -p $USB_MOUNT/backup/procmail" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup $USB_MOUNT/backup/procmail $USB_MOUNT/backup/procmail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    rm -rf /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 492' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  rm -rf /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo '# Backup email' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up emails"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -879,6 +944,7 @@ function create_backup_script {
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+
   echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Backing up DLNA cache"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -1046,6 +1112,77 @@ function create_restore_script {
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
+  echo "if [ -d $USB_MOUNT/backup/mutt ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring Mutt settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempmutt' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mutt /root/tempmutt $USB_MOUNT/backup/mutt.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/.muttrc ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/.muttrc /home/$MY_USERNAME/.muttrc" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/Muttrc ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/Muttrc /etc/Muttrc" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /root/tempmutt' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 276' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempmutt' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d $USB_MOUNT/backup/gnupg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring gnupg settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempgnupg' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnupg /root/tempgnupg $USB_MOUNT/backup/gnupg.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempmutt/usb/backup/gnupg/$MY_USERNAME/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /root/tempgnupg' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 276' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempgnupg' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  cp -r /home/$MY_USERNAME/.gnupg /root' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 283' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d $USB_MOUNT/backup/procmail ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring procmail settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempprocmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/procmail /root/tempprocmail $USB_MOUNT/backup/procmail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempprocmail/usb/backup/procmail/$MY_USERNAME/tempbackup/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /root/tempprocmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 276' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempprocmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d $USB_MOUNT/backup/readme ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring README"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempreadme' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/readme /root/tempreadme $USB_MOUNT/backup/readme.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempreadme/usb/backup/readme/$MY_USERNAME/tempbackup/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    rm -rf /root/tempreadme' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 276' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempreadme' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
   echo "if [ -d $USB_MOUNT/backup/ssl ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1126,23 +1263,6 @@ function create_restore_script {
   #echo 'echo "Restoring web content"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   #echo "rsyncrypto -v -d -r $USB_MOUNT/backup/www /var/www $USB_MOUNT/www.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
   #echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
-
-  echo 'echo "Restoring miscellaneous files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  shred -zu /home/$MY_USERNAME/tempfiles/*" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'else' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  mkdir -p /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "rsyncrypto -v -d -r $USB_MOUNT/backup/misc /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "tar -xzvf /home/$MY_USERNAME/tempfiles/usb/backup/misc/$MY_USERNAME/tempfiles/miscfiles.tar.gz -C /" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'if [ -d /home/$MY_USERNAME/.gnupg ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  cp -r /home/$MY_USERNAME/.gnupg /root' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'echo "Removing temporary files"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "rm -rf /home/$MY_USERNAME/tempfiles" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   BACKUP_INCLUDES_WEBSITES="no"
 
