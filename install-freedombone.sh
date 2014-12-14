@@ -872,28 +872,35 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -f $USB_MOUNT/backup/key.gpg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "      rm $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    cp $USB_MOUNT/backup/key.gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    if [ -f /root/tempbackupkey ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '      echo "Backup key decrypted"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "      cp /root/tempbackupkey $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "      shred -zu /root/tempbackupkey" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "      chmod 400 $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    else' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '      echo "Unable to decrypt the backup key"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '      exit 735' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'echo "Copying GPG keys to root"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "cp -r /home/$MY_USERNAME/.gnupg /root"
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -f $USB_MOUNT/backup/key.gpg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp $USB_MOUNT/backup/key.gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -f /root/tempbackupkey ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "Backup key decrypted"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp /root/tempbackupkey $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    shred -zu /root/tempbackupkey" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    chmod 400 $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "Backup certificate installed"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  else' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "Unable to decrypt the backup key"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 735' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    echo 'No backup key was found. Copy your backup key to $BACKUP_CERTIFICATE'" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    exit 563' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -926,14 +933,6 @@ function create_restore_script {
       echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restarting database"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  service mysql restart' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo '  echo "Apply the new MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD "flush privileges;")' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo '    exit 963' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      #echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Change the MariaDB password to the backup version"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
