@@ -873,7 +873,7 @@ function create_restore_script {
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo 'echo "Copying GPG keys to root"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "cp -r /home/$MY_USERNAME/.gnupg /root"
+  echo "cp -r /home/$MY_USERNAME/.gnupg /root" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -f $USB_MOUNT/backup/key.gpg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
