@@ -960,7 +960,7 @@ function create_restore_script {
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssl /root/tempssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  cp -r /root/tempssl/usb/backup/ssl/* /etc/ssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  cp -r /root/tempssl/usb/backup/ssl/ssl/* /etc/ssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
