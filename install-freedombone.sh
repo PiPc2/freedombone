@@ -868,7 +868,18 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "if [ ! -d $USB_MOUNT/backup ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "No backup directory found on the USB drive."' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  exit 2' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo 'echo "Checking that user exists"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ ! -d /home/$MY_USERNAME ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  echo 'Username $MY_USERNAME not found. Reinstall Freedombone with this username.'" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  exit 295' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -949,7 +960,7 @@ function create_restore_script {
   echo '  echo "Restoring certificates"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssl /root/tempssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  cp -r /root/tempssl/usb/backup/ssl /etc' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  cp -r /root/tempssl/usb/backup/ssl/* /etc/ssl' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1074,7 +1085,7 @@ function create_restore_script {
       echo '    mkdir /root/tempgnusocial' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnusocial /root/tempgnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  cp -r /root/tempgnusocial/usb/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempgnusocial/usb/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs/* /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1114,7 +1125,7 @@ function create_restore_script {
       echo '    mkdir /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /root/tempredmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  cp -r /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs /var/www/$REDMATRIX_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs/* /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1200,7 +1211,10 @@ function create_restore_script {
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/mail /root/tempmail $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp -r /root/tempmail/usb/backup/blog/$MY_USERNAME/Maildir /home/$MY_USERNAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ ! -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    mkdir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempmail/usb/backup/blog/$MY_USERNAME/Maildir/* /home/$MY_USERNAME/Maildir/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1215,7 +1229,7 @@ function create_restore_script {
   echo '    echo "Restoring DLNA cache"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    mkdir /root/tempdlna' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rsyncrypto -v -d -r $USB_MOUNT/backup/dlna /root/tempdlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    cp -r /root/tempdlna/usb/backup/dlna/cache/minidlna /var/cache" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp -r /root/tempdlna/usb/backup/dlna/cache/minidlna/* /var/cache/minidlna/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "      umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "      rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
