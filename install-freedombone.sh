@@ -1152,7 +1152,7 @@ function create_restore_script {
   echo '  echo "Restoring gnupg settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempgnupg' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/gnupg /root/tempgnupg $USB_MOUNT/backup/gnupg.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp -r /root/tempgnupg/usb/backup/gnupg/$MY_USERNAME/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempgnupg/usb/backup/gnupg/$MY_USERNAME/.gnupg /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1173,7 +1173,7 @@ function create_restore_script {
   echo '  echo "Restoring procmail settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempprocmail' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/procmail /root/tempprocmail $USB_MOUNT/backup/procmail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp -r /root/tempprocmail/usb/backup/procmail/$MY_USERNAME/tempbackup/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -f /root/tempprocmail/usb/backup/procmail/$MY_USERNAME/tempbackup/.procmailrc /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1188,7 +1188,7 @@ function create_restore_script {
   echo '  echo "Restoring README"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempreadme' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/readme /root/tempreadme $USB_MOUNT/backup/readme.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp -r /root/tempreadme/usb/backup/readme/$MY_USERNAME/tempbackup/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -f /root/tempreadme/usb/backup/readme/$MY_USERNAME/tempbackup/README /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1203,7 +1203,7 @@ function create_restore_script {
   echo '  echo "Restoring ssh keys"' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  mkdir /root/tempssh' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/ssh /root/tempssh $USB_MOUNT/backup/ssh.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp -r /root/tempssh/usb/backup/ssh/$MY_USERNAME/* /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempssh/usb/backup/ssh/$MY_USERNAME/.ssh /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
