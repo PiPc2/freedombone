@@ -636,13 +636,23 @@ function create_backup_script {
       echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  exit 379' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 296' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /root/tempgnusocialdata $USB_MOUNT/backup/gnusocialdata $USB_MOUNT/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 853' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/gnusocial $USB_MOUNT/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 846' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
@@ -670,10 +680,20 @@ function create_backup_script {
       echo '  exit 378' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /root/tempredmatrixdata $USB_MOUNT/backup/redmatrixdata $USB_MOUNT/backup/redmatrixdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '   exit 285' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'shred -zu /root/tempredmatrixdata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'rm -rf /root/tempredmatrixdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Backing up Red Matrix installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $USB_MOUNT/backup/redmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '   exit 593' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
@@ -699,10 +719,20 @@ function create_backup_script {
       echo '  exit 377' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /root/tempownclouddata $USB_MOUNT/backup/ownclouddata $USB_MOUNT/backup/ownclouddata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '   exit 188' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'shred -zu /root/tempownclouddata/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'rm -rf /root/tempownclouddata' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/lib/owncloud $USB_MOUNT/backup/owncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 632' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/wiki ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -710,6 +740,11 @@ function create_backup_script {
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/lib/dokuwiki $USB_MOUNT/backup/wiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 964' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -717,6 +752,11 @@ function create_backup_script {
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $USB_MOUNT/backup/blog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 854' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -727,6 +767,11 @@ function create_backup_script {
   echo "    mkdir -p $USB_MOUNT/backup/ssl" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /etc/ssl $USB_MOUNT/backup/ssl $USB_MOUNT/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '     exit 343' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup projects' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -736,6 +781,11 @@ function create_backup_script {
   echo "    mkdir -p $USB_MOUNT/backup/projects" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /home/$MY_USERNAME/projects $USB_MOUNT/backup/projects $USB_MOUNT/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '     exit 873' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup personal settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -745,6 +795,11 @@ function create_backup_script {
   echo "    mkdir -p $USB_MOUNT/backup/personal" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /home/$MY_USERNAME/personal $USB_MOUNT/backup/personal $USB_MOUNT/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 649' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -754,6 +809,11 @@ function create_backup_script {
   echo "    mkdir -p $USB_MOUNT/backup/mailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r $PUBLIC_MAILING_LIST_DIRECTORY $USB_MOUNT/backup/mailinglist $USB_MOUNT/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 938' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -763,6 +823,11 @@ function create_backup_script {
   echo "    mkdir -p $USB_MOUNT/backup/xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r $XMPP_DIRECTORY $USB_MOUNT/backup/xmpp $USB_MOUNT/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 593' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   #echo '# Backup web content' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -782,7 +847,17 @@ function create_backup_script {
   echo "  mkdir -p $USB_MOUNT/backup/misc" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "tar -czvf /home/$MY_USERNAME/tempfiles/miscfiles.tar.gz /home/$MY_USERNAME/.gnupg /home/$MY_USERNAME/.muttrc /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/.ssh /etc/nginx/sites-available /home/$MY_USERNAME/README" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  exit 495' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "rsyncrypto  -v -r /home/$MY_USERNAME/tempfiles $USB_MOUNT/backup/misc $USB_MOUNT/backup/misc.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  exit 496' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Remove temporary files' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/tempfiles ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  echo "Removing temporary files"' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -797,6 +872,11 @@ function create_backup_script {
   echo "    mkdir -p $USB_MOUNT/backup/mail" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /home/$MY_USERNAME/Maildir $USB_MOUNT/backup/mail $USB_MOUNT/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 396' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -806,6 +886,11 @@ function create_backup_script {
   echo "    mkdir -p $USB_MOUNT/backup/dlna" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /var/cache/minidlna $USB_MOUNT/backup/dlna $USB_MOUNT/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    exit 498' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
@@ -828,6 +913,11 @@ function create_backup_script {
       echo 'echo "$DATABASE_PASSWORD" > /root/tempmariadb/db' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'chmod 400 /root/tempmariadb/db' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /root/tempmariadb $USB_MOUNT/backup/mariadb $USB_MOUNT/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 794' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'shred -zu /root/tempmariadb/*' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'rm -rf /root/tempmariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -1126,7 +1216,7 @@ function create_restore_script {
       echo '    mkdir /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/redmatrix /root/tempredmatrix $USB_MOUNT/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-	  echo "  rm -rf /var/www/$REDMATRIX_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rm -rf /var/www/$REDMATRIX_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  mv /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs /var/www/$REDMATRIX_DOMAIN_NAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
