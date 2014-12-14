@@ -874,6 +874,7 @@ function create_backup_script {
   echo "  if [ ! -d /home/$MY_USERNAME/tempbackup ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    mkdir -p /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '  cp -f /home/$MY_USERNAME/README /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup $USB_MOUNT/backup/readme $USB_MOUNT/backup/readme.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
