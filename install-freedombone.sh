@@ -1436,38 +1436,40 @@ function create_restore_script {
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
-  if grep -Fxq "install_wiki" $COMPLETION_FILE; then
-      echo "if [ -f /home/$MY_USERNAME/tempfiles/wiki.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  echo "Restoring Wiki installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mkdir /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/wiki /root/tempwiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  cp -r /root/tempwiki/usb/backup/wiki/lib/dokuwiki/* /var/lib/dokuwiki/" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    exit 868' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  rm -rf /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  fi
+  echo "if [ -d $USB_MOUNT/backup/wiki ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring Wiki installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/wiki /root/tempwiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempwiki/usb/backup/wiki/lib/dokuwiki/* /var/lib/dokuwiki/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 868' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  if grep -Fxq "install_blog" $COMPLETION_FILE; then
-      echo "if [ -f /home/$MY_USERNAME/tempfiles/blog.tar.gz ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  echo "Restoring blog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  mkdir /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/blog /root/tempblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  rm -rf /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  mv /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '    exit 593' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  rm -rf /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  fi
+  echo "if [ -d $USB_MOUNT/backup/blog ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring blog installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/blog /root/tempblog $USB_MOUNT/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rm -rf /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 593' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempblog' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/content ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "No content directory found after restoring blog"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 287' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   echo "if [ -d $USB_MOUNT/backup/mail ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  echo "Restoring emails"' >> /usr/bin/$RESTORE_SCRIPT_NAME
