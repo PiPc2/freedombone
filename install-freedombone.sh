@@ -295,6 +295,10 @@ GITHUB_BACKUP_DIRECTORY=/var/backups/github
 # Used to indicate whether the backup contains MariaDB databases or not
 BACKUP_INCLUDES_DATABASES="no"
 
+# contains the mysql root password which
+# is used for backups and repair
+DATABASE_PASSWORD_FILE=/root/dbpass
+
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
@@ -535,7 +539,13 @@ function check_hwrng {
 function get_mariadb_password {
   if [ -f /home/$MY_USERNAME/README ]; then
       if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
-          MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          if [ -f $DATABASE_PASSWORD_FILE ]; then
+              MARIADB_PASSWORD=$(<$DATABASE_PASSWORD_FILE)
+          else
+              MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+              echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
+              chmod 600 $DATABASE_PASSWORD_FILE
+          fi
       fi
   fi
 }
@@ -612,7 +622,7 @@ function create_backup_script {
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '# MariaDB password' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "DATABASE_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "DATABASE_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
@@ -1088,7 +1098,7 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '# MariaDB password' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "DATABASE_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "DATABASE_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
@@ -1124,9 +1134,10 @@ function create_restore_script {
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  shred -zu /root/tempmariadb/usb/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo -n '  sed -i "s/MYSQL_PASSWORD=.*/MYSQL_PASSWORD=' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo -n "'$DATABASE_PASSWORD'/g" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '" /usr/bin/backupdatabases' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  # Change database password file' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  echo '$DATABASE_PASSWORD' > $DATABASE_PASSWORD_FILE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  chmod 600 $DATABASE_PASSWORD_FILE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -3981,6 +3992,9 @@ function install_mariadb {
   get_mariadb_password
   if [ ! $MARIADB_PASSWORD ]; then
       MARIADB_PASSWORD=$(openssl rand -base64 32)
+      echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
+      chmod 600 $DATABASE_PASSWORD_FILE
+
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'MariaDB / MySql' >> /home/$MY_USERNAME/README
@@ -4010,7 +4024,7 @@ function backup_databases_script_header {
       echo '' >> /usr/bin/backupdatabases
       echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
-      echo "MYSQL_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/backupdatabases
+      echo "MYSQL_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/backupdatabases
       echo 'umask 0077' >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
       echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
@@ -4052,7 +4066,7 @@ function repair_databases_script {
   echo 'DATABASE=$1' >> /usr/bin/repairdatabase
   echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
-  echo "MYSQL_ROOT_PASSWORD='$MARIADB_PASSWORD'" >> /usr/bin/repairdatabase
+  echo "MYSQL_ROOT_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/repairdatabase
   echo 'TEMPFILE=/root/repairdatabase_$DATABASE' >> /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
   echo 'umask 0077' >> /usr/bin/repairdatabase
