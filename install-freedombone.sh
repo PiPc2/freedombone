@@ -622,7 +622,8 @@ function create_backup_script {
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '# MariaDB password' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "DATABASE_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n 'DATABASE_PASSWORD=$(<' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
@@ -1098,7 +1099,8 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '# MariaDB password' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "DATABASE_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo -n 'DATABASE_PASSWORD=$(<' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
@@ -4066,7 +4068,8 @@ function repair_databases_script {
   echo 'DATABASE=$1' >> /usr/bin/repairdatabase
   echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
-  echo "MYSQL_ROOT_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/repairdatabase
+  echo -n 'MYSQL_ROOT_PASSWORD=$(<' >> /usr/bin/repairdatabase
+  echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/repairdatabase
   echo 'TEMPFILE=/root/repairdatabase_$DATABASE' >> /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
   echo 'umask 0077' >> /usr/bin/repairdatabase
