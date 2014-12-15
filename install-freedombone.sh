@@ -1104,7 +1104,7 @@ function create_restore_script {
       echo '    exit 495' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  BACKUP_MARIADB_PASSWORD=$(</root/tempmariadb/usb/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  if [[ $BACKUP_MARIADB_PASSWORD != DATABASE_PASSWORD ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [[ $BACKUP_MARIADB_PASSWORD != $DATABASE_PASSWORD ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1124,6 +1124,9 @@ function create_restore_script {
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  shred -zu /root/tempmariadb/usb/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo -n '  sed -i "s/MYSQL_PASSWORD=.*/MYSQL_PASSWORD=' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo -n "'$DATABASE_PASSWORD'/g" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '" /usr/bin/backupdatabases' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -1375,6 +1378,7 @@ function create_restore_script {
       echo '    exit 759' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
