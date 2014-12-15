@@ -4065,6 +4065,10 @@ function repair_databases_script {
   if grep -Fxq "repair_databases_script" $COMPLETION_FILE; then
       return
   fi
+  if [ ! -f $DATABASE_PASSWORD_FILE ]; then
+      return
+  fi
+
   echo '#!/bin/bash' > /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
   echo 'DATABASE=$1' >> /usr/bin/repairdatabase
@@ -6308,6 +6312,7 @@ install_redmatrix
 install_dlna_server
 configure_firewall_for_dlna
 install_mediagoblin
+repair_databases_script
 create_backup_script
 create_restore_script
 backup_to_friends_servers
