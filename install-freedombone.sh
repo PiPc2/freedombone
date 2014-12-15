@@ -1138,7 +1138,8 @@ function create_restore_script {
       echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  # Change database password file' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  echo '$DATABASE_PASSWORD' > $DATABASE_PASSWORD_FILE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo -n '  echo "$DATABASE_PASSWORD" > ' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "$DATABASE_PASSWORD_FILE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  chmod 600 $DATABASE_PASSWORD_FILE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
