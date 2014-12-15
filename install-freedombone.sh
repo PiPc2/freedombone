@@ -4027,7 +4027,8 @@ function backup_databases_script_header {
       echo '' >> /usr/bin/backupdatabases
       echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
-      echo "MYSQL_PASSWORD=$(<$DATABASE_PASSWORD_FILE)" >> /usr/bin/backupdatabases
+      echo -n 'MYSQL_PASSWORD=$(<' >> /usr/bin/backupdatabases
+      echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/backupdatabases
       echo 'umask 0077' >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
       echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
