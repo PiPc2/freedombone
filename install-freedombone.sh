@@ -705,11 +705,15 @@ function create_backup_script {
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '   exit 593' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
       echo "if [ ! -d $USB_MOUNT/backup/owncloud ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/owncloud" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d $USB_MOUNT/backup/owncloud2 ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p $USB_MOUNT/backup/owncloud2" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "if [ ! -d $USB_MOUNT/backup/ownclouddata ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/ownclouddata" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -744,6 +748,13 @@ function create_backup_script {
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 632' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /etc/owncloud $USB_MOUNT/backup/owncloud2 $USB_MOUNT/backup/owncloud2.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 632' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/wiki ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -756,6 +767,7 @@ function create_backup_script {
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 964' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       echo "if [ ! -d $USB_MOUNT/backup/blog ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -768,6 +780,7 @@ function create_backup_script {
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '  exit 854' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -1427,6 +1440,9 @@ function create_restore_script {
       echo '  if [ ! -d /root/tempowncloud ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mkdir /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! -d /root/tempowncloud2 ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    mkdir /root/tempowncloud2' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud /root/tempowncloud $USB_MOUNT/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  cp -r /root/tempowncloud/usb/backup/owncloud/lib/owncloud/* /var/lib/owncloud/" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -1434,7 +1450,15 @@ function create_restore_script {
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 981' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud2 /root/tempowncloud2 $USB_MOUNT/backup/owncloud2.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempowncloud2/usb/backup/owncloud/owncloud/* /etc/owncloud/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 982' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempowncloud2' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
