@@ -760,8 +760,17 @@ function create_backup_script {
       echo "if [ ! -d $USB_MOUNT/backup/wiki ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  mkdir -p $USB_MOUNT/backup/wiki" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -d $USB_MOUNT/backup/wiki2 ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p $USB_MOUNT/backup/wiki2" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "rsyncrypto -v -r /var/lib/dokuwiki $USB_MOUNT/backup/wiki $USB_MOUNT/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 964' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /etc/dokuwiki $USB_MOUNT/backup/wiki2 $USB_MOUNT/backup/wiki2.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -1474,7 +1483,16 @@ function create_restore_script {
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    exit 868' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempwiki2' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/wiki2 /root/tempwiki2 $USB_MOUNT/backup/wiki2.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempwiki2/usb/backup/wiki2/dokuwiki/* /etc/dokuwiki/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 869' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempwiki2' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
