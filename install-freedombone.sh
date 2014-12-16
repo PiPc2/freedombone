@@ -1493,6 +1493,7 @@ function create_restore_script {
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempwiki' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempwiki2' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  chown -R www-data:www-data /var/lib/dokuwiki/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
