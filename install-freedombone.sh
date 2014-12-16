@@ -1451,7 +1451,7 @@ function create_restore_script {
       echo '    exit 981' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/owncloud2 /root/tempowncloud2 $USB_MOUNT/backup/owncloud2.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo "  cp -r /root/tempowncloud2/usb/backup/owncloud/owncloud/* /etc/owncloud/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp -r /root/tempowncloud2/usb/backup/owncloud/* /etc/owncloud/" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
