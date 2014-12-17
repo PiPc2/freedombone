@@ -1419,6 +1419,7 @@ function create_restore_script {
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempredmatrix' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  chmod 777 /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/store/[data]/smarty3" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  chown -R www-data:www-data /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/*" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
