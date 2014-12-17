@@ -540,7 +540,7 @@ function get_mariadb_password {
   if [ -f /home/$MY_USERNAME/README ]; then
       if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
           if [ -f $DATABASE_PASSWORD_FILE ]; then
-              MARIADB_PASSWORD=$(<$DATABASE_PASSWORD_FILE)
+              MARIADB_PASSWORD=$(cat $DATABASE_PASSWORD_FILE)
           else
               MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
               echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
@@ -622,7 +622,7 @@ function create_backup_script {
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
   echo '# MariaDB password' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'DATABASE_PASSWORD=$(<' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo -n 'DATABASE_PASSWORD=$(cat ' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
@@ -1121,7 +1121,7 @@ function create_restore_script {
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '# MariaDB password' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo -n 'DATABASE_PASSWORD=$(<' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo -n 'DATABASE_PASSWORD=$(cat ' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -1137,7 +1137,7 @@ function create_restore_script {
       echo '    echo "MariaDB password file not found"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 495' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      echo '  BACKUP_MARIADB_PASSWORD=$(</root/tempmariadb/usb/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  BACKUP_MARIADB_PASSWORD=$(cat /root/tempmariadb/usb/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  if [[ $BACKUP_MARIADB_PASSWORD != $DATABASE_PASSWORD ]]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -4077,7 +4077,7 @@ function backup_databases_script_header {
       echo '' >> /usr/bin/backupdatabases
       echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
-      echo -n 'MYSQL_PASSWORD=$(<' >> /usr/bin/backupdatabases
+      echo -n 'MYSQL_PASSWORD=$(cat ' >> /usr/bin/backupdatabases
       echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/backupdatabases
       echo 'umask 0077' >> /usr/bin/backupdatabases
       echo '' >> /usr/bin/backupdatabases
@@ -4124,7 +4124,7 @@ function repair_databases_script {
   echo 'DATABASE=$1' >> /usr/bin/repairdatabase
   echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
-  echo -n 'MYSQL_ROOT_PASSWORD=$(<' >> /usr/bin/repairdatabase
+  echo -n 'MYSQL_ROOT_PASSWORD=$(cat ' >> /usr/bin/repairdatabase
   echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/repairdatabase
   echo 'TEMPFILE=/root/repairdatabase_$DATABASE' >> /usr/bin/repairdatabase
   echo '' >> /usr/bin/repairdatabase
