@@ -1125,6 +1125,15 @@ function create_restore_script {
   echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
+  echo '# Make a backup of the original README file' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '# incase old passwords need to be used' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "if [ -f /home/$MY_USERNAME/README ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ ! -f /home/$MY_USERNAME/README_original ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    cp /home/$MY_USERNAME/README /home/$MY_USERNAME/README_original" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
       echo "if [ -d $USB_MOUNT/backup/mariadb ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring mysql settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
