@@ -2108,16 +2108,17 @@ function backup_to_friends_servers {
   echo "awk -F ' ' '{print $3}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
-  echo '  logger -s "Starting backup to $RSYNC_SERVER" 2> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  NOW=$(date +"%Y-%m-%d %H:%M:%S")' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  logger -s "$NOW Starting backup to $RSYNC_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '  rsync -avz -e "ssh -p $RSYNC_SSH_PORT" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '$SERVER_DIRECTORY/backup $RSYNC_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '    logger -s "Backup to $RSYNC_SERVER failed" 2> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    logger -s "$NOW Backup to $RSYNC_SERVER failed" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '  echo "Backup to $RSYNC_SERVER failed" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    echo "Backup to $RSYNC_SERVER failed" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '    logger -s "Backed up to $RSYNC_SERVER" 2> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    logger -s "$NOW Backed up to $RSYNC_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   # End of the loop
