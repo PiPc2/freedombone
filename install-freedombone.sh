@@ -1609,8 +1609,8 @@ function backup_to_friends_servers {
       echo "To add friends servers create a file called $FRIENDS_SERVERS_LIST" >> /home/$MY_USERNAME/README
       echo 'and add entries like this:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      echo 'username1@domain1:2222//home/username1 ssh_password1' >> /home/$MY_USERNAME/README
-      echo 'username2@domain2:2222//home/username2 ssh_password2' >> /home/$MY_USERNAME/README
+      echo "username1@domain1:$SSH_PORT//home/username1 ssh_password1" >> /home/$MY_USERNAME/README
+      echo "username2@domain2:$SSH_PORT//home/username2 ssh_password2" >> /home/$MY_USERNAME/README
       echo '...' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'The system will try to backup to these remote locations once per day.' >> /home/$MY_USERNAME/README
@@ -2153,16 +2153,16 @@ function backup_to_friends_servers {
   echo '    NOW=$(date +"%Y-%m-%d %H:%M:%S")' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
-  echo '    logger -s "$NOW Starting backup to $REMOTE_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    echo "$NOW Starting backup to $REMOTE_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    rsync -avz -e "ssh -p $REMOTE_SSH_PORT" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '$SERVER_DIRECTORY/backup $REMOTE_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '      logger -s "$NOW Backup to $REMOTE_SERVER failed" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '      echo "$NOW Backup to $REMOTE_SERVER failed" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '      # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '      echo "Backup to $REMOTE_SERVER failed" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '      logger -s "$NOW Backed up to $REMOTE_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '      echo "$NOW Backed up to $REMOTE_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
