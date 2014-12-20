@@ -1641,22 +1641,22 @@ function backup_to_friends_servers {
 
 
   echo '# local directory where the backup will be made' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "if [ ! -d $SERVER_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'if [ ! -d $SERVER_DIRECTORY ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  mkdir $SERVER_DIRECTORY' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "if [ ! -d $SERVER_DIRECTORY/backup ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'if [ ! -d $SERVER_DIRECTORY/backup ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  mkdir -p $SERVER_DIRECTORY/backup' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/gnusocial ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/gnusocial" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/gnusocial ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/gnusocial' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/gnusocialdata ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/gnusocialdata" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/gnusocialdata ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/gnusocialdata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "if [ ! -d /root/tempgnusocialdata ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  mkdir -p /root/tempgnusocialdata" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1670,39 +1670,42 @@ function backup_to_friends_servers {
       echo "  fi" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to export gnusocial database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to export gnusocial database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 296' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /root/tempgnusocialdata $SERVER_DIRECTORY/backup/gnusocialdata $SERVER_DIRECTORY/backup/gnusocialdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /root/tempgnusocialdata $SERVER_DIRECTORY/backup/gnusocialdata $SERVER_DIRECTORY/backup/gnusocialdata.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt gnusocial database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt gnusocial database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 853' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'shred -zu /root/tempgnusocialdata/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'rm -rf /root/tempgnusocialdata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs $SERVER_DIRECTORY/backup/gnusocial $SERVER_DIRECTORY/backup/gnusocial.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n "rsyncrypto -v -r /var/www/$MICROBLOG_DOMAIN_NAME/htdocs " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '$SERVER_DIRECTORY/backup/gnusocial $SERVER_DIRECTORY/backup/gnusocial.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt gnusocial installation" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt gnusocial installation" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 846' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/redmatrix ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/redmatrix" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/redmatrix ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/redmatrix' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/redmatrixdata ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/redmatrixdata" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/redmatrixdata ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/redmatrixdata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "if [ ! -d /root/tempredmatrixdata ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  mkdir -p /root/tempredmatrixdata" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1714,42 +1717,45 @@ function backup_to_friends_servers {
       echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to export redmatrix database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to export redmatrix database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 378' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /root/tempredmatrixdata $SERVER_DIRECTORY/backup/redmatrixdata $SERVER_DIRECTORY/backup/redmatrixdata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /root/tempredmatrixdata $SERVER_DIRECTORY/backup/redmatrixdata $SERVER_DIRECTORY/backup/redmatrixdata.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  shred -zu /root/tempredmatrixdata/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  rm -rf /root/tempredmatrixdata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt redmatrix database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt redmatrix database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 285' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'shred -zu /root/tempredmatrixdata/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'rm -rf /root/tempredmatrixdata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'echo "Backing up Red Matrix installation"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs $SERVER_DIRECTORY/backup/redmatrix $SERVER_DIRECTORY/backup/redmatrix.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n "rsyncrypto -v -r /var/www/$REDMATRIX_DOMAIN_NAME/htdocs " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '$SERVER_DIRECTORY/backup/redmatrix $SERVER_DIRECTORY/backup/redmatrix.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt redmatrix installation" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt redmatrix installation" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 593' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/owncloud ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/owncloud" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/owncloud ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/owncloud' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/owncloud2 ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/owncloud2" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/owncloud2 ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/owncloud2' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/ownclouddata ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/ownclouddata" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/ownclouddata ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/ownclouddata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "if [ ! -d /root/tempownclouddata ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  mkdir -p /root/tempownclouddata" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1760,73 +1766,80 @@ function backup_to_friends_servers {
       echo '  if [ ! $DATABASE_PASSWORD ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "    echo 'No MariaDB password was given'" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "  fi" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to export owncloud database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to export owncloud database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 377' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "fi" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /root/tempownclouddata $SERVER_DIRECTORY/backup/ownclouddata $SERVER_DIRECTORY/backup/ownclouddata.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /root/tempownclouddata $SERVER_DIRECTORY/backup/ownclouddata $SERVER_DIRECTORY/backup/ownclouddata.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  shred -zu /root/tempownclouddata/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt owncloud database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt owncloud database" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 188' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'shred -zu /root/tempownclouddata/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'rm -rf /root/tempownclouddata' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /var/lib/owncloud $SERVER_DIRECTORY/backup/owncloud $SERVER_DIRECTORY/backup/owncloud.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /var/lib/owncloud $SERVER_DIRECTORY/backup/owncloud $SERVER_DIRECTORY/backup/owncloud.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt owncloud installation (/var/lib/owncloud)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt owncloud installation (/var/lib/owncloud)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 632' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /etc/owncloud $SERVER_DIRECTORY/backup/owncloud2 $SERVER_DIRECTORY/backup/owncloud2.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /etc/owncloud $SERVER_DIRECTORY/backup/owncloud2 $SERVER_DIRECTORY/backup/owncloud2.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt owncloud installation (/etc/owncloud)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt owncloud installation (/etc/owncloud)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 632' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/wiki ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/wiki" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/wiki ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/wiki' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/wiki2 ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/wiki2" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/wiki2 ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/wiki2' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /var/lib/dokuwiki $SERVER_DIRECTORY/backup/wiki $SERVER_DIRECTORY/backup/wiki.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /var/lib/dokuwiki $SERVER_DIRECTORY/backup/wiki $SERVER_DIRECTORY/backup/wiki.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt wiki installation (/var/lib/dokuwiki)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt wiki installation (/var/lib/dokuwiki)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 964' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /etc/dokuwiki $SERVER_DIRECTORY/backup/wiki2 $SERVER_DIRECTORY/backup/wiki2.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /etc/dokuwiki $SERVER_DIRECTORY/backup/wiki2 $SERVER_DIRECTORY/backup/wiki2.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt wiki installation (/etc/dokuwiki)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt wiki installation (/etc/dokuwiki)" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 964' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/blog ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/blog" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/blog ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/blog' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs $SERVER_DIRECTORY/backup/blog $SERVER_DIRECTORY/backup/blog.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n "rsyncrypto -v -r /var/www/$FULLBLOG_DOMAIN_NAME/htdocs " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '$SERVER_DIRECTORY/backup/blog $SERVER_DIRECTORY/backup/blog.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt blog installation" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt blog installation" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 854' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1836,10 +1849,11 @@ function backup_to_friends_servers {
   echo '# Backup certificates' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /etc/ssl ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up certificates"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/ssl ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/ssl" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/ssl ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/ssl' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /etc/ssl $SERVER_DIRECTORY/backup/ssl $SERVER_DIRECTORY/backup/ssl.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '  rsyncrypto  -v -r /etc/ssl $SERVER_DIRECTORY/backup/ssl $SERVER_DIRECTORY/backup/ssl.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt ssl certificates" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1852,10 +1866,12 @@ function backup_to_friends_servers {
   echo '# Backup projects' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/projects ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up projects"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/projects ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/projects" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/projects ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/projects' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/projects $SERVER_DIRECTORY/backup/projects $SERVER_DIRECTORY/backup/projects.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/projects " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/projects $SERVER_DIRECTORY/backup/projects.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt git projects" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1868,10 +1884,12 @@ function backup_to_friends_servers {
   echo '# Backup personal settings' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/personal ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up personal settings"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/personal ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/personal" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/personal ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/personal' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/personal $SERVER_DIRECTORY/backup/personal $SERVER_DIRECTORY/backup/personal.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/personal " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/personal $SERVER_DIRECTORY/backup/personal.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt personal settings" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1884,10 +1902,12 @@ function backup_to_friends_servers {
   echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up the public mailing list"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/mailinglist ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/mailinglist" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/mailinglist ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/mailinglist' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r $PUBLIC_MAILING_LIST_DIRECTORY $SERVER_DIRECTORY/backup/mailinglist $SERVER_DIRECTORY/backup/mailinglist.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r $PUBLIC_MAILING_LIST_DIRECTORY " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/mailinglist $SERVER_DIRECTORY/backup/mailinglist.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt public mailing list" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1900,10 +1920,12 @@ function backup_to_friends_servers {
   echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up the XMPP settings"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/xmpp ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/xmpp" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/xmpp ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/xmpp' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r $XMPP_DIRECTORY $SERVER_DIRECTORY/backup/xmpp $SERVER_DIRECTORY/backup/xmpp.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r $XMPP_DIRECTORY " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/xmpp $SERVER_DIRECTORY/backup/xmpp.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt XMPP settings" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1916,10 +1938,12 @@ function backup_to_friends_servers {
   echo '# Backup gpg keys' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/.gnupg ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up gpg keys"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/gnupg ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/gnupg" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/gnupg ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/gnupg' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/.gnupg $SERVER_DIRECTORY/backup/gnupg $SERVER_DIRECTORY/backup/gnupg.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/.gnupg " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/gnupg $SERVER_DIRECTORY/backup/gnupg.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt gpg keys" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1932,10 +1956,12 @@ function backup_to_friends_servers {
   echo '# Backup ssh keys' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/.ssh ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up ssh keys"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/ssh ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/ssh" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/ssh ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/ssh' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/.ssh $SERVER_DIRECTORY/backup/ssh $SERVER_DIRECTORY/backup/ssh.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/.ssh " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/ssh $SERVER_DIRECTORY/backup/ssh.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt ssh keys" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1948,10 +1974,11 @@ function backup_to_friends_servers {
   echo '# Backup web sites' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /etc/nginx ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up web settings"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/web ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/web" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/web ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/web' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /etc/nginx/sites-available $SERVER_DIRECTORY/backup/web $SERVER_DIRECTORY/backup/web.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '  rsyncrypto  -v -r /etc/nginx/sites-available $SERVER_DIRECTORY/backup/web $SERVER_DIRECTORY/backup/web.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    exit 848' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1961,14 +1988,16 @@ function backup_to_friends_servers {
   echo '# Backup README file' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -f /home/$MY_USERNAME/README ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up README"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/readme ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/readme" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/readme ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/readme' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  if [ ! -d /home/$MY_USERNAME/tempbackup ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    mkdir -p /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  cp -f /home/$MY_USERNAME/README /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup $SERVER_DIRECTORY/backup/readme $SERVER_DIRECTORY/backup/readme.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/readme $SERVER_DIRECTORY/backup/readme.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    rm -rf /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -1990,10 +2019,12 @@ function backup_to_friends_servers {
   echo '  if [ -f /etc/Muttrc ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "    cp /etc/Muttrc /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/mutt ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/mutt" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/mutt ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/mutt' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup $SERVER_DIRECTORY/backup/mutt $SERVER_DIRECTORY/backup/mutt.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/mutt $SERVER_DIRECTORY/backup/mutt.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    rm -rf /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2012,10 +2043,12 @@ function backup_to_friends_servers {
   echo "    mkdir -p /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "  cp /home/$MY_USERNAME/.procmailrc /home/$MY_USERNAME/tempbackup" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/procmail ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/procmail" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/procmail ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/procmail' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup $SERVER_DIRECTORY/backup/procmail $SERVER_DIRECTORY/backup/procmail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/tempbackup " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/procmail $SERVER_DIRECTORY/backup/procmail.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    rm -rf /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2030,10 +2063,12 @@ function backup_to_friends_servers {
   echo '# Backup email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up emails"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/mail ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/mail" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/mail ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/mail' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /home/$MY_USERNAME/Maildir $SERVER_DIRECTORY/backup/mail $SERVER_DIRECTORY/backup/mail.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "  rsyncrypto  -v -r /home/$MY_USERNAME/Maildir " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$SERVER_DIRECTORY/backup/mail $SERVER_DIRECTORY/backup/mail.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt emails" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2046,10 +2081,11 @@ function backup_to_friends_servers {
   echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  echo "Backing up DLNA cache"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  if [ ! -d $SERVER_DIRECTORY/backup/dlna ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "    mkdir -p $SERVER_DIRECTORY/backup/dlna" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ ! -d $SERVER_DIRECTORY/backup/dlna ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    mkdir -p $SERVER_DIRECTORY/backup/dlna' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "  rsyncrypto  -v -r /var/cache/minidlna $SERVER_DIRECTORY/backup/dlna $SERVER_DIRECTORY/backup/dlna.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '  rsyncrypto  -v -r /var/cache/minidlna $SERVER_DIRECTORY/backup/dlna $SERVER_DIRECTORY/backup/dlna.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    echo "Unable to encrypt DLNA settings" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2061,8 +2097,8 @@ function backup_to_friends_servers {
 
   if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
       echo '# Mysql settings' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "if [ ! -d $SERVER_DIRECTORY/backup/mariadb ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "  mkdir -p $SERVER_DIRECTORY/backup/mariadb" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/mariadb ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/mariadb' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! -d /root/tempmariadb ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '    mkdir /root/tempmariadb' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2071,18 +2107,19 @@ function backup_to_friends_servers {
       echo "if [ ! -s /root/tempmariadb/mysql.sql ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  echo "Unable to backup mysql settings"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  rm -rf /root/tempmariadb' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to export database settings" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to export database settings" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 653' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'echo "$DATABASE_PASSWORD" > /root/tempmariadb/db' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'chmod 400 /root/tempmariadb/db' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "rsyncrypto -v -r /root/tempmariadb $SERVER_DIRECTORY/backup/mariadb $SERVER_DIRECTORY/backup/mariadb.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n 'rsyncrypto -v -r /root/tempmariadb $SERVER_DIRECTORY/backup/mariadb $SERVER_DIRECTORY/backup/mariadb.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo -n '  echo "Unable to encrypt database settings" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-	  echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt database settings" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 794' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'shred -zu /root/tempmariadb/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
