@@ -2137,12 +2137,12 @@ function backup_to_friends_servers {
   echo '  # Get the server and its password' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Format is:' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  #   username@domain:/home/username <port number> <ssh password>' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '  RSYNC_SERVER=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '  REMOTE_SERVER=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '$1' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '  if [ -s $RSYNC_SERVER ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    RSYNC_SSH_PORT=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  if [ -s $REMOTE_SERVER ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    REMOTE_SSH_PORT=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '$2' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2153,16 +2153,16 @@ function backup_to_friends_servers {
   echo '    NOW=$(date +"%Y-%m-%d %H:%M:%S")' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
-  echo '    logger -s "$NOW Starting backup to $RSYNC_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    rsync -avz -e "ssh -p $RSYNC_SSH_PORT" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '$SERVER_DIRECTORY/backup $RSYNC_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    logger -s "$NOW Starting backup to $REMOTE_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    rsync -avz -e "ssh -p $REMOTE_SSH_PORT" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '$SERVER_DIRECTORY/backup $REMOTE_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '      logger -s "$NOW Backup to $RSYNC_SERVER failed" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '      logger -s "$NOW Backup to $REMOTE_SERVER failed" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '      # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '      echo "Backup to $RSYNC_SERVER failed" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '      echo "Backup to $REMOTE_SERVER failed" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "$EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    else' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '      logger -s "$NOW Backed up to $RSYNC_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '      logger -s "$NOW Backed up to $REMOTE_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
