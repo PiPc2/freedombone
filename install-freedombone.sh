@@ -1593,7 +1593,7 @@ function backup_to_friends_servers {
       return
   fi
 
-  apt-get -y --force-yes install rsyncrypto
+  apt-get -y --force-yes install rsyncrypto sshpass
 
   get_mariadb_password
   get_mariadb_gnusocial_admin_password
@@ -2146,7 +2146,7 @@ function backup_to_friends_servers {
   echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '$2' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    export RSYNC_PASSWORD=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    REMOTE_PASSWORD=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '$3' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2154,7 +2154,8 @@ function backup_to_friends_servers {
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   echo '    echo "$NOW Starting backup to $REMOTE_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '    rsync -avz -e "ssh -p $REMOTE_SSH_PORT" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+
+  echo -n '    rsync -ratlz --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '$SERVER_DIRECTORY/backup $REMOTE_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '      echo "$NOW Backup to $REMOTE_SERVER failed" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2170,9 +2171,6 @@ function backup_to_friends_servers {
 
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "done < $FRIENDS_SERVERS_LIST" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '# Clear the rsync password' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo 'export RSYNC_PASSWORD=""' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   chown root:root /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2192,7 +2190,7 @@ function restore_from_friend {
       return
   fi
 
-  apt-get -y --force-yes install rsyncrypto
+  apt-get -y --force-yes install rsyncrypto sshpass
 
   get_mariadb_password
   get_mariadb_gnusocial_admin_password
