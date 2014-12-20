@@ -2106,9 +2106,9 @@ function backup_to_friends_servers {
   echo "awk -F ' ' '{print $2}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '  export RSYNC_PASSWORD=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "awk -F ' ' '{print $3}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '  NOW=$(date +"%Y-%m-%d %H:%M:%S")' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
-  echo '  NOW=$(date +"%Y-%m-%d %H:%M:%S")' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  logger -s "$NOW Starting backup to $RSYNC_SERVER" >> /var/log/backup_to_friends.log' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '  rsync -avz -e "ssh -p $RSYNC_SSH_PORT" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '$SERVER_DIRECTORY/backup $RSYNC_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
