@@ -1606,7 +1606,7 @@ function backup_to_friends_servers {
       echo 'Backups' >> /home/$MY_USERNAME/README
       echo '=======' >> /home/$MY_USERNAME/README
       echo 'Key file: /root/backupkey' >> /home/$MY_USERNAME/README
-      echo "To add friends servers create a file called $FRIENDS_SERVERS_LIST"
+      echo "To add friends servers create a file called $FRIENDS_SERVERS_LIST" >> /home/$MY_USERNAME/README
       echo 'and add entries like this:' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'username1@domain1:2222//home/username1 ssh_password1' >> /home/$MY_USERNAME/README
