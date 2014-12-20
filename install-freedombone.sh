@@ -2096,16 +2096,21 @@ function backup_to_friends_servers {
   echo '# For each remote server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'while read remote_server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'do' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-
   echo '  # Get the server and its password' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Format is:' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  #   username@domain:/home/username <port number> <ssh password>' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '  RSYNC_SERVER=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "awk -F ' ' '{print $1}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$1' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '  RSYNC_SSH_PORT=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "awk -F ' ' '{print $2}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$2' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '  export RSYNC_PASSWORD=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "awk -F ' ' '{print $3}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$3' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  NOW=$(date +"%Y-%m-%d %H:%M:%S")' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
