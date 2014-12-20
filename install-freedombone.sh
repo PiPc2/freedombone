@@ -1336,6 +1336,7 @@ function create_restore_script {
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  rm -rf /root/tempxmpp' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  service prosody restart' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  chown -R prosody:prosody /var/lib/prosody/*' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
