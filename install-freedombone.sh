@@ -2290,17 +2290,17 @@ function restore_from_friend {
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/mariadb /root/tempmariadb $SERVER_DIRECTORY/backup/mariadb.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Get the MariaDB password from the backup"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  if [ ! -f /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/db ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  if [ ! -f /root/tempmariadb/remoterestore/backup/mariadb/tempmariadb/db ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    echo "MariaDB password file not found"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 495' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  BACKUP_MARIADB_PASSWORD=$(cat /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  BACKUP_MARIADB_PASSWORD=$(cat /root/tempmariadb/remoterestore/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [[ $BACKUP_MARIADB_PASSWORD != $DATABASE_PASSWORD ]]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '    mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/remoterestore/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '      echo "Try again using the password obtained from backup"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '      mysqlsuccess=$(mysql -u root --password=$BACKUP_MARIADB_PASSWORD mysql -o < /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '      mysqlsuccess=$(mysql -u root --password=$BACKUP_MARIADB_PASSWORD mysql -o < /root/tempmariadb/remoterestore/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '      echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2311,7 +2311,7 @@ function restore_from_friend {
   echo '    echo "Change the MariaDB password to the backup version"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  shred -zu /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  shred -zu /root/tempmariadb/remoterestore/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  # Change database password file' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2326,11 +2326,11 @@ function restore_from_friend {
   echo '  mkdir /root/tempmutt' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/mutt /root/tempmutt $SERVER_DIRECTORY/backup/mutt.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  if [ -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/.muttrc ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "    cp -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/.muttrc /home/$MY_USERNAME/.muttrc" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  if [ -f /root/tempmutt/remoterestore/backup/mutt/$MY_USERNAME/tempbackup/.muttrc ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    cp -f /root/tempmutt/remoterestore/backup/mutt/$MY_USERNAME/tempbackup/.muttrc /home/$MY_USERNAME/.muttrc" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  if [ -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/Muttrc ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "    cp -f /root/tempmutt/usb/backup/mutt/$MY_USERNAME/tempbackup/Muttrc /etc/Muttrc" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  if [ -f /root/tempmutt/remoterestore/backup/mutt/$MY_USERNAME/tempbackup/Muttrc ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    cp -f /root/tempmutt/remoterestore/backup/mutt/$MY_USERNAME/tempbackup/Muttrc /etc/Muttrc" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    rm -rf /root/tempmutt' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2345,7 +2345,7 @@ function restore_from_friend {
   echo '  mkdir /root/tempgnupg' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/gnupg /root/tempgnupg $SERVER_DIRECTORY/backup/gnupg.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempgnupg/usb/backup/gnupg/$MY_USERNAME/.gnupg /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempgnupg/remoterestore/backup/gnupg/$MY_USERNAME/.gnupg /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    rm -rf /root/tempgnupg' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 276' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2363,7 +2363,7 @@ function restore_from_friend {
   echo '  mkdir /root/tempprocmail' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/procmail /root/tempprocmail $SERVER_DIRECTORY/backup/procmail.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -f /root/tempprocmail/usb/backup/procmail/$MY_USERNAME/tempbackup/.procmailrc /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -f /root/tempprocmail/remoterestore/backup/procmail/$MY_USERNAME/tempbackup/.procmailrc /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    rm -rf /root/tempprocmail' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 276' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2377,7 +2377,7 @@ function restore_from_friend {
   echo '  mkdir /root/tempreadme' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/readme /root/tempreadme $SERVER_DIRECTORY/backup/readme.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -f /root/tempreadme/usb/backup/readme/$MY_USERNAME/tempbackup/README /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -f /root/tempreadme/remoterestore/backup/readme/$MY_USERNAME/tempbackup/README /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    rm -rf /root/tempreadme' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 276' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2391,7 +2391,7 @@ function restore_from_friend {
   echo '  mkdir /root/tempssh' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/ssh /root/tempssh $SERVER_DIRECTORY/backup/ssh.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempssh/usb/backup/ssh/$MY_USERNAME/.ssh /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempssh/remoterestore/backup/ssh/$MY_USERNAME/.ssh /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    rm -rf /root/tempssh' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 664' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2405,7 +2405,7 @@ function restore_from_friend {
   echo '  mkdir /root/tempssl' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/ssl /root/tempssl $SERVER_DIRECTORY/backup/ssl.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  cp -r /root/tempssl/usb/backup/ssl/ssl/* /etc/ssl' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  cp -r /root/tempssl/remoterestore/backup/ssl/ssl/* /etc/ssl' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 276' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2421,7 +2421,7 @@ function restore_from_friend {
   echo "  if [ -d /home/$MY_USERNAME/projects ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    rm -rf /home/$MY_USERNAME/projects' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  mv /root/tempprojects/usb/backup/projects/$MY_USERNAME/projects /home/$MY_USERNAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  mv /root/tempprojects/remoterestore/backup/projects/$MY_USERNAME/projects /home/$MY_USERNAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 166' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2437,7 +2437,7 @@ function restore_from_friend {
   echo "  if [ -d /home/$MY_USERNAME/personal ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    rm -rf /home/$MY_USERNAME/personal' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  mv /root/temppersonal/usb/backup/personal/$MY_USERNAME/personal /home/$MY_USERNAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  mv /root/temppersonal/remoterestore/backup/personal/$MY_USERNAME/personal /home/$MY_USERNAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 184' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2450,7 +2450,7 @@ function restore_from_friend {
   echo '  mkdir /root/tempmailinglist' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/mailinglist /root/tempmailinglist $SERVER_DIRECTORY/backup/mailinglist.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempmailinglist/usb/backup/mailinglist/spool/mlmmj/* $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempmailinglist/remoterestore/backup/mailinglist/spool/mlmmj/* $PUBLIC_MAILING_LIST_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 526' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2463,7 +2463,7 @@ function restore_from_friend {
   echo '  mkdir /root/tempxmpp' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/xmpp /root/tempxmpp $SERVER_DIRECTORY/backup/xmpp.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempxmpp/usb/backup/xmpp/lib/prosody/* $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempxmpp/remoterestore/backup/xmpp/lib/prosody/* $XMPP_DIRECTORY" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 725' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2484,17 +2484,17 @@ function restore_from_friend {
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/gnusocialdata /root/tempgnusocialdata $SERVER_DIRECTORY/backup/gnusocialdata.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! -f /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  if [ ! -f /root/tempgnusocialdata/remoterestore/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "Unable to restore microblog database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 503' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < /root/tempgnusocialdata/remoterestore/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 964' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  shred -zu /root/tempgnusocialdata/usb/backup/gnusocialdata/tempgnusocialdata/*' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  shred -zu /root/tempgnusocialdata/remoterestore/backup/gnusocialdata/tempgnusocialdata/*' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! -d /root/tempgnusocial ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2503,7 +2503,7 @@ function restore_from_friend {
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/gnusocial /root/tempgnusocial $SERVER_DIRECTORY/backup/gnusocial.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  mv /root/tempgnusocial/usb/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  mv /root/tempgnusocial/remoterestore/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 683' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2521,17 +2521,17 @@ function restore_from_friend {
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/redmatrixdata /root/tempredmatrixdata $SERVER_DIRECTORY/backup/redmatrixdata.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! -f /root/tempredmatrixdata/usb/backup/redmatrixdata/tempredmatrixdata/redmatrix.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  if [ ! -f /root/tempredmatrixdata/remoterestore/backup/redmatrixdata/tempredmatrixdata/redmatrix.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "Unable to restore Red Matrix database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    rm -rf /root/tempredmatrixdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 504' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD redmatrix -o < /root/tempredmatrixdata/usb/backup/redmatrixdata/tempredmatrixdata/redmatrix.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD redmatrix -o < /root/tempredmatrixdata/remoterestore/backup/redmatrixdata/tempredmatrixdata/redmatrix.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 965' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  shred -zu /root/tempredmatrixdata/usb/backup/redmatrixdata/tempredmatrixdata/*' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  shred -zu /root/tempredmatrixdata/remoterestore/backup/redmatrixdata/tempredmatrixdata/*' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempredmatrixdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring Red Matrix installation"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! -d /root/tempredmatrix ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2541,9 +2541,9 @@ function restore_from_friend {
 	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  rm -rf /var/www/$REDMATRIX_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    cp -r /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs/* /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "    cp -r /root/tempredmatrix/remoterestore/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs/* /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  else' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    mv /root/tempredmatrix/usb/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs /var/www/$REDMATRIX_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "    mv /root/tempredmatrix/remoterestore/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs /var/www/$REDMATRIX_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 759' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2564,12 +2564,12 @@ function restore_from_friend {
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/ownclouddata /root/tempownclouddata $SERVER_DIRECTORY/backup/ownclouddata.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! -f /root/tempownclouddata/usb/backup/ownclouddata/tempownclouddata/owncloud.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  if [ ! -f /root/tempownclouddata/remoterestore/backup/ownclouddata/tempownclouddata/owncloud.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "Unable to restore Owncloud database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 505' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD owncloud -o < /root/tempownclouddata/usb/backup/ownclouddata/tempownclouddata/owncloud.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD owncloud -o < /root/tempownclouddata/remoterestore/backup/ownclouddata/tempownclouddata/owncloud.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 965' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2583,13 +2583,13 @@ function restore_from_friend {
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/owncloud /root/tempowncloud $SERVER_DIRECTORY/backup/owncloud.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  cp -r /root/tempowncloud/usb/backup/owncloud/lib/owncloud/* /var/lib/owncloud/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  cp -r /root/tempowncloud/remoterestore/backup/owncloud/lib/owncloud/* /var/lib/owncloud/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 981' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/owncloud2 /root/tempowncloud2 $SERVER_DIRECTORY/backup/owncloud2.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  cp -r /root/tempowncloud2/usb/backup/owncloud2/owncloud/* /etc/owncloud/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  cp -r /root/tempowncloud2/remoterestore/backup/owncloud2/owncloud/* /etc/owncloud/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 982' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2605,14 +2605,14 @@ function restore_from_friend {
   echo '  mkdir /root/tempwiki' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/wiki /root/tempwiki $SERVER_DIRECTORY/backup/wiki.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempwiki/usb/backup/wiki/lib/dokuwiki/* /var/lib/dokuwiki/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempwiki/remoterestore/backup/wiki/lib/dokuwiki/* /var/lib/dokuwiki/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 868' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  mkdir /root/tempwiki2' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/wiki2 /root/tempwiki2 $SERVER_DIRECTORY/backup/wiki2.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempwiki2/usb/backup/wiki2/dokuwiki/* /etc/dokuwiki/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempwiki2/remoterestore/backup/wiki2/dokuwiki/* /etc/dokuwiki/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 869' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2628,7 +2628,7 @@ function restore_from_friend {
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/blog /root/tempblog $SERVER_DIRECTORY/backup/blog.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "  rm -rf /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempblog/usb/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempblog/remoterestore/backup/blog/www/$FULLBLOG_DOMAIN_NAME/htdocs /var/www/$FULLBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 593' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2648,7 +2648,7 @@ function restore_from_friend {
   echo "  if [ ! -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "    mkdir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempmail/usb/backup/blog/$MY_USERNAME/Maildir/* /home/$MY_USERNAME/Maildir/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempmail/remoterestore/backup/blog/$MY_USERNAME/Maildir/* /home/$MY_USERNAME/Maildir/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 927' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2662,7 +2662,7 @@ function restore_from_friend {
   echo '    mkdir /root/tempdlna' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '    rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/dlna /root/tempdlna $SERVER_DIRECTORY/backup/dlna.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "    cp -r /root/tempdlna/usb/backup/dlna/cache/minidlna/* /var/cache/minidlna/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    cp -r /root/tempdlna/remoterestore/backup/dlna/cache/minidlna/* /var/cache/minidlna/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '      exit 982' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
