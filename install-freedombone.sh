@@ -2644,6 +2644,9 @@ function restore_from_friend {
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'exit 0' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
+  chmod 400 /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  chmod +x /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
   echo 'restore_from_friend' >> $COMPLETION_FILE
 }
 
