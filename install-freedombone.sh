@@ -2155,7 +2155,7 @@ function backup_to_friends_servers {
   echo -n '    echo "$NOW Starting backup to $REMOTE_SERVER" >> ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "$REMOTE_BACKUPS_LOG" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
-  echo -n '    rsync -ratlz --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '$SERVER_DIRECTORY/backup $REMOTE_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '      echo "$NOW Backup to $REMOTE_SERVER failed" >> ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -2263,7 +2263,7 @@ function restore_from_friend {
   echo -n 'echo "$NOW Starting restore from $REMOTE_SERVER" >> ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$REMOTE_BACKUPS_LOG" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
-  echo -n 'rsync -ratlz --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n 'rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '$REMOTE_SERVER/backup $SERVER_DIRECTORY' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n '  echo "$NOW Restore from $REMOTE_SERVER failed" >> ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
