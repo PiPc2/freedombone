@@ -2235,11 +2235,17 @@ function restore_from_friend {
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n 'REMOTE_SERVER=$(grep -i "$SERVER_NAME" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print $1}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print " >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n '$1' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n 'REMOTE_SSH_PORT=$(grep -i "$SERVER_NAME" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print $2}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print " >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n '$2' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo -n 'REMOTE_PASSWORD=$(grep -i "$SERVER_NAME" ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print $3}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n "$FRIENDS_SERVERS_LIST | awk -F ' ' '{print " >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n '$3' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "}')" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo '# Check that a backup key exists' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
