@@ -1535,7 +1535,7 @@ function create_restore_script {
   echo "  if [ ! -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    mkdir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp -r /root/tempmail/usb/backup/blog/$MY_USERNAME/Maildir/* /home/$MY_USERNAME/Maildir/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempmail/usb/backup/mail/$MY_USERNAME/Maildir/* /home/$MY_USERNAME/Maildir/" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -2648,7 +2648,7 @@ function restore_from_friend {
   echo "  if [ ! -d /home/$MY_USERNAME/Maildir ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "    mkdir /home/$MY_USERNAME/Maildir" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo "  cp -r /root/tempmail/remoterestore/backup/blog/$MY_USERNAME/Maildir/* /home/$MY_USERNAME/Maildir/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempmail/remoterestore/backup/mail/$MY_USERNAME/Maildir/* /home/$MY_USERNAME/Maildir/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 927' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
