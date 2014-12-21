@@ -2419,7 +2419,7 @@ function restore_from_friend {
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/projects /root/tempprojects $SERVER_DIRECTORY/backup/projects.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/projects ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '    rm -rf /home/$MY_USERNAME/projects' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    rm -rf /home/$MY_USERNAME/projects" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "  mv /root/tempprojects/remoterestore/backup/projects/$MY_USERNAME/projects /home/$MY_USERNAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2435,7 +2435,7 @@ function restore_from_friend {
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/personal /root/temppersonal $SERVER_DIRECTORY/backup/personal.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "  if [ -d /home/$MY_USERNAME/personal ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '    rm -rf /home/$MY_USERNAME/personal' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    rm -rf /home/$MY_USERNAME/personal" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "  mv /root/temppersonal/remoterestore/backup/personal/$MY_USERNAME/personal /home/$MY_USERNAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
