@@ -2122,7 +2122,6 @@ function backup_to_friends_servers {
       echo "$MY_EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '  exit 794' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo 'shred -zu /root/tempmariadb/*' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo 'rm -rf /root/tempmariadb' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
