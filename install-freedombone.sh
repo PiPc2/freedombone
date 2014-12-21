@@ -2214,9 +2214,9 @@ function restore_from_friend {
   echo 'SERVER_NAME=$1' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
-  echo '# Temporary location for data to be backed up to other servers' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo 'SERVER_DIRECTORY=/root/remotebackup' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '# Temporary location for data to be backed up to other servers' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'SERVER_DIRECTORY=/root/remotebackup' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
   echo 'if [ ! $SERVER_NAME ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "    echo '$RESTORE_FROM_FRIEND_SCRIPT_NAME [server]'" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
