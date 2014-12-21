@@ -2290,17 +2290,17 @@ function restore_from_friend {
   echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/mariadb /root/tempmariadb $SERVER_DIRECTORY/backup/mariadb.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  echo "Get the MariaDB password from the backup"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  if [ ! -f /root/tempmariadb/usb/backup/mariadb/tempmariadb/db ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  if [ ! -f /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/db ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    echo "MariaDB password file not found"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 495' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  BACKUP_MARIADB_PASSWORD=$(cat /root/tempmariadb/usb/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  BACKUP_MARIADB_PASSWORD=$(cat /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/db)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  if [[ $BACKUP_MARIADB_PASSWORD != $DATABASE_PASSWORD ]]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    echo "Restore the MariaDB user table"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '      echo "Try again using the password obtained from backup"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '      mysqlsuccess=$(mysql -u root --password=$BACKUP_MARIADB_PASSWORD mysql -o < /root/tempmariadb/usb/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '      mysqlsuccess=$(mysql -u root --password=$BACKUP_MARIADB_PASSWORD mysql -o < /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/mysql.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '      echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2311,7 +2311,7 @@ function restore_from_friend {
   echo '    echo "Change the MariaDB password to the backup version"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '  shred -zu /root/tempmariadb/usb/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  shred -zu /root/remotebackup/backup/mariadb/tempmariadb/remotebackup/backup/mariadb/tempmariadb/db' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  rm -rf /root/tempmariadb' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  # Change database password file' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
