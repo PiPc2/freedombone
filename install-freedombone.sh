@@ -4326,6 +4326,24 @@ function folders_for_mailing_lists {
   echo 'folders_for_mailing_lists' >> $COMPLETION_FILE
 }
 
+# Ensure that the from field is correct when sending email from Mutt
+function email_from_address {
+  if grep -Fxq "email_from_address" $COMPLETION_FILE; then
+      return
+  fi
+
+  if [ ! -f /home/$MY_USERNAME/.muttrc ]; then
+	  return
+  fi
+  if grep -q "set from=" /home/$MY_USERNAME/.muttrc; then
+	  sed -i "s|set from=.*|set from='$MY_NAME <$MY_EMAIL_ADDRESS>'|g" /home/$MY_USERNAME/.muttrc
+  else
+	  echo "set from='$MY_NAME <$MY_EMAIL_ADDRESS>'" >> /home/$MY_USERNAME/.muttrc
+  fi
+
+  echo 'email_from_address' >> $COMPLETION_FILE
+}
+
 function folders_for_email_addresses {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
@@ -7042,6 +7060,7 @@ configure_gpg
 encrypt_incoming_email
 encrypt_outgoing_email
 email_client
+email_from_address
 configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
