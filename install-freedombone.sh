@@ -1479,6 +1479,9 @@ function create_restore_script {
       echo '  rm -rf /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempowncloud2' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  chown -R www-data:www-data /var/lib/owncloud/data' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  chown -R www-data:www-data /var/lib/owncloud/backup' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  chown -R www-data:www-data /var/lib/owncloud/assets' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -2483,7 +2486,7 @@ function restore_from_friend {
       echo '    mkdir /root/tempgnusocialdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/gnusocialdata /root/tempgnusocialdata $SERVER_DIRECTORY/backup/gnusocialdata.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! -f /root/tempgnusocialdata/remoterestore/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "Unable to restore microblog database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2501,7 +2504,7 @@ function restore_from_friend {
       echo '    mkdir /root/tempgnusocial' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/gnusocial /root/tempgnusocial $SERVER_DIRECTORY/backup/gnusocial.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  mv /root/tempgnusocial/remoterestore/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2520,7 +2523,7 @@ function restore_from_friend {
       echo '    mkdir /root/tempredmatrixdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/redmatrixdata /root/tempredmatrixdata $SERVER_DIRECTORY/backup/redmatrixdata.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! -f /root/tempredmatrixdata/remoterestore/backup/redmatrixdata/tempredmatrixdata/redmatrix.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "Unable to restore Red Matrix database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    rm -rf /root/tempredmatrixdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2538,7 +2541,7 @@ function restore_from_friend {
       echo '    mkdir /root/tempredmatrix' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/redmatrix /root/tempredmatrix $SERVER_DIRECTORY/backup/redmatrix.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  rm -rf /var/www/$REDMATRIX_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "    cp -r /root/tempredmatrix/remoterestore/backup/redmatrix/www/$REDMATRIX_DOMAIN_NAME/htdocs/* /var/www/$REDMATRIX_DOMAIN_NAME/htdocs/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2563,7 +2566,7 @@ function restore_from_friend {
       echo '    mkdir /root/tempownclouddata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/ownclouddata /root/tempownclouddata $SERVER_DIRECTORY/backup/ownclouddata.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! -f /root/tempownclouddata/remoterestore/backup/ownclouddata/tempownclouddata/owncloud.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    echo "Unable to restore Owncloud database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2582,13 +2585,13 @@ function restore_from_friend {
       echo '    mkdir /root/tempowncloud2' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/owncloud /root/tempowncloud $SERVER_DIRECTORY/backup/owncloud.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  cp -r /root/tempowncloud/remoterestore/backup/owncloud/lib/owncloud/* /var/lib/owncloud/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 981' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/owncloud2 /root/tempowncloud2 $SERVER_DIRECTORY/backup/owncloud2.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-	  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  cp -r /root/tempowncloud2/remoterestore/backup/owncloud2/owncloud/* /etc/owncloud/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 982' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -2596,6 +2599,9 @@ function restore_from_friend {
       echo '  rm -rf /root/tempowncloud' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempowncloud2' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  chown -R www-data:www-data /var/lib/owncloud/data' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  chown -R www-data:www-data /var/lib/owncloud/backup' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo '  chown -R www-data:www-data /var/lib/owncloud/assets' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
@@ -4005,18 +4011,18 @@ function encrypt_outgoing_email {
   fi
 
   if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
-	  return
+      return
   fi
 
   if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
       if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
-	      return
+          return
       fi
   fi
 
   sed -i "s|#encrypt-to .*|hidden-encrypt-to $MY_GPG_PUBLIC_KEY_ID|g" /home/$MY_USERNAME/.gnupg/gpg.conf
-  
+
   echo 'encrypt_outgoing_email' >> $COMPLETION_FILE
 }
 
@@ -4333,12 +4339,12 @@ function email_from_address {
   fi
 
   if [ ! -f /home/$MY_USERNAME/.muttrc ]; then
-	  return
+      return
   fi
   if grep -q "set from=" /home/$MY_USERNAME/.muttrc; then
-	  sed -i "s|set from=.*|set from='$MY_NAME <$MY_EMAIL_ADDRESS>'|g" /home/$MY_USERNAME/.muttrc
+      sed -i "s|set from=.*|set from='$MY_NAME <$MY_EMAIL_ADDRESS>'|g" /home/$MY_USERNAME/.muttrc
   else
-	  echo "set from='$MY_NAME <$MY_EMAIL_ADDRESS>'" >> /home/$MY_USERNAME/.muttrc
+      echo "set from='$MY_NAME <$MY_EMAIL_ADDRESS>'" >> /home/$MY_USERNAME/.muttrc
   fi
 
   echo 'email_from_address' >> $COMPLETION_FILE
