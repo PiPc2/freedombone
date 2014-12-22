@@ -4004,25 +4004,19 @@ function encrypt_outgoing_email {
       return
   fi
 
-  echo 'sent_items_router:' > /etc/exim4/conf.d/router/170_exim4-config_encryptsent
-  echo '   driver    = accept' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
-  echo '   transport = sent_items_transport' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
-  echo '   condition = ${if !eq{$authenticated_id}{}}' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
-  echo '   unseen' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
-  echo '   no_verify' >> /etc/exim4/conf.d/router/170_exim4-config_encryptsent
+  if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
+	  return
+  fi
 
-  # TODO
-  echo 'sent_items_transport:'
-  echo '   driver           = pipe'
-  echo '   user             = $authenticated_id'
-  echo '   group            = Debian-exim'
-  echo '   temp_errors      = *'
-  echo '   transport_filter = /usr/bin/gpgit.pl $sender_address'
-  echo '   command          = /usr/bin/pipe2imap.pl --ssl --user master --authas $authenticated_id --passfile /etc/exim4/master_imap_password.txt --folder "Sent Items" --flags "\\seen"'
-  echo '   log_defer_output = true'
+  if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
+      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
+	      return
+      fi
+  fi
 
-  service exim4 restart
-
+  sed -i "s|#encrypt-to .*|hidden-encrypt-to $MY_GPG_PUBLIC_KEY_ID|g" /home/$MY_USERNAME/.gnupg/gpg.conf
+  
   echo 'encrypt_outgoing_email' >> $COMPLETION_FILE
 }
 
@@ -7046,7 +7040,7 @@ create_procmail
 configure_imap
 configure_gpg
 encrypt_incoming_email
-#encrypt_outgoing_email
+encrypt_outgoing_email
 email_client
 configure_firewall_for_email
 folders_for_mailing_lists
