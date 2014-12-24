@@ -2813,7 +2813,7 @@ function change_login_message {
       echo '        |                 \  \ /  /   o   |    o  ' >> /etc/motd
       echo '        |   .-. .--.       \  \  /    .  -|-   .  ' >> /etc/motd
       echo '        |  (   )|           \/ \/     |   |    |  ' >> /etc/motd
-      echo "        '   `-' '            ' '    -' `- '  -' `-" >> /etc/motd
+      echo "        '    -' '            ' '    -'  - '  -'  -" >> /etc/motd
   fi
 
   echo '' >> /etc/motd
