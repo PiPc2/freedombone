@@ -124,6 +124,10 @@ echo 'Using the password "root". Change the root user password by typing:'
 echo ''
 echo '    passwd'
 echo ''
+echo "If you can't log in as root then try typing 'exit' and then:"
+echo ''
+echo "    ssh root@$BBB_FIXED_IP_ADDRESS"
+echo ''
 echo 'Then create a user for the system with:'
 echo ''
 echo '    adduser [username]'

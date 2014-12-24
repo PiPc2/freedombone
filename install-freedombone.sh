@@ -7067,6 +7067,7 @@ function enable_wifi {
       sed -i "s/wifipassword/$WIFI_PASSWORD/g" /etc/network/interfaces
   fi
 
+  # Add details to the README file
   if ! grep -q "Wifi settings" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
