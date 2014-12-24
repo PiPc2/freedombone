@@ -7079,7 +7079,7 @@ function enable_wifi_hotspot {
   if grep -Fxq "enable_wifi_hotspot" $COMPLETION_FILE; then
       return
   fi
-  if [[ ENABLE_WIFI_HOTSPOT != "yes" ]]; then
+  if [[ $ENABLE_WIFI_HOTSPOT != "yes" ]]; then
       return
   fi
   apt-get -y install hostapd dnsmasq
@@ -7166,7 +7166,7 @@ function enable_wifi {
   if grep -Fxq "enable_wifi" $COMPLETION_FILE; then
       return
   fi
-  if [[ ENABLE_WIFI != "yes" || ENABLE_WIFI_HOTSPOT != "yes" ]]; then
+  if [[ $ENABLE_WIFI != "yes" || $ENABLE_WIFI_HOTSPOT != "yes" ]]; then
       return
   fi
   sed -i 's/#auto wlan0/auto wlan0/g' /etc/network/interfaces
