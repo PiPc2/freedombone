@@ -302,6 +302,15 @@ DATABASE_PASSWORD_FILE=/root/dbpass
 # log file where details of remote backups are stored
 REMOTE_BACKUPS_LOG=/var/log/remotebackups.log
 
+# Whether to enable wifi (on the BBB via USB)
+ENABLE_WIFI="no"
+
+# ESSID for wifi
+WIFI_ESSID=
+
+# Optional wifi password
+WIFI_PASSWORD=
+
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
@@ -371,6 +380,15 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "ENABLE_WIFI" $CONFIGURATION_FILE; then
+          ENABLE_WIFI=$(grep "ENABLE_WIFI" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_PASSWORD" $CONFIGURATION_FILE; then
+          WIFI_PASSWORD=$(grep "WIFI_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_ESSID" $CONFIGURATION_FILE; then
+          WIFI_ESSID=$(grep "WIFI_ESSID" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "BACKUP_CERTIFICATE" $CONFIGURATION_FILE; then
           BACKUP_CERTIFICATE=$(grep "BACKUP_CERTIFICATE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7004,6 +7022,64 @@ function backup_github_projects {
   echo 'backup_github_projects' >> $COMPLETION_FILE
 }
 
+function get_wifi_essid {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "ESSID" /home/$MY_USERNAME/README; then
+          if [ ! $WIFI_ESSID ]; then
+              WIFI_ESSID=$(cat /home/$MY_USERNAME/README | grep "ESSID" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
+function get_wifi_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "Wifi password" /home/$MY_USERNAME/README; then
+          if [ ! $WIFI_PASSWORD ]; then
+              WIFI_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Wifi password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
+function enable_wifi {
+  if grep -Fxq "enable_wifi" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ ENABLE_WIFI != "yes" ]]; then
+      return
+  fi
+  sed -i 's/#auto wlan0/auto wlan0/g' /etc/network/interfaces
+  sed -i 's/#iface wlan0 inet dhcp/iface wlan0 inet dhcp/g' /etc/network/interfaces
+  sed -i 's/#    wpa-ssid "essid"/    wpa-ssid "essid"/g' /etc/network/interfaces
+
+  get_wifi_essid
+  get_wifi_password
+
+  # Create an ESSID if one doesn't exist
+  if [ ! $WIFI_ESSID ]; then
+      WIFI_ESSID="Freedom"$(openssl rand -base64 4)
+      sed -i "s/essid/$WIFI_ESSID/g" /etc/network/interfaces
+  fi
+  # Add a password
+  if [ $WIFI_PASSWORD ]; then
+      sed -i 's/#    wpa-psk  "password"/    wpa-psk  "wifipassword"/g' /etc/network/interfaces
+      sed -i "s/wifipassword/$WIFI_PASSWORD/g" /etc/network/interfaces
+  fi
+
+  if ! grep -q "Wifi settings" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Wifi Settings' >> /home/$MY_USERNAME/README
+      echo '=============' >> /home/$MY_USERNAME/README
+      echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
+      echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  echo 'enable_wifi' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -7028,6 +7104,7 @@ function install_final {
 read_configuration
 argument_checks
 install_not_on_BBB
+enable_wifi
 remove_default_user
 configure_firewall
 configure_firewall_for_ssh
