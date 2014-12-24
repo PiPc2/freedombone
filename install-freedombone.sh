@@ -363,6 +363,7 @@ function argument_checks {
           DOMAIN_NAME="tor-wifi"
           SYSTEM_TYPE=$VARIANT_TOR_WIFI
           ROUTE_THROUGH_TOR="yes"
+          ENABLE_WIFI="yes"
       fi
       if [[ $DOMAIN_NAME == "tor" || $DOMAIN_NAME == "tor-dongle" || $DOMAIN_NAME == "tordongle" ]]; then
           DOMAIN_NAME="tor-dongle"
