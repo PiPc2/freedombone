@@ -306,11 +306,17 @@ REMOTE_BACKUPS_LOG=/var/log/remotebackups.log
 # Whether to enable wifi (on the BBB via USB)
 ENABLE_WIFI="no"
 
+# Whether to enable wifi hotspot (on the BBB via USB)
+ENABLE_WIFI_HOTSPOT="no"
+
 # ESSID for wifi
 WIFI_ESSID=
 
 # Optional wifi password
 WIFI_PASSWORD=
+
+# wifi interface
+WIFI_INTERFACE="wlan0"
 
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
@@ -363,7 +369,7 @@ function argument_checks {
           DOMAIN_NAME="tor-wifi"
           SYSTEM_TYPE=$VARIANT_TOR_WIFI
           ROUTE_THROUGH_TOR="yes"
-          ENABLE_WIFI="yes"
+          ENABLE_WIFI_HOTSPOT="yes"
       fi
       if [[ $DOMAIN_NAME == "tor" || $DOMAIN_NAME == "tor-dongle" || $DOMAIN_NAME == "tordongle" ]]; then
           DOMAIN_NAME="tor-dongle"
@@ -394,8 +400,14 @@ function read_configuration {
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
+      if grep -q "WIFI_INTERFACE" $CONFIGURATION_FILE; then
+          WIFI_INTERFACE=$(grep "WIFI_INTERFACE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "ENABLE_WIFI" $CONFIGURATION_FILE; then
           ENABLE_WIFI=$(grep "ENABLE_WIFI" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "ENABLE_WIFI_HOTSPOT" $CONFIGURATION_FILE; then
+          ENABLE_WIFI_HOTSPOT=$(grep "ENABLE_WIFI_HOTSPOT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "WIFI_PASSWORD" $CONFIGURATION_FILE; then
           WIFI_PASSWORD=$(grep "WIFI_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7063,11 +7075,98 @@ function get_wifi_password {
   fi
 }
 
+function enable_wifi_hotspot {
+  if grep -Fxq "enable_wifi_hotspot" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ ENABLE_WIFI_HOTSPOT != "yes" ]]; then
+      return
+  fi
+  apt-get -y install hostapd dnsmasq
+
+  get_wifi_essid
+  get_wifi_password
+
+  # Create an ESSID if one doesn't exist
+  if [ ! $WIFI_ESSID ]; then
+      WIFI_ESSID="Freedom"$(openssl rand -base64 4)
+  fi
+  # Add a password
+  if [ ! $WIFI_PASSWORD ]; then
+      WIFI_PASSWORD=$(openssl rand -base64 8)
+  fi
+
+  sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
+
+  echo '### Wireless network name ###' > /etc/hostapd/hostapd.conf
+  echo "interface=$WIFI_INTERFACE" >> /etc/hostapd/hostapd.conf
+  echo '#' >> /etc/hostapd/hostapd.conf
+  echo '### Set your bridge name ###' >> /etc/hostapd/hostapd.conf
+  echo '#bridge=br0' >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo '#driver' >> /etc/hostapd/hostapd.conf
+  echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo 'country_code=GB' >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo "ssid=$WIFI_ESSID" >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo 'channel=3' >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo 'hw_mode=n' >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo '# # Static WPA2 key configuration' >> /etc/hostapd/hostapd.conf
+  echo '# #1=wpa1, 2=wpa2, 3=both' >> /etc/hostapd/hostapd.conf
+  echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo "wpa_passphrase=$WIFI_PASSWORD" >> /etc/hostapd/hostapd.conf
+  echo '' >> /etc/hostapd/hostapd.conf
+  echo '## Key management algorithms ##' >> /etc/hostapd/hostapd.conf
+  echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+  echo '#' >> /etc/hostapd/hostapd.conf
+  echo '## Set cipher suites (encryption algorithms) ##' >> /etc/hostapd/hostapd.conf
+  echo '## TKIP = Temporal Key Integrity Protocol' >> /etc/hostapd/hostapd.conf
+  echo '## CCMP = AES in Counter mode with CBC-MAC' >> /etc/hostapd/hostapd.conf
+  echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+  echo '#rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+  echo '#' >> /etc/hostapd/hostapd.conf
+  echo '## Shared Key Authentication ##' >> /etc/hostapd/hostapd.conf
+  echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+  echo '## Accept all MAC address ###' >> /etc/hostapd/hostapd.conf
+  echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+  echo '#enables/disables broadcasting the ssid' >> /etc/hostapd/hostapd.conf
+  echo 'ignore_broadcast_ssid=0' >> /etc/hostapd/hostapd.conf
+  echo '# Needed for Windows clients' >> /etc/hostapd/hostapd.conf
+  echo 'eapol_key_index_workaround=0' >> /etc/hostapd/hostapd.conf
+
+  service hostapd restart
+
+  sed -i "s/#interface=/interface=$WIFI_INTERFACE/" /etc/dnsmasq.conf
+  sed -i 's/#dhcp-range=192.168.0.50,192.168.0.150,12h/dhcp-range=192.168.1.1,192.168.1.50,12h/g' /etc/dnsmasq.conf
+
+  service dnsmasq restart
+
+  # Add details to the README file
+  if ! grep -q "Wifi Hotspot" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Wifi Hotspot' >> /home/$MY_USERNAME/README
+      echo '============' >> /home/$MY_USERNAME/README
+      echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
+      echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  service networking restart
+
+  echo 'enable_wifi_hotspot' >> $COMPLETION_FILE
+}
+
 function enable_wifi {
   if grep -Fxq "enable_wifi" $COMPLETION_FILE; then
       return
   fi
-  if [[ ENABLE_WIFI != "yes" ]]; then
+  if [[ ENABLE_WIFI != "yes" || ENABLE_WIFI_HOTSPOT != "yes" ]]; then
       return
   fi
   sed -i 's/#auto wlan0/auto wlan0/g' /etc/network/interfaces
@@ -7080,23 +7179,28 @@ function enable_wifi {
   # Create an ESSID if one doesn't exist
   if [ ! $WIFI_ESSID ]; then
       WIFI_ESSID="Freedom"$(openssl rand -base64 4)
-      sed -i "s/essid/$WIFI_ESSID/g" /etc/network/interfaces
   fi
+  sed -i "s/essid/$WIFI_ESSID/g" /etc/network/interfaces
+
   # Add a password
   if [ $WIFI_PASSWORD ]; then
       sed -i 's/#    wpa-psk  "password"/    wpa-psk  "wifipassword"/g' /etc/network/interfaces
       sed -i "s/wifipassword/$WIFI_PASSWORD/g" /etc/network/interfaces
   fi
 
+  service networking restart
+
   # Add details to the README file
-  if ! grep -q "Wifi settings" /home/$MY_USERNAME/README; then
-      echo '' >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      echo 'Wifi Settings' >> /home/$MY_USERNAME/README
-      echo '=============' >> /home/$MY_USERNAME/README
-      echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
-      echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
-      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  if [[ ENABLE_WIFI_HOTSPOT != "yes" ]]; then
+      if ! grep -q "Wifi Settings" /home/$MY_USERNAME/README; then
+          echo '' >> /home/$MY_USERNAME/README
+          echo '' >> /home/$MY_USERNAME/README
+          echo 'Wifi Settings' >> /home/$MY_USERNAME/README
+          echo '=============' >> /home/$MY_USERNAME/README
+          echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
+          echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
+          chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+      fi
   fi
 
   echo 'enable_wifi' >> $COMPLETION_FILE
@@ -7126,6 +7230,7 @@ function install_final {
 read_configuration
 argument_checks
 install_not_on_BBB
+enable_wifi_hotspot
 enable_wifi
 remove_default_user
 configure_firewall
