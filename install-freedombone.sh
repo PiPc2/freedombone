@@ -7199,6 +7199,7 @@ function enable_wifi_hotspot {
   service hostapd restart
   if [ ! "$?" = "0" ]; then
 	  echo 'Unable to restart hostapd'
+	  systemctl status hostapd.service
 	  exit 854
   fi
 
@@ -7208,6 +7209,7 @@ function enable_wifi_hotspot {
   service dnsmasq restart
   if [ ! "$?" = "0" ]; then
 	  echo 'Unable to restart dnsmasq'
+	  systemctl status dnsmasq.service
 	  exit 856
   fi
 
