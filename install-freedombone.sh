@@ -7332,10 +7332,10 @@ search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
 create_upgrade_script
-route_outgoing_traffic_through_tor
-install_watchdog_script
 enable_wifi_hotspot
 enable_wifi
+route_outgoing_traffic_through_tor
+install_watchdog_script
 configure_email
 create_procmail
 #spam_filtering
