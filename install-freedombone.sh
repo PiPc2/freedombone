@@ -7208,7 +7208,11 @@ function enable_wifi_hotspot {
   echo '## Set cipher suites (encryption algorithms) ##' >> /etc/hostapd/hostapd.conf
   echo '## TKIP = Temporal Key Integrity Protocol' >> /etc/hostapd/hostapd.conf
   echo '## CCMP = AES in Counter mode with CBC-MAC' >> /etc/hostapd/hostapd.conf
-  echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+  if [ ! $WIFI_PASSWORD ]; then
+      echo 'wpa_pairwise=NONE' >> /etc/hostapd/hostapd.conf
+  else
+      echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+  fi
   echo '#rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
   echo '#' >> /etc/hostapd/hostapd.conf
   echo '## Shared Key Authentication ##' >> /etc/hostapd/hostapd.conf
