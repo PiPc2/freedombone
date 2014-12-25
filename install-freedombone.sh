@@ -317,6 +317,8 @@ WIFI_PASSWORD=
 
 # wifi interface
 WIFI_INTERFACE="wlan0"
+WIFI_HOTSPOT_MODE="g"
+WIFI_HOTSPOT_CHANNEL=7
 
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
@@ -402,6 +404,12 @@ function read_configuration {
       fi
       if grep -q "WIFI_INTERFACE" $CONFIGURATION_FILE; then
           WIFI_INTERFACE=$(grep "WIFI_INTERFACE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE; then
+          WIFI_HOTSPOT_MODE=$(grep "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE; then
+          WIFI_HOTSPOT_CHANNEL=$(grep "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "ENABLE_WIFI" $CONFIGURATION_FILE; then
           ENABLE_WIFI=$(grep "ENABLE_WIFI" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7111,9 +7119,9 @@ function enable_wifi_hotspot {
   echo '' >> /etc/hostapd/hostapd.conf
   echo "ssid=$WIFI_ESSID" >> /etc/hostapd/hostapd.conf
   echo '' >> /etc/hostapd/hostapd.conf
-  echo 'channel=3' >> /etc/hostapd/hostapd.conf
+  echo "channel=${WIFI_HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
   echo '' >> /etc/hostapd/hostapd.conf
-  echo 'hw_mode=n' >> /etc/hostapd/hostapd.conf
+  echo "hw_mode=$WIFI_HOTSPOT_MODE" >> /etc/hostapd/hostapd.conf
   echo '' >> /etc/hostapd/hostapd.conf
   echo '# # Static WPA2 key configuration' >> /etc/hostapd/hostapd.conf
   echo '# #1=wpa1, 2=wpa2, 3=both' >> /etc/hostapd/hostapd.conf
