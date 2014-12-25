@@ -7183,12 +7183,6 @@ function enable_wifi_hotspot {
 
   echo '### Wireless network name ###' > /etc/hostapd/hostapd.conf
   echo "interface=$WIFI_INTERFACE" >> /etc/hostapd/hostapd.conf
-  echo '#' >> /etc/hostapd/hostapd.conf
-  echo '### Set your bridge name ###' >> /etc/hostapd/hostapd.conf
-  echo '#bridge=br0' >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
-  echo '#driver' >> /etc/hostapd/hostapd.conf
-  echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
   echo '' >> /etc/hostapd/hostapd.conf
   echo 'country_code=GB' >> /etc/hostapd/hostapd.conf
   echo '' >> /etc/hostapd/hostapd.conf
