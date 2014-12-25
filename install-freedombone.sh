@@ -319,10 +319,13 @@ WIFI_PASSWORD=
 WIFI_INTERFACE="wlan0"
 
 # Whether to always force there to exist a wifi password
-WIFI_FORCE_PASSWORD="no"
+WIFI_FORCE_PASSWORD="yes"
 
 # Channel number for wifi hotspot
 WIFI_HOTSPOT_CHANNEL=7
+
+# Mode such as "g" or "n"
+WIFI_HOTSPOT_MODE="g"
 
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
@@ -408,6 +411,9 @@ function read_configuration {
       fi
       if grep -q "WIFI_INTERFACE" $CONFIGURATION_FILE; then
           WIFI_INTERFACE=$(grep "WIFI_INTERFACE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE; then
+          WIFI_HOTSPOT_MODE=$(grep "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE; then
           WIFI_HOTSPOT_CHANNEL=$(grep "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7192,31 +7198,20 @@ function enable_wifi_hotspot {
   echo '' >> /etc/hostapd/hostapd.conf
   echo "hw_mode=$WIFI_HOTSPOT_MODE" >> /etc/hostapd/hostapd.conf
   echo '' >> /etc/hostapd/hostapd.conf
-  echo '# # Static WPA2 key configuration' >> /etc/hostapd/hostapd.conf
-  echo '# #1=wpa1, 2=wpa2, 3=both' >> /etc/hostapd/hostapd.conf
-  echo 'wpa=2' >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
-  echo "wpa_passphrase=$WIFI_PASSWORD" >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
-  echo '## Key management algorithms ##' >> /etc/hostapd/hostapd.conf
   if [ ! $WIFI_PASSWORD ]; then
+      echo 'auth_algs=0' >> /etc/hostapd/hostapd.conf
       echo 'wpa_key_mgmt=WPA-NONE' >> /etc/hostapd/hostapd.conf
   else
+      echo '' >> /etc/hostapd/hostapd.conf
+      echo '# # Static WPA2 key configuration' >> /etc/hostapd/hostapd.conf
+      echo '# #1=wpa1, 2=wpa2, 3=both' >> /etc/hostapd/hostapd.conf
+      echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+      echo '' >> /etc/hostapd/hostapd.conf
+      echo "wpa_passphrase=$WIFI_PASSWORD" >> /etc/hostapd/hostapd.conf
       echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
-  fi
-  echo '#' >> /etc/hostapd/hostapd.conf
-  echo '## Set cipher suites (encryption algorithms) ##' >> /etc/hostapd/hostapd.conf
-  echo '## TKIP = Temporal Key Integrity Protocol' >> /etc/hostapd/hostapd.conf
-  echo '## CCMP = AES in Counter mode with CBC-MAC' >> /etc/hostapd/hostapd.conf
-  if [ ! $WIFI_PASSWORD ]; then
-      echo 'wpa_pairwise=NONE' >> /etc/hostapd/hostapd.conf
-  else
       echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+      echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
   fi
-  echo '#rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
-  echo '#' >> /etc/hostapd/hostapd.conf
-  echo '## Shared Key Authentication ##' >> /etc/hostapd/hostapd.conf
-  echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
   echo '## Accept all MAC address ###' >> /etc/hostapd/hostapd.conf
   echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
   echo '#enables/disables broadcasting the ssid' >> /etc/hostapd/hostapd.conf
@@ -7225,11 +7220,7 @@ function enable_wifi_hotspot {
   echo 'eapol_key_index_workaround=0' >> /etc/hostapd/hostapd.conf
 
   service hostapd restart
-  if [ ! "$?" = "0" ]; then
-      echo 'Unable to restart hostapd'
-      systemctl status hostapd.service
-      exit 854
-  fi
+  systemctl daemon-reload
 
   if ! grep -q "subnet 192.168.4.0 netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
       echo '' >> /etc/dhcp/dhcpd.conf
@@ -7241,11 +7232,6 @@ function enable_wifi_hotspot {
   sed -i "s/INTERFACES=.*/INTERFACES='$WIFI_INTERFACE'/g" /etc/default/isc-dhcp-server
 
   service isc-dhcp-server restart
-  if [ ! "$?" = "0" ]; then
-      echo 'Unable to restart isc-dhcp-server'
-      systemctl status isc-dhcp-server.service
-      exit 856
-  fi
 
   # Add details to the README file
   if ! grep -q "Wifi Hotspot" /home/$MY_USERNAME/README; then
