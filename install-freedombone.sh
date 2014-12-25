@@ -7161,14 +7161,7 @@ function enable_wifi_hotspot {
       echo "auto $WIFI_INTERFACE" >> /etc/network/interfaces
       echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
       echo '    address 192.168.4.1' >> /etc/network/interfaces
-      echo '    network 192.168.4.0' >> /etc/network/interfaces
       echo '    netmask 255.255.255.0' >> /etc/network/interfaces
-      echo '    broadcast 192.168.4.255' >> /etc/network/interfaces
-      if [ $WIFI_PASSWORD ]; then
-          echo -n '    wpa-psk  "' >> /etc/network/interfaces
-          echo -n "$WIFI_PASSWORD" >> /etc/network/interfaces
-          echo '"' >> /etc/network/interfaces
-      fi
       service networking restart
   fi
 
@@ -7181,46 +7174,51 @@ function enable_wifi_hotspot {
 
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
-  echo '### Wireless network name ###' > /etc/hostapd/hostapd.conf
-  echo "interface=$WIFI_INTERFACE" >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
-  echo 'country_code=GB' >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
+  echo "interface=$WIFI_INTERFACE" > /etc/hostapd/hostapd.conf
   echo "ssid=$WIFI_ESSID" >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
-  echo "channel=${WIFI_HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
   echo "hw_mode=$WIFI_HOTSPOT_MODE" >> /etc/hostapd/hostapd.conf
-  echo '' >> /etc/hostapd/hostapd.conf
-  if [ ! $WIFI_PASSWORD ]; then
-      echo 'auth_algs=0' >> /etc/hostapd/hostapd.conf
-      echo 'wpa_key_mgmt=WPA-NONE' >> /etc/hostapd/hostapd.conf
-  else
-      echo '' >> /etc/hostapd/hostapd.conf
-      echo '# # Static WPA2 key configuration' >> /etc/hostapd/hostapd.conf
-      echo '# #1=wpa1, 2=wpa2, 3=both' >> /etc/hostapd/hostapd.conf
-      echo 'wpa=2' >> /etc/hostapd/hostapd.conf
-      echo '' >> /etc/hostapd/hostapd.conf
-      echo "wpa_passphrase=$WIFI_PASSWORD" >> /etc/hostapd/hostapd.conf
-      echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
-      echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
-      echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
-  fi
-  echo '## Accept all MAC address ###' >> /etc/hostapd/hostapd.conf
+  echo "channel=${WIFI_HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
   echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
-  echo '#enables/disables broadcasting the ssid' >> /etc/hostapd/hostapd.conf
+  echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
   echo 'ignore_broadcast_ssid=0' >> /etc/hostapd/hostapd.conf
-  echo '# Needed for Windows clients' >> /etc/hostapd/hostapd.conf
-  echo 'eapol_key_index_workaround=0' >> /etc/hostapd/hostapd.conf
+  echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+  echo "wpa_passphrase=$WIFI_PASSWORD" >> /etc/hostapd/hostapd.conf
+  echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+  echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+  echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
 
   service hostapd restart
   systemctl daemon-reload
 
+  if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
+	  echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+  fi
+  if grep -q "#net.ipv4.ip_forward=" /etc/sysctl.conf; then
+	  sed -i 's/#net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/g' >> /etc/sysctl.conf
+  fi
+  sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+
+  iptables -P INPUT ACCEPT
+  iptables -F
+  iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+  iptables -A FORWARD -i eth0 -o $WIFI_INTERFACE -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -A FORWARD -i $WIFI_INTERFACE -o eth0 -j ACCEPT
+  save_firewall_settings
+
+  sed -i 's/option domain-name "example.org";/#option domain-name "example.org";/g' /etc/dhcp/dhcpd.conf
+  sed -i 's/option domain-name-servers ns1.example.org, ns2.example.org;/#option domain-name-servers ns1.example.org, ns2.example.org;/g' /etc/dhcp/dhcpd.conf
+  sed -i 's/#authoritative;/authoritative;/g' /etc/dhcp/dhcpd.conf
+
   if ! grep -q "subnet 192.168.4.0 netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
-      echo '' >> /etc/dhcp/dhcpd.conf
-      echo 'subnet 192.168.4.0 netmask 255.255.255.0 {' >> /etc/dhcp/dhcpd.conf
-      echo '  range 192.168.4.2 192.168.4.10;' >> /etc/dhcp/dhcpd.conf
-      echo '}' >> /etc/dhcp/dhcpd.conf
+	  echo 'subnet 192.168.4.0 netmask 255.255.255.0 {' >> /etc/dhcp/dhcpd.conf
+	  echo '    range 192.168.4.2 192.168.4.10;' >> /etc/dhcp/dhcpd.conf
+	  echo '    option broadcast-address 192.168.4.255;' >> /etc/dhcp/dhcpd.conf
+	  echo "    option routers $ROUTER_IP_ADDRESS;" >> /etc/dhcp/dhcpd.conf
+	  echo '    default-lease-time 600;' >> /etc/dhcp/dhcpd.conf
+	  echo '    max-lease-time 7200;' >> /etc/dhcp/dhcpd.conf
+	  echo '    option domain-name "local";' >> /etc/dhcp/dhcpd.conf
+	  echo '    option domain-name-servers 8.8.8.8, 8.8.4.4;' >> /etc/dhcp/dhcpd.conf
+	  echo '}' >> /etc/dhcp/dhcpd.conf
   fi
 
   sed -i "s/INTERFACES=.*/INTERFACES='$WIFI_INTERFACE'/g" /etc/default/isc-dhcp-server
