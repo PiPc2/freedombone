@@ -7155,8 +7155,8 @@ function enable_wifi_hotspot {
 
   # Create an ESSID if one doesn't exist
   if [ ! $WIFI_ESSID ]; then
-      TEMP_WIFI_ESSID="Freedom"$(openssl rand -base64 8)
-      WIFI_ESSID=${TEMP_WIFI_ESSID:0:3}
+      TEMP_WIFI_ESSID=$(openssl rand -base64 8)
+      WIFI_ESSID="Freedom"${TEMP_WIFI_ESSID:0:3}
   fi
   # Add a password
   if [ ! $WIFI_PASSWORD ]; then
@@ -7263,8 +7263,8 @@ function enable_wifi {
 
   # Create an ESSID if one doesn't exist
   if [ ! $WIFI_ESSID ]; then
-      TEMP_WIFI_ESSID="Freedom"$(openssl rand -base64 8)
-      WIFI_ESSID=${TEMP_WIFI_ESSID:0:3}
+      TEMP_WIFI_ESSID=$(openssl rand -base64 8)
+      WIFI_ESSID="Freedom"${TEMP_WIFI_ESSID:0:3}
   fi
   sed -i "s/essid/$WIFI_ESSID/g" /etc/network/interfaces
   # Add a password
