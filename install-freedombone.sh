@@ -3207,6 +3207,7 @@ function random_number_generator {
   else
     apt-get -y --force-yes install haveged
   fi
+
   echo 'random_number_generator' >> $COMPLETION_FILE
 }
 
@@ -4823,6 +4824,11 @@ function install_mariadb {
   if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
       return
   fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_mariadb was called before the random number generator was initialised'
+      exit 853
+  fi
+
   apt-get -y --force-yes install python-software-properties debconf-utils
   apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xcbcb082a1bb943db
   add-apt-repository 'deb http://mariadb.biz.net.id//repo/10.1/debian sid main'
@@ -4986,6 +4992,10 @@ function install_owncloud_music_app {
 function install_owncloud {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
+  fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_owncloud was called before the random number generator was initialised'
+      exit 853
   fi
   OWNCLOUD_COMPLETION_MSG1=" *** Freedombone $SYSTEM_TYPE is now installed ***"
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
@@ -5236,6 +5246,10 @@ function install_xmpp {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
   fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_xmpp was called before the random number generator was initialised'
+      exit 853
+  fi
   if grep -Fxq "install_xmpp" $COMPLETION_FILE; then
       return
   fi
@@ -5334,6 +5348,10 @@ function install_irc_server {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
   fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_irc_server was called before the random number generator was initialised'
+      exit 853
+  fi
   if grep -Fxq "install_irc_server" $COMPLETION_FILE; then
       return
   fi
@@ -5413,6 +5431,10 @@ function get_wiki_admin_password {
 function install_wiki {
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
+  fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_wiki was called before the random number generator was initialised'
+      exit 853
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       return
@@ -5702,6 +5724,10 @@ function install_blog {
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
   fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_blog was called before the random number generator was initialised'
+      exit 853
+  fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       return
   fi
@@ -5949,6 +5975,10 @@ function install_gnu_social {
   fi
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
+  fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_gnu_social was called before the random number generator was initialised'
+      exit 853
   fi
   if [ ! $MICROBLOG_DOMAIN_NAME ]; then
       return
@@ -6198,6 +6228,10 @@ function install_redmatrix {
   fi
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
+  fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'install_redmatrix was called before the random number generator was initialised'
+      exit 853
   fi
   # if this is exclusively a social setup
   if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
@@ -7090,6 +7124,10 @@ function enable_wifi_hotspot {
   if [[ $ENABLE_WIFI_HOTSPOT != "yes" ]]; then
       return
   fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'enable_wifi_hotspot was called before the random number generator was initialised'
+      exit 853
+  fi
   apt-get -y install hostapd dnsmasq
 
   get_wifi_essid
@@ -7177,6 +7215,11 @@ function enable_wifi {
   if [[ $ENABLE_WIFI != "yes" || $ENABLE_WIFI_HOTSPOT != "yes" ]]; then
       return
   fi
+  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+      echo 'enable_wifi was called before the random number generator was initialised'
+      exit 853
+  fi
+
   sed -i 's/#auto wlan0/auto wlan0/g' /etc/network/interfaces
   sed -i 's/#iface wlan0 inet dhcp/iface wlan0 inet dhcp/g' /etc/network/interfaces
   sed -i 's/#    wpa-ssid "essid"/    wpa-ssid "essid"/g' /etc/network/interfaces
