@@ -7238,6 +7238,8 @@ function enable_wifi_hotspot {
       echo '}' >> /etc/dhcp/dhcpd.conf
   fi
 
+  sed -i "s/INTERFACES=.*/INTERFACES='$WIFI_INTERFACE'/g" /etc/default/isc-dhcp-server
+
   service isc-dhcp-server restart
   if [ ! "$?" = "0" ]; then
       echo 'Unable to restart isc-dhcp-server'
