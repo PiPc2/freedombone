@@ -7149,7 +7149,7 @@ function enable_wifi_hotspot {
       fi
   fi
 
-  if ! grep -q "Wifi hotspot" $COMPLETION_FILE; then
+  if ! grep -q "Wifi hotspot" /etc/network/interfaces; then
       echo '' >> /etc/network/interfaces
       echo '# Wifi hotspot' >> /etc/network/interfaces
       echo "auto $WIFI_INTERFACE" >> /etc/network/interfaces
