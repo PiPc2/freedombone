@@ -7130,15 +7130,28 @@ function enable_wifi_hotspot {
       echo 'enable_wifi_hotspot was called before the random number generator was initialised'
       exit 853
   fi
-  apt-get -y install hostapd dnsmasq
+
+  if ! grep -q "Wifi hotspot" $COMPLETION_FILE; then
+      echo '' >> /etc/network/interfaces
+      echo '# Wifi hotspot' >> /etc/network/interfaces
+      echo "auto $WIFI_INTERFACE" >> /etc/network/interfaces
+      echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
+      echo '        address 192.168.4.1' >> /etc/network/interfaces
+      echo '        network 192.168.4.0' >> /etc/network/interfaces
+      echo '        netmask 255.255.255.0' >> /etc/network/interfaces
+      echo '        broadcast 192.168.4.255' >> /etc/network/interfaces
+      service networking restart
+  fi
+
+  apt-get -y install hostapd isc-dhcp-server
 
   if [ ! -f /etc/default/hostapd ]; then
-	  echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
-	  exit 490
+      echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
+      exit 490
   fi
   if [ ! -f /etc/dnsmasq.conf ]; then
-	  echo 'Unable to find /etc/dnsmasq.conf. dnsmasq may not have installed correctly'
-	  exit 492
+      echo 'Unable to find /etc/dnsmasq.conf. dnsmasq may not have installed correctly'
+      exit 492
   fi
 
   get_wifi_essid
@@ -7198,19 +7211,23 @@ function enable_wifi_hotspot {
 
   service hostapd restart
   if [ ! "$?" = "0" ]; then
-	  echo 'Unable to restart hostapd'
-	  systemctl status hostapd.service
-	  exit 854
+      echo 'Unable to restart hostapd'
+      systemctl status hostapd.service
+      exit 854
   fi
 
-  sed -i "s/#interface=/interface=$WIFI_INTERFACE/" /etc/dnsmasq.conf
-  sed -i 's/#dhcp-range=192.168.0.50,192.168.0.150,12h/dhcp-range=192.168.1.1,192.168.1.50,12h/g' /etc/dnsmasq.conf
+  if ! grep -q "subnet 192.168.4.0 netmask 255.255.255.0" $COMPLETION_FILE; then
+      echo '' >> /etc/dhcp/dhcpd.conf
+      echo 'subnet 192.168.4.0 netmask 255.255.255.0 {' >> /etc/dhcp/dhcpd.conf
+      echo '  range 192.168.4.2 192.168.4.10;' >> /etc/dhcp/dhcpd.conf
+      echo '}' >> /etc/dhcp/dhcpd.conf
+  fi
 
-  service dnsmasq restart
+  service isc-dhcp-server restart
   if [ ! "$?" = "0" ]; then
-	  echo 'Unable to restart dnsmasq'
-	  systemctl status dnsmasq.service
-	  exit 856
+      echo 'Unable to restart isc-dhcp-server'
+      systemctl status isc-dhcp-server.service
+      exit 856
   fi
 
   # Add details to the README file
@@ -7231,7 +7248,7 @@ function enable_wifi {
   if grep -Fxq "enable_wifi" $COMPLETION_FILE; then
       return
   fi
-  if [[ $ENABLE_WIFI != "yes" || $ENABLE_WIFI_HOTSPOT != "yes" ]]; then
+  if [[ $ENABLE_WIFI != "yes" ]]; then
       return
   fi
   if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
@@ -7260,8 +7277,8 @@ function enable_wifi {
 
   service networking restart
   if [ ! "$?" = "0" ]; then
-	  echo 'Unable to restart networking'
-	  exit 855
+      echo 'Unable to restart networking'
+      exit 855
   fi
 
   # Add details to the README file
