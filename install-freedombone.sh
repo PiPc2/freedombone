@@ -3194,11 +3194,13 @@ function random_number_generator {
       # no hardware random number generator is available
       # and use the second best option
       apt-get -y --force-yes install haveged
+      echo 'random_number_generator' >> $COMPLETION_FILE
       return
   fi
   if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # it is assumed that docker uses the random number
       # generator of the host system
+      echo 'random_number_generator' >> $COMPLETION_FILE
       return
   fi
   if [[ $USE_HWRNG == "yes" ]]; then
