@@ -315,9 +315,13 @@ WIFI_ESSID=
 # Optional wifi password
 WIFI_PASSWORD=
 
-# wifi interface
+# Wifi interface
 WIFI_INTERFACE="wlan0"
-WIFI_HOTSPOT_MODE="g"
+
+# Whether to always force there to exist a wifi password
+WIFI_FORCE_PASSWORD="no"
+
+# Channel number for wifi hotspot
 WIFI_HOTSPOT_CHANNEL=7
 
 # message if something fails to install
@@ -404,9 +408,6 @@ function read_configuration {
       fi
       if grep -q "WIFI_INTERFACE" $CONFIGURATION_FILE; then
           WIFI_INTERFACE=$(grep "WIFI_INTERFACE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE; then
-          WIFI_HOTSPOT_MODE=$(grep "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE; then
           WIFI_HOTSPOT_CHANNEL=$(grep "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7131,25 +7132,6 @@ function enable_wifi_hotspot {
       exit 853
   fi
 
-  if ! grep -q "Wifi hotspot" $COMPLETION_FILE; then
-      echo '' >> /etc/network/interfaces
-      echo '# Wifi hotspot' >> /etc/network/interfaces
-      echo "auto $WIFI_INTERFACE" >> /etc/network/interfaces
-      echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
-      echo '        address 192.168.4.1' >> /etc/network/interfaces
-      echo '        network 192.168.4.0' >> /etc/network/interfaces
-      echo '        netmask 255.255.255.0' >> /etc/network/interfaces
-      echo '        broadcast 192.168.4.255' >> /etc/network/interfaces
-      service networking restart
-  fi
-
-  apt-get -y install hostapd isc-dhcp-server
-
-  if [ ! -f /etc/default/hostapd ]; then
-      echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
-      exit 490
-  fi
-
   get_wifi_essid
   get_wifi_password
 
@@ -7158,10 +7140,37 @@ function enable_wifi_hotspot {
       TEMP_WIFI_ESSID=$(openssl rand -base64 8)
       WIFI_ESSID="Freedom"${TEMP_WIFI_ESSID:0:3}
   fi
+
   # Add a password
-  if [ ! $WIFI_PASSWORD ]; then
-      TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-      WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
+  if [[ $WIFI_FORCE_PASSWORD == "yes" ]]; then
+      if [ ! $WIFI_PASSWORD ]; then
+          TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
+          WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
+      fi
+  fi
+
+  if ! grep -q "Wifi hotspot" $COMPLETION_FILE; then
+      echo '' >> /etc/network/interfaces
+      echo '# Wifi hotspot' >> /etc/network/interfaces
+      echo "auto $WIFI_INTERFACE" >> /etc/network/interfaces
+      echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
+      echo '    address 192.168.4.1' >> /etc/network/interfaces
+      echo '    network 192.168.4.0' >> /etc/network/interfaces
+      echo '    netmask 255.255.255.0' >> /etc/network/interfaces
+      echo '    broadcast 192.168.4.255' >> /etc/network/interfaces
+      if [ $WIFI_PASSWORD ]; then
+          echo -n '    wpa-psk  "' >> /etc/network/interfaces
+          echo -n "$WIFI_PASSWORD" >> /etc/network/interfaces
+          echo '"' >> /etc/network/interfaces
+      fi
+      service networking restart
+  fi
+
+  apt-get -y install hostapd isc-dhcp-server
+
+  if [ ! -f /etc/default/hostapd ]; then
+      echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
+      exit 490
   fi
 
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
@@ -7190,7 +7199,11 @@ function enable_wifi_hotspot {
   echo "wpa_passphrase=$WIFI_PASSWORD" >> /etc/hostapd/hostapd.conf
   echo '' >> /etc/hostapd/hostapd.conf
   echo '## Key management algorithms ##' >> /etc/hostapd/hostapd.conf
-  echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+  if [ ! $WIFI_PASSWORD ]; then
+      echo 'wpa_key_mgmt=WPA-NONE' >> /etc/hostapd/hostapd.conf
+  else
+      echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+  fi
   echo '#' >> /etc/hostapd/hostapd.conf
   echo '## Set cipher suites (encryption algorithms) ##' >> /etc/hostapd/hostapd.conf
   echo '## TKIP = Temporal Key Integrity Protocol' >> /etc/hostapd/hostapd.conf
@@ -7235,7 +7248,11 @@ function enable_wifi_hotspot {
       echo 'Wifi Hotspot' >> /home/$MY_USERNAME/README
       echo '============' >> /home/$MY_USERNAME/README
       echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
-      echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
+      if [ $WIFI_PASSWORD ]; then
+          echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
+      else
+          echo 'No password' >> /home/$MY_USERNAME/README
+      fi
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
@@ -7268,9 +7285,11 @@ function enable_wifi {
   fi
   sed -i "s/essid/$WIFI_ESSID/g" /etc/network/interfaces
   # Add a password
-  if [ ! $WIFI_PASSWORD ]; then
-      TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-      WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
+  if [[ $WIFI_FORCE_PASSWORD == "yes" ]]; then
+      if [ ! $WIFI_PASSWORD ]; then
+          TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
+          WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
+      fi
   fi
 
   # Add a password
@@ -7286,14 +7305,18 @@ function enable_wifi {
   fi
 
   # Add details to the README file
-  if [[ ENABLE_WIFI_HOTSPOT != "yes" ]]; then
+  if [[ ENABLE_WIFI != "yes" ]]; then
       if ! grep -q "Wifi Settings" /home/$MY_USERNAME/README; then
           echo '' >> /home/$MY_USERNAME/README
           echo '' >> /home/$MY_USERNAME/README
           echo 'Wifi Settings' >> /home/$MY_USERNAME/README
           echo '=============' >> /home/$MY_USERNAME/README
           echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
-          echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
+          if [ $WIFI_PASSWORD ]; then
+              echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
+          else
+              echo 'No password' >> /home/$MY_USERNAME/README
+          fi
           chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
       fi
   fi
