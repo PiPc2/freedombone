@@ -7281,8 +7281,6 @@ function install_final {
 read_configuration
 argument_checks
 install_not_on_BBB
-enable_wifi_hotspot
-enable_wifi
 remove_default_user
 configure_firewall
 configure_firewall_for_ssh
@@ -7313,6 +7311,8 @@ script_to_make_self_signed_certificates
 create_upgrade_script
 route_outgoing_traffic_through_tor
 install_watchdog_script
+enable_wifi_hotspot
+enable_wifi
 configure_email
 create_procmail
 #spam_filtering
