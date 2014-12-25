@@ -7132,6 +7132,15 @@ function enable_wifi_hotspot {
   fi
   apt-get -y install hostapd dnsmasq
 
+  if [ ! -f /etc/default/hostapd ]; then
+	  echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
+	  exit 490
+  fi
+  if [ ! -f /etc/dnsmasq.conf ]; then
+	  echo 'Unable to find /etc/dnsmasq.conf. dnsmasq may not have installed correctly'
+	  exit 492
+  fi
+
   get_wifi_essid
   get_wifi_password
 
@@ -7188,11 +7197,19 @@ function enable_wifi_hotspot {
   echo 'eapol_key_index_workaround=0' >> /etc/hostapd/hostapd.conf
 
   service hostapd restart
+  if [ ! "$?" = "0" ]; then
+	  echo 'Unable to restart hostapd'
+	  exit 854
+  fi
 
   sed -i "s/#interface=/interface=$WIFI_INTERFACE/" /etc/dnsmasq.conf
   sed -i 's/#dhcp-range=192.168.0.50,192.168.0.150,12h/dhcp-range=192.168.1.1,192.168.1.50,12h/g' /etc/dnsmasq.conf
 
   service dnsmasq restart
+  if [ ! "$?" = "0" ]; then
+	  echo 'Unable to restart dnsmasq'
+	  exit 856
+  fi
 
   # Add details to the README file
   if ! grep -q "Wifi Hotspot" /home/$MY_USERNAME/README; then
@@ -7204,8 +7221,6 @@ function enable_wifi_hotspot {
       echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
-
-  service networking restart
 
   echo 'enable_wifi_hotspot' >> $COMPLETION_FILE
 }
@@ -7242,6 +7257,10 @@ function enable_wifi {
   fi
 
   service networking restart
+  if [ ! "$?" = "0" ]; then
+	  echo 'Unable to restart networking'
+	  exit 855
+  fi
 
   # Add details to the README file
   if [[ ENABLE_WIFI_HOTSPOT != "yes" ]]; then
