@@ -7149,10 +7149,6 @@ function enable_wifi_hotspot {
       echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
       exit 490
   fi
-  if [ ! -f /etc/dnsmasq.conf ]; then
-      echo 'Unable to find /etc/dnsmasq.conf. dnsmasq may not have installed correctly'
-      exit 492
-  fi
 
   get_wifi_essid
   get_wifi_password
