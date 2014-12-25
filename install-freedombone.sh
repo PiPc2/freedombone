@@ -7156,12 +7156,12 @@ function enable_wifi_hotspot {
   # Create an ESSID if one doesn't exist
   if [ ! $WIFI_ESSID ]; then
       TEMP_WIFI_ESSID="Freedom"$(openssl rand -base64 8)
-      WIFI_ESSID=${$TEMP_WIFI_ESSID:0:3}
+      WIFI_ESSID=${TEMP_WIFI_ESSID:0:3}
   fi
   # Add a password
   if [ ! $WIFI_PASSWORD ]; then
       TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-      WIFI_PASSWORD=${$TEMP_WIFI_PASSWORD:0:8}
+      WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
   fi
 
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
@@ -7214,7 +7214,7 @@ function enable_wifi_hotspot {
       exit 854
   fi
 
-  if ! grep -q "subnet 192.168.4.0 netmask 255.255.255.0" $COMPLETION_FILE; then
+  if ! grep -q "subnet 192.168.4.0 netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
       echo '' >> /etc/dhcp/dhcpd.conf
       echo 'subnet 192.168.4.0 netmask 255.255.255.0 {' >> /etc/dhcp/dhcpd.conf
       echo '  range 192.168.4.2 192.168.4.10;' >> /etc/dhcp/dhcpd.conf
@@ -7264,13 +7264,13 @@ function enable_wifi {
   # Create an ESSID if one doesn't exist
   if [ ! $WIFI_ESSID ]; then
       TEMP_WIFI_ESSID="Freedom"$(openssl rand -base64 8)
-      WIFI_ESSID=${$TEMP_WIFI_ESSID:0:3}
+      WIFI_ESSID=${TEMP_WIFI_ESSID:0:3}
   fi
   sed -i "s/essid/$WIFI_ESSID/g" /etc/network/interfaces
   # Add a password
   if [ ! $WIFI_PASSWORD ]; then
       TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-      WIFI_PASSWORD=${$TEMP_WIFI_PASSWORD:0:8}
+      WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
   fi
 
   # Add a password
