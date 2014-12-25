@@ -7161,7 +7161,7 @@ function enable_wifi_hotspot {
   # Add a password
   if [ ! $WIFI_PASSWORD ]; then
       TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-      WIFI_PASSWORD=$($TEMP_WIFI_PASSWORD:0:8}
+      WIFI_PASSWORD=${$TEMP_WIFI_PASSWORD:0:8}
   fi
 
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
@@ -7270,7 +7270,7 @@ function enable_wifi {
   # Add a password
   if [ ! $WIFI_PASSWORD ]; then
       TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-      WIFI_PASSWORD=$($TEMP_WIFI_PASSWORD:0:8}
+      WIFI_PASSWORD=${$TEMP_WIFI_PASSWORD:0:8}
   fi
 
   # Add a password
