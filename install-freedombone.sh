@@ -327,6 +327,22 @@ WIFI_HOTSPOT_CHANNEL=7
 # Mode such as "g" or "n"
 WIFI_HOTSPOT_MODE="g"
 
+# Static IP address for wifi hotspot
+WIFI_STATIC_IP_ADDRESS="192.168.1.53"
+
+# Subnet for wifi hotspot
+WIFI_SUBNET="192.168.1.0"
+
+# DHCP range for wifi hotspot
+WIFI_IP_RANGE_START="192.168.1.10"
+WIFI_IP_RANGE_END="192.168.1.20"
+
+# Broadcast address for wifi hotspot
+WIFI_BROADCAST_ADDRESS="192.168.1.255"
+
+# Comma separated list of DNS servers for wifi hotspot
+WIFI_DNS_SERVERS="213.73.91.35, 85.214.20.141"
+
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
@@ -408,6 +424,24 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
+          WIFI_STATIC_IP_ADDRESS=$(grep "WIFI_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_SUBNET" $CONFIGURATION_FILE; then
+          WIFI_SUBNET=$(grep "WIFI_SUBNET" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_BROADCAST_ADDRESS" $CONFIGURATION_FILE; then
+          WIFI_BROADCAST_ADDRESS=$(grep "WIFI_BROADCAST_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_DNS_SERVERS" $CONFIGURATION_FILE; then
+          WIFI_DNS_SERVERS=$(grep "WIFI_DNS_SERVERS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_IP_RANGE_START" $CONFIGURATION_FILE; then
+          WIFI_IP_RANGE_START=$(grep "WIFI_IP_RANGE_START" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "WIFI_IP_RANGE_END" $CONFIGURATION_FILE; then
+          WIFI_IP_RANGE_END=$(grep "WIFI_IP_RANGE_END" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "WIFI_INTERFACE" $CONFIGURATION_FILE; then
           WIFI_INTERFACE=$(grep "WIFI_INTERFACE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7160,7 +7194,7 @@ function enable_wifi_hotspot {
       echo '# Wifi hotspot' >> /etc/network/interfaces
       echo "auto $WIFI_INTERFACE" >> /etc/network/interfaces
       echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
-      echo '    address 192.168.4.1' >> /etc/network/interfaces
+      echo "    address $WIFI_STATIC_IP_ADDRESS" >> /etc/network/interfaces
       echo '    netmask 255.255.255.0' >> /etc/network/interfaces
       service networking restart
   fi
@@ -7190,16 +7224,14 @@ function enable_wifi_hotspot {
   service hostapd restart
   systemctl daemon-reload
 
-  if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
-	  echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
-  fi
-  if grep -q "#net.ipv4.ip_forward=" /etc/sysctl.conf; then
-	  sed -i 's/#net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/g' >> /etc/sysctl.conf
-  fi
-  sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+  sed -i 's/#net.ipv4.ip_forward/net.ipv4.ip_forward/g' /etc/sysctl.conf
+  sed -i 's/net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+  echo 1 > /proc/sys/net/ipv4/ip_forward
 
-  iptables -P INPUT ACCEPT
-  iptables -F
+  iptables --flush
+  iptables --table nat --flush
+  iptables --delete-chain
+  iptables --table nat --delete-chain
   iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
   iptables -A FORWARD -i eth0 -o $WIFI_INTERFACE -m state --state RELATED,ESTABLISHED -j ACCEPT
   iptables -A FORWARD -i $WIFI_INTERFACE -o eth0 -j ACCEPT
@@ -7209,15 +7241,15 @@ function enable_wifi_hotspot {
   sed -i 's/option domain-name-servers ns1.example.org, ns2.example.org;/#option domain-name-servers ns1.example.org, ns2.example.org;/g' /etc/dhcp/dhcpd.conf
   sed -i 's/#authoritative;/authoritative;/g' /etc/dhcp/dhcpd.conf
 
-  if ! grep -q "subnet 192.168.4.0 netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
-	  echo 'subnet 192.168.4.0 netmask 255.255.255.0 {' >> /etc/dhcp/dhcpd.conf
-	  echo '    range 192.168.4.2 192.168.4.10;' >> /etc/dhcp/dhcpd.conf
-	  echo '    option broadcast-address 192.168.4.255;' >> /etc/dhcp/dhcpd.conf
+  if ! grep -q "subnet $WIFI_SUBNET netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
+	  echo "subnet $WIFI_SUBNET netmask 255.255.255.0 {" >> /etc/dhcp/dhcpd.conf
+	  echo "    range $WIFI_IP_RANGE_START $WIFI_IP_RANGE_END;" >> /etc/dhcp/dhcpd.conf
+	  echo "    option broadcast-address $WIFI_BROADCAST_ADDRESS;" >> /etc/dhcp/dhcpd.conf
 	  echo "    option routers $ROUTER_IP_ADDRESS;" >> /etc/dhcp/dhcpd.conf
 	  echo '    default-lease-time 600;' >> /etc/dhcp/dhcpd.conf
 	  echo '    max-lease-time 7200;' >> /etc/dhcp/dhcpd.conf
 	  echo '    option domain-name "local";' >> /etc/dhcp/dhcpd.conf
-	  echo '    option domain-name-servers 8.8.8.8, 8.8.4.4;' >> /etc/dhcp/dhcpd.conf
+	  echo "    option domain-name-servers $WIFI_DNS_SERVERS;" >> /etc/dhcp/dhcpd.conf
 	  echo '}' >> /etc/dhcp/dhcpd.conf
   fi
 
