@@ -7206,6 +7206,8 @@ function enable_wifi_hotspot {
       exit 490
   fi
 
+  mv /usr/share/dbus-1/system-services/fi.epitest.hostap.WPASupplicant.service ~/
+
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
   echo "interface=$WIFI_INTERFACE" > /etc/hostapd/hostapd.conf
