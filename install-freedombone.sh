@@ -328,17 +328,17 @@ WIFI_HOTSPOT_CHANNEL=7
 WIFI_HOTSPOT_MODE="g"
 
 # Static IP address for wifi hotspot
-WIFI_STATIC_IP_ADDRESS="192.168.1.53"
+WIFI_STATIC_IP_ADDRESS="192.168.4.1"
 
 # Subnet for wifi hotspot
-WIFI_SUBNET="192.168.1.0"
+WIFI_SUBNET="192.168.4.0"
 
 # DHCP range for wifi hotspot
-WIFI_IP_RANGE_START="192.168.1.10"
-WIFI_IP_RANGE_END="192.168.1.20"
+WIFI_IP_RANGE_START="192.168.4.10"
+WIFI_IP_RANGE_END="192.168.4.20"
 
 # Broadcast address for wifi hotspot
-WIFI_BROADCAST_ADDRESS="192.168.1.255"
+WIFI_BROADCAST_ADDRESS="192.168.4.255"
 
 # Comma separated list of DNS servers for wifi hotspot
 WIFI_DNS_SERVERS="213.73.91.35, 85.214.20.141"
@@ -7227,6 +7227,14 @@ function enable_wifi_hotspot {
   sed -i 's/#net.ipv4.ip_forward/net.ipv4.ip_forward/g' /etc/sysctl.conf
   sed -i 's/net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
   echo 1 > /proc/sys/net/ipv4/ip_forward
+
+  sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.ip_forward=0/#net.ipv4.ip_forward=1/g" /etc/sysctl.conf
+  sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
 
   iptables --flush
   iptables --table nat --flush
