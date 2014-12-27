@@ -7189,17 +7189,7 @@ function enable_wifi_hotspot {
       fi
   fi
 
-  if ! grep -q "Wifi hotspot" /etc/network/interfaces; then
-      echo '' >> /etc/network/interfaces
-      echo '# Wifi hotspot' >> /etc/network/interfaces
-      echo "auto $WIFI_INTERFACE" >> /etc/network/interfaces
-      echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
-      echo "    address $WIFI_STATIC_IP_ADDRESS" >> /etc/network/interfaces
-      echo '    netmask 255.255.255.0' >> /etc/network/interfaces
-      service networking restart
-  fi
-
-  apt-get -y install hostapd isc-dhcp-server
+  apt-get -y install hostapd isc-dhcp-server bridge-utils
 
   if [ ! -f /etc/default/hostapd ]; then
       echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
@@ -7211,6 +7201,7 @@ function enable_wifi_hotspot {
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
   echo "interface=$WIFI_INTERFACE" > /etc/hostapd/hostapd.conf
+  echo 'bridge=br0' >> /etc/hostapd/hostapd.conf
   echo "ssid=$WIFI_ESSID" >> /etc/hostapd/hostapd.conf
   echo "hw_mode=$WIFI_HOTSPOT_MODE" >> /etc/hostapd/hostapd.conf
   echo "channel=${WIFI_HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
@@ -7223,48 +7214,71 @@ function enable_wifi_hotspot {
   echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
   echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
 
-  service hostapd restart
-  systemctl daemon-reload
+  if ! grep -q "auto lo br0" /etc/network/interfaces; then
+      sed -i 's/auto lo/auto lo br0/g' /etc/network/interfaces
+  fi
 
-  sed -i 's/#net.ipv4.ip_forward/net.ipv4.ip_forward/g' /etc/sysctl.conf
-  sed -i 's/net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
-  echo 1 > /proc/sys/net/ipv4/ip_forward
+  if ! grep -q "Wifi hotspot" /etc/network/interfaces; then
+      echo '' >> /etc/network/interfaces
+      echo '# Wifi hotspot' >> /etc/network/interfaces
+      echo "allow-hotplug $WIFI_INTERFACE" >> /etc/network/interfaces
+      echo "iface $WIFI_INTERFACE inet manual" >> /etc/network/interfaces
+  fi
 
-  sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.ip_forward=0/#net.ipv4.ip_forward=1/g" /etc/sysctl.conf
-  sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
+  if ! grep -q "Wireless bridge" /etc/network/interfaces; then
+      echo '' >> /etc/network/interfaces
+      echo '# Wireless bridge' >> /etc/network/interfaces
+      echo 'iface br0 inet static' >> /etc/network/interfaces
+      echo "    bridge_ports $WIFI_INTERFACE eth0" >> /etc/network/interfaces
+      echo "    address $WIFI_STATIC_IP_ADDRESS" >> /etc/network/interfaces
+      echo '    netmask 255.255.255.0' >> /etc/network/interfaces
+      echo "    network $WIFI_SUBNET" >> /etc/network/interfaces
+      echo "    gateway $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
+      echo "    dns-nameservers $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
+  fi
 
-  iptables --flush
-  iptables --table nat --flush
-  iptables --delete-chain
-  iptables --table nat --delete-chain
-  iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-  iptables -A FORWARD -i eth0 -o $WIFI_INTERFACE -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -A FORWARD -i $WIFI_INTERFACE -o eth0 -j ACCEPT
-  save_firewall_settings
+  #sed -i 's/#net.ipv4.ip_forward/net.ipv4.ip_forward/g' /etc/sysctl.conf
+  #sed -i 's/net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
+  #echo 1 > /proc/sys/net/ipv4/ip_forward
+
+  #sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv4.ip_forward=0/#net.ipv4.ip_forward=1/g" /etc/sysctl.conf
+  #sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
+
+  #iptables --flush
+  #iptables --table nat --flush
+  #iptables --delete-chain
+  #iptables --table nat --delete-chain
+  #iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+  #iptables -A FORWARD -i eth0 -o $WIFI_INTERFACE -m state --state RELATED,ESTABLISHED -j ACCEPT
+  #iptables -A FORWARD -i $WIFI_INTERFACE -o eth0 -j ACCEPT
+  #save_firewall_settings
 
   sed -i 's/option domain-name "example.org";/#option domain-name "example.org";/g' /etc/dhcp/dhcpd.conf
   sed -i 's/option domain-name-servers ns1.example.org, ns2.example.org;/#option domain-name-servers ns1.example.org, ns2.example.org;/g' /etc/dhcp/dhcpd.conf
   sed -i 's/#authoritative;/authoritative;/g' /etc/dhcp/dhcpd.conf
 
   if ! grep -q "subnet $WIFI_SUBNET netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
-	  echo "subnet $WIFI_SUBNET netmask 255.255.255.0 {" >> /etc/dhcp/dhcpd.conf
-	  echo "    range $WIFI_IP_RANGE_START $WIFI_IP_RANGE_END;" >> /etc/dhcp/dhcpd.conf
-	  echo "    option broadcast-address $WIFI_BROADCAST_ADDRESS;" >> /etc/dhcp/dhcpd.conf
-	  echo "    option routers $ROUTER_IP_ADDRESS;" >> /etc/dhcp/dhcpd.conf
-	  echo '    default-lease-time 600;' >> /etc/dhcp/dhcpd.conf
-	  echo '    max-lease-time 7200;' >> /etc/dhcp/dhcpd.conf
-	  echo '    option domain-name "local";' >> /etc/dhcp/dhcpd.conf
-	  echo "    option domain-name-servers $WIFI_DNS_SERVERS;" >> /etc/dhcp/dhcpd.conf
-	  echo '}' >> /etc/dhcp/dhcpd.conf
+      echo "subnet $WIFI_SUBNET netmask 255.255.255.0 {" >> /etc/dhcp/dhcpd.conf
+      echo "    range $WIFI_IP_RANGE_START $WIFI_IP_RANGE_END;" >> /etc/dhcp/dhcpd.conf
+      echo "    option broadcast-address $WIFI_BROADCAST_ADDRESS;" >> /etc/dhcp/dhcpd.conf
+      echo "    option routers $ROUTER_IP_ADDRESS;" >> /etc/dhcp/dhcpd.conf
+      echo '    default-lease-time 600;' >> /etc/dhcp/dhcpd.conf
+      echo '    max-lease-time 7200;' >> /etc/dhcp/dhcpd.conf
+      echo '    option domain-name "local";' >> /etc/dhcp/dhcpd.conf
+      echo "    option domain-name-servers $WIFI_DNS_SERVERS;" >> /etc/dhcp/dhcpd.conf
+      echo '}' >> /etc/dhcp/dhcpd.conf
   fi
 
   sed -i "s/INTERFACES=.*/INTERFACES='$WIFI_INTERFACE'/g" /etc/default/isc-dhcp-server
 
+  service networking restart
+  service hostapd restart
+  systemctl daemon-reload
   service isc-dhcp-server restart
 
   # Add details to the README file
