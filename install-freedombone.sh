@@ -388,10 +388,10 @@ function argument_checks {
   if [ ! $MY_USERNAME ]; then
       if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" || $DOMAIN_NAME == "tor-hotspot" || $DOMAIN_NAME == "torhotspot"  || $DOMAIN_NAME == "tor-access-point" || $DOMAIN_NAME == "tor" || $DOMAIN_NAME == "tor-dongle" || $DOMAIN_NAME == "tordongle" ]]; then
           if [ -d /home/tor ]; then
-              $MY_USERNAME="tor"
+              MY_USERNAME="tor"
           fi
           if [ -d /home/toruser ]; then
-              $MY_USERNAME="toruser"
+              MY_USERNAME="toruser"
           fi
           if [ ! $MY_USERNAME ]; then
               show_help
