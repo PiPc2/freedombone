@@ -6995,7 +6995,7 @@ function route_outgoing_traffic_through_tor {
 
   ### set variables
   # Destinations you don't want routed through Tor
-  _non_tor="192.168.4.0/24 192.168.1.0/24 192.168.0.0/24"
+  _non_tor="192.168.0/24.0/24"
 
   # The user that Tor runs as
   _tor_uid="debian-tor"
@@ -7004,7 +7004,7 @@ function route_outgoing_traffic_through_tor {
   _trans_port="9040"
 
   # Your internal interface
-  _int_if="eth0"
+  _int_if="br0"
 
   # Ensure that redirects are possible
   sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
@@ -7012,12 +7012,12 @@ function route_outgoing_traffic_through_tor {
   sed -i "s/net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
   sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
   sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
-  #sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
+  sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
 
-  #iptables --flush
-  #iptables --table nat --flush
-  #iptables --delete-chain
-  #iptables --table nat --delete-chain
+  iptables --flush
+  iptables --table nat --flush
+  iptables --delete-chain
+  iptables --table nat --delete-chain
 
   ### Set iptables *nat
   iptables -t nat -A OUTPUT -o lo -j RETURN
