@@ -403,7 +403,7 @@ function argument_checks {
       fi
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" || $DOMAIN_NAME == "tor-hotspot" || $DOMAIN_NAME == "torhotspot"  || $DOMAIN_NAME == "tor-access-point"]]; then
+      if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" || $DOMAIN_NAME == "tor-hotspot" || $DOMAIN_NAME == "torhotspot"  || $DOMAIN_NAME == "tor-access-point" ]]; then
           DOMAIN_NAME="tor-wifi"
           SYSTEM_TYPE=$VARIANT_TOR_WIFI
           ROUTE_THROUGH_TOR="yes"
