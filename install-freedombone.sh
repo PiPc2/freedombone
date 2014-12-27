@@ -6995,7 +6995,7 @@ function route_outgoing_traffic_through_tor {
 
   ### set variables
   # Destinations you don't want routed through Tor
-  _non_tor="192.168.0/24.0/24"
+  _non_tor="192.168.0.0/24 192.168.1.0/24 192.168.2.0/24 192.168.3.0/24 192.168.4.0/24 192.168.10.0/24 192.168.42.0/24"
 
   # The user that Tor runs as
   _tor_uid="debian-tor"
