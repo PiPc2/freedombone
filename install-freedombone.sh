@@ -340,8 +340,8 @@ WIFI_IP_RANGE_END="192.168.4.20"
 # Broadcast address for wifi hotspot
 WIFI_BROADCAST_ADDRESS="192.168.4.255"
 
-# Comma separated list of DNS servers for wifi hotspot
-WIFI_DNS_SERVERS="213.73.91.35, 85.214.20.141"
+# space separated list of DNS servers for wifi hotspot
+WIFI_DNS_SERVERS="213.73.91.35 85.214.20.141"
 
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
@@ -590,7 +590,7 @@ function install_not_on_BBB {
   echo "    address $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/network/interfaces
   echo '    netmask 255.255.255.0' >> /etc/network/interfaces
   echo "    gateway $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
-  echo '    dns-nameservers 213.73.91.35 85.214.20.141' >> /etc/network/interfaces
+  echo "    dns-nameservers $WIFI_DNS_SERVERS" >> /etc/network/interfaces
   echo '# Example to keep MAC address between reboots' >> /etc/network/interfaces
   echo '#hwaddress ether DE:AD:BE:EF:CA:FE' >> /etc/network/interfaces
   echo '' >> /etc/network/interfaces
@@ -6982,7 +6982,7 @@ function route_outgoing_traffic_through_tor {
 
   ### set variables
   # Destinations you don't want routed through Tor
-  _non_tor="192.168.1.0/24 192.168.0.0/24"
+  _non_tor="192.168.4.0/24 192.168.1.0/24 192.168.0.0/24"
 
   # The user that Tor runs as
   _tor_uid="debian-tor"
@@ -6992,6 +6992,19 @@ function route_outgoing_traffic_through_tor {
 
   # Your internal interface
   _int_if="eth0"
+
+  # Ensure that redirects are possible
+  sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
+  #sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
+
+  #iptables --flush
+  #iptables --table nat --flush
+  #iptables --delete-chain
+  #iptables --table nat --delete-chain
 
   ### Set iptables *nat
   iptables -t nat -A OUTPUT -o lo -j RETURN
@@ -7065,6 +7078,14 @@ function route_outgoing_traffic_through_tor {
   fi
 
   echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
+
+  if [[ $ENABLE_WIFI_HOTSPOT == "yes" ]]; then
+      echo ''
+      echo '  *** Freedombone Tor Wifi access point installation is complete. Rebooting... ***'
+      echo ''
+      cat /home/$MY_USERNAME/README
+      reboot
+  fi
 }
 
 # A command to create a git repository for a project
@@ -7237,27 +7258,6 @@ function enable_wifi_hotspot {
       echo "    dns-nameservers $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
   fi
 
-  #sed -i 's/#net.ipv4.ip_forward/net.ipv4.ip_forward/g' /etc/sysctl.conf
-  #sed -i 's/net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/g' /etc/sysctl.conf
-  #echo 1 > /proc/sys/net/ipv4/ip_forward
-
-  #sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
-  #sed -i "s/net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 1/g" /etc/sysctl.conf
-  #sed -i "s/net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
-  #sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
-  #sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
-  #sed -i "s/net.ipv4.ip_forward=0/#net.ipv4.ip_forward=1/g" /etc/sysctl.conf
-  #sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
-
-  #iptables --flush
-  #iptables --table nat --flush
-  #iptables --delete-chain
-  #iptables --table nat --delete-chain
-  #iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-  #iptables -A FORWARD -i eth0 -o $WIFI_INTERFACE -m state --state RELATED,ESTABLISHED -j ACCEPT
-  #iptables -A FORWARD -i $WIFI_INTERFACE -o eth0 -j ACCEPT
-  #save_firewall_settings
-
   sed -i 's/option domain-name "example.org";/#option domain-name "example.org";/g' /etc/dhcp/dhcpd.conf
   sed -i 's/option domain-name-servers ns1.example.org, ns2.example.org;/#option domain-name-servers ns1.example.org, ns2.example.org;/g' /etc/dhcp/dhcpd.conf
   sed -i 's/#authoritative;/authoritative;/g' /etc/dhcp/dhcpd.conf
@@ -7275,11 +7275,6 @@ function enable_wifi_hotspot {
   fi
 
   sed -i "s/INTERFACES=.*/INTERFACES='$WIFI_INTERFACE'/g" /etc/default/isc-dhcp-server
-
-  service networking restart
-  service hostapd restart
-  systemctl daemon-reload
-  service isc-dhcp-server restart
 
   # Add details to the README file
   if ! grep -q "Wifi Hotspot" /home/$MY_USERNAME/README; then
@@ -7338,12 +7333,6 @@ function enable_wifi {
       sed -i "s/wifipassword/$WIFI_PASSWORD/g" /etc/network/interfaces
   fi
 
-  service networking restart
-  if [ ! "$?" = "0" ]; then
-      echo 'Unable to restart networking'
-      exit 855
-  fi
-
   # Add details to the README file
   if [[ ENABLE_WIFI != "yes" ]]; then
       if ! grep -q "Wifi Settings" /home/$MY_USERNAME/README; then
@@ -7359,6 +7348,12 @@ function enable_wifi {
           fi
           chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
       fi
+  fi
+
+  service networking restart
+  if [ ! "$?" = "0" ]; then
+      echo 'Unable to restart networking'
+      exit 855
   fi
 
   echo 'enable_wifi' >> $COMPLETION_FILE
