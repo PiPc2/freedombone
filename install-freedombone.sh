@@ -386,11 +386,24 @@ function argument_checks {
       exit 2
   fi
   if [ ! $MY_USERNAME ]; then
-      show_help
-      exit 3
+      if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" || $DOMAIN_NAME == "tor-hotspot" || $DOMAIN_NAME == "torhotspot"  || $DOMAIN_NAME == "tor-access-point" || $DOMAIN_NAME == "tor" || $DOMAIN_NAME == "tor-dongle" || $DOMAIN_NAME == "tordongle" ]]; then
+          if [ -d /home/tor ]; then
+              $MY_USERNAME="tor"
+          fi
+          if [ -d /home/toruser ]; then
+              $MY_USERNAME="toruser"
+          fi
+          if [ ! $MY_USERNAME ]; then
+              show_help
+              exit 3
+          fi
+      else
+          show_help
+          exit 3
+      fi
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" ]]; then
+      if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" || $DOMAIN_NAME == "tor-hotspot" || $DOMAIN_NAME == "torhotspot"  || $DOMAIN_NAME == "tor-access-point"]]; then
           DOMAIN_NAME="tor-wifi"
           SYSTEM_TYPE=$VARIANT_TOR_WIFI
           ROUTE_THROUGH_TOR="yes"
