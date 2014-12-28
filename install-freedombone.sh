@@ -7017,7 +7017,7 @@ function route_outgoing_traffic_through_tor {
 
   echo 'domain localdomain' > /etc/resolv.conf
   echo 'search localdomain' >> /etc/resolv.conf
-  echo "nameserver $WIFI_STATIC_IP_ADDRESS" >> /etc/resolv.conf
+  echo "nameserver localhost" >> /etc/resolv.conf
 
 
   if ! grep -q 'Log notice file /var/log/tor/notices.log' /etc/tor/torrc; then
@@ -7040,16 +7040,16 @@ function route_outgoing_traffic_through_tor {
       echo 'TransPort 9040' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "TransListenAddress $WIFI_STATIC_IP_ADDRESS" /etc/tor/torrc; then
-      echo "TransListenAddress $WIFI_STATIC_IP_ADDRESS" >> /etc/tor/torrc
+  if ! grep -q "TransListenAddress localhost" /etc/tor/torrc; then
+      echo "TransListenAddress localhost" >> /etc/tor/torrc
   fi
 
   if ! grep -q "DNSPort" /etc/tor/torrc; then
       echo 'DNSPort 53' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "DNSListenAddress $WIFI_STATIC_IP_ADDRESS" /etc/tor/torrc; then
-      echo "DNSListenAddress $WIFI_STATIC_IP_ADDRESS" >> /etc/tor/torrc
+  if ! grep -q "DNSListenAddress localhost" /etc/tor/torrc; then
+      echo "DNSListenAddress localhost" >> /etc/tor/torrc
   fi
 
   touch /var/log/tor/notices.log
@@ -7059,6 +7059,19 @@ function route_outgoing_traffic_through_tor {
   echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
 
   if [[ $ENABLE_WIFI_HOTSPOT == "yes" ]]; then
+      if ! grep -q 'check.torproject.org' /home/$MY_USERNAME/README; then
+          echo '' >> /home/$MY_USERNAME/README
+          echo '' >> /home/$MY_USERNAME/README
+          echo 'To connect to your own Tor gateway, set your web browser or computer to connect to:' >> /home/$MY_USERNAME/README
+          echo '  Proxy type: SOCKSv5' >> /home/$MY_USERNAME/README
+          echo '  Port:       9050' >> /home/$MY_USERNAME/README
+          echo '' >> /home/$MY_USERNAME/README
+          echo '  Transparent proxy port: 9040' >> /home/$MY_USERNAME/README
+          echo '' >> /home/$MY_USERNAME/README
+          echo 'Before doing anything, verify that you are using the Tor network by visiting:' >> /home/$MY_USERNAME/README
+          echo '' >> /home/$MY_USERNAME/README
+          echo '  https://check.torproject.org/' >> /home/$MY_USERNAME/README
+      fi
       echo ''
       echo '  *** Freedombone Tor Wifi access point installation is complete. Rebooting... ***'
       echo ''
