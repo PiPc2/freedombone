@@ -7023,7 +7023,7 @@ function route_outgoing_traffic_through_tor {
   if ! grep -q 'Log notice file /var/log/tor/notices.log' /etc/tor/torrc; then
       echo 'Log notice file /var/log/tor/notices.log' >> /etc/tor/torrc
   fi
-  sed -i 's|#Log notice file /var/log/tor/notices.log|Log notice file /var/log/tor/notices.log|g' >> /etc/tor/torrc
+  sed -i 's|#Log notice file /var/log/tor/notices.log|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
 
   if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
       echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
@@ -7057,7 +7057,7 @@ function route_outgoing_traffic_through_tor {
       echo "ClientOnly" >> /etc/tor/torrc
   fi
 
-  sed -i 's/#RunAsDaemon 1/RunAsDaemon 1/g' >> /etc/tor/torrc
+  sed -i 's/#RunAsDaemon 1/RunAsDaemon 1/g' /etc/tor/torrc
 
   touch /var/log/tor/notices.log
   chown debian-tor /var/log/tor/notices.log
