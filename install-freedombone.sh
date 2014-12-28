@@ -7053,6 +7053,12 @@ function route_outgoing_traffic_through_tor {
       echo "DNSListenAddress localhost" >> /etc/tor/torrc
   fi
 
+  if ! grep -q "ClientOnly" /etc/tor/torrc; then
+      echo "ClientOnly" >> /etc/tor/torrc
+  fi
+
+  sed -i 's/#RunAsDaemon 1/RunAsDaemon 1/g' >> /etc/tor/torrc
+
   touch /var/log/tor/notices.log
   chown debian-tor /var/log/tor/notices.log
   chmod 644 /var/log/tor/notices.log
