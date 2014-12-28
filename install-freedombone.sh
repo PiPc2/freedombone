@@ -7201,7 +7201,6 @@ function enable_wifi_hotspot {
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
   echo "interface=$WIFI_INTERFACE" > /etc/hostapd/hostapd.conf
-  echo 'bridge=br0' >> /etc/hostapd/hostapd.conf
   echo "ssid=$WIFI_ESSID" >> /etc/hostapd/hostapd.conf
   echo "hw_mode=$WIFI_HOTSPOT_MODE" >> /etc/hostapd/hostapd.conf
   echo "channel=${WIFI_HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
