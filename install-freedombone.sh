@@ -7019,6 +7019,11 @@ function route_outgoing_traffic_through_tor {
   echo 'search localdomain' >> /etc/resolv.conf
   echo "nameserver $WIFI_STATIC_IP_ADDRESS" >> /etc/resolv.conf
 
+
+  if ! grep -q 'Log notice file /var/log/tor/notices.log' /etc/tor/torrc; then
+      echo 'Log notice file /var/log/tor/notices.log' >> /etc/tor/torrc
+  fi
+
   if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
       echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
   fi
@@ -7046,6 +7051,10 @@ function route_outgoing_traffic_through_tor {
   if ! grep -q "DNSListenAddress $WIFI_STATIC_IP_ADDRESS" /etc/tor/torrc; then
       echo "DNSListenAddress $WIFI_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
+
+  touch /var/log/tor/notices.log
+  chown debian-tor /var/log/tor/notices.log
+  chmod 644 /var/log/tor/notices.log
 
   echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
 
@@ -7187,7 +7196,7 @@ function enable_wifi_hotspot {
       exit 490
   fi
 
-  mv /usr/share/dbus-1/system-services/fi.epitest.hostap.WPASupplicant.service ~/
+  #mv /usr/share/dbus-1/system-services/fi.epitest.hostap.WPASupplicant.service ~/
 
   sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
