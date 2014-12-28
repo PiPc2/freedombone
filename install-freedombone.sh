@@ -7271,8 +7271,12 @@ function enable_wifi_hotspot {
       echo "    dns-nameservers $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
   fi
 
-  sed -i 's/option domain-name "example.org";/#option domain-name "example.org";/g' /etc/dhcp/dhcpd.conf
-  sed -i 's/option domain-name-servers ns1.example.org, ns2.example.org;/#option domain-name-servers ns1.example.org, ns2.example.org;/g' /etc/dhcp/dhcpd.conf
+  if ! grep -q '#option domain-name "example.org";' /etc/network/interfaces; then
+      sed -i 's/option domain-name "example.org";/#option domain-name "example.org";/g' /etc/dhcp/dhcpd.conf
+  fi
+  if ! grep -q '#option domain-name-servers ns1.example.org, ns2.example.org;' /etc/network/interfaces; then
+      sed -i 's/option domain-name-servers ns1.example.org, ns2.example.org;/#option domain-name-servers ns1.example.org, ns2.example.org;/g' /etc/dhcp/dhcpd.conf
+  fi
   sed -i 's/#authoritative;/authoritative;/g' /etc/dhcp/dhcpd.conf
 
   if ! grep -q "subnet $WIFI_SUBNET netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
