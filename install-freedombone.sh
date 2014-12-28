@@ -6993,19 +6993,6 @@ function route_outgoing_traffic_through_tor {
   fi
   apt-get -y --force-yes install tor tor-arm
 
-  ### set variables
-  # Destinations you don't want routed through Tor
-  _non_tor="192.168.0.0/24 192.168.1.0/24 192.168.2.0/24 192.168.3.0/24 192.168.10.0/24 192.168.42.0/24"
-
-  # The user that Tor runs as
-  _tor_uid="debian-tor"
-
-  # Tor's TransPort
-  _trans_port="9040"
-
-  # Your internal interface
-  _int_if="br0"
-
   # Ensure that redirects are possible
   sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
   sed -i "s/net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 1/g" /etc/sysctl.conf
@@ -7013,39 +7000,13 @@ function route_outgoing_traffic_through_tor {
   sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
   sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
   sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
+  sed -i "s/net.ipv4.ip_forward=0/net.ipv4.ip_forward=1/g" /etc/sysctl.conf
 
-  iptables --flush
-  iptables --table nat --flush
-  iptables --delete-chain
-  iptables --table nat --delete-chain
-
-  ### Set iptables *nat
-  iptables -t nat -A OUTPUT -o lo -j RETURN
-  iptables -t nat -A OUTPUT -m owner --uid-owner $_tor_uid -j RETURN
-  iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 53
-
-  # Allow clearnet access for hosts in $_non_tor
-  for _clearnet in $_non_tor; do
-      iptables -t nat -A OUTPUT -d $_clearnet -j RETURN
-      iptables -t nat -A PREROUTING -i $_int_if -d $_clearnet -j RETURN
-  done
-
-  # Redirect all other pre-routing and output to Tor
-  iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports $_trans_port
-  iptables -t nat -A PREROUTING -i $_int_if -p udp --dport 53 -j REDIRECT --to-ports 53
-  iptables -t nat -A PREROUTING -i $_int_if -p tcp --syn -j REDIRECT --to-ports $_trans_port
-
-  ### set iptables *filter
-  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-  # Allow clearnet access for hosts in $_non_tor
-  for _clearnet in $_non_tor 127.0.0.0/8; do
-      iptables -A OUTPUT -d $_clearnet -j ACCEPT
-  done
-
-  # Allow only Tor output
-  iptables -A OUTPUT -m owner --uid-owner $_tor_uid -j ACCEPT
-  iptables -A OUTPUT -j REJECT
+  iptables -F
+  iptables -t nat -F
+  iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --dport $SSH_PORT -j REDIRECT --to-ports $SSH_PORT
+  iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p udp --dport 53 -j REDIRECT --to-ports 53
+  iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --syn -j REDIRECT --to-ports 9040
 
   save_firewall_settings
 
@@ -7060,6 +7021,10 @@ function route_outgoing_traffic_through_tor {
 
   if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
       echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
+  fi
+
+  if ! grep -q "AutomapHostsSuffixes .onion,.exit" /etc/tor/torrc; then
+      echo 'AutomapHostsSuffixes .onion,.exit' >> /etc/tor/torrc
   fi
 
   if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
@@ -7215,7 +7180,7 @@ function enable_wifi_hotspot {
       fi
   fi
 
-  apt-get -y install hostapd isc-dhcp-server bridge-utils
+  apt-get -y install hostapd isc-dhcp-server
 
   if [ ! -f /etc/default/hostapd ]; then
       echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
@@ -7240,29 +7205,12 @@ function enable_wifi_hotspot {
   echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
   echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
 
-  if ! grep -q "auto lo br0" /etc/network/interfaces; then
-      sed -i 's/auto lo/auto lo br0/g' /etc/network/interfaces
-  fi
-
   if ! grep -q "Wifi hotspot" /etc/network/interfaces; then
       echo '' >> /etc/network/interfaces
       echo '# Wifi hotspot' >> /etc/network/interfaces
-      echo "allow-hotplug $WIFI_INTERFACE" >> /etc/network/interfaces
-      echo "iface $WIFI_INTERFACE inet manual" >> /etc/network/interfaces
-  fi
-
-  if ! grep -q "Wireless bridge" /etc/network/interfaces; then
-      echo '' >> /etc/network/interfaces
-      echo '# Wireless bridge' >> /etc/network/interfaces
-      echo 'iface br0 inet static' >> /etc/network/interfaces
-      echo "    bridge_ports $WIFI_INTERFACE eth0" >> /etc/network/interfaces
+      echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
       echo "    address $WIFI_STATIC_IP_ADDRESS" >> /etc/network/interfaces
       echo '    netmask 255.255.255.0' >> /etc/network/interfaces
-      echo "    network $WIFI_SUBNET" >> /etc/network/interfaces
-      echo "    gateway $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
-      echo "    dns-nameservers $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
-      echo "    up iptables -t nat -I POSTROUTING -s $WIFI_SUBNET/24 -j MASQUERADE" >> /etc/network/interfaces
-      echo "    down iptables -t nat -D POSTROUTING -s $WIFI_SUBNET/24 -j MASQUERADE" >> /etc/network/interfaces
   fi
 
   if ! grep -q '#option domain-name "example.org";' /etc/network/interfaces; then
