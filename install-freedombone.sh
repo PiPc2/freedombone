@@ -6995,7 +6995,7 @@ function route_outgoing_traffic_through_tor {
 
   ### set variables
   # Destinations you don't want routed through Tor
-  _non_tor="192.168.0.0/24 192.168.1.0/24 192.168.2.0/24 192.168.3.0/24 192.168.4.0/24 192.168.10.0/24 192.168.42.0/24"
+  _non_tor="192.168.0.0/24 192.168.1.0/24 192.168.2.0/24 192.168.3.0/24 192.168.10.0/24 192.168.42.0/24"
 
   # The user that Tor runs as
   _tor_uid="debian-tor"
@@ -7056,7 +7056,7 @@ function route_outgoing_traffic_through_tor {
 
   echo 'domain localdomain' > /etc/resolv.conf
   echo 'search localdomain' >> /etc/resolv.conf
-  echo 'nameserver 127.0.0.1' >> /etc/resolv.conf
+  echo "nameserver $WIFI_STATIC_IP_ADDRESS" >> /etc/resolv.conf
 
   if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
       echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
@@ -7070,24 +7070,16 @@ function route_outgoing_traffic_through_tor {
       echo 'TransPort 9040' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "TransListenAddress 127.0.0.1" /etc/tor/torrc; then
-      echo 'TransListenAddress 127.0.0.1' >> /etc/tor/torrc
-  fi
-
-  if ! grep -q "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
-      echo "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
+  if ! grep -q "TransListenAddress $WIFI_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+      echo "TransListenAddress $WIFI_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
 
   if ! grep -q "DNSPort" /etc/tor/torrc; then
       echo 'DNSPort 53' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "DNSListenAddress 127.0.0.1" /etc/tor/torrc; then
-      echo 'DNSListenAddress 127.0.0.1' >> /etc/tor/torrc
-  fi
-
-  if ! grep -q "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
-      echo "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
+  if ! grep -q "DNSListenAddress $WIFI_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+      echo "DNSListenAddress $WIFI_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
 
   echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
@@ -7269,6 +7261,8 @@ function enable_wifi_hotspot {
       echo "    network $WIFI_SUBNET" >> /etc/network/interfaces
       echo "    gateway $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
       echo "    dns-nameservers $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
+      echo "    up iptables -t nat -I POSTROUTING -s $WIFI_SUBNET/24 -j MASQUERADE" >> /etc/network/interfaces
+      echo "    down iptables -t nat -D POSTROUTING -s $WIFI_SUBNET/24 -j MASQUERADE" >> /etc/network/interfaces
   fi
 
   if ! grep -q '#option domain-name "example.org";' /etc/network/interfaces; then
