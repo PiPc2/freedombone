@@ -7015,11 +7015,6 @@ function route_outgoing_traffic_through_tor {
       /sbin/sysctl -p
   fi
 
-  echo 'domain localdomain' > /etc/resolv.conf
-  echo 'search localdomain' >> /etc/resolv.conf
-  echo "nameserver localhost" >> /etc/resolv.conf
-
-
   if ! grep -q 'Log notice file /var/log/tor/notices.log' /etc/tor/torrc; then
       echo 'Log notice file /var/log/tor/notices.log' >> /etc/tor/torrc
   fi
