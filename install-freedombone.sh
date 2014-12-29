@@ -7006,6 +7006,13 @@ function route_outgoing_traffic_through_tor {
   iptables -t nat -F
   iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --dport $SSH_PORT -j REDIRECT --to-ports $SSH_PORT
   iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p udp --dport 53 -j REDIRECT --to-ports 53
+
+  # allow clearnet access for hosts in $_non_tor
+  NON_TOR="192.168.1.0/24 192.168.0.0/24 192.168.2.0/24 192.168.10.0/24 192.168.4.0/24"
+  for _clearnet in $NON_TOR 127.0.0.0/9 127.128.0.0/10; do
+      iptables -t nat -A PREROUTING -d $_clearnet -j RETURN
+  done
+
   iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --syn -j REDIRECT --to-ports 9040
 
   save_firewall_settings
