@@ -4199,7 +4199,7 @@ function email_client {
   echo 'macro pager H "<copy-message>=.learn-ham<enter>" "copy to learn-ham"' >> /etc/Muttrc
   echo '' >> /etc/Muttrc
   echo '# set up the sidebar' >> /etc/Muttrc
-  echo 'set sidebar_width=12' >> /etc/Muttrc
+  echo 'set sidebar_width=20' >> /etc/Muttrc
   echo 'set sidebar_visible=yes' >> /etc/Muttrc
   echo "set sidebar_delim='|'" >> /etc/Muttrc
   echo 'set sidebar_sort=yes' >> /etc/Muttrc
