@@ -4388,6 +4388,37 @@ function email_client {
   echo 'email_client' >> $COMPLETION_FILE
 }
 
+function email_archiving {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
+      return
+  fi
+  if grep -Fxq "email_archiving" $COMPLETION_FILE; then
+      return
+  fi
+
+  if [ ! -d $INSTALL_DIR ]; then
+      mkdir $INSTALL_DIR
+  fi
+  cd $INSTALL_DIR
+  git clone https://github.com/bashrc/cleanup-maildir
+  cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
+  echo '#!/bin/bash' > /etc/cron.daily/archivemail
+  echo "MUTTRC=/home/$MY_USERNAME/.muttrc" >> /etc/cron.daily/archivemail
+  echo "python /usr/bin/cleanup-maildir --archive-folder='archive' --maildir-root='/home/$MY_USERNAME/Maildir' archive ''" >> /etc/cron.daily/archivemail
+  echo 'if [ -f $MUTTRC ]; then' >> /usr/bin/addmailinglist
+  echo '  MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/addmailinglist
+  echo '  BACKUP_DIRECTORY=archive.$(date +"%Y")' >> /usr/bin/addmailinglist
+  echo '  if [[ $MUTT_MAILBOXES != *$BACKUP_DIRECTORY* ]]; then' >> /usr/bin/addmailinglist
+  echo '    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$BACKUP_DIRECTORY|g" $MUTTRC' >> /usr/bin/addmailinglist
+  echo '    chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/addmailinglist
+  echo '  fi' >> /usr/bin/addmailinglist
+  echo 'fi' >> /usr/bin/addmailinglist
+  echo 'exit 0' >> /etc/cron.daily/archivemail
+  chmod +x /etc/cron.daily/archivemail
+
+  echo 'email_archiving' >> $COMPLETION_FILE
+}
+
 function folders_for_mailing_lists {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
       return
@@ -7412,6 +7443,7 @@ configure_gpg
 encrypt_incoming_email
 encrypt_outgoing_email
 email_client
+email_archiving
 email_from_address
 configure_firewall_for_email
 folders_for_mailing_lists
