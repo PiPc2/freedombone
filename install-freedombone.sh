@@ -4289,6 +4289,7 @@ function email_archiving {
   echo '#!/bin/bash' > /etc/cron.daily/archivemail
   echo "MUTTRC=/home/$MY_USERNAME/.muttrc" >> /etc/cron.daily/archivemail
   echo "python /usr/bin/cleanup-maildir --archive-folder='archive' --maildir-root='/home/$MY_USERNAME/Maildir' archive ''" >> /etc/cron.daily/archivemail
+  echo "chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir/archive-*" >> /etc/cron.daily/archivemail
   echo 'if [ -f $MUTTRC ]; then' >> /etc/cron.daily/archivemail
   echo '  MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /etc/cron.daily/archivemail
   echo '  BACKUP_DIRECTORY=archive-$(date +"%Y")' >> /etc/cron.daily/archivemail
