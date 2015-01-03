@@ -100,7 +100,6 @@ VARIANT_NONMAILBOX="nonmailbox"
 VARIANT_SOCIAL="social"
 VARIANT_MEDIA="media"
 VARIANT_TOR_DONGLE="tordongle"
-VARIANT_TOR_WIFI="torwifi"
 
 # An optional configuration file which overrides some of these variables
 CONFIGURATION_FILE="freedombone.cfg"
@@ -303,46 +302,6 @@ DATABASE_PASSWORD_FILE=/root/dbpass
 # log file where details of remote backups are stored
 REMOTE_BACKUPS_LOG=/var/log/remotebackups.log
 
-# Whether to enable wifi (on the BBB via USB)
-ENABLE_WIFI="no"
-
-# Whether to enable wifi hotspot (on the BBB via USB)
-ENABLE_WIFI_HOTSPOT="no"
-
-# ESSID for wifi
-WIFI_ESSID=
-
-# Optional wifi password
-WIFI_PASSWORD=
-
-# Wifi interface
-WIFI_INTERFACE="wlan0"
-
-# Whether to always force there to exist a wifi password
-WIFI_FORCE_PASSWORD="yes"
-
-# Channel number for wifi hotspot
-WIFI_HOTSPOT_CHANNEL=7
-
-# Mode such as "g" or "n"
-WIFI_HOTSPOT_MODE="g"
-
-# Static IP address for wifi hotspot
-WIFI_STATIC_IP_ADDRESS="192.168.4.1"
-
-# Subnet for wifi hotspot
-WIFI_SUBNET="192.168.4.0"
-
-# DHCP range for wifi hotspot
-WIFI_IP_RANGE_START="192.168.4.10"
-WIFI_IP_RANGE_END="192.168.4.20"
-
-# Broadcast address for wifi hotspot
-WIFI_BROADCAST_ADDRESS="192.168.4.255"
-
-# space separated list of DNS servers for wifi hotspot
-WIFI_DNS_SERVERS="213.73.91.35 85.214.20.141"
-
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
@@ -386,40 +345,15 @@ function argument_checks {
       exit 2
   fi
   if [ ! $MY_USERNAME ]; then
-      if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" || $DOMAIN_NAME == "tor-hotspot" || $DOMAIN_NAME == "torhotspot"  || $DOMAIN_NAME == "tor-access-point" || $DOMAIN_NAME == "tor" || $DOMAIN_NAME == "tor-dongle" || $DOMAIN_NAME == "tordongle" ]]; then
-          if [ -d /home/tor ]; then
-              MY_USERNAME="tor"
-          fi
-          if [ -d /home/toruser ]; then
-              MY_USERNAME="toruser"
-          fi
-          if [ ! $MY_USERNAME ]; then
-              show_help
-              exit 3
-          fi
-      else
-          show_help
-          exit 3
-      fi
+      show_help
+      exit 3
   fi
   if [ ! $FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $DOMAIN_NAME == "tor-wifi" || $DOMAIN_NAME == "torwifi" || $DOMAIN_NAME == "tor-hotspot" || $DOMAIN_NAME == "torhotspot"  || $DOMAIN_NAME == "tor-access-point" ]]; then
-          DOMAIN_NAME="tor-wifi"
-          SYSTEM_TYPE=$VARIANT_TOR_WIFI
-          ROUTE_THROUGH_TOR="yes"
-          ENABLE_WIFI_HOTSPOT="yes"
-      fi
-      if [[ $DOMAIN_NAME == "tor" || $DOMAIN_NAME == "tor-dongle" || $DOMAIN_NAME == "tordongle" ]]; then
-          DOMAIN_NAME="tor-dongle"
-          SYSTEM_TYPE=$VARIANT_TOR_DONGLE
-      fi
-      if [[ $SYSTEM_TYPE != $VARIANT_TOR_DONGLE && $SYSTEM_TYPE != $VARIANT_TOR_WIFI ]]; then
-          show_help
-          exit 4
-      fi
+      show_help
+      exit 4
   fi
   if [ $SYSTEM_TYPE ]; then
-      if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_NONMAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL && $SYSTEM_TYPE != $VARIANT_MEDIA && $SYSTEM_TYPE != $VARIANT_TOR_DONGLE && $SYSTEM_TYPE != $VARIANT_TOR_WIFI ]]; then
+      if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_NONMAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL && $SYSTEM_TYPE != $VARIANT_MEDIA && $SYSTEM_TYPE != $VARIANT_TOR_DONGLE ]]; then
           echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
           exit 30
       fi
@@ -437,45 +371,6 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
-          WIFI_STATIC_IP_ADDRESS=$(grep "WIFI_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_SUBNET" $CONFIGURATION_FILE; then
-          WIFI_SUBNET=$(grep "WIFI_SUBNET" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_BROADCAST_ADDRESS" $CONFIGURATION_FILE; then
-          WIFI_BROADCAST_ADDRESS=$(grep "WIFI_BROADCAST_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_DNS_SERVERS" $CONFIGURATION_FILE; then
-          WIFI_DNS_SERVERS=$(grep "WIFI_DNS_SERVERS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_IP_RANGE_START" $CONFIGURATION_FILE; then
-          WIFI_IP_RANGE_START=$(grep "WIFI_IP_RANGE_START" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_IP_RANGE_END" $CONFIGURATION_FILE; then
-          WIFI_IP_RANGE_END=$(grep "WIFI_IP_RANGE_END" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_INTERFACE" $CONFIGURATION_FILE; then
-          WIFI_INTERFACE=$(grep "WIFI_INTERFACE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE; then
-          WIFI_HOTSPOT_MODE=$(grep "WIFI_HOTSPOT_MODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE; then
-          WIFI_HOTSPOT_CHANNEL=$(grep "WIFI_HOTSPOT_CHANNEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "ENABLE_WIFI" $CONFIGURATION_FILE; then
-          ENABLE_WIFI=$(grep "ENABLE_WIFI" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "ENABLE_WIFI_HOTSPOT" $CONFIGURATION_FILE; then
-          ENABLE_WIFI_HOTSPOT=$(grep "ENABLE_WIFI_HOTSPOT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_PASSWORD" $CONFIGURATION_FILE; then
-          WIFI_PASSWORD=$(grep "WIFI_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-      fi
-      if grep -q "WIFI_ESSID" $CONFIGURATION_FILE; then
-          WIFI_ESSID=$(grep "WIFI_ESSID" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "BACKUP_CERTIFICATE" $CONFIGURATION_FILE; then
           BACKUP_CERTIFICATE=$(grep "BACKUP_CERTIFICATE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -603,7 +498,7 @@ function install_not_on_BBB {
   echo "    address $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/network/interfaces
   echo '    netmask 255.255.255.0' >> /etc/network/interfaces
   echo "    gateway $ROUTER_IP_ADDRESS" >> /etc/network/interfaces
-  echo "    dns-nameservers $WIFI_DNS_SERVERS" >> /etc/network/interfaces
+  echo '    dns-nameservers 213.73.91.35 85.214.20.141' >> /etc/network/interfaces
   echo '# Example to keep MAC address between reboots' >> /etc/network/interfaces
   echo '#hwaddress ether DE:AD:BE:EF:CA:FE' >> /etc/network/interfaces
   echo '' >> /etc/network/interfaces
@@ -2882,14 +2777,6 @@ function change_login_message {
       echo "            '  -' '     '--'   -' '   - - | - --'" >> /etc/motd
       echo "                                       ._.'      " >> /etc/motd
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
-
-      echo '      .---.              .  .   .  .      .-.     ' >> /etc/motd
-      echo '        |                 \  \ /  /   o   |    o  ' >> /etc/motd
-      echo '        |   .-. .--.       \  \  /    .  -|-   .  ' >> /etc/motd
-      echo '        |  (   )|           \/ \/     |   |    |  ' >> /etc/motd
-      echo "        '    -' '            ' '    -'  - '  -'  -" >> /etc/motd
-  fi
 
   echo '' >> /etc/motd
   echo '                  Freedom in the Cloud' >> /etc/motd
@@ -2903,7 +2790,7 @@ function search_for_attached_usb_drive {
   if grep -Fxq "search_for_attached_usb_drive" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if [ -b $USB_DRIVE ]; then
@@ -3248,13 +3135,11 @@ function random_number_generator {
       # no hardware random number generator is available
       # and use the second best option
       apt-get -y --force-yes install haveged
-      echo 'random_number_generator' >> $COMPLETION_FILE
       return
   fi
   if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
       # it is assumed that docker uses the random number
       # generator of the host system
-      echo 'random_number_generator' >> $COMPLETION_FILE
       return
   fi
   if [[ $USE_HWRNG == "yes" ]]; then
@@ -3263,7 +3148,6 @@ function random_number_generator {
   else
     apt-get -y --force-yes install haveged
   fi
-
   echo 'random_number_generator' >> $COMPLETION_FILE
 }
 
@@ -3519,7 +3403,7 @@ function configure_firewall_for_dlna {
       # docker does its own firewalling
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   iptables -A INPUT -i eth0 -p udp --dport 1900 -j ACCEPT
@@ -3646,7 +3530,7 @@ function configure_firewall_for_git {
 }
 
 function configure_firewall_for_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
@@ -3729,7 +3613,7 @@ function script_to_make_self_signed_certificates {
 }
 
 function configure_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "configure_email" $COMPLETION_FILE; then
@@ -3835,7 +3719,7 @@ function configure_email {
 }
 
 function create_procmail {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "create_procmail" $COMPLETION_FILE; then
@@ -3852,7 +3736,7 @@ function create_procmail {
 
 function spam_filtering {
   # NOTE: spamassassin installation currently doesn't work, sa-compile fails with a make error 23/09/2014
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "spam_filtering" $COMPLETION_FILE; then
@@ -3947,7 +3831,7 @@ function spam_filtering {
 }
 
 function configure_imap {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "configure_imap" $COMPLETION_FILE; then
@@ -4085,7 +3969,7 @@ function encrypt_incoming_email {
   # encrypts incoming mail using your GPG public key
   # so even if an attacker gains access to the data at rest they still need
   # to know your GPG key password to be able to read anything
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "encrypt_incoming_email" $COMPLETION_FILE; then
@@ -4116,7 +4000,7 @@ function encrypt_outgoing_email {
   # encrypts outgoing mail using your GPG public key
   # so even if an attacker gains access to the data at rest they still need
   # to know your GPG key password to be able to read sent mail
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "encrypt_outgoing_email" $COMPLETION_FILE; then
@@ -4143,7 +4027,7 @@ function encrypt_outgoing_email {
 }
 
 function encrypt_all_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "encrypt_all_email" $COMPLETION_FILE; then
@@ -4277,7 +4161,7 @@ function encrypt_all_email {
 }
 
 function email_client {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "email_client" $COMPLETION_FILE; then
@@ -4405,14 +4289,14 @@ function email_archiving {
   echo '#!/bin/bash' > /etc/cron.daily/archivemail
   echo "MUTTRC=/home/$MY_USERNAME/.muttrc" >> /etc/cron.daily/archivemail
   echo "python /usr/bin/cleanup-maildir --archive-folder='archive' --maildir-root='/home/$MY_USERNAME/Maildir' archive ''" >> /etc/cron.daily/archivemail
-  echo 'if [ -f $MUTTRC ]; then' >> /usr/bin/addmailinglist
-  echo '  MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /usr/bin/addmailinglist
-  echo '  BACKUP_DIRECTORY=archive.$(date +"%Y")' >> /usr/bin/addmailinglist
-  echo '  if [[ $MUTT_MAILBOXES != *$BACKUP_DIRECTORY* ]]; then' >> /usr/bin/addmailinglist
-  echo '    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$BACKUP_DIRECTORY|g" $MUTTRC' >> /usr/bin/addmailinglist
-  echo '    chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /usr/bin/addmailinglist
-  echo '  fi' >> /usr/bin/addmailinglist
-  echo 'fi' >> /usr/bin/addmailinglist
+  echo 'if [ -f $MUTTRC ]; then' >> /etc/cron.daily/archivemail
+  echo '  MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /etc/cron.daily/archivemail
+  echo '  BACKUP_DIRECTORY=archive.$(date +"%Y")' >> /etc/cron.daily/archivemail
+  echo '  if [[ $MUTT_MAILBOXES != *$BACKUP_DIRECTORY* ]]; then' >> /etc/cron.daily/archivemail
+  echo '    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$BACKUP_DIRECTORY|g" $MUTTRC' >> /etc/cron.daily/archivemail
+  echo '    chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /etc/cron.daily/archivemail
+  echo '  fi' >> /etc/cron.daily/archivemail
+  echo 'fi' >> /etc/cron.daily/archivemail
   echo 'exit 0' >> /etc/cron.daily/archivemail
   chmod +x /etc/cron.daily/archivemail
 
@@ -4420,7 +4304,7 @@ function email_archiving {
 }
 
 function folders_for_mailing_lists {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "folders_for_mailing_lists" $COMPLETION_FILE; then
@@ -4498,7 +4382,7 @@ function email_from_address {
 }
 
 function folders_for_email_addresses {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "folders_for_email_addresses" $COMPLETION_FILE; then
@@ -4570,7 +4454,7 @@ function dynamic_dns_freedns {
 }
 
 function create_public_mailing_list {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "create_public_mailing_list" $COMPLETION_FILE; then
@@ -4666,7 +4550,7 @@ function create_public_mailing_list {
 }
 
 function create_private_mailing_list {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   # This installation doesn't work, results in ruby errors
@@ -4727,7 +4611,7 @@ function create_private_mailing_list {
 }
 
 function import_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   EMAIL_COMPLETE_MSG='  *** Freedombone mailbox installation is complete ***'
@@ -4778,7 +4662,7 @@ function import_email {
 }
 
 function install_web_server {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_web_server" $COMPLETION_FILE; then
@@ -4911,11 +4795,6 @@ function install_mariadb {
   if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
       return
   fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_mariadb was called before the random number generator was initialised'
-      exit 853
-  fi
-
   apt-get -y --force-yes install python-software-properties debconf-utils
   apt-key adv --recv-keys --keyserver keyserver.ubuntu.com 0xcbcb082a1bb943db
   add-apt-repository 'deb http://mariadb.biz.net.id//repo/10.1/debian sid main'
@@ -5051,7 +4930,7 @@ function repair_databases_script {
 }
 
 function install_owncloud_music_app {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
@@ -5077,12 +4956,8 @@ function install_owncloud_music_app {
 }
 
 function install_owncloud {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_owncloud was called before the random number generator was initialised'
-      exit 853
   fi
   OWNCLOUD_COMPLETION_MSG1=" *** Freedombone $SYSTEM_TYPE is now installed ***"
   OWNCLOUD_COMPLETION_MSG2="Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
@@ -5330,12 +5205,8 @@ quit" > $INSTALL_DIR/batch.sql
 }
 
 function install_xmpp {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_xmpp was called before the random number generator was initialised'
-      exit 853
   fi
   if grep -Fxq "install_xmpp" $COMPLETION_FILE; then
       return
@@ -5432,12 +5303,8 @@ function install_watchdog_script {
 }
 
 function install_irc_server {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_irc_server was called before the random number generator was initialised'
-      exit 853
   fi
   if grep -Fxq "install_irc_server" $COMPLETION_FILE; then
       return
@@ -5516,12 +5383,8 @@ function get_wiki_admin_password {
 }
 
 function install_wiki {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_wiki was called before the random number generator was initialised'
-      exit 853
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
       return
@@ -5808,12 +5671,8 @@ function get_blog_admin_password {
 }
 
 function install_blog {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_blog was called before the random number generator was initialised'
-      exit 853
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
       return
@@ -6060,12 +5919,8 @@ function install_gnu_social {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_gnu_social was called before the random number generator was initialised'
-      exit 853
   fi
   if [ ! $MICROBLOG_DOMAIN_NAME ]; then
       return
@@ -6313,12 +6168,8 @@ function install_redmatrix {
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'install_redmatrix was called before the random number generator was initialised'
-      exit 853
   fi
   # if this is exclusively a social setup
   if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" ]]; then
@@ -6633,7 +6484,7 @@ function install_dlna_server {
   if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   apt-get -y --force-yes install minidlna
@@ -6685,7 +6536,7 @@ function install_mediagoblin {
   if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" || $SYSTEM_TYPE == "$VARIANT_TOR_WIFI" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
   fi
   # if this is exclusively a writer setup
@@ -7024,27 +6875,46 @@ function route_outgoing_traffic_through_tor {
   fi
   apt-get -y --force-yes install tor tor-arm
 
-  # Ensure that redirects are possible
-  sed -i "s/net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.all.send_redirects = 0/net.ipv4.conf.all.send_redirects = 1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.all.accept_source_route = 0/net.ipv4.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.default.rp_filter=1/#net.ipv4.conf.default.rp_filter=1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv4.conf.all.rp_filter=1/#net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
-  sed -i 's/net.ipv4.icmp_echo_ignore_all = 1/net.ipv4.icmp_echo_ignore_all = 0/g' /etc/sysctl.conf
-  sed -i "s/net.ipv4.ip_forward=0/net.ipv4.ip_forward=1/g" /etc/sysctl.conf
+  ### set variables
+  # Destinations you don't want routed through Tor
+  _non_tor="192.168.1.0/24 192.168.0.0/24"
 
-  iptables -F
-  iptables -t nat -F
-  iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --dport $SSH_PORT -j REDIRECT --to-ports $SSH_PORT
-  iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p udp --dport 53 -j REDIRECT --to-ports 53
+  # The user that Tor runs as
+  _tor_uid="debian-tor"
 
-  # allow clearnet access for hosts in $_non_tor
-  NON_TOR="192.168.1.0/24 192.168.0.0/24 192.168.2.0/24 192.168.10.0/24 192.168.4.0/24"
-  for _clearnet in $NON_TOR 127.0.0.0/9 127.128.0.0/10; do
-      iptables -t nat -A PREROUTING -d $_clearnet -j RETURN
+  # Tor's TransPort
+  _trans_port="9040"
+
+  # Your internal interface
+  _int_if="eth0"
+
+  ### Set iptables *nat
+  iptables -t nat -A OUTPUT -o lo -j RETURN
+  iptables -t nat -A OUTPUT -m owner --uid-owner $_tor_uid -j RETURN
+  iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 53
+
+  # Allow clearnet access for hosts in $_non_tor
+  for _clearnet in $_non_tor; do
+      iptables -t nat -A OUTPUT -d $_clearnet -j RETURN
+      iptables -t nat -A PREROUTING -i $_int_if -d $_clearnet -j RETURN
   done
 
-  iptables -t nat -A PREROUTING -i $WIFI_INTERFACE -p tcp --syn -j REDIRECT --to-ports 9040
+  # Redirect all other pre-routing and output to Tor
+  iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports $_trans_port
+  iptables -t nat -A PREROUTING -i $_int_if -p udp --dport 53 -j REDIRECT --to-ports 53
+  iptables -t nat -A PREROUTING -i $_int_if -p tcp --syn -j REDIRECT --to-ports $_trans_port
+
+  ### set iptables *filter
+  iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+  # Allow clearnet access for hosts in $_non_tor
+  for _clearnet in $_non_tor 127.0.0.0/8; do
+      iptables -A OUTPUT -d $_clearnet -j ACCEPT
+  done
+
+  # Allow only Tor output
+  iptables -A OUTPUT -m owner --uid-owner $_tor_uid -j ACCEPT
+  iptables -A OUTPUT -j REJECT
 
   save_firewall_settings
 
@@ -7053,17 +6923,12 @@ function route_outgoing_traffic_through_tor {
       /sbin/sysctl -p
   fi
 
-  if ! grep -q 'Log notice file /var/log/tor/notices.log' /etc/tor/torrc; then
-      echo 'Log notice file /var/log/tor/notices.log' >> /etc/tor/torrc
-  fi
-  sed -i 's|#Log notice file /var/log/tor/notices.log|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
+  echo 'domain localdomain' > /etc/resolv.conf
+  echo 'search localdomain' >> /etc/resolv.conf
+  echo 'nameserver 127.0.0.1' >> /etc/resolv.conf
 
   if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
       echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
-  fi
-
-  if ! grep -q "AutomapHostsSuffixes .onion,.exit" /etc/tor/torrc; then
-      echo 'AutomapHostsSuffixes .onion,.exit' >> /etc/tor/torrc
   fi
 
   if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
@@ -7074,50 +6939,27 @@ function route_outgoing_traffic_through_tor {
       echo 'TransPort 9040' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "TransListenAddress localhost" /etc/tor/torrc; then
-      echo "TransListenAddress localhost" >> /etc/tor/torrc
+  if ! grep -q "TransListenAddress 127.0.0.1" /etc/tor/torrc; then
+      echo 'TransListenAddress 127.0.0.1' >> /etc/tor/torrc
+  fi
+
+  if ! grep -q "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+      echo "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
 
   if ! grep -q "DNSPort" /etc/tor/torrc; then
       echo 'DNSPort 53' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "DNSListenAddress localhost" /etc/tor/torrc; then
-      echo "DNSListenAddress localhost" >> /etc/tor/torrc
+  if ! grep -q "DNSListenAddress 127.0.0.1" /etc/tor/torrc; then
+      echo 'DNSListenAddress 127.0.0.1' >> /etc/tor/torrc
   fi
 
-  if ! grep -q "ClientOnly" /etc/tor/torrc; then
-      echo "ClientOnly" >> /etc/tor/torrc
+  if ! grep -q "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+      echo "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
   fi
-
-  sed -i 's/#RunAsDaemon 1/RunAsDaemon 1/g' /etc/tor/torrc
-
-  touch /var/log/tor/notices.log
-  chown debian-tor /var/log/tor/notices.log
-  chmod 644 /var/log/tor/notices.log
 
   echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
-
-  if [[ $ENABLE_WIFI_HOTSPOT == "yes" ]]; then
-      if ! grep -q 'check.torproject.org' /home/$MY_USERNAME/README; then
-          echo '' >> /home/$MY_USERNAME/README
-          echo '' >> /home/$MY_USERNAME/README
-          echo 'To connect to your own Tor gateway, set your web browser or computer to connect to:' >> /home/$MY_USERNAME/README
-          echo '  Proxy type: SOCKSv5' >> /home/$MY_USERNAME/README
-          echo '  Port:       9050' >> /home/$MY_USERNAME/README
-          echo '' >> /home/$MY_USERNAME/README
-          echo '  Transparent proxy port: 9040' >> /home/$MY_USERNAME/README
-          echo '' >> /home/$MY_USERNAME/README
-          echo 'Before doing anything, verify that you are using the Tor network by visiting:' >> /home/$MY_USERNAME/README
-          echo '' >> /home/$MY_USERNAME/README
-          echo '  https://check.torproject.org/' >> /home/$MY_USERNAME/README
-      fi
-      echo ''
-      echo '  *** Freedombone Tor Wifi access point installation is complete. Rebooting... ***'
-      echo ''
-      cat /home/$MY_USERNAME/README
-      reboot
-  fi
 }
 
 # A command to create a git repository for a project
@@ -7193,192 +7035,6 @@ function backup_github_projects {
   echo 'backup_github_projects' >> $COMPLETION_FILE
 }
 
-function get_wifi_essid {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "ESSID" /home/$MY_USERNAME/README; then
-          if [ ! $WIFI_ESSID ]; then
-              WIFI_ESSID=$(cat /home/$MY_USERNAME/README | grep "ESSID" | awk -F ':' '{print $2}' | sed 's/^ *//')
-          fi
-      fi
-  fi
-}
-
-function get_wifi_password {
-  if [ -f /home/$MY_USERNAME/README ]; then
-      if grep -q "Wifi password" /home/$MY_USERNAME/README; then
-          if [ ! $WIFI_PASSWORD ]; then
-              WIFI_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Wifi password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-          fi
-      fi
-  fi
-}
-
-function enable_wifi_hotspot {
-  if grep -Fxq "enable_wifi_hotspot" $COMPLETION_FILE; then
-      return
-  fi
-  if [[ $ENABLE_WIFI_HOTSPOT != "yes" ]]; then
-      return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'enable_wifi_hotspot was called before the random number generator was initialised'
-      exit 853
-  fi
-
-  get_wifi_essid
-  get_wifi_password
-
-  # Create an ESSID if one doesn't exist
-  if [ ! $WIFI_ESSID ]; then
-      TEMP_WIFI_ESSID=$(openssl rand -base64 8)
-      WIFI_ESSID="Freedom"${TEMP_WIFI_ESSID:0:3}
-  fi
-
-  # Add a password
-  if [[ $WIFI_FORCE_PASSWORD == "yes" ]]; then
-      if [ ! $WIFI_PASSWORD ]; then
-          TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-          WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
-      fi
-  fi
-
-  apt-get -y install hostapd isc-dhcp-server
-
-  if [ ! -f /etc/default/hostapd ]; then
-      echo 'Unable to find /etc/default/hostapd. hostapd may not have installed correctly'
-      exit 490
-  fi
-
-  #mv /usr/share/dbus-1/system-services/fi.epitest.hostap.WPASupplicant.service ~/
-
-  sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
-
-  echo "interface=$WIFI_INTERFACE" > /etc/hostapd/hostapd.conf
-  echo "ssid=$WIFI_ESSID" >> /etc/hostapd/hostapd.conf
-  echo "hw_mode=$WIFI_HOTSPOT_MODE" >> /etc/hostapd/hostapd.conf
-  echo "channel=${WIFI_HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
-  echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
-  echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
-  echo 'ignore_broadcast_ssid=0' >> /etc/hostapd/hostapd.conf
-  echo 'wpa=2' >> /etc/hostapd/hostapd.conf
-  echo "wpa_passphrase=$WIFI_PASSWORD" >> /etc/hostapd/hostapd.conf
-  echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
-  echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
-  echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
-
-  if ! grep -q "Wifi hotspot" /etc/network/interfaces; then
-      echo '' >> /etc/network/interfaces
-      echo '# Wifi hotspot' >> /etc/network/interfaces
-      echo "iface $WIFI_INTERFACE inet static" >> /etc/network/interfaces
-      echo "    address $WIFI_STATIC_IP_ADDRESS" >> /etc/network/interfaces
-      echo '    netmask 255.255.255.0' >> /etc/network/interfaces
-  fi
-
-  if ! grep -q '#option domain-name "example.org";' /etc/network/interfaces; then
-      sed -i 's/option domain-name "example.org";/#option domain-name "example.org";/g' /etc/dhcp/dhcpd.conf
-  fi
-  if ! grep -q '#option domain-name-servers ns1.example.org, ns2.example.org;' /etc/network/interfaces; then
-      sed -i 's/option domain-name-servers ns1.example.org, ns2.example.org;/#option domain-name-servers ns1.example.org, ns2.example.org;/g' /etc/dhcp/dhcpd.conf
-  fi
-  sed -i 's/#authoritative;/authoritative;/g' /etc/dhcp/dhcpd.conf
-
-  if ! grep -q "subnet $WIFI_SUBNET netmask 255.255.255.0" /etc/dhcp/dhcpd.conf; then
-      echo "subnet $WIFI_SUBNET netmask 255.255.255.0 {" >> /etc/dhcp/dhcpd.conf
-      echo "    range $WIFI_IP_RANGE_START $WIFI_IP_RANGE_END;" >> /etc/dhcp/dhcpd.conf
-      echo "    option broadcast-address $WIFI_BROADCAST_ADDRESS;" >> /etc/dhcp/dhcpd.conf
-      echo "    option routers $ROUTER_IP_ADDRESS;" >> /etc/dhcp/dhcpd.conf
-      echo '    default-lease-time 600;' >> /etc/dhcp/dhcpd.conf
-      echo '    max-lease-time 7200;' >> /etc/dhcp/dhcpd.conf
-      echo '    option domain-name "local";' >> /etc/dhcp/dhcpd.conf
-      echo "    option domain-name-servers $WIFI_DNS_SERVERS;" >> /etc/dhcp/dhcpd.conf
-      echo '}' >> /etc/dhcp/dhcpd.conf
-  fi
-
-  sed -i "s/INTERFACES=.*/INTERFACES='$WIFI_INTERFACE'/g" /etc/default/isc-dhcp-server
-
-  # Add details to the README file
-  if ! grep -q "Wifi Hotspot" /home/$MY_USERNAME/README; then
-      echo '' >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
-      echo 'Wifi Hotspot' >> /home/$MY_USERNAME/README
-      echo '============' >> /home/$MY_USERNAME/README
-      echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
-      if [ $WIFI_PASSWORD ]; then
-          echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
-      else
-          echo 'No password' >> /home/$MY_USERNAME/README
-      fi
-      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-  fi
-
-  echo 'enable_wifi_hotspot' >> $COMPLETION_FILE
-}
-
-function enable_wifi {
-  if grep -Fxq "enable_wifi" $COMPLETION_FILE; then
-      return
-  fi
-  if [[ $ENABLE_WIFI != "yes" ]]; then
-      return
-  fi
-  if ! grep -Fxq "random_number_generator" $COMPLETION_FILE; then
-      echo 'enable_wifi was called before the random number generator was initialised'
-      exit 853
-  fi
-
-  sed -i 's/#auto wlan0/auto wlan0/g' /etc/network/interfaces
-  sed -i 's/#iface wlan0 inet dhcp/iface wlan0 inet dhcp/g' /etc/network/interfaces
-  sed -i 's/#    wpa-ssid "essid"/    wpa-ssid "essid"/g' /etc/network/interfaces
-
-  get_wifi_essid
-  get_wifi_password
-
-  # Create an ESSID if one doesn't exist
-  if [ ! $WIFI_ESSID ]; then
-      TEMP_WIFI_ESSID=$(openssl rand -base64 8)
-      WIFI_ESSID="Freedom"${TEMP_WIFI_ESSID:0:3}
-  fi
-  sed -i "s/essid/$WIFI_ESSID/g" /etc/network/interfaces
-  # Add a password
-  if [[ $WIFI_FORCE_PASSWORD == "yes" ]]; then
-      if [ ! $WIFI_PASSWORD ]; then
-          TEMP_WIFI_PASSWORD=$(openssl rand -base64 8)
-          WIFI_PASSWORD=${TEMP_WIFI_PASSWORD:0:8}
-      fi
-  fi
-
-  # Add a password
-  if [ $WIFI_PASSWORD ]; then
-      sed -i 's/#    wpa-psk  "password"/    wpa-psk  "wifipassword"/g' /etc/network/interfaces
-      sed -i "s/wifipassword/$WIFI_PASSWORD/g" /etc/network/interfaces
-  fi
-
-  # Add details to the README file
-  if [[ ENABLE_WIFI != "yes" ]]; then
-      if ! grep -q "Wifi Settings" /home/$MY_USERNAME/README; then
-          echo '' >> /home/$MY_USERNAME/README
-          echo '' >> /home/$MY_USERNAME/README
-          echo 'Wifi Settings' >> /home/$MY_USERNAME/README
-          echo '=============' >> /home/$MY_USERNAME/README
-          echo "ESSID: $WIFI_ESSID" >> /home/$MY_USERNAME/README
-          if [ $WIFI_PASSWORD ]; then
-              echo "Wifi password: $WIFI_PASSWORD" >> /home/$MY_USERNAME/README
-          else
-              echo 'No password' >> /home/$MY_USERNAME/README
-          fi
-          chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-      fi
-  fi
-
-  service networking restart
-  if [ ! "$?" = "0" ]; then
-      echo 'Unable to restart networking'
-      exit 855
-  fi
-
-  echo 'enable_wifi' >> $COMPLETION_FILE
-}
-
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -7431,8 +7087,6 @@ search_for_attached_usb_drive
 regenerate_ssh_keys
 script_to_make_self_signed_certificates
 create_upgrade_script
-enable_wifi_hotspot
-enable_wifi
 route_outgoing_traffic_through_tor
 install_watchdog_script
 configure_email
