@@ -4291,7 +4291,7 @@ function email_archiving {
   echo "python /usr/bin/cleanup-maildir --archive-folder='archive' --maildir-root='/home/$MY_USERNAME/Maildir' archive ''" >> /etc/cron.daily/archivemail
   echo 'if [ -f $MUTTRC ]; then' >> /etc/cron.daily/archivemail
   echo '  MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)' >> /etc/cron.daily/archivemail
-  echo '  BACKUP_DIRECTORY=archive.$(date +"%Y")' >> /etc/cron.daily/archivemail
+  echo '  BACKUP_DIRECTORY=archive-$(date +"%Y")' >> /etc/cron.daily/archivemail
   echo '  if [[ $MUTT_MAILBOXES != *$BACKUP_DIRECTORY* ]]; then' >> /etc/cron.daily/archivemail
   echo '    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$BACKUP_DIRECTORY|g" $MUTTRC' >> /etc/cron.daily/archivemail
   echo '    chown $MYUSERNAME:$MYUSERNAME $MUTTRC' >> /etc/cron.daily/archivemail
