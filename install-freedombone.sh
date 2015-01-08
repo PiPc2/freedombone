@@ -3876,22 +3876,22 @@ function configure_imap {
   chown root:dovecot /etc/ssl/certs/dovecot.*
   chown root:dovecot /etc/ssl/private/dovecot.*
 
-  sed -i 's|#ssl = yes|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
-  sed -i 's|ssl_cert = </etc/dovecot/dovecot.pem|ssl_cert = </etc/ssl/certs/dovecot.crt|g' /etc/dovecot/conf.d/10-ssl.conf
-  sed -i 's|ssl_key = </etc/dovecot/private/dovecot.pem|ssl_key = </etc/ssl/private/dovecot.key|g' /etc/dovecot/conf.d/10-ssl.conf
-  sed -i 's|#ssl_dh_parameters_length = 1024|ssl_dh_parameters_length = 1024|g' /etc/dovecot/conf.d/10-ssl.conf
-  sed -i 's/#ssl_prefer_server_ciphers = no/ssl_prefer_server_ciphers = yes/g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|#ssl =.*|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|ssl_cert =.*|ssl_cert = </etc/ssl/certs/dovecot.crt|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|ssl_key =.*|ssl_key = </etc/ssl/private/dovecot.key|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|#ssl_dh_parameters_length.*|ssl_dh_parameters_length = 1024|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's/#ssl_prefer_server_ciphers.*/ssl_prefer_server_ciphers = yes/g' /etc/dovecot/conf.d/10-ssl.conf
   echo "ssl_cipher_list = '$SSL_CIPHERS'" >> /etc/dovecot/conf.d/10-ssl.conf
 
-  sed -i 's/#process_limit = 1024/process_limit = 5/g' /etc/dovecot/conf.d/10-master.conf
-  sed -i 's/#default_client_limit = 1000/default_client_limit = 5/g' /etc/dovecot/conf.d/10-master.conf
+  sed -i 's/#process_limit =.*/process_limit = 5/g' /etc/dovecot/conf.d/10-master.conf
+  sed -i 's/#default_client_limit.*/default_client_limit = 5/g' /etc/dovecot/conf.d/10-master.conf
 
-  sed -i 's/#auth_verbose = no/auth_verbose = yes/g' /etc/dovecot/conf.d/10-logging.conf
+  sed -i 's/#auth_verbose.*/auth_verbose = yes/g' /etc/dovecot/conf.d/10-logging.conf
 
-  sed -i 's/#listen = *, ::/listen = */g' /etc/dovecot/dovecot.conf
-  sed -i 's/#disable_plaintext_auth = yes/disable_plaintext_auth = no/g' /etc/dovecot/conf.d/10-auth.conf
-  sed -i 's/auth_mechanisms = plain/auth_mechanisms = plain login/g' /etc/dovecot/conf.d/10-auth.conf
-  sed -i 's|mail_location = mbox:~/mail:INBOX=/var/mail/%u|mail_location = maildir:~/Maildir:LAYOUT=fs|g' /etc/dovecot/conf.d/10-mail.conf
+  sed -i 's/#listen =.*/listen = */g' /etc/dovecot/dovecot.conf
+  sed -i 's/#disable_plaintext_auth =.*/disable_plaintext_auth = no/g' /etc/dovecot/conf.d/10-auth.conf
+  sed -i 's/auth_mechanisms =.*/auth_mechanisms = plain login/g' /etc/dovecot/conf.d/10-auth.conf
+  sed -i 's|mail_location =.*|mail_location = maildir:~/Maildir:LAYOUT=fs|g' /etc/dovecot/conf.d/10-mail.conf
   service dovecot restart
   echo 'configure_imap' >> $COMPLETION_FILE
 }
