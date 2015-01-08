@@ -268,6 +268,10 @@ SSH_CIPHERS="Ciphers aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,ae
 SSH_MACS="MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160"
 SSH_KEX="KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1"
 
+# xmpp ciphers and curve
+XMPP_CIPHERS='"EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA256:EECDH:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!IDEA:!ECDSA:kEDH:CAMELLIA128-SHA:AES128-SHA"'
+XMPP_ECC_CURVE='"secp384r1"'
+
 # the default email address
 MY_EMAIL_ADDRESS=$MY_USERNAME@$DOMAIN_NAME
 
@@ -5255,8 +5259,21 @@ function install_xmpp {
   sed -i 's|/etc/prosody/certs/example.com.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/conf.avail/xmpp.cfg.lua
   sed -i 's|/etc/prosody/certs/example.com.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/conf.avail/xmpp.cfg.lua
   if ! grep -q "xmpp.dhparam" /etc/prosody/conf.avail/xmpp.cfg.lua; then
-      sed -i '/certificate =/a\              dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/conf.avail/xmpp.cfg.lua
+      sed -i '/certificate =/a\        dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/conf.avail/xmpp.cfg.lua
   fi
+  if ! grep -q 'options = {"no_sslv2", "no_sslv3" }' /etc/prosody/conf.avail/xmpp.cfg.lua; then
+      sed -i '/certificate =/a\        options = {"no_sslv2", "no_sslv3" };' /etc/prosody/conf.avail/xmpp.cfg.lua
+  fi
+  if ! grep -q 'ciphers =' /etc/prosody/conf.avail/xmpp.cfg.lua; then
+      sed -i "/certificate =/a\        ciphers = $XMPP_CIPHERS;" /etc/prosody/conf.avail/xmpp.cfg.lua
+  fi
+  if ! grep -q 'depth = "1";' /etc/prosody/conf.avail/xmpp.cfg.lua; then
+      sed -i '/certificate =/a\        depth = "1";' /etc/prosody/conf.avail/xmpp.cfg.lua
+  fi
+  if ! grep -q 'curve =' /etc/prosody/conf.avail/xmpp.cfg.lua; then
+      sed -i "/certificate =/a\        curve = $XMPP_ECC_CURVE;" /etc/prosody/conf.avail/xmpp.cfg.lua
+  fi
+
   sed -i "s/example.com/$DOMAIN_NAME/g" /etc/prosody/conf.avail/xmpp.cfg.lua
   sed -i 's/enabled = false -- Remove this line to enable this host//g' /etc/prosody/conf.avail/xmpp.cfg.lua
 
@@ -5277,7 +5294,19 @@ function install_xmpp {
   sed -i 's|/etc/prosody/certs/localhost.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/prosody.cfg.lua
   sed -i 's|/etc/prosody/certs/localhost.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/prosody.cfg.lua
   if ! grep -q "xmpp.dhparam" /etc/prosody/prosody.cfg.lua; then
-      sed -i '/certificate =/a\      dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/prosody.cfg.lua
+      sed -i '/certificate =/a\    dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/prosody.cfg.lua
+  fi
+  if ! grep -q 'options = {"no_sslv2", "no_sslv3" }' /etc/prosody/prosody.cfg.lua; then
+      sed -i '/certificate =/a\    options = {"no_sslv2", "no_sslv3" };' /etc/prosody/prosody.cfg.lua
+  fi
+  if ! grep -q 'ciphers =' /etc/prosody/prosody.cfg.lua; then
+      sed -i "/certificate =/a\    ciphers = $XMPP_CIPHERS;" /etc/prosody/prosody.cfg.lua
+  fi
+  if ! grep -q 'depth = "1";' /etc/prosody/prosody.cfg.lua; then
+      sed -i '/certificate =/a\    depth = "1";' /etc/prosody/prosody.cfg.lua
+  fi
+  if ! grep -q 'curve =' /etc/prosody/prosody.cfg.lua; then
+      sed -i "/certificate =/a\    curve = $XMPP_ECC_CURVE;" /etc/prosody/prosody.cfg.lua
   fi
   sed -i 's/c2s_require_encryption = false/c2s_require_encryption = true/g' /etc/prosody/prosody.cfg.lua
   if ! grep -q "s2s_require_encryption" /etc/prosody/prosody.cfg.lua; then
