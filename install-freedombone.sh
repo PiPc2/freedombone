@@ -263,6 +263,11 @@ SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 # list of ciphers to use.  See bettercrypto.org recommendations
 SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA"
 
+# ssh ciphers
+SSH_CIPHERS="Ciphers aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes128-ctr"
+SSH_MACS="MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160"
+SSH_KEX="KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1"
+
 # the default email address
 MY_EMAIL_ADDRESS=$MY_USERNAME@$DOMAIN_NAME
 
@@ -3155,18 +3160,39 @@ function configure_ssh {
   if grep -Fxq "configure_ssh" $COMPLETION_FILE; then
       return
   fi
-  sed -i "s/Port 22/Port $SSH_PORT/g" /etc/ssh/sshd_config
-  sed -i 's/PermitRootLogin without-password/PermitRootLogin no/g' /etc/ssh/sshd_config
-  sed -i 's/X11Forwarding yes/X11Forwarding no/g' /etc/ssh/sshd_config
-  sed -i 's/ServerKeyBits 1024/ServerKeyBits 4096/g' /etc/ssh/sshd_config
-  sed -i 's/TCPKeepAlive yes/TCPKeepAlive no/g' /etc/ssh/sshd_config
+  sed -i "s/Port .*/Port $SSH_PORT/g" /etc/ssh/sshd_config
+  sed -i 's/PermitRootLogin.*/PermitRootLogin no/g' /etc/ssh/sshd_config
+  sed -i 's/X11Forwarding.*/X11Forwarding no/g' /etc/ssh/sshd_config
+  sed -i 's/ServerKeyBits.*/ServerKeyBits 4096/g' /etc/ssh/sshd_config
+  sed -i 's/TCPKeepAlive.*/TCPKeepAlive no/g' /etc/ssh/sshd_config
   sed -i 's|HostKey /etc/ssh/ssh_host_dsa_key|#HostKey /etc/ssh/ssh_host_dsa_key|g' /etc/ssh/sshd_config
   sed -i 's|HostKey /etc/ssh/ssh_host_ecdsa_key|#HostKey /etc/ssh/ssh_host_ecdsa_key|g' /etc/ssh/sshd_config
-  echo 'ClientAliveInterval 60' >> /etc/ssh/sshd_config
-  echo 'ClientAliveCountMax 3' >> /etc/ssh/sshd_config
-  echo 'Ciphers aes256-ctr,aes128-ctr' >> /etc/ssh/sshd_config
-  echo 'MACs hmac-sha2-512,hmac-sha2-256,hmac-ripemd160
-  KexAlgorithms diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1' >> /etc/ssh/sshd_config
+  if grep -q 'ClientAliveInterval' /etc/ssh/sshd_config; then
+      sed -i 's/ClientAliveInterval.*/ClientAliveInterval 60/g' /etc/ssh/sshd_config
+  else
+      echo 'ClientAliveInterval 60' >> /etc/ssh/sshd_config
+  fi
+  if grep -q 'ClientAliveCountMax' /etc/ssh/sshd_config; then
+      sed -i 's/ClientAliveCountMax.*/ClientAliveCountMax 3/g' /etc/ssh/sshd_config
+  else
+      echo 'ClientAliveCountMax 3' >> /etc/ssh/sshd_config
+  fi
+  if grep -q 'Ciphers' /etc/ssh/sshd_config; then
+      sed -i "s|Ciphers.*|Ciphers $SSH_CIPHERS|g" /etc/ssh/sshd_config
+  else
+      echo "Ciphers $SSH_CIPHERS" >> /etc/ssh/sshd_config
+  fi
+  if grep -q 'MACs' /etc/ssh/sshd_config; then
+      sed -i "s|MACs.*|MACs $SSH_MACS|g" /etc/ssh/sshd_config
+  else
+      echo "MACs $SSH_MACS" >> /etc/ssh/sshd_config
+  fi
+  if grep -q 'KexAlgorithms' /etc/ssh/sshd_config; then
+      sed -i "s|KexAlgorithms.*|KexAlgorithms $SSH_KEX|g" /etc/ssh/sshd_config
+  else
+      echo "KexAlgorithms $SSH_KEX" >> /etc/ssh/sshd_config
+  fi
+
   apt-get -y --force-yes install fail2ban
   echo 'configure_ssh' >> $COMPLETION_FILE
   # Don't reboot if installing within docker
