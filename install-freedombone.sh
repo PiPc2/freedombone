@@ -816,7 +816,7 @@ function install_cjdns {
       echo '# Mesh network' >> /etc/network/interfaces
       echo 'iface eth0 inet6 static' >> /etc/network/interfaces
       echo '    pre-up modprobe ipv6' >> /etc/network/interfaces
-      echo "    address $CJDNS_IPv6" >> /etc/network/interfaces
+      echo '    address fdfc:0000:0000:0000:0000:0000:0000:0001' >> /etc/network/interfaces
       echo '    netmask 64' >> /etc/network/interfaces
       service networking restart
       if [ ! "$?" = "0" ]; then
