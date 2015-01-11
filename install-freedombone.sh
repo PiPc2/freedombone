@@ -830,6 +830,8 @@ function install_cjdns_tools {
       echo 'export PATH=$PATH:$HOME/projects/go/bin' >> ~/.bashrc
   fi
   . ~/.bashrc
+  export GOPATH=$HOME/projects/go
+  export PATH=$PATH:$HOME/projects/go/bin
   go get github.com/inhies/cjdcmd
   if [ ! -f $HOME/projects/go/bin/cjdcmd ]; then
       echo 'cjdcmd was not compiled. Check your golang installation'
