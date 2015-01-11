@@ -846,6 +846,19 @@ function install_cjdns {
       echo 'so that leaks can be isolated.' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo "\"your.external.ip.goes.here:$CJDNS_PORT\":{\"password\":\"$CJDNS_PASSWORD\",\"publicKey\":\"$CJDNS_PUBLIC_KEY\"}" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'More is not better. 3-5 cjdns peers is good. 30 peers is bad.' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'NEVER USE A PUBLIC PEER. These degrade the network and make it centralized.' >> /home/$MY_USERNAME/README
+      echo 'Each node can handle many peers, but no node can handle the entire internet.' >> /home/$MY_USERNAME/README
+      echo 'As this network grows any public peer will simply become saturated and' >> /home/$MY_USERNAME/README
+      echo 'useless causing issues for the entire network.' >> /home/$MY_USERNAME/README
+      echo 'Please report anyone offering you a public peer as they are promoting shared' >> /home/$MY_USERNAME/README
+      echo 'passwords which could lead to people pretending to be you. A peering pass' >> /home/$MY_USERNAME/README
+      echo 'should not contain someone elses nickname or info but should contain yours' >> /home/$MY_USERNAME/README
+      echo 'to ensure it is not shared. It also helps when editing the conf to know who' >> /home/$MY_USERNAME/README
+      echo 'each password is for.' >> /home/$MY_USERNAME/README
+
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
