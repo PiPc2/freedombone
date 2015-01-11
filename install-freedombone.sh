@@ -796,6 +796,35 @@ function install_cjdns {
       exit 8260
   fi
 
+  apt-get -y install radvd
+  echo 'interface eth0' > /etc/radvd.conf
+  echo '{' >> /etc/radvd.conf
+  echo '    AdvSendAdvert on;' >> /etc/radvd.conf
+  echo '    prefix fdfc::1/64' >> /etc/radvd.conf
+  echo '    {' >> /etc/radvd.conf
+  echo '        AdvRouterAddr on;' >> /etc/radvd.conf
+  echo '    };' >> /etc/radvd.conf
+  echo '};' >> /etc/radvd.conf
+  service radvd restart
+  if [ ! "$?" = "0" ]; then
+      systemctl status radvd.service
+      exit 4395
+  fi
+
+  if ! grep -q "# Mesh network" /etc/network/interfaces; then
+      echo '' >> /etc/network/interfaces
+      echo '# Mesh network' >> /etc/network/interfaces
+      echo 'iface eth0 inet6 static' >> /etc/network/interfaces
+      echo '    pre-up modprobe ipv6' >> /etc/network/interfaces
+      echo "    address $CJDNS_IPv6" >> /etc/network/interfaces
+      echo '    netmask 64' >> /etc/network/interfaces
+      service networking restart
+      if [ ! "$?" = "0" ]; then
+          systemctl status networking.service
+          exit 6949
+      fi
+  fi
+
   if ! grep -q "Mesh Networking" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
