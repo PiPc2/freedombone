@@ -631,14 +631,23 @@ function install_cjdns {
       # create a configuration
       if [ ! -f /etc/cjdns/cjdroute.conf ]; then
           ./cjdroute --genconf > /etc/cjdns/cjdroute.conf
+          if [ ! "$?" = "0" ]; then
+              exit 5922
+          fi
       fi
       ./do
+      if [ ! "$?" = "0" ]; then
+          exit 7439
+      fi
       # create a user to run as
       useradd cjdns
   else
       cd /etc/cjdns
       git pull
       ./do
+      if [ ! "$?" = "0" ]; then
+          exit 9926
+      fi
   fi
 
   # set permissions
@@ -782,7 +791,7 @@ function install_cjdns {
   update-rc.d cjdns defaults
   service cjdns start
   if [ ! "$?" = "0" ]; then
-	  systemctl status cjdns.service
+      systemctl status cjdns.service
       exit 8260
   fi
 
