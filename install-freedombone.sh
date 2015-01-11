@@ -717,10 +717,11 @@ function install_cjdns {
   echo '         echo "cjdroute is already running. Doing nothing..."' >> /etc/init.d/cjdns
   echo '     else' >> /etc/init.d/cjdns
   echo '         echo " * Starting cjdroute"' >> /etc/init.d/cjdns
-  echo '         /sbin/ip addr add $CJDNS_IP/8 dev cjdroute0' >> /etc/init.d/cjdns
-  echo '         /sbin/ip link set mtu 1312 dev cjdroute0' >> /etc/init.d/cjdns
-  echo '         /sbin/ip link set cjdroute0 up' >> /etc/init.d/cjdns
   echo '         su -c "$PROG_PATH/$PROG < $PROG_PATH/$CJDNS_CONFIG" - $CJDNS_USER' >> /etc/init.d/cjdns
+  echo '         /sbin/ip addr add $CJDNS_IP/8 dev tun0' >> /etc/init.d/cjdns
+  echo '         /sbin/ip link set mtu 1312 dev tun0' >> /etc/init.d/cjdns
+  echo '         /sbin/ip link set tun0 up' >> /etc/init.d/cjdns
+  echo '         /sbin/ip tuntap add mode tun user cjdns dev tun0' >> /etc/init.d/cjdns
   echo '     fi' >> /etc/init.d/cjdns
   echo '}' >> /etc/init.d/cjdns
   echo '' >> /etc/init.d/cjdns
@@ -881,6 +882,9 @@ function install_cjdns_tools {
       exit 7439
   fi
   cp $HOME/projects/go/bin/cjdcmd /usr/bin
+
+  # initialise from the cjdns config
+  /usr/bin/cjdcmd cjdnsadmin -file /etc/cjdns/cjdroute.conf
 
   echo 'install_cjdns_tools' >> $COMPLETION_FILE
 }
