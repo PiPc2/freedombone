@@ -628,16 +628,16 @@ function install_cjdns {
   if [ ! -d /etc/cjdns ]; then
       git clone https://github.com/cjdelisle/cjdns.git /etc/cjdns
       cd /etc/cjdns
+      ./do
+      if [ ! "$?" = "0" ]; then
+          exit 7439
+      fi
       # create a configuration
       if [ ! -f /etc/cjdns/cjdroute.conf ]; then
           ./cjdroute --genconf > /etc/cjdns/cjdroute.conf
           if [ ! "$?" = "0" ]; then
               exit 5922
           fi
-      fi
-      ./do
-      if [ ! "$?" = "0" ]; then
-          exit 7439
       fi
       # create a user to run as
       useradd cjdns
