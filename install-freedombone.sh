@@ -320,6 +320,7 @@ CJDNS_PRIVATE_KEY=
 CJDNS_PUBLIC_KEY=
 CJDNS_IPV6=
 CJDNS_PASSWORD=
+CJDNS_PORT=
 
 function show_help {
   echo ''
@@ -552,6 +553,46 @@ function install_not_on_BBB {
   echo 'install_not_on_BBB' >> $COMPLETION_FILE
 }
 
+function get_cjdns_public_key {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "cjdns public key" /home/$MY_USERNAME/README; then
+          if [ ! $CJDNS_PUBLIC_KEY ]; then
+              CJDNS_PUBLIC_KEY=$(cat /home/$MY_USERNAME/README | grep "cjdns public key" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
+function get_cjdns_private_key {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "cjdns private key" /home/$MY_USERNAME/README; then
+          if [ ! $CJDNS_PRIVATE_KEY ]; then
+              CJDNS_PRIVATE_KEY=$(cat /home/$MY_USERNAME/README | grep "cjdns private key" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
+function get_cjdns_ipv6_address {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "cjdns IPv6 address" /home/$MY_USERNAME/README; then
+          if [ ! $CJDNS_IPV6 ]; then
+              CJDNS_IPV6=$(cat /home/$MY_USERNAME/README | grep "cjdns IPv6 address" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
+function get_cjdns_port {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "cjdns port" /home/$MY_USERNAME/README; then
+          if [ ! $CJDNS_PORT ]; then
+              CJDNS_PORT=$(cat /home/$MY_USERNAME/README | grep "cjdns port" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
 function install_cjdns {
   if grep -Fxq "install_cjdns" $COMPLETION_FILE; then
       return
@@ -560,6 +601,12 @@ function install_cjdns {
       return
   fi
   apt-get -y install nodejs git build-essential
+
+  # if a README exists then obtain the cjdns parameters
+  get_cjdns_ipv6_address
+  get_cjdns_public_key
+  get_cjdns_private_key
+  get_cjdns_port
 
   if [ ! -d /etc/cjdns ]; then
       git clone https://github.com/cjdelisle/cjdns.git /etc/cjdns
@@ -603,6 +650,11 @@ function install_cjdns {
       sed -i "0,/{\"password\":.*/s//{\"password\": \"$CJDNS_PASSWORD\"}/g" /etc/cjdns/cjdroute.conf
   else
       CJDNS_PASSWORD=$(cat /etc/cjdns/cjdroute.conf | grep '"password"' | awk -F '"' '{print $4}' | sed -n 1p)
+  fi
+  if [ $CJDNS_PORT ]; then
+      sed -i "s/\"bind\": \"0.0.0.0:.*/\"bind\": \"0.0.0.0:$CJDNS_PORT\",/g" /etc/cjdns/cjdroute.conf
+  else
+      CJDNS_PORT=$(cat /etc/cjdns/cjdroute.conf | grep '"bind": "0.0.0.0:' | awk -F '"' '{print $4}' | awk -F ':' '{print $2}')
   fi
 
   # endure that ipv6 is enabled and can route
@@ -718,9 +770,11 @@ function install_cjdns {
       echo '' >> /home/$MY_USERNAME/README
       echo 'Mesh Networking' >> /home/$MY_USERNAME/README
       echo '===============' >> /home/$MY_USERNAME/README
-      echo "IPv6 Address: $CJDNS_IPV6" >> /home/$MY_USERNAME/README
-      echo "Public key:   $CJDNS_PUBLIC_KEY" >> /home/$MY_USERNAME/README
-      echo "Private key:  $CJDNS_PRIVATE_KEY" >> /home/$MY_USERNAME/README
+      echo "cjdns IPv6 address: $CJDNS_IPV6" >> /home/$MY_USERNAME/README
+      echo "cjdns public key: $CJDNS_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+      echo "cjdns private key: $CJDNS_PRIVATE_KEY" >> /home/$MY_USERNAME/README
+      echo "cjdns port: $CJDNS_PORT" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
