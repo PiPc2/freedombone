@@ -827,7 +827,7 @@ function install_cjdns {
   fi
 
   if ! grep -q "Mesh Networking" /home/$MY_USERNAME/README; then
-	  CURRENT_IP_ADDRESS=$(ip addr show | grep "inet " | sed -n 2p | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}')
+      CURRENT_IP_ADDRESS=$(ip addr show | grep "inet " | sed -n 2p | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}')
 
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
@@ -860,7 +860,10 @@ function install_cjdns {
       echo 'should not contain someone elses nickname or info but should contain yours' >> /home/$MY_USERNAME/README
       echo 'to ensure it is not shared. It also helps when editing the conf to know who' >> /home/$MY_USERNAME/README
       echo 'each password is for.' >> /home/$MY_USERNAME/README
-
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Possible cjdns destinations of interest:' >> /home/$MY_USERNAME/README
+      echo '    http://transitiontech.ca/faq' >> /home/$MY_USERNAME/README
+      echo '    http://cjdns.ca/hypeirc.txt' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
