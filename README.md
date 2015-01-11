@@ -59,6 +59,7 @@ When the initial setup is done follow the instructions on screen to run the main
     MY_GPG_PUBLIC_KEY=
     MY_GPG_PRIVATE_KEY=
     ROUTE_THROUGH_TOR=no
+    ENABLE_CJDNS=no
     LOCAL_NETWORK_STATIC_IP_ADDRESS=192.168.1.60
 
 The GPG public/private key variables are for the filenames of exported GPG keys, and if a private key filename is given then it will be automatically shredded after import.

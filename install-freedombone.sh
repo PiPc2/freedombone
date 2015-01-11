@@ -774,7 +774,6 @@ function install_cjdns {
       echo "cjdns public key: $CJDNS_PUBLIC_KEY" >> /home/$MY_USERNAME/README
       echo "cjdns private key: $CJDNS_PRIVATE_KEY" >> /home/$MY_USERNAME/README
       echo "cjdns port: $CJDNS_PORT" >> /home/$MY_USERNAME/README
-      echo '' >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
