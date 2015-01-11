@@ -314,6 +314,13 @@ REMOTE_BACKUPS_LOG=/var/log/remotebackups.log
 # message if something fails to install
 CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
 
+# cjdns settings
+ENABLE_CJDNS="no"
+CJDNS_PRIVATE_KEY=
+CJDNS_PUBLIC_KEY=
+CJDNS_IPV6=
+CJDNS_PASSWORD=
+
 function show_help {
   echo ''
   echo './install-freedombone.sh [domain] [username] [subdomain code] [system type]'
@@ -380,6 +387,18 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "ENABLE_CJDNS" $CONFIGURATION_FILE; then
+          ENABLE_CJDNS=$(grep "ENABLE_CJDNS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "CJDNS_IPV6" $CONFIGURATION_FILE; then
+          CJDNS_IPV6=$(grep "CJDNS_IPV6" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "CJDNS_PUBLIC_KEY" $CONFIGURATION_FILE; then
+          CJDNS_PUBLIC_KEY=$(grep "CJDNS_PUBLIC_KEY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "CJDNS_PRIVATE_KEY" $CONFIGURATION_FILE; then
+          CJDNS_PRIVATE_KEY=$(grep "CJDNS_PRIVATE_KEY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "BACKUP_CERTIFICATE" $CONFIGURATION_FILE; then
           BACKUP_CERTIFICATE=$(grep "BACKUP_CERTIFICATE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -531,6 +550,181 @@ function install_not_on_BBB {
   echo '#    gateway 192.168.7.1' >> /etc/network/interfaces
 
   echo 'install_not_on_BBB' >> $COMPLETION_FILE
+}
+
+function install_cjdns {
+  if grep -Fxq "install_cjdns" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $ENABLE_CJDNS != "yes" ]]; then
+      return
+  fi
+  apt-get -y install nodejs git build-essential
+
+  if [ ! -d /etc/cjdns ]; then
+      git clone https://github.com/cjdelisle/cjdns.git /etc/cjdns
+      cd /etc/cjdns
+      # create a configuration
+      if [ ! -f /etc/cjdns/cjdroute.conf ]; then
+          ./cjdroute --genconf > /etc/cjdns/cjdroute.conf
+      fi
+      ./do
+      # create a user to run as
+      useradd cjdns
+  else
+      cd /etc/cjdns
+      git pull
+      ./do
+  fi
+
+  # set permissions
+  chown -R cjdns:cjdns /etc/cjdns
+  chmod 600 /etc/cjdns/cjdroute.conf
+
+  /sbin/ip tuntap add mode tun user cjdns dev cjdroute0
+
+  # insert values into the configuration file
+  if [ $CJDNS_PRIVATE_KEY ]; then
+      sed -i "s/\"privateKey\":.*/\"privateKey\": \"$CJDNS_PRIVATE_KEY\",/g" /etc/cjdns/cjdroute.conf
+  else
+      CJDNS_PRIVATE_KEY=$(cat /etc/cjdns/cjdroute.conf | grep '"privateKey"' | awk -F '"' '{print $4}')
+  fi
+  if [ $CJDNS_PUBLIC_KEY ]; then
+      sed -i "s/\"publicKey\":.*/\"publicKey\": \"$CJDNS_PUBLIC_KEY\",/g" /etc/cjdns/cjdroute.conf
+  else
+      CJDNS_PUBLIC_KEY=$(cat /etc/cjdns/cjdroute.conf | grep '"publicKey"' | awk -F '"' '{print $4}')
+  fi
+  if [ $CJDNS_IPV6 ]; then
+      sed -i "s/\"ipv6\":.*/\"ipv6\": \"$CJDNS_IPV6\",/g" /etc/cjdns/cjdroute.conf
+  else
+      CJDNS_IPV6=$(cat /etc/cjdns/cjdroute.conf | grep '"ipv6"' | awk -F '"' '{print $4}')
+  fi
+  if [ $CJDNS_PASSWORD ]; then
+      sed -i "0,/{\"password\":.*/s//{\"password\": \"$CJDNS_PASSWORD\"}/g" /etc/cjdns/cjdroute.conf
+  else
+      CJDNS_PASSWORD=$(cat /etc/cjdns/cjdroute.conf | grep '"password"' | awk -F '"' '{print $4}' | sed -n 1p)
+  fi
+
+  # endure that ipv6 is enabled and can route
+  sed -i 's/net.ipv6.conf.all.disable_ipv6.*/net.ipv6.conf.all.disable_ipv6 = 0/g' /etc/sysctl.conf
+  #sed -i "s/net.ipv6.conf.all.accept_redirects.*/net.ipv6.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv6.conf.all.accept_source_route.*/net.ipv6.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv6.conf.all.forwarding.*/net.ipv6.conf.all.forwarding=1/g" /etc/sysctl.conf
+
+  echo '#!/bin/sh -e' > /etc/init.d/cjdns
+  echo '### BEGIN INIT INFO' >> /etc/init.d/cjdns
+  echo '# hyperboria.sh - An init script (/etc/init.d/) for cjdns' >> /etc/init.d/cjdns
+  echo '# Provides:          cjdroute' >> /etc/init.d/cjdns
+  echo '# Required-Start:    $remote_fs $network' >> /etc/init.d/cjdns
+  echo '# Required-Stop:     $remote_fs $network' >> /etc/init.d/cjdns
+  echo '# Default-Start:     2 3 4 5' >> /etc/init.d/cjdns
+  echo '# Default-Stop:      0 1 6' >> /etc/init.d/cjdns
+  echo '# Short-Description: Cjdns router' >> /etc/init.d/cjdns
+  echo '# Description:       A routing engine designed for security, scalability, speed and ease of use.' >> /etc/init.d/cjdns
+  echo '# cjdns git repo:    https://github.com/cjdelisle/cjdns/' >> /etc/init.d/cjdns
+  echo '### END INIT INFO' >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo 'PROG="cjdroute"' >> /etc/init.d/cjdns
+  echo 'GIT_PATH="/etc/cjdns"' >> /etc/init.d/cjdns
+  echo 'PROG_PATH="/etc/cjdns"' >> /etc/init.d/cjdns
+  echo 'CJDNS_CONFIG="cjdroute.conf"' >> /etc/init.d/cjdns
+  echo 'CJDNS_USER="cjdns"' >> /etc/init.d/cjdns
+  echo "CJDNS_IP='$CJDNS_IPV6'" >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo 'start() {' >> /etc/init.d/cjdns
+  echo '     # Start it up with the user cjdns' >> /etc/init.d/cjdns
+  echo '     if [ $(pgrep cjdroute | wc -l) != 0 ];' >> /etc/init.d/cjdns
+  echo '     then' >> /etc/init.d/cjdns
+  echo '         echo "cjdroute is already running. Doing nothing..."' >> /etc/init.d/cjdns
+  echo '     else' >> /etc/init.d/cjdns
+  echo '         echo " * Starting cjdroute"' >> /etc/init.d/cjdns
+  echo '         /sbin/ip addr add $CJDNS_IP/8 dev cjdroute0' >> /etc/init.d/cjdns
+  echo '         /sbin/ip link set mtu 1312 dev cjdroute0' >> /etc/init.d/cjdns
+  echo '         /sbin/ip link set cjdroute0 up' >> /etc/init.d/cjdns
+  echo '         sudo -u $CJDNS_USER $PROG_PATH/$PROG < $PROG_PATH/$CJDNS_CONFIG' >> /etc/init.d/cjdns
+  echo '     fi' >> /etc/init.d/cjdns
+  echo '}' >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo 'stop() {' >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo '     if [ $(pgrep cjdroute | wc -l) != 2 ];' >> /etc/init.d/cjdns
+  echo '     then' >> /etc/init.d/cjdns
+  echo '         echo "cjdns isnt running."' >> /etc/init.d/cjdns
+  echo '     else' >> /etc/init.d/cjdns
+  echo '         echo "Killing cjdroute"' >> /etc/init.d/cjdns
+  echo '         killall cjdroute' >> /etc/init.d/cjdns
+  echo '     fi' >> /etc/init.d/cjdns
+  echo '}' >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo 'status() {' >> /etc/init.d/cjdns
+  echo '     if [ $(pgrep cjdroute | wc -l) != 0 ];' >> /etc/init.d/cjdns
+  echo '     then' >> /etc/init.d/cjdns
+  echo '         echo "Cjdns is running"' >> /etc/init.d/cjdns
+  echo '     else' >> /etc/init.d/cjdns
+  echo '         echo "Cjdns is not running"' >> /etc/init.d/cjdns
+  echo '     fi' >> /etc/init.d/cjdns
+  echo '}' >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo ' update() {' >> /etc/init.d/cjdns
+  echo '     cd $GIT_PATH' >> /etc/init.d/cjdns
+  echo '     echo "Updating..."' >> /etc/init.d/cjdns
+  echo '     git pull' >> /etc/init.d/cjdns
+  echo '     ./do' >> /etc/init.d/cjdns
+  echo '}' >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo '## Check to see if we are running as root first.' >> /etc/init.d/cjdns
+  echo 'if [ "$(id -u)" != "0" ]; then' >> /etc/init.d/cjdns
+  echo '    echo "This script must be run as root" 1>&2' >> /etc/init.d/cjdns
+  echo '    exit 1' >> /etc/init.d/cjdns
+  echo 'fi' >> /etc/init.d/cjdns
+  echo '' >> /etc/init.d/cjdns
+  echo 'case $1 in' >> /etc/init.d/cjdns
+  echo '     start)' >> /etc/init.d/cjdns
+  echo '         start' >> /etc/init.d/cjdns
+  echo '         exit 0' >> /etc/init.d/cjdns
+  echo '     ;;' >> /etc/init.d/cjdns
+  echo '     stop)' >> /etc/init.d/cjdns
+  echo '         stop' >> /etc/init.d/cjdns
+  echo '         exit 0' >> /etc/init.d/cjdns
+  echo '     ;;' >> /etc/init.d/cjdns
+  echo '     reload|restart|force-reload)' >> /etc/init.d/cjdns
+  echo '         stop' >> /etc/init.d/cjdns
+  echo '         sleep 1' >> /etc/init.d/cjdns
+  echo '         start' >> /etc/init.d/cjdns
+  echo '         exit 0' >> /etc/init.d/cjdns
+  echo '     ;;' >> /etc/init.d/cjdns
+  echo '     status)' >> /etc/init.d/cjdns
+  echo '         status' >> /etc/init.d/cjdns
+  echo '         exit 0' >> /etc/init.d/cjdns
+  echo '     ;;' >> /etc/init.d/cjdns
+  echo '     update|upgrade)' >> /etc/init.d/cjdns
+  echo '         update' >> /etc/init.d/cjdns
+  echo '         stop' >> /etc/init.d/cjdns
+  echo '         sleep 2' >> /etc/init.d/cjdns
+  echo '         start' >> /etc/init.d/cjdns
+  echo '         exit 0' >> /etc/init.d/cjdns
+  echo '     ;;' >> /etc/init.d/cjdns
+  echo '     **)' >> /etc/init.d/cjdns
+  echo '         echo "Usage: $0 (start|stop|restart|status|update)" 1>&2' >> /etc/init.d/cjdns
+  echo '         exit 1' >> /etc/init.d/cjdns
+  echo '     ;;' >> /etc/init.d/cjdns
+  echo 'esac' >> /etc/init.d/cjdns
+  chmod +x /etc/init.d/cjdns
+  update-rc.d cjdns defaults
+  service cjdns start
+
+  if ! grep -q "Mesh Networking" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Mesh Networking' >> /home/$MY_USERNAME/README
+      echo '===============' >> /home/$MY_USERNAME/README
+      echo "IPv6 Address: $CJDNS_IPV6" >> /home/$MY_USERNAME/README
+      echo "Public key:   $CJDNS_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+      echo "Private key:  $CJDNS_PRIVATE_KEY" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  echo 'install_cjdns' >> $COMPLETION_FILE
 }
 
 function check_hwrng {
@@ -7136,6 +7330,7 @@ set_your_domain_name
 time_synchronisation
 configure_internet_protocol
 create_git_project
+install_cjdns
 backup_github_projects
 configure_ssh
 check_hwrng
