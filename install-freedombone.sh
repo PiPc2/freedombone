@@ -660,17 +660,17 @@ function install_cjdns {
   if [ $CJDNS_PRIVATE_KEY ]; then
       sed -i "s/\"privateKey\":.*/\"privateKey\": \"$CJDNS_PRIVATE_KEY\",/g" /etc/cjdns/cjdroute.conf
   else
-      CJDNS_PRIVATE_KEY=$(cat /etc/cjdns/cjdroute.conf | grep '"privateKey"' | awk -F '"' '{print $4}')
+      CJDNS_PRIVATE_KEY=$(cat /etc/cjdns/cjdroute.conf | grep '"privateKey"' | awk -F '"' '{print $4}' | sed -n 1p)
   fi
   if [ $CJDNS_PUBLIC_KEY ]; then
       sed -i "s/\"publicKey\":.*/\"publicKey\": \"$CJDNS_PUBLIC_KEY\",/g" /etc/cjdns/cjdroute.conf
   else
-      CJDNS_PUBLIC_KEY=$(cat /etc/cjdns/cjdroute.conf | grep '"publicKey"' | awk -F '"' '{print $4}')
+      CJDNS_PUBLIC_KEY=$(cat /etc/cjdns/cjdroute.conf | grep '"publicKey"' | awk -F '"' '{print $4}' | sed -n 1p)
   fi
   if [ $CJDNS_IPV6 ]; then
       sed -i "s/\"ipv6\":.*/\"ipv6\": \"$CJDNS_IPV6\",/g" /etc/cjdns/cjdroute.conf
   else
-      CJDNS_IPV6=$(cat /etc/cjdns/cjdroute.conf | grep '"ipv6"' | awk -F '"' '{print $4}')
+      CJDNS_IPV6=$(cat /etc/cjdns/cjdroute.conf | grep '"ipv6"' | awk -F '"' '{print $4}' | sed -n 1p)
   fi
   if [ $CJDNS_PASSWORD ]; then
       sed -i "0,/{\"password\":.*/s//{\"password\": \"$CJDNS_PASSWORD\"}/g" /etc/cjdns/cjdroute.conf
@@ -680,7 +680,7 @@ function install_cjdns {
   if [ $CJDNS_PORT ]; then
       sed -i "s/\"bind\": \"0.0.0.0:.*/\"bind\": \"0.0.0.0:$CJDNS_PORT\",/g" /etc/cjdns/cjdroute.conf
   else
-      CJDNS_PORT=$(cat /etc/cjdns/cjdroute.conf | grep '"bind": "0.0.0.0:' | awk -F '"' '{print $4}' | awk -F ':' '{print $2}')
+      CJDNS_PORT=$(cat /etc/cjdns/cjdroute.conf | grep '"bind": "0.0.0.0:' | awk -F '"' '{print $4}' | awk -F ':' '{print $2}' | sed -n 1p)
   fi
 
   # endure that ipv6 is enabled and can route
