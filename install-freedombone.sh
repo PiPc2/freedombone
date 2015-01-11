@@ -610,7 +610,7 @@ function install_cjdns {
   if [[ $ENABLE_CJDNS != "yes" ]]; then
       return
   fi
-  apt-get -y install nodejs git build-essential
+  apt-get -y install nodejs git build-essential nmap
 
   # if a README exists then obtain the cjdns parameters
   get_cjdns_ipv6_address
@@ -827,6 +827,8 @@ function install_cjdns {
   fi
 
   if ! grep -q "Mesh Networking" /home/$MY_USERNAME/README; then
+	  CURRENT_IP_ADDRESS=$(ip addr show | grep "inet " | sed -n 2p | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}')
+
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'Mesh Networking' >> /home/$MY_USERNAME/README
@@ -845,7 +847,7 @@ function install_cjdns {
       echo 'Adding a unique password for each user is advisable' >> /home/$MY_USERNAME/README
       echo 'so that leaks can be isolated.' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
-      echo "\"your.external.ip.goes.here:$CJDNS_PORT\":{\"password\":\"$CJDNS_PASSWORD\",\"publicKey\":\"$CJDNS_PUBLIC_KEY\"}" >> /home/$MY_USERNAME/README
+      echo "\"$CURRENT_IP_ADDRESS:$CJDNS_PORT\":{\"password\":\"$CJDNS_PASSWORD\",\"publicKey\":\"$CJDNS_PUBLIC_KEY\"}" >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'More is not better. 3-5 cjdns peers is good. 30 peers is bad.' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
