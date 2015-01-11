@@ -619,6 +619,12 @@ function install_cjdns {
   get_cjdns_port
   get_cjdns_password
 
+  # special compile settings for running ./do on the Beaglebone Black
+  if [[ $INSTALLING_ON_BBB == "yes" ]]; then
+      CFLAGS="-O2 -march=armv7-a -mtune=cortex-a8 -mfpu=neon -ftree-vectorize -ffast-math -mfloat-abi=hard -marm -Wno-error=maybe-uninitialized"
+      export LDFLAGS="$CFLAGS"
+  fi
+
   if [ ! -d /etc/cjdns ]; then
       git clone https://github.com/cjdelisle/cjdns.git /etc/cjdns
       cd /etc/cjdns
@@ -796,7 +802,7 @@ function install_cjdns {
       echo 'so that leaks can be isolated.' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo "\"your.external.ip.goes.here:$CJDNS_PORT\":{\"password\":\"$CJDNS_PASSWORD\",\"publicKey\":\"$CJDNS_PUBLIC_KEY\"}" >> /home/$MY_USERNAME/README
-	  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
   echo 'install_cjdns' >> $COMPLETION_FILE
@@ -810,7 +816,7 @@ function install_cjdns_tools {
       return
   fi
   if [ ! -d /etc/cjdns ]; then
-	  install_cjdns
+      install_cjdns
   fi
 
 
