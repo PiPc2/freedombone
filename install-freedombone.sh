@@ -781,6 +781,10 @@ function install_cjdns {
   chmod +x /etc/init.d/cjdns
   update-rc.d cjdns defaults
   service cjdns start
+  if [ ! "$?" = "0" ]; then
+	  systemctl status cjdns.service
+      exit 8260
+  fi
 
   if ! grep -q "Mesh Networking" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
