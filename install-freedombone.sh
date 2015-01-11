@@ -7078,6 +7078,8 @@ function create_upgrade_script {
   echo 'apt-get -y update' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y --force-yes upgrade' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
+      echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo '# Red Matrix' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo "cd /var/www/$REDMATRIX_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
@@ -7088,19 +7090,33 @@ function create_upgrade_script {
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
+      echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo '# GNU Social' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo "cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo '# Blog' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo "cd /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
   if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
+      echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo '# Owncloud music app' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo "cd /usr/share/owncloud/apps/music" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  fi
+  if grep -Fxq "install_cjdns" $COMPLETION_FILE; then
+      echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo '# cjdns' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo "cd /etc/cjdns" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
