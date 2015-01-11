@@ -719,7 +719,7 @@ function install_cjdns {
   echo '         /sbin/ip addr add $CJDNS_IP/8 dev cjdroute0' >> /etc/init.d/cjdns
   echo '         /sbin/ip link set mtu 1312 dev cjdroute0' >> /etc/init.d/cjdns
   echo '         /sbin/ip link set cjdroute0 up' >> /etc/init.d/cjdns
-  echo '         sudo -u $CJDNS_USER $PROG_PATH/$PROG < $PROG_PATH/$CJDNS_CONFIG' >> /etc/init.d/cjdns
+  echo '         su -c "$PROG_PATH/$PROG < $PROG_PATH/$CJDNS_CONFIG" - $CJDNS_USER' >> /etc/init.d/cjdns
   echo '     fi' >> /etc/init.d/cjdns
   echo '}' >> /etc/init.d/cjdns
   echo '' >> /etc/init.d/cjdns
