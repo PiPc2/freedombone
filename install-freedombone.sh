@@ -687,7 +687,8 @@ function install_cjdns {
   sed -i 's/net.ipv6.conf.all.disable_ipv6.*/net.ipv6.conf.all.disable_ipv6 = 0/g' /etc/sysctl.conf
   #sed -i "s/net.ipv6.conf.all.accept_redirects.*/net.ipv6.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
   #sed -i "s/net.ipv6.conf.all.accept_source_route.*/net.ipv6.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
-  #sed -i "s/net.ipv6.conf.all.forwarding.*/net.ipv6.conf.all.forwarding=1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv6.conf.all.forwarding.*/net.ipv6.conf.all.forwarding=1/g" /etc/sysctl.conf
+  echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 
   echo '#!/bin/sh -e' > /etc/init.d/cjdns
   echo '### BEGIN INIT INFO' >> /etc/init.d/cjdns
@@ -3745,6 +3746,19 @@ function save_firewall_settings {
   printf 'iptables-restore < /etc/firewall.conf\n' >> /etc/network/if-up.d/iptables
   printf 'ip6tables-restore < /etc/firewall6.conf\n' >> /etc/network/if-up.d/iptables
   chmod +x /etc/network/if-up.d/iptables
+}
+
+function configure_firewall_for_cjdns {
+  if grep -Fxq "configure_firewall_for_cjdns" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $ENABLE_CJDNS != "yes" ]]; then
+      return
+  fi
+  ip6tables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
+  ip6tables -A FORWARD -i tun0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_cjdns' >> $COMPLETION_FILE
 }
 
 function configure_firewall_for_dlna {
@@ -7459,6 +7473,7 @@ configure_firewall_for_ssh
 configure_firewall_for_dns
 configure_firewall_for_ftp
 configure_firewall_for_web_access
+configure_firewall_for_cjdns
 remove_proprietary_repos
 change_debian_repos
 enable_backports
