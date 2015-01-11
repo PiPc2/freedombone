@@ -819,7 +819,23 @@ function install_cjdns_tools {
       install_cjdns
   fi
 
-
+  apt-get -y install golang mercurial
+  if [ ! -f ~/.bashrc ]; then
+      touch ~/.bashrc
+  fi
+  if ! grep -q "export GOPATH=" ~/.bashrc; then
+      echo 'export GOPATH=$HOME/projects/go' >> ~/.bashrc
+  fi
+  if ! grep -q "export PATH=$PATH:$HOME/projects/go/bin" ~/.bashrc; then
+      echo 'export PATH=$PATH:$HOME/projects/go/bin' >> ~/.bashrc
+  fi
+  . ~/.bashrc
+  go get github.com/inhies/cjdcmd
+  if [ ! -f $HOME/projects/go/bin/cjdcmd ]; then
+      echo 'cjdcmd was not compiled. Check your golang installation'
+      exit 7439
+  fi
+  cp $HOME/projects/go/bin/cjdcmd /usr/bin
 
   echo 'install_cjdns_tools' >> $COMPLETION_FILE
 }
