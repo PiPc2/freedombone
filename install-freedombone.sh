@@ -593,6 +593,16 @@ function get_cjdns_port {
   fi
 }
 
+function get_cjdns_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "cjdns password" /home/$MY_USERNAME/README; then
+          if [ ! $CJDNS_PASSWORD ]; then
+              CJDNS_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "cjdns password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
 function install_cjdns {
   if grep -Fxq "install_cjdns" $COMPLETION_FILE; then
       return
@@ -607,6 +617,7 @@ function install_cjdns {
   get_cjdns_public_key
   get_cjdns_private_key
   get_cjdns_port
+  get_cjdns_password
 
   if [ ! -d /etc/cjdns ]; then
       git clone https://github.com/cjdelisle/cjdns.git /etc/cjdns
@@ -773,11 +784,38 @@ function install_cjdns {
       echo "cjdns IPv6 address: $CJDNS_IPV6" >> /home/$MY_USERNAME/README
       echo "cjdns public key: $CJDNS_PUBLIC_KEY" >> /home/$MY_USERNAME/README
       echo "cjdns private key: $CJDNS_PRIVATE_KEY" >> /home/$MY_USERNAME/README
+      echo "cjdns password: $CJDNS_PASSWORD" >> /home/$MY_USERNAME/README
       echo "cjdns port: $CJDNS_PORT" >> /home/$MY_USERNAME/README
-      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "Forward port $CJDNS_PORT from your internet router to the Freedombone" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Below is an example of your connection credentials' >> /home/$MY_USERNAME/README
+      echo 'that you can give to other people so they can connect' >> /home/$MY_USERNAME/README
+      echo 'to you using your default password' >> /home/$MY_USERNAME/README
+      echo 'Adding a unique password for each user is advisable' >> /home/$MY_USERNAME/README
+      echo 'so that leaks can be isolated.' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo "\"your.external.ip.goes.here:$CJDNS_PORT\":{\"password\":\"$CJDNS_PASSWORD\",\"publicKey\":\"$CJDNS_PUBLIC_KEY\"}" >> /home/$MY_USERNAME/README
+	  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   fi
 
   echo 'install_cjdns' >> $COMPLETION_FILE
+}
+
+function install_cjdns_tools {
+  if grep -Fxq "install_cjdns_tools" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $ENABLE_CJDNS != "yes" ]]; then
+      return
+  fi
+  if [ ! -d /etc/cjdns ]; then
+	  install_cjdns
+  fi
+
+
+
+  echo 'install_cjdns_tools' >> $COMPLETION_FILE
 }
 
 function check_hwrng {
@@ -7384,6 +7422,7 @@ time_synchronisation
 configure_internet_protocol
 create_git_project
 install_cjdns
+install_cjdns_tools
 backup_github_projects
 configure_ssh
 check_hwrng
