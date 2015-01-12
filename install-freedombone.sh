@@ -1177,6 +1177,19 @@ function create_backup_script {
       echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
+  if grep -Fxq "install_cjdns" $COMPLETION_FILE; then
+      echo "if [ ! -d $USB_MOUNT/backup/cjdns ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  mkdir -p $USB_MOUNT/backup/cjdns" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'echo "Obtaining cjdns backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "rsyncrypto -v -r /etc/cjdns $USB_MOUNT/backup/blog $USB_MOUNT/backup/cjdns.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  umount $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  rm -rf $USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  exit 7438' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
 
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '# Backup certificates' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -1911,6 +1924,21 @@ function create_restore_script {
   echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    exit 287' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+
+  echo "if [ -d $USB_MOUNT/backup/cjdns ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  echo "Restoring cjdns installation"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  mkdir /root/tempcjdns' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rsyncrypto -v -d -r $USB_MOUNT/backup/cjdns /root/tempcjdns $USB_MOUNT/backup/cjdns.keys $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  rm -rf /etc/cjdns" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  cp -r /root/tempcjdns/usb/backup/cjdns/cjdns /etc/" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    exit 8472' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  rm -rf /root/tempcjdns' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
