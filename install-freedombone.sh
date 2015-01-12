@@ -2258,6 +2258,22 @@ function backup_to_friends_servers {
       echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
+  if grep -Fxq "install_cjdns" $COMPLETION_FILE; then
+      echo 'if [ ! -d $SERVER_DIRECTORY/backup/cjdns ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  mkdir -p $SERVER_DIRECTORY/backup/cjdns' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'echo "Obtaining cjdns backup"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n "rsyncrypto -v -r /etc/cjdns " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '$SERVER_DIRECTORY/backup/cjdns $SERVER_DIRECTORY/backup/cjdns.keys ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '  echo "Unable to encrypt cjdns installation" | mail -s "Freedombone backup to friends" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$MY_EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '  exit 854' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  fi
 
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '# Backup certificates' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -3054,6 +3070,20 @@ function restore_from_friend {
   echo '    echo "No content directory found after restoring blog"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    exit 287' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  echo 'if [ -d $SERVER_DIRECTORY/backup/cjdns ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  echo "Restoring cjdns installation"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  mkdir /root/tempcjdns' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n '  rsyncrypto -v -d -r $SERVER_DIRECTORY/backup/cjdns /root/tempcjdns $SERVER_DIRECTORY/backup/cjdns.keys ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "$BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  rm -rf /etc/cjdns" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  cp -r /root/tempcjdns/remoterestore/backup/cjdns/cjdns /etc/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    exit 7438' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  rm -rf /root/tempcjdns' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
