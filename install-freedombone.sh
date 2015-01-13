@@ -826,6 +826,10 @@ function install_cjdns {
       fi
   fi
 
+  ip6tables -A INPUT -i eth0 -p udp --dport $CJDNS_PORT -j ACCEPT
+  ip6tables -A INPUT -i eth0 -p tcp --dport $CJDNS_PORT -j ACCEPT
+  save_firewall_settings
+
   if ! grep -q "Mesh Networking" /home/$MY_USERNAME/README; then
       CURRENT_IP_ADDRESS=$(ip addr show | grep "inet " | sed -n 2p | awk -F ' ' '{print $2}' | awk -F '/' '{print $1}')
 
