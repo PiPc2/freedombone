@@ -10,9 +10,9 @@ source:
 	gzip -f9n ../${APP}_${VERSION}.orig.tar
 install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
-	install -m 755 -s src/${APP} ${DESTDIR}${PREFIX}/bin
-	install -m 755 -s src/${APP}-prep ${DESTDIR}${PREFIX}/bin
-	install -m 755 -s src/${APP}-tordongle ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP} ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-prep ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-tordongle ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 uninstall:
