@@ -9,6 +9,7 @@ DIR=${APP}-${VERSION}
 #update version numbers automatically - so you don't have to
 sed -i 's/VERSION='${PREV_VERSION}'/VERSION='${VERSION}'/g' Makefile
 sed -i 's/VERSION="'${PREV_VERSION}'"/VERSION="'${VERSION}'"/g' src/freedombone
+sed -i 's/VERSION="'${PREV_VERSION}'"/VERSION="'${VERSION}'"/g' src/freedombone-prep
 
 # change the parent directory name to debian format
 mv ../${APP} ../${DIR}
