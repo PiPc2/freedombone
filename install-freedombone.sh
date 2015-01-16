@@ -106,6 +106,13 @@ CONFIGURATION_FILE="freedombone.cfg"
 
 SSH_PORT=2222
 
+# parameters used when adding a new domain
+CURRENT_DDNS_PROVIDER="freedns.afraid.org"
+CURRENT_DDNS_DOMAIN=
+CURRENT_DDNS_USERNAME=
+CURRENT_DDNS_PASSWORD=
+CURRENT_DDNS_CODE=
+
 # number of CPU cores
 CPU_CORES=1
 
@@ -4914,25 +4921,6 @@ function folders_for_email_addresses {
   echo 'folders_for_email_addresses' >> $COMPLETION_FILE
 }
 
-function dynamic_dns_freedns {
-  if grep -Fxq "dynamic_dns_freedns" $COMPLETION_FILE; then
-      return
-  fi
-
-  echo '#!/bin/bash' > /usr/bin/dynamicdns
-  echo '# subdomain name 1' >> /usr/bin/dynamicdns
-  echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-  echo '# add any other subdomains below' >> /usr/bin/dynamicdns
-  chmod 600 /usr/bin/dynamicdns
-  chmod +x /usr/bin/dynamicdns
-
-  if ! grep -q "dynamicdns" /etc/crontab; then
-    echo '*/5 * * * * root /usr/bin/timeout 240 /usr/bin/dynamicdns' >> /etc/crontab
-  fi
-  service cron restart
-  echo 'dynamic_dns_freedns' >> $COMPLETION_FILE
-}
-
 function create_public_mailing_list {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
@@ -5435,6 +5423,42 @@ function install_owncloud_music_app {
   echo 'install_owncloud_music_app' >> $COMPLETION_FILE
 }
 
+function add_ddns_domain {
+  if [ ! $CURRENT_DDNS_DOMAIN ]; then
+      echo 'ddns domain not specified'
+      exit 5638
+  fi
+  if [ ! -f /etc/inadyn.conf ]; then
+      echo 'Unable to find inadyn configuration file /etc/inadyn.conf'
+      exit 5745
+  fi
+  if ! grep -q "$CURRENT_DDNS_PROVIDER" /etc/inadyn.conf; then
+      echo '' >> /etc/inadyn.conf
+      echo "system default@$CURRENT_DDNS_PROVIDER" >> /etc/inadyn.conf
+      echo '  ssl' >> /etc/inadyn.conf
+      if [ $CURRENT_DDNS_USERNAME ]; then
+          echo "  username $CURRENT_DDNS_USERNAME" >> /etc/inadyn.conf
+      fi
+      if [ $CURRENT_DDNS_PASSWORD ]; then
+          echo "  password $CURRENT_DDNS_PASSWORD" >> /etc/inadyn.conf
+      fi
+  fi
+
+  if ! grep -q "$CURRENT_DDNS_DOMAIN" /etc/inadyn.conf; then
+      if [ $CURRENT_DDNS_CODE ]; then
+          echo "  alias $CURRENT_DDNS_DOMAIN,$CURRENT_DDNS_CODE" >> /etc/inadyn.conf
+      else
+          echo "  alias $CURRENT_DDNS_DOMAIN" >> /etc/inadyn.conf
+      fi
+  fi
+  chmod 600 /etc/inadyn.conf
+  service inadyn restart
+
+  # clear the arguments
+  CURRENT_DDNS_DOMAIN=
+  CURRENT_DDNS_CODE=
+}
+
 function install_owncloud {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
       return
@@ -5653,16 +5677,9 @@ quit" > $INSTALL_DIR/batch.sql
   service nginx restart
 
   # update the dynamic DNS
-  if [ $OWNCLOUD_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $OWNCLOUD_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$OWNCLOUD_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $OWNCLOUD_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$OWNCLOUD_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-          fi
-      fi
-  else
-      echo 'WARNING: No freeDNS subdomain code given for Owncloud. It is assumed that you are using some other dynamic DNS provider.'
-  fi
+  CURRENT_DDNS_DOMAIN=$OWNCLOUD_DOMAIN_NAME
+  CURRENT_DDNS_CODE=$OWNCLOUD_FREEDNS_SUBDOMAIN_CODE
+  add_ddns_domain
 
   echo 'install_owncloud' >> $COMPLETION_FILE
 
@@ -6138,16 +6155,9 @@ function install_wiki {
   service nginx restart
 
   # update the dynamic DNS
-  if [ $WIKI_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $WIKI_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$WIKI_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $WIKI_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$WIKI_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-          fi
-      fi
-  else
-      echo 'WARNING: No freeDNS subdomain code given for wiki installation. It is assumed that you are using some other dynamic DNS provider.'
-  fi
+  CURRENT_DDNS_DOMAIN=$WIKI_DOMAIN_NAME
+  CURRENT_DDNS_CODE=$WIKI_FREEDNS_SUBDOMAIN_CODE
+  add_ddns_domain
 
   # add some post-install instructions
   if ! grep -q "Wiki password" /home/$MY_USERNAME/README; then
@@ -6406,16 +6416,9 @@ function install_blog {
   service nginx restart
 
   # update the dynamic DNS
-  if [ $FULLBLOG_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $FULLBLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$FULLBLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $FULLBLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$FULLBLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-          fi
-      fi
-  else
-      echo 'WARNING: No freeDNS subdomain code given for blog installation. It is assumed that you are using some other dynamic DNS provider.'
-  fi
+  CURRENT_DDNS_DOMAIN=$FULLBLOG_DOMAIN_NAME
+  CURRENT_DDNS_CODE=$FULLBLOG_FREEDNS_SUBDOMAIN_CODE
+  add_ddns_domain
 
   echo 'install_blog' >> $COMPLETION_FILE
 }
@@ -6488,16 +6491,9 @@ quit" > $INSTALL_DIR/batch.sql
   newaliases
 
   # update the dynamic DNS
-  if [ $MICROBLOG_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $MICROBLOG_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$MICROBLOG_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $MICROBLOG_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MICROBLOG_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-          fi
-      fi
-  else
-      echo 'WARNING: No freeDNS subdomain code given for microblog. It is assumed that you are using some other dynamic DNS provider.'
-  fi
+  CURRENT_DDNS_DOMAIN=$MICROBLOG_DOMAIN_NAME
+  CURRENT_DDNS_CODE=$MICROBLOG_FREEDNS_SUBDOMAIN_CODE
+  add_ddns_domain
 
   echo 'server {' > /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
   echo '    listen 80;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
@@ -6736,16 +6732,9 @@ quit" > $INSTALL_DIR/batch.sql
   fi
 
   # update the dynamic DNS
-  if [ $REDMATRIX_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $REDMATRIX_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$REDMATRIX_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $REDMATRIX_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$REDMATRIX_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-          fi
-      fi
-  else
-      echo 'WARNING: No freeDNS code given for Red Matrix. It is assumed that you are using some other dynamic DNS provider.'
-  fi
+  CURRENT_DDNS_DOMAIN=$REDMATRIX_DOMAIN_NAME
+  CURRENT_DDNS_CODE=$REDMATRIX_FREEDNS_SUBDOMAIN_CODE
+  add_ddns_domain
 
   echo 'server {' > /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
   echo '    listen 80;' >> /etc/nginx/sites-available/$REDMATRIX_DOMAIN_NAME
@@ -7085,16 +7074,9 @@ function install_mediagoblin {
   su -c "cp $MEDIAGOBLIN_PATH/paste.ini $MEDIAGOBLIN_PATH/paste_local.ini" - mediagoblin
 
   # update the dynamic DNS
-  if [ $MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE ]; then
-      if [[ $MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE != $FREEDNS_SUBDOMAIN_CODE ]]; then
-          if ! grep -q "$MEDIAGOBLIN_DOMAIN_NAME" /usr/bin/dynamicdns; then
-              echo "# $MEDIAGOBLIN_DOMAIN_NAME" >> /usr/bin/dynamicdns
-              echo "wget -O - https://freedns.afraid.org/dynamic/update.php?$MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE== >> /dev/null 2>&1" >> /usr/bin/dynamicdns
-          fi
-      fi
-  else
-      echo 'WARNING: No freeDNS subdomain code given for mediagoblin. It is assumed that you are using some other dynamic DNS provider.'
-  fi
+  CURRENT_DDNS_DOMAIN=$MEDIAGOBLIN_DOMAIN_NAME
+  CURRENT_DDNS_CODE=$MEDIAGOBLIN_FREEDNS_SUBDOMAIN_CODE
+  add_ddns_domain
 
   # see https://wiki.mediagoblin.org/Deployment / uwsgi with configs
   apt-get -y --force-yes install uwsgi uwsgi-plugin-python nginx-full supervisor
@@ -7556,6 +7538,31 @@ function backup_github_projects {
   echo 'backup_github_projects' >> $COMPLETION_FILE
 }
 
+function install_dynamicdns {
+  if grep -Fxq "install_dynamicdns" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y install inadyn curl
+
+  if [ ! -f /etc/inadyn.conf ]; then
+      echo 'Unable to find inadyn configuration file /etc/inadyn.conf'
+      exit 57894
+  fi
+
+  sed -i "s/# bind eth.*/# bind eth0/g" /etc/inadyn.conf
+
+  # clear existing settings
+  sed -i 's/system <provider>//g' /etc/inadyn.conf
+  sed -i 's/# Your username//g' /etc/inadyn.conf
+  sed -i 's/username <username>//g' /etc/inadyn.conf
+  sed -i 's/# Your password//g' /etc/inadyn.conf
+  sed -i 's/password <password>//g' /etc/inadyn.conf
+  sed -i 's/# Your hostname. This option can appear multiple times//g' /etc/inadyn.conf
+  sed -i 's/alias <hostname>//g' /etc/inadyn.conf
+
+  echo 'install_dynamicdns' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -7591,6 +7598,7 @@ remove_proprietary_repos
 change_debian_repos
 enable_backports
 configure_dns
+install_dynamicdns
 initial_setup
 enforce_good_passwords
 install_editor
@@ -7626,7 +7634,6 @@ email_from_address
 configure_firewall_for_email
 folders_for_mailing_lists
 folders_for_email_addresses
-dynamic_dns_freedns
 create_public_mailing_list
 #create_private_mailing_list
 encrypt_all_email
