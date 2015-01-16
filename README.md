@@ -11,7 +11,7 @@ The Freedombone system can be installed onto a Beaglebone Black, or any system c
  - **Chat**: Encrypted IRC and XMPP services for one-to-one and many-to-many chat
  - **Nonmailbox**: Installs eveything except for the email server
 
-Unlike certain other self-hosting projects Freedombone has more emphasis on security and privacy. When installed on a Beaglebone Black it uses the built-in hardware random number generator as an entropy source and all communications with the box are encrypted by default using the recommendations from https://bettercrypto.org. The firewall is configured to only allow communications on the necessary ports and to drop all other packets, icmp is disabled by default, emails are stored in encrypted form using your public key and time synchronisation occurs via TLS only.  Backups are also encrypted.
+Freedombone has an emphasis on security and privacy, and when installed on a Beaglebone Black it uses the built-in hardware random number generator as an entropy source.  All communications with the box are encrypted by default using the recommendations from https://bettercrypto.org. The firewall is configured to only allow communications on the necessary ports and to drop all other packets, icmp is disabled by default, emails are stored in encrypted form using your public key and time synchronisation occurs via TLS only.  Backups are also encrypted and can be local or remote.
 
 Freedombone is, and shall remain, 100% free software. Non-free repositories are removed automatically upon installation.
 
@@ -66,7 +66,7 @@ The FreeDNS subdomain codes can be found under "Dynamic DNS" and "quick cron exa
 
 The syntax of the *freedombone* command is:
 
-    freedombone --bbb -d [domain name] -u [username] -c [FreeDNS subdomain code] -s [optional variant type]
+    freedombone --bbb -d [domain name] -u [username] -c [FreeDNS subdomain code] --ddns "freedns.afraid.org" --ddnsuser [FreeDNS username] --ddnspass [FreeDNS password] -s [optional variant type]
 
 Also see the manpage for additional options which can be used instead of a configuration file. If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory from which the *freedombone* command is run.
 
