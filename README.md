@@ -31,15 +31,13 @@ To get started you will need:
 
 You will also need to know, or find out, the IP address of your internet router and have a suitable static IP address for the Beaglebone on your local network. The router should allow you to forward ports to the Beaglebone (often this is under firewall or "advanced" settings).
 
-Check that within *initial_setup.sh* the router IP address and static IP for the Beaglebone are set correctly.
+Plug the microSD card into your laptop/desktop and then run the *freedombone-prep* command. For example:
 
-Plug the microSD card into your laptop/desktop and then run the *initial_setup.sh* script. For example:
-
-    ./initial_setup.sh /dev/sdX
+    freedombone-prep -d /dev/sdX --ip <static LAN IP> --iprouter <router LAN IP>
 
 where /dev/sdX is the device name for the microSD card. Often it's /dev/sdb or /dev/sdc, depending upon how many drives there are on your system. The script will download the Debian installer and update the microSD card. It can take a while, so be patient.
 
-When the initial setup is done follow the instructions on screen to run the main Freedombone script. You can either edit the variables within the *install-freedombone.sh* script directly, or create a separate configuration file called *freedombone.cfg* which contains those variables. Variables which you might want to put into a *freedombone.cfg* file are:
+When the initial setup is done follow the instructions on screen to run the main Freedombone script. You can create a separate configuration file called *freedombone.cfg* which contains those variables. Variables which you might want to put into a *freedombone.cfg* file are:
 
     MY_EMAIL_ADDRESS=
     MY_NAME=
@@ -66,11 +64,11 @@ The GPG public/private key variables are for the filenames of exported GPG keys,
 
 The FreeDNS subdomain codes can be found under "Dynamic DNS" and "quick cron example". On the last line it will be the string located between the '?' and the '==' characters.
 
-The syntax of the *install-freedombone.sh* script is:
+The syntax of the *freedombone* command is:
 
-    ./install-freedombone.sh [domain name] [username] [FreeDNS subdomain code] [optional variant type]
+    freedombone --bbb -d [domain name] -u [username] -c [FreeDNS subdomain code] -s [optional variant type]
 
-If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory as *install-freedombone.sh*.
+Also see the manpage for additional options which can be used instead of a configuration file. If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory from which the *freedombone* command is run.
 
 Installation is not quick, and depends upon which variant you choose and your internet bandwidth. Allow about three hours for a full installation on the Beaglebone Black. On the Beaglebone installation is in two parts, since a reboot is needed to enable the hardware random number generator and zram.
 
@@ -82,4 +80,4 @@ Any manual post-installation setup instructions or passwords can be found in /ho
 
 Non-Beaglebone hardware
 =======================
-It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within *freedombone.cfg* or the *install-freedombone.sh* script. Obviously, you don't need to run the *initial_setup.sh* script on non-Beaglebone systems.
+It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within *freedombone.cfg* or do not include the *--bbb* option within the *freedombone* command. Obviously, you don't need to run the *freedombone-prep* command on non-Beaglebone systems.
