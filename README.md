@@ -25,7 +25,7 @@ To get started you will need:
  - Optionally a 5V 2A power supply for the Beaglebone Black
  - Access to the internet via a router with ethernet sockets
  - USB thumb drive (for backups or storing media)
- - One or more subdomains created on https://freedns.afraid.org
+ - One or more domains available via a dynamic DNS provider, such as https://freedns.afraid.org
  - A purchased domain name and SSL certificate (only needed for Red Matrix)
  - A laptop or desktop machine with the ability to write to a microSD card (might need an adaptor)
 
