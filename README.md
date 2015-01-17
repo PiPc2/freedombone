@@ -1,4 +1,4 @@
-<img src="https://github.com/bashrc/freedombone/blob/master/ads/freedombone_ad1.png?raw=true" width=640/>
+<img src="https://github.com/bashrc/freedombone/blob/master/ads/freedombone_ad2.png?raw=true" width=640/>
 
 The Freedombone system can be installed onto a Beaglebone Black, or any system capable of running Debian Jessie, and allows you to host your own email and web services. With Freedombone you can enjoy true freedom and independence in the cloud. It comes in a variety of flavours.
 
