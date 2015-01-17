@@ -31,6 +31,13 @@ To get started you will need:
 
 You will also need to know, or find out, the IP address of your internet router and have a suitable static IP address for the Beaglebone on your local network. The router should allow you to forward ports to the Beaglebone (often this is under firewall or "advanced" settings).
 
+You can either install from a debian package or manually as follows:
+
+    sudo apt-get install git
+    git clone https://github.com/bashrc/freedombone
+    cd freedombone
+    sudo make install
+
 Plug the microSD card into your laptop/desktop and then run the *freedombone-prep* command. For example:
 
     freedombone-prep -d /dev/sdX --ip <static LAN IP> --iprouter <router LAN IP>
