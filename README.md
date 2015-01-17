@@ -37,36 +37,55 @@ Plug the microSD card into your laptop/desktop and then run the *freedombone-pre
 
 where /dev/sdX is the device name for the microSD card. Often it's /dev/sdb or /dev/sdc, depending upon how many drives there are on your system. The script will download the Debian installer and update the microSD card. It can take a while, so be patient.
 
-When the initial setup is done follow the instructions on screen to run the main Freedombone script. You can create a separate configuration file called *freedombone.cfg* which contains those variables. Variables which you might want to put into a *freedombone.cfg* file are:
+When the initial setup is done follow the instructions on screen to run the main freedombone command.
+
+On the system where freedombone is to be installed create a configuration file.
+
+    ssh username@freedombone_IP_address
+    su
+    apt-get install git
+    git clone https://github.com/bashrc/freedombone
+    cd freedombone
+    make install
+    nano /home/username/freedombone/freedombone.cfg
+
+Add the following, and set the values as needed.
 
     MY_EMAIL_ADDRESS=
     MY_NAME=
     MY_BLOG_TITLE=
     MY_BLOG_SUBTITLE=
-    SSH_PORT=
     FULLBLOG_DOMAIN_NAME=
-    FULLBLOG_FREEDNS_SUBDOMAIN_CODE=
     MICROBLOG_DOMAIN_NAME=
-    MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
     REDMATRIX_DOMAIN_NAME=
     OWNCLOUD_DOMAIN_NAME=
-    OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
-    WIKI_TITLE=
     WIKI_DOMAIN_NAME=
-    WIKI_FREEDNS_SUBDOMAIN_CODE=
-    MY_GPG_PUBLIC_KEY=
-    MY_GPG_PRIVATE_KEY=
-    ROUTE_THROUGH_TOR=no
+    WIKI_TITLE=
     ENABLE_CJDNS=no
-    LOCAL_NETWORK_STATIC_IP_ADDRESS=192.168.1.60
+    LOCAL_NETWORK_STATIC_IP_ADDRESS=
+    ROUTER_IP_ADDRESS=
 
-The GPG public/private key variables are for the filenames of exported GPG keys, and if a private key filename is given then it will be automatically shredded after import.
+Both of the IP addresses are local IP addresses, typically of the form 192.168.x.x, with one being for the system and the other being for the internet router.
 
-The FreeDNS subdomain codes can be found under "Dynamic DNS" and "quick cron example". On the last line it will be the string located between the '?' and the '==' characters.
+If you are using FreeDNS as a dynamic DNS provider then you can add the following to your configuration file, setting the subdomain codes as appropriate. You can find the codes on the FreeDNS site under "Dynamic DNS" followed by "quick cron example" then look for the code on the last line between the ? and = characters.
 
-The syntax of the *freedombone* command is:
+    FULLBLOG_FREEDNS_SUBDOMAIN_CODE=
+    REDMATRIX_FREEDNS_SUBDOMAIN_CODE=
+    MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
+    OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
+    WIKI_FREEDNS_SUBDOMAIN_CODE=
 
-    freedombone --bbb -d [domain name] -u [username] -c [FreeDNS subdomain code] --ddns "freedns.afraid.org" --ddnsuser [FreeDNS username] --ddnspass [FreeDNS password] -s [optional variant type]
+Save the configuration file and exit from your editor.
+
+Now you can begin the installation. If you are doing this on a Beaglebone Black:
+
+    freedombone --bbb -d [default domain name] -u [username] --ddns [dynamic DNS provider domain] --ddnsuser [dynamic DNS username] --ddnspass [dynamic DNS password]
+
+Or on any other system don't include the *--bbb* option.
+
+    freedombone -d [default domain name] -u [username] --ddns [dynamic DNS provider domain] --ddnsuser [dynamic DNS username] --ddnspass [dynamic DNS password]
+
+The above command should be run in the same directory in which your configuration file exists. You can use any of your domains as the default one, but typically the default domain is the same as the one for your wiki. If you are using FreeDNS as the dynamic DNS provider then also add the -c option to specify the code corresponding to the subdomain.
 
 Also see the manpage for additional options which can be used instead of a configuration file. If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory from which the *freedombone* command is run.
 
