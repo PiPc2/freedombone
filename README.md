@@ -35,7 +35,7 @@ You will also need to know, or find out, the IP address of your internet router 
 
 You can either install from a debian package or manually as follows:
 
-    sudo apt-get install git
+    sudo apt-get install git dialog
     git clone https://github.com/bashrc/freedombone
     cd freedombone
     sudo make install
@@ -71,7 +71,7 @@ The interactive server configuration setup is recommended for most users. On the
 
     ssh username@freedombone_IP_address
     su
-    apt-get install git
+    apt-get install git dialog
     git clone https://github.com/bashrc/freedombone
     cd freedombone
     make install
