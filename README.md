@@ -15,8 +15,10 @@ Freedombone has an emphasis on security and privacy, and when installed on a Bea
 
 Freedombone is, and shall remain, 100% free software. Non-free repositories are removed automatically upon installation.
 
-Installation
-============
+Preparation for the Beaglebone Black
+====================================
+This section is specific to the Beaglebone Black hardware. If you're not using that hardware then just skip to the next section.
+
 To get started you will need:
 
  - A Beaglebone Black
@@ -40,11 +42,49 @@ You can either install from a debian package or manually as follows:
 
 Plug the microSD card into your laptop/desktop and then run the *freedombone-prep* command. For example:
 
-    freedombone-prep -d /dev/sdX --ip <static LAN IP> --iprouter <router LAN IP>
+    freedombone-prep -d /dev/sdX --ip freedombone_IP_address --iprouter router_IP_address
 
 where /dev/sdX is the device name for the microSD card. Often it's /dev/sdb or /dev/sdc, depending upon how many drives there are on your system. The script will download the Debian installer and update the microSD card. It can take a while, so be patient.
 
 When the initial setup is done follow the instructions on screen to run the main freedombone command.
+
+Checklist
+=========
+Before running the freedombone command you will need a few things.
+
+  * Have some domains, or subdomains, registered with a dynamic DNS service
+  * System with a new installation of Debian Jessie
+  * Ethernet connection to an internet router
+  * It is possible to forward ports from the internet router to the system
+  * If you want to set up a social network or microblog then you will need SSL certificates corresponding to those domains
+  * Have ssh access to the system
+
+GPG Keys
+========
+If you have existing GPG keys then copy the .gnupg directory onto the system.
+
+    scp -r ~/.gnupg username@freedombone_IP_address:/home/username
+
+Interactive Setup
+=================
+The interactive server configuration setup is recommended for most users. On the system where freedombone is to be installed create a configuration file.
+
+    ssh username@freedombone_IP_address
+    su
+    apt-get install git
+    git clone https://github.com/bashrc/freedombone
+    cd freedombone
+    make install
+
+Now the easiest way to install the system is via the interactive setup.
+
+    freedombone menuconfig
+
+You can select which variant you wish to install and then enter the details as requested.
+
+Non-Interactive Setup
+=====================
+If you don't want to install interactively then it's possible to manually create a configuration file as follows:
 
 On the system where freedombone is to be installed create a configuration file.
 
@@ -96,7 +136,9 @@ The above command should be run in the same directory in which your configuratio
 
 Also see the manpage for additional options which can be used instead of a configuration file. If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory from which the *freedombone* command is run.
 
-Installation is not quick, and depends upon which variant you choose and your internet bandwidth. Allow about three hours for a full installation on the Beaglebone Black. On the Beaglebone installation is in two parts, since a reboot is needed to enable the hardware random number generator and zram.
+Post-Setup
+==========
+Setup of the server and installation of all the relevant packages is not quick, and depends upon which variant you choose and your internet bandwidth. Allow about three hours for a full installation on the Beaglebone Black. On the Beaglebone installation is in two parts, since a reboot is needed to enable the hardware random number generator and zram.
 
 When done you can ssh into the Freedombone with:
 
@@ -104,6 +146,22 @@ When done you can ssh into the Freedombone with:
 
 Any manual post-installation setup instructions or passwords can be found in /home/username/README. You should remove any passwords from that file and store them within a password manager such as KeepassX.
 
-Non-Beaglebone hardware
-=======================
-It's also possible to install Freedombone onto other hardware. Any system with a fresh installation of Debian Jessie will do. Just make sure that you change the variable INSTALLING_ON_BBB to "no" within *freedombone.cfg* or do not include the *--bbb* option within the *freedombone* command. Obviously, you don't need to run the *freedombone-prep* command on non-Beaglebone systems.
+On your internet router, typically under firewall settings, open the following ports and forward them to your server.
+
+    | Service |      Ports |
+    |---------+------------|
+    | HTTP    |         80 |
+    | HTTPS   |        443 |
+    | SSH     |       2222 |
+    | DLNA    |       1900 |
+    | DLNA    |       8200 |
+    | XMPP    | 5222..5223 |
+    | XMPP    |       5269 |
+    | XMPP    | 5280..5281 |
+    | IRC     |       6697 |
+    | IRC     |       9999 |
+    | Git     |       9418 |
+    | Email   |         25 |
+    | Email   |        587 |
+    | Email   |        465 |
+    | Email   |        993 |
