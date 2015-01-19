@@ -6233,6 +6233,7 @@ function add_ddns_domain {
   fi
   chmod 600 /etc/inadyn.conf
   service inadyn restart
+  systemctl daemon-reload
 
   # clear the arguments
   CURRENT_DDNS_DOMAIN=
@@ -8325,24 +8326,166 @@ function install_dynamicdns {
   if grep -Fxq "install_dynamicdns" $COMPLETION_FILE; then
       return
   fi
-  apt-get -y install inadyn curl
 
-  if [ ! -f /etc/inadyn.conf ]; then
-      echo 'Unable to find inadyn configuration file /etc/inadyn.conf'
-      exit 57894
+  # Here we compile from source because the current package
+  # doesn't support https, which clould result in passwords
+  # being leaked
+
+  cd $INSTALL_DIR
+  apt-get -y install build-essential curl libgnutls28-dev automake1.11
+  git clone https://github.com/troglobit/inadyn
+  cd inadyn
+  ./configure
+  if [ ! "$?" = "0" ]; then
+      exit 74890
+  fi
+  USE_OPENSSL=1 make
+  if [ ! "$?" = "0" ]; then
+      exit 74858
+  fi
+  make install
+  if [ ! "$?" = "0" ]; then
+      exit 3785
   fi
 
-  sed -i "s/# bind eth.*/# bind eth0/g" /etc/inadyn.conf
+  # create a configuration file
+  echo 'period         300' > /etc/inadyn.conf
+  echo 'startup-delay  60' >> /etc/inadyn.conf
+  echo 'cache-dir      /etc/inadyn' >> /etc/inadyn.conf
+  chmod 600 /etc/inadyn.conf
 
-  # clear existing settings
-  sed -i 's/system <provider>//g' /etc/inadyn.conf
-  sed -i 's/# Your username//g' /etc/inadyn.conf
-  sed -i 's/username <username>//g' /etc/inadyn.conf
-  sed -i 's/# Your password//g' /etc/inadyn.conf
-  sed -i 's/password <password>//g' /etc/inadyn.conf
-  sed -i 's/# Your hostname. This option can appear multiple times//g' /etc/inadyn.conf
-  sed -i 's/alias <hostname>//g' /etc/inadyn.conf
-
+  if [ ! -d /etc/inadyn ]; then
+      mkdir /etc/inadyn
+  fi
+  
+  # add an init script
+  echo '#!/bin/sh' > /etc/init.d/inadyn
+  echo '### BEGIN INIT INFO' >> /etc/init.d/inadyn
+  echo '# Provides:          inadyn' >> /etc/init.d/inadyn
+  echo '# Required-Start:    $network $local_fs $remote_fs $syslog' >> /etc/init.d/inadyn
+  echo '# Required-Stop:     $network $local_fs $remote_fs $syslog' >> /etc/init.d/inadyn
+  echo '# Default-Start:     2 3 4 5' >> /etc/init.d/inadyn
+  echo '# Default-Stop:      0 1 6' >> /etc/init.d/inadyn
+  echo '# Short-Description: Dynamic DNS client' >> /etc/init.d/inadyn
+  echo '# Description:       Register an Internet name with your IP address' >> /etc/init.d/inadyn
+  echo '### END INIT INFO' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo '# Author: Timur Birsh <taem@linukz.org>' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo 'PATH=/sbin:/usr/sbin:/usr/local/sbin:/bin:/usr/local/bin:/usr/bin' >> /etc/init.d/inadyn
+  echo 'DESC="Dynamic DNS client"' >> /etc/init.d/inadyn
+  echo 'NAME=inadyn' >> /etc/init.d/inadyn
+  echo 'DAEMON=/usr/local/sbin/inadyn' >> /etc/init.d/inadyn
+  echo 'CACHEDIR=/run/$NAME' >> /etc/init.d/inadyn
+  echo 'PIDFILE=$CACHEDIR/$NAME.pid' >> /etc/init.d/inadyn
+  echo 'SCRIPTNAME=/etc/init.d/$NAME' >> /etc/init.d/inadyn
+  echo 'DEFAULT=/etc/default/$NAME' >> /etc/init.d/inadyn
+  echo 'CONFIG=/etc/$NAME.conf' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo '[ -x $DAEMON ] || exit 0' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo '[ -r $DEFAULT ] && . $DEFAULT' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo '. /lib/lsb/init-functions' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo '# Set defaults values if no DEFAULT exist' >> /etc/init.d/inadyn
+  echo 'RUN_DAEMON="yes"' >> /etc/init.d/inadyn
+  echo 'USER=root' >> /etc/init.d/inadyn
+  echo 'GROUP=root' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo 'DAEMON_ARGS="--pidfile $PIDFILE \' >> /etc/init.d/inadyn
+  echo '             --config $CONFIG \' >> /etc/init.d/inadyn
+  echo '             --background \' >> /etc/init.d/inadyn
+  echo '             --drop-privs $USER:$GROUP"' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo 'create_cache_dir() {' >> /etc/init.d/inadyn
+  echo '    # Create the cache empty dir if necessary' >> /etc/init.d/inadyn
+  echo '    if [ ! -d $CACHEDIR ]; then' >> /etc/init.d/inadyn
+  echo '        mkdir $CACHEDIR' >> /etc/init.d/inadyn
+  echo '        chmod 0755 $CACHEDIR' >> /etc/init.d/inadyn
+  echo '    chown $USER:$GROUP $CACHEDIR' >> /etc/init.d/inadyn
+  echo '    fi' >> /etc/init.d/inadyn
+  echo '}' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo 'do_start()' >> /etc/init.d/inadyn
+  echo '{' >> /etc/init.d/inadyn
+  echo '    start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \' >> /etc/init.d/inadyn
+  echo '        || return 1' >> /etc/init.d/inadyn
+  echo '    start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \' >> /etc/init.d/inadyn
+  echo '        $DAEMON_ARGS \' >> /etc/init.d/inadyn
+  echo '        || return 2' >> /etc/init.d/inadyn
+  echo '}' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo 'do_stop()' >> /etc/init.d/inadyn
+  echo '{' >> /etc/init.d/inadyn
+  echo '    start-stop-daemon --stop --quiet --retry=TERM/30/KILL/5 --pidfile $PIDFILE --name $NAME' >> /etc/init.d/inadyn
+  echo '    RETVAL="$?"' >> /etc/init.d/inadyn
+  echo '    [ "$RETVAL" = 2 ] && return 2' >> /etc/init.d/inadyn
+  echo '    rm -f $PIDFILE' >> /etc/init.d/inadyn
+  echo '    return "$RETVAL"' >> /etc/init.d/inadyn
+  echo '}' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo 'do_reload() {' >> /etc/init.d/inadyn
+  echo '    start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME' >> /etc/init.d/inadyn
+  echo '    return 0' >> /etc/init.d/inadyn
+  echo '}' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo 'case "$1" in' >> /etc/init.d/inadyn
+  echo '  start)' >> /etc/init.d/inadyn
+  echo '    log_daemon_msg "Starting $DESC " "$NAME"' >> /etc/init.d/inadyn
+  echo '    create_cache_dir' >> /etc/init.d/inadyn
+  echo '    do_start' >> /etc/init.d/inadyn
+  echo '    case "$?" in' >> /etc/init.d/inadyn
+  echo '        0|1) log_end_msg 0 ;;' >> /etc/init.d/inadyn
+  echo '        2) log_end_msg 1 ;;' >> /etc/init.d/inadyn
+  echo '    esac' >> /etc/init.d/inadyn
+  echo '  ;;' >> /etc/init.d/inadyn
+  echo '  stop)' >> /etc/init.d/inadyn
+  echo '    log_daemon_msg "Stopping $DESC" "$NAME"' >> /etc/init.d/inadyn
+  echo '    do_stop' >> /etc/init.d/inadyn
+  echo '    case "$?" in' >> /etc/init.d/inadyn
+  echo '        0|1) log_end_msg 0 ;;' >> /etc/init.d/inadyn
+  echo '        2) log_end_msg 1 ;;' >> /etc/init.d/inadyn
+  echo '    esac' >> /etc/init.d/inadyn
+  echo '    ;;' >> /etc/init.d/inadyn
+  echo '  status)' >> /etc/init.d/inadyn
+  echo '       status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?' >> /etc/init.d/inadyn
+  echo '       ;;' >> /etc/init.d/inadyn
+  echo '  reload|force-reload)' >> /etc/init.d/inadyn
+  echo '    log_daemon_msg "Reloading $DESC" "$NAME"' >> /etc/init.d/inadyn
+  echo '    do_reload' >> /etc/init.d/inadyn
+  echo '    log_end_msg $?' >> /etc/init.d/inadyn
+  echo '    ;;' >> /etc/init.d/inadyn
+  echo '  restart)' >> /etc/init.d/inadyn
+  echo '    log_daemon_msg "Restarting $DESC" "$NAME"' >> /etc/init.d/inadyn
+  echo '    do_stop' >> /etc/init.d/inadyn
+  echo '    case "$?" in' >> /etc/init.d/inadyn
+  echo '      0|1)' >> /etc/init.d/inadyn
+  echo '        do_start' >> /etc/init.d/inadyn
+  echo '        case "$?" in' >> /etc/init.d/inadyn
+  echo '            0) log_end_msg 0 ;;' >> /etc/init.d/inadyn
+  echo '            1) log_end_msg 1 ;; # Old process is still running' >> /etc/init.d/inadyn
+  echo '            *) log_end_msg 1 ;; # Failed to start' >> /etc/init.d/inadyn
+  echo '        esac' >> /etc/init.d/inadyn
+  echo '        ;;' >> /etc/init.d/inadyn
+  echo '      *)' >> /etc/init.d/inadyn
+  echo '        # Failed to stop' >> /etc/init.d/inadyn
+  echo '        log_end_msg 1' >> /etc/init.d/inadyn
+  echo '        ;;' >> /etc/init.d/inadyn
+  echo '    esac' >> /etc/init.d/inadyn
+  echo '    ;;' >> /etc/init.d/inadyn
+  echo '  *)' >> /etc/init.d/inadyn
+  echo '    echo "Usage: $SCRIPTNAME {start|stop|status|restart|reload|force-reload}" >&2' >> /etc/init.d/inadyn
+  echo '    exit 3' >> /etc/init.d/inadyn
+  echo '    ;;' >> /etc/init.d/inadyn
+  echo 'esac' >> /etc/init.d/inadyn
+  echo '' >> /etc/init.d/inadyn
+  echo ':' >> /etc/init.d/inadyn
+  chmod +x /etc/init.d/inadyn
+  update-rc.d inadyn defaults
+  service inadyn start
+  systemctl daemon-reload
+  
   echo 'install_dynamicdns' >> $COMPLETION_FILE
 }
 
