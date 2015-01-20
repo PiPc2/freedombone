@@ -114,14 +114,6 @@ Add the following, and set the values as needed.
 
 Both of the IP addresses are local IP addresses, typically of the form 192.168.x.x, with one being for the system and the other being for the internet router.
 
-If you are using FreeDNS as a dynamic DNS provider then you can add the following to your configuration file, setting the subdomain codes as appropriate. You can find the codes on the FreeDNS site under "Dynamic DNS" followed by "quick cron example" then look for the code on the last line between the ? and = characters.
-
-    FULLBLOG_FREEDNS_SUBDOMAIN_CODE=
-    REDMATRIX_FREEDNS_SUBDOMAIN_CODE=
-    MICROBLOG_FREEDNS_SUBDOMAIN_CODE=
-    OWNCLOUD_FREEDNS_SUBDOMAIN_CODE=
-    WIKI_FREEDNS_SUBDOMAIN_CODE=
-
 Save the configuration file and exit from your editor.
 
 Now you can begin the installation. If you are doing this on a Beaglebone Black:
@@ -132,7 +124,7 @@ Or on any other system don't include the *--bbb* option.
 
     freedombone -d [default domain name] -u [username] --ddns [dynamic DNS provider domain] --ddnsuser [dynamic DNS username] --ddnspass [dynamic DNS password]
 
-The above command should be run in the same directory in which your configuration file exists. You can use any of your domains as the default one, but typically the default domain is the same as the one for your wiki. If you are using FreeDNS as the dynamic DNS provider then also add the -c option to specify the code corresponding to the subdomain.
+The above command should be run in the same directory in which your configuration file exists. You can use any of your domains as the default one, but typically the default domain is the same as the one for your wiki.
 
 Also see the manpage for additional options which can be used instead of a configuration file. If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory from which the *freedombone* command is run.
 
