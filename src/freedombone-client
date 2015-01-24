@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+CURR_USER=$USER
+
+# Version number of this script
+VERSION="1.00"
+
+# ssh (from https://stribika.github.io/2015/01/04/secure-secure-shell.html)
+SSH_CIPHERS="chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
+SSH_MACS="hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com"
+SSH_KEX="curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256"
+SSH_HOST_KEY_ALGORITHMS="ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-rsa-cert-v00@openssh.com,ssh-ed25519,ssh-rsa"
+
+# see https://stribika.github.io/2015/01/04/secure-secure-shell.html
+function ssh_remove_small_moduli {
+  sudo awk '$5 > 2000' /etc/ssh/moduli > /home/$CURR_USER/moduli
+  sudo mv /home/$CURR_USER/moduli /etc/ssh/moduli
+}
+
+function configure_ssh_client {
+  #sudo sed -i 's/#   PasswordAuthentication.*/   PasswordAuthentication no/g' /etc/ssh/ssh_config
+  #sudo sed -i 's/#   ChallengeResponseAuthentication.*/   ChallengeResponseAuthentication no/g' /etc/ssh/ssh_config
+  sudo sed -i "s/#   HostKeyAlgorithms.*/   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS/g" /etc/ssh/ssh_config
+  sudo sed -i "s/#   Ciphers.*/   Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
+  sudo sed -i "s/#   MACs.*/   MACs $SSH_MACS/g" /etc/ssh/ssh_config
+  if ! grep -q "HostKeyAlgorithms" /etc/ssh/ssh_config; then
+      sudo echo "   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS" >> /etc/ssh/ssh_config
+  fi
+  sudo sed -i "s/Ciphers.*/Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
+  if ! grep -q "Ciphers " /etc/ssh/ssh_config; then
+      sudo echo "   Ciphers $SSH_CIPHERS" >> /etc/ssh/ssh_config
+  fi
+  sudo sed -i "s/MACs.*/MACs $SSH_MACS/g" /etc/ssh/ssh_config
+  if ! grep -q "MACs " /etc/ssh/ssh_config; then
+      sudo echo "   MACs $SSH_MACS" >> /etc/ssh/ssh_config
+  fi
+
+  # Create ssh keys
+  if [ ! -f /home/$CURR_USER/.ssh/id_ed25519 ]; then
+      ssh-keygen -t ed25519 -o -a 100
+  fi
+  if [ ! -f /home/$CURR_USER/.ssh/id_rsa ]; then
+      ssh-keygen -t rsa -b 4096 -o -a 100
+  fi
+
+  ssh_remove_small_moduli
+
+  echo ''
+  echo 'Copy the following into a file called /home/username/.ssh/authorized_keys on the Freedombone server'
+  echo ''
+  echo $(cat /home/$CURR_USER/.ssh/id_rsa.pub)
+  echo $(cat /home/$CURR_USER/.ssh/id_ed25519.pub)
+  echo ''
+}
+
+echo 'Configuring client'
+configure_ssh_client
+echo 'Configuration complete'
