@@ -226,10 +226,11 @@ SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
 # list of ciphers to use.  See bettercrypto.org recommendations
 SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA384:EECDH+aRSA+SHA256:EECDH:+CAMELLIA256:+AES256:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!ECDSA:CAMELLIA256-SHA:AES256-SHA:CAMELLIA128-SHA:AES128-SHA"
 
-# ssh ciphers
-SSH_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes128-ctr"
-SSH_MACS="hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160"
-SSH_KEX="diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1"
+# ssh (from https://stribika.github.io/2015/01/04/secure-secure-shell.html)
+SSH_CIPHERS="chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
+SSH_MACS="hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com"
+SSH_KEX="curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256"
+SSH_HOST_KEY_ALGORITHMS="ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-rsa-cert-v00@openssh.com,ssh-ed25519,ssh-rsa"
 
 # xmpp ciphers and curve
 XMPP_CIPHERS='"EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA256:EECDH:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!IDEA:!ECDSA:kEDH:CAMELLIA128-SHA:AES128-SHA"'
@@ -4256,12 +4257,48 @@ function configure_ssh {
   reboot
 }
 
+# see https://stribika.github.io/2015/01/04/secure-secure-shell.html
+function ssh_remove_small_moduli {
+  awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
+  if [[ $((wc -l ~/moduli | awk -F ' ' '{print $1}')) < 150 ]]; then
+      echo 'Not enough moduli > 2000'
+      exit 57824
+  fi
+  mv ~/moduli /etc/ssh/moduli
+}
+
+function configure_ssh_client {
+  if grep -Fxq "configure_ssh_client" $COMPLETION_FILE; then
+      return
+  fi
+  #sed 's/#   PasswordAuthentication.*/   PasswordAuthentication no/g' /etc/ssh/ssh_config
+  #sed 's/#   ChallengeResponseAuthentication.*/   ChallengeResponseAuthentication no/g' /etc/ssh/ssh_config
+  sed "s/#   HostKeyAlgorithms.*/   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS/g" /etc/ssh/ssh_config
+  sed "s/#   Ciphers.*/   Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
+  sed "s/#   MACs.*/   MACs $SSH_MACS/g" /etc/ssh/ssh_config
+  if ! grep -q "HostKeyAlgorithms" /etc/ssh/ssh_config; then
+      echo "   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS" >> /etc/ssh/ssh_config
+  fi
+  sed "s/Ciphers.*/Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
+  if ! grep -q "Ciphers " /etc/ssh/ssh_config; then
+      echo "   Ciphers $SSH_CIPHERS" >> /etc/ssh/ssh_config
+  fi
+  sed "s/MACs.*/MACs $SSH_MACS/g" /etc/ssh/ssh_config
+  if ! grep -q "MACs " /etc/ssh/ssh_config; then
+      echo "   MACs $SSH_MACS" >> /etc/ssh/ssh_config
+  fi
+  ssh-keygen -t ed25519 -o -a 100
+  ssh-keygen -t rsa -b 4096 -o -a 100
+  echo 'configure_ssh_client' >> $COMPLETION_FILE
+}
+
 function regenerate_ssh_keys {
   if grep -Fxq "regenerate_ssh_keys" $COMPLETION_FILE; then
       return
   fi
   rm -f /etc/ssh/ssh_host_*
   dpkg-reconfigure openssh-server
+  ssh_remove_small_moduli
   service ssh restart
   echo 'regenerate_ssh_keys' >> $COMPLETION_FILE
 }
