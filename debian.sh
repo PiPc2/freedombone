@@ -11,6 +11,7 @@ sed -i 's/VERSION='${PREV_VERSION}'/VERSION='${VERSION}'/g' Makefile
 sed -i 's/VERSION="'${PREV_VERSION}'"/VERSION="'${VERSION}'"/g' src/freedombone
 sed -i 's/VERSION="'${PREV_VERSION}'"/VERSION="'${VERSION}'"/g' src/freedombone-prep
 sed -i 's/VERSION="'${PREV_VERSION}'"/VERSION="'${VERSION}'"/g' src/freedombone-tordongle
+sed -i 's/VERSION="'${PREV_VERSION}'"/VERSION="'${VERSION}'"/g' src/freedombone-client
 
 # change the parent directory name to debian format
 mv ../${APP} ../${DIR}
