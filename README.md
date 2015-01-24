@@ -157,3 +157,13 @@ On your internet router, typically under firewall settings, open the following p
     | Email   |        587 |
     | Email   |        465 |
     | Email   |        993 |
+
+On Client Machines
+==================
+You can configure laptops or desktop machines which connect to the Freedombone server in the following way. This alters encryption settings to improve overall security.
+
+    sudo apt-get install git dialog
+    git clone https://github.com/bashrc/freedombone
+    cd freedombone
+    sudo make install
+    freedombone-client
