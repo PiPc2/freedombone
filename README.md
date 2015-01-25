@@ -35,7 +35,7 @@ You will also need to know, or find out, the IP address of your internet router 
 
 You can either install from a debian package or manually as follows:
 
-    sudo apt-get install git dialog
+    sudo apt-get install git dialog build-essential
     git clone https://github.com/bashrc/freedombone
     cd freedombone
     sudo make install
