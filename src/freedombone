@@ -488,6 +488,12 @@ function save_configuration_file {
 }
 
 function interactive_configuration {
+  # create a temporary copy of the configuration file
+  # which can be used to pre-populate selections
+  if [ -f $CONFIGURATION_FILE ]; then
+      cp $CONFIGURATION_FILE temp.cfg
+  fi
+
   dialog --title "Freedombone" --msgbox "Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nEnsure that you have your domain and dynamic DNS settings ready.\n\nFor more information please visit $FREEDOMBONE_WEBSITE or send a Bitmessage to $FREEDOMBONE_BITMESSAGE" 15 50
 
   data=$(tempfile 2>/dev/null)
@@ -517,12 +523,13 @@ function interactive_configuration {
       7) SYSTEM_TYPE=$VARIANT_SOCIAL;;
       8) SYSTEM_TYPE=$VARIANT_MEDIA;;
   esac
+  save_configuration_file
 
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
   dialog --title "Select the user account to install as" \
       --backtitle "Freedombone Configuration" \
-      --dselect /home/ 14 40 2> $data
+      --dselect "/home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')" 14 40 2> $data
   sel=$?
   case $sel in
       0) MY_USERNAME=$(cat $data | awk -F '/' '{print $3}');;
@@ -537,17 +544,25 @@ function interactive_configuration {
       echo "The directory /home/$MY_USERNAME does not exist"
       exit 6437
   fi
+  save_configuration_file
 
-  dialog --title "Install Target" \
-      --backtitle "Freedombone Configuration" \
-      --defaultno \
-      --yesno "\nAre you installing onto a Beaglebone Black?" 7 60
+  if [[ $(grep "INSTALLING_ON_BBB" temp.cfg | awk -F '=' '{print $2}') == "yes" ]]; then
+      dialog --title "Install Target" \
+          --backtitle "Freedombone Configuration" \
+          --yesno "\nAre you installing onto a Beaglebone Black?" 7 60
+  else
+      dialog --title "Install Target" \
+          --backtitle "Freedombone Configuration" \
+          --defaultno \
+          --yesno "\nAre you installing onto a Beaglebone Black?" 7 60
+  fi
   sel=$?
   case $sel in
       0) INSTALLING_ON_BBB="yes";;
       1) INSTALLING_ON_BBB="no";;
       255) exit 0;;
   esac
+  save_configuration_file
 
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
@@ -589,13 +604,14 @@ function interactive_configuration {
       14) DDNS_PROVIDER="default@changeip.com";;
       255) exit 0;;
   esac
+  save_configuration_file
 
   while [ ! $DDNS_USERNAME ]
   do
       data=$(tempfile 2>/dev/null)
       trap "rm -f $data" 0 1 2 5 15
       dialog --backtitle "Freedombone Configuration" \
-          --inputbox "Dynamic DNS provider username" 10 30 2> $data
+          --inputbox "Dynamic DNS provider username" 10 30 "$(grep 'DDNS_USERNAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
       sel=$?
       case $sel in
           0) DDNS_USERNAME=$(cat $data);;
@@ -603,6 +619,7 @@ function interactive_configuration {
           255) exit 0;;
       esac
   done
+  save_configuration_file
 
   while [ ! $DDNS_PASSWORD ]
   do
@@ -611,7 +628,7 @@ function interactive_configuration {
       dialog --backtitle "Freedombone Configuration" \
           --clear \
           --insecure \
-          --passwordbox "Dynamic DNS provider password" 10 30 2> $data
+          --passwordbox "Dynamic DNS provider password" 10 30 "$(grep 'DDNS_PASSWORD' temp.cfg | awk -F '=' '{print $2}')" 2> $data
       sel=$?
       case $sel in
           0) DDNS_PASSWORD=$(cat $data);;
@@ -623,13 +640,14 @@ function interactive_configuration {
           DDNS_PASSWORD=""
       fi
   done
+  save_configuration_file
 
   while [ ! $MY_NAME ]
   do
       data=$(tempfile 2>/dev/null)
       trap "rm -f $data" 0 1 2 5 15
       dialog --backtitle "Freedombone Configuration" \
-          --inputbox "Your full name (or nick)" 10 30 2> $data
+          --inputbox "Your full name (or nick)" 10 30 "$(grep 'MY_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
       sel=$?
       case $sel in
           0) MY_NAME=$(cat $data);;
@@ -637,14 +655,15 @@ function interactive_configuration {
           255) exit 0;;
       esac
   done
+  save_configuration_file
 
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
   dialog --backtitle "Freedombone Configuration" \
       --title "Local Network Configuration" \
       --form "\nPlease enter the IP addresses:" 11 55 3 \
-      "This system:" 1 1 "192.168.1.60" 1 16 16 15 \
-      "Internet router:" 2 1 "192.168.1.254" 2 16 16 15 \
+      "This system:" 1 1 "$(grep 'LOCAL_NETWORK_STATIC_IP_ADDRESS' temp.cfg | awk -F '=' '{print $2}')" 1 16 16 15 \
+      "Internet router:" 2 1 "$(grep 'ROUTER_IP_ADDRESS' temp.cfg | awk -F '=' '{print $2}')" 2 16 16 15 \
       2> $data
   sel=$?
   case $sel in
@@ -653,19 +672,27 @@ function interactive_configuration {
   esac
   LOCAL_NETWORK_STATIC_IP_ADDRESS=$(cat $data | sed -n 1p)
   ROUTER_IP_ADDRESS=$(cat $data | sed -n 2p)
+  save_configuration_file
 
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
-  dialog --title "Mesh Networking" \
-      --backtitle "Freedombone Configuration" \
-      --defaultno \
-      --yesno "\nDo you want to enable CJDNS?" 7 60
+  if [[ $(grep 'ENABLE_CJDNS' temp.cfg | awk -F '=' '{print $2}') == "yes" ]]; then
+      dialog --title "Mesh Networking" \
+          --backtitle "Freedombone Configuration" \
+          --yesno "\nDo you want to enable CJDNS?" 7 60
+  else
+      dialog --title "Mesh Networking" \
+          --backtitle "Freedombone Configuration" \
+          --defaultno \
+          --yesno "\nDo you want to enable CJDNS?" 7 60
+  fi
   sel=$?
   case $sel in
       0) ENABLE_CJDNS="yes";;
       1) ENABLE_CJDNS="no";;
       255) exit 0;;
   esac
+  save_configuration_file
 
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
       while [ ! $WIKI_DOMAIN_NAME ]
@@ -675,8 +702,8 @@ function interactive_configuration {
           dialog --backtitle "Freedombone Configuration" \
                  --title "Wiki Configuration" \
                  --form "\nPlease enter your wiki details:" 11 55 3 \
-                 "Title:" 1 1 "$WIKI_TITLE" 1 16 25 40 \
-                 "Domain:" 2 1 "$WIKI_DOMAIN_NAME" 2 16 25 40 \
+                 "Title:" 1 1 "$(grep 'WIKI_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
+                 "Domain:" 2 1 "$(grep 'WIKI_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
                  2> $data
           sel=$?
           case $sel in
@@ -698,6 +725,7 @@ function interactive_configuration {
               fi
           fi
       done
+      save_configuration_file
   fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
@@ -708,8 +736,8 @@ function interactive_configuration {
           dialog --backtitle "Freedombone Configuration" \
                  --title "Blog Configuration" \
                  --form "\nPlease enter your blog details:" 11 55 3 \
-                 "Title:" 1 1 "My Blog" 1 16 25 30 \
-                 "Domain:" 2 1 "" 2 16 25 30 \
+                 "Title:" 1 1 "$(grep 'MY_BLOG_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                 "Domain:" 2 1 "$(grep 'FULLBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
                  2> $data
           sel=$?
           case $sel in
@@ -734,6 +762,7 @@ function interactive_configuration {
               fi
           fi
       done
+      save_configuration_file
   fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
@@ -744,7 +773,7 @@ function interactive_configuration {
           dialog --backtitle "Freedombone Configuration" \
                  --title "Owncloud Configuration" \
                  --form "\nPlease enter your Owncloud details:" 11 55 3 \
-                 "Domain:" 1 1 "" 1 16 25 30 \
+                 "Domain:" 1 1 "$(grep 'OWNCLOUD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
                  2> $data
           sel=$?
           case $sel in
@@ -765,6 +794,7 @@ function interactive_configuration {
               fi
           fi
       done
+      save_configuration_file
   fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
@@ -775,7 +805,7 @@ function interactive_configuration {
           dialog --backtitle "Freedombone Configuration" \
                  --title "RedMatrix Configuration" \
                  --form "\nPlease enter your RedMatrix details:" 11 55 3 \
-                 "Domain:" 1 1 "" 1 16 25 30 \
+                 "Domain:" 1 1 "$(grep 'REDMATRIX_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
                  2> $data
           sel=$?
           case $sel in
@@ -796,6 +826,7 @@ function interactive_configuration {
               fi
           fi
       done
+      save_configuration_file
   fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
@@ -806,7 +837,7 @@ function interactive_configuration {
           dialog --backtitle "Freedombone Configuration" \
                  --title "Microblog Configuration" \
                  --form "\nPlease enter your Microblog details:" 11 55 3 \
-                 "Domain:" 1 1 "" 1 16 25 30 \
+                 "Domain:" 1 1 "$(grep 'MICROBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
                  2> $data
           sel=$?
           case $sel in
@@ -830,6 +861,7 @@ function interactive_configuration {
               fi
           fi
       done
+      save_configuration_file
   fi
 
   if [ ! $DOMAIN_NAME ]; then
@@ -838,7 +870,7 @@ function interactive_configuration {
           data=$(tempfile 2>/dev/null)
           trap "rm -f $data" 0 1 2 5 15
           dialog --backtitle "Freedombone Configuration" \
-              --inputbox "Domain name" 10 30 2> $data
+              --inputbox "Domain name" 10 30 "$(grep 'DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
           sel=$?
           case $sel in
               0) DOMAIN_NAME=$(cat $data);;
@@ -846,6 +878,7 @@ function interactive_configuration {
               255) exit 0;;
           esac
       done
+      save_configuration_file
   fi
 
   while [ ! $MY_EMAIL_ADDRESS ]
@@ -853,7 +886,7 @@ function interactive_configuration {
       data=$(tempfile 2>/dev/null)
       trap "rm -f $data" 0 1 2 5 15
       dialog --backtitle "Freedombone Configuration" \
-          --inputbox "Your email address" 10 30 "$MY_USERNAME@$DOMAIN_NAME" 2> $data
+          --inputbox "Your email address" 10 30 "$(grep 'MY_EMAIL_ADDRESS' temp.cfg | awk -F '=' '{print $2}')" 2> $data
       sel=$?
       case $sel in
           0) MY_EMAIL_ADDRESS=$(cat $data);;
@@ -863,6 +896,11 @@ function interactive_configuration {
   done
 
   save_configuration_file
+
+  # delete the temporary configuration file
+  if [ -f temp.cfg ]; then
+      shred -zu temp.cfg
+  fi
 
   FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
 
