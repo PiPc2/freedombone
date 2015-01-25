@@ -35,6 +35,7 @@ You will also need to know, or find out, the IP address of your internet router 
 
 You can either install from a debian package or manually as follows:
 
+    sudo apt-get update
     sudo apt-get install git dialog build-essential
     git clone https://github.com/bashrc/freedombone
     cd freedombone
@@ -71,6 +72,7 @@ The interactive server configuration setup is recommended for most users. On the
 
     ssh username@freedombone_IP_address
     su
+    sudo apt-get update
     apt-get install git dialog
     git clone https://github.com/bashrc/freedombone
     cd freedombone
@@ -90,6 +92,7 @@ On the system where freedombone is to be installed create a configuration file.
 
     ssh username@freedombone_IP_address
     su
+    sudo apt-get update
     apt-get install git
     git clone https://github.com/bashrc/freedombone
     cd freedombone
@@ -163,6 +166,7 @@ On Client Machines
 ==================
 You can configure laptops or desktop machines which connect to the Freedombone server in the following way. This alters encryption settings to improve overall security.
 
+    sudo apt-get update
     sudo apt-get install git dialog
     git clone https://github.com/bashrc/freedombone
     cd freedombone
