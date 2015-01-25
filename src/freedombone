@@ -281,6 +281,11 @@ CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/
 # web site used to obtain the external IP address of the system
 GET_IP_ADDRESS_URL="checkip.two-dns.de"
 
+# Password used for VoIP server
+VOIP_SERVER_PASSWORD=
+# Port on which VoIP server listens
+VOIP_PORT=64738
+
 # other possible services to obtain the external IP address
 EXTERNAL_IP_SERVICES=( \
   'https://check.torproject.org/' \
@@ -367,6 +372,8 @@ function show_help {
   echo '     --email            Your email address'
   echo '     --usb              Path for the USB drive (eg. /dev/sdb1)'
   echo '     --cjdns            Enable CJDNS'
+  echo '     --vpass            VoIP server password'
+  echo '     --vport            VoIP server port'
   echo ''
   echo 'system types'
   echo '------------'
@@ -943,6 +950,16 @@ case $key in
     shift
     ENABLE_CJDNS="yes"
     ;;
+    # VoIP server password
+    --vpass)
+    shift
+    VOIP_SERVER_PASSWORD=$1
+    ;;
+    # VoIP server port
+    --vport)
+    shift
+    VOIP_PORT=$1
+    ;;
     *)
     # unknown option
     ;;
@@ -995,6 +1012,12 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "VOIP_PORT" $CONFIGURATION_FILE; then
+          VOIP_PORT=$(grep "VOIP_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "VOIP_SERVER_PASSWORD" $CONFIGURATION_FILE; then
+          VOIP_SERVER_PASSWORD=$(grep "VOIP_SERVER_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "GET_IP_ADDRESS_URL" $CONFIGURATION_FILE; then
           GET_IP_ADDRESS_URL=$(grep "GET_IP_ADDRESS_URL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -4507,6 +4530,19 @@ function save_firewall_settings {
   printf 'iptables-restore < /etc/firewall.conf\n' >> /etc/network/if-up.d/iptables
   printf 'ip6tables-restore < /etc/firewall6.conf\n' >> /etc/network/if-up.d/iptables
   chmod +x /etc/network/if-up.d/iptables
+}
+
+function configure_firewall_for_voip {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
+      return
+  fi
+  if grep -Fxq "configure_firewall_for_voip" $COMPLETION_FILE; then
+      return
+  fi
+  iptables -A INPUT -i eth0 -p udp --dport $VOIP_PORT -j ACCEPT
+  iptables -A INPUT -i eth0 -p tcp --dport $VOIP_PORT -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_voip' >> $COMPLETION_FILE
 }
 
 function configure_firewall_for_cjdns {
@@ -8338,6 +8374,87 @@ function install_dynamicdns {
   echo 'install_dynamicdns' >> $COMPLETION_FILE
 }
 
+function get_voip_server_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "VoIP server password" /home/$MY_USERNAME/README; then
+          if [ ! $VOIP_SERVER_PASSWORD ]; then
+              VOIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "VoIP server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
+function install_voip {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_TOR_DONGLE" ]]; then
+      return
+  fi
+  if grep -Fxq "install_voip" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y install mumble-server
+
+  get_voip_server_password
+  if [ ! $VOIP_SERVER_PASSWORD ]; then
+      VOIP_SERVER_PASSWORD=$(openssl rand -base64 $MINIMUM_PASSWORD_LENGTH)
+  fi
+  if [ ${#VOIP_SERVER_PASSWORD} -lt $MINIMUM_PASSWORD_LENGTH ]; then
+      VOIP_SERVER_PASSWORD=$(openssl rand -base64 $MINIMUM_PASSWORD_LENGTH)
+  fi
+
+  # Make an ssl cert for the server
+  makecert mumble
+
+  # Check that the cert was created
+  if [ ! -f /etc/ssl/certs/mumble.crt ]; then
+      echo 'VoIP server certificate not created'
+      exit 57892
+  fi
+  if [ ! -f /etc/ssl/private/mumble.key ]; then
+      echo 'VoIP server key not created'
+      exit 57893
+  fi
+
+  sed -i "s|welcometext=.*|welcometext=\"<br />Welcome to $DOMAIN_NAME <b>VoIP</b>.<br />Chat freely!<br />\"|g" /etc/mumble-server.ini
+
+  if [ $VOIP_SERVER_PASSWORD ]; then
+      sed -i "s|serverpassword=.*|serverpassword=$VOIP_SERVER_PASSWORD|g" /etc/mumble-server.ini
+  fi
+
+  sed -i 's|#autobanAttempts.*|autobanAttempts = 10|g' /etc/mumble-server.ini
+  sed -i 's|#autobanTimeframe.*|autobanTimeframe = 120|g' /etc/mumble-server.ini
+  sed -i 's|#autobanTime.*|autobanTime = 300|g' /etc/mumble-server.ini
+  sed -i 's|#sendversion=.*|sendversion=False|g' /etc/mumble-server.ini
+  sed -i 's|sendversion=.*|sendversion=False|g' /etc/mumble-server.ini
+  if ! grep -q "allowping" /etc/mumble-server.ini; then
+      echo 'allowping=False' >> /etc/mumble-server.ini
+  fi
+  sed -i 's|allowping=.*|allowping=False|g' /etc/mumble-server.ini
+  sed -i 's|#sslCert=.*|sslCert=/etc/ssl/certs/mumble.crt|g' /etc/mumble-server.ini
+  sed -i 's|#sslKey=.*|sslKey=/etc/ssl/privare/mumble.key|g' /etc/mumble-server.ini
+  sed -i 's|#certrequired=.*|certrequired=True|g' /etc/mumble-server.ini
+  sed -i 's|users=100|users=10|g' /etc/mumble-server.ini
+  sed -i 's|#channelnestinglimit=10|channelnestinglimit=10|g' /etc/mumble-server.ini
+  sed -i 's|#textmessagelength=.*|textmessagelength=1000|g' /etc/mumble-server.ini
+  sed -i 's|textmessagelength=.*|textmessagelength=1000|g' /etc/mumble-server.ini
+  sed -i 's|#imagemessagelength=.*|imagemessagelength=131072|g' /etc/mumble-server.ini
+  sed -i 's|#allowhtml=.*|allowhtml=False|g' /etc/mumble-server.ini
+  sed -i 's|allowhtml=.*|allowhtml=False|g' /etc/mumble-server.ini
+  sed -i "s|port=.*|port=$VOIP_PORT|g" /etc/mumble-server.ini
+
+  service mumble-server restart
+
+  if ! grep -q "VoIP Server" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'VoIP Server' >> /home/$MY_USERNAME/README
+      echo '===========' >> /home/$MY_USERNAME/README
+      echo 'VoIP server password: $VOIP_SERVER_PASSWORD' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  fi
+
+  echo 'install_voip' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -8369,6 +8486,7 @@ configure_firewall_for_dns
 configure_firewall_for_ftp
 configure_firewall_for_web_access
 configure_firewall_for_cjdns
+configure_firewall_for_voip
 remove_proprietary_repos
 change_debian_repos
 enable_backports
@@ -8422,6 +8540,7 @@ install_xmpp
 configure_firewall_for_xmpp
 install_irc_server
 configure_firewall_for_irc
+install_voip
 install_wiki
 install_blog
 install_gnu_social
