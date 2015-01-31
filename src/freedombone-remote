@@ -1,0 +1,184 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Creates an inventory of remote backup locations
+#
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+NO_OF_ARGS=$#
+
+# User to create the list for
+MY_USERNAME=
+
+# Filename of the remote backups list
+FRIENDS_SERVERS_LIST=
+
+# Minimum password length in characters
+MINIMUM_PASSWORD_LENGTH=10
+
+# How many remote locations were specified
+entering_remote_backups_ctr=0
+
+function show_help {
+  echo ''
+  echo 'freedombone-remote -u [username] -l [backup list filename] -m [min password length]'
+  echo ''
+  echo 'Creates an inventory of remote backup locations'
+  echo ''
+  echo ''
+  echo '  -h --help             Show help'
+  echo '  -l --list             Remote backup list (usually /home/$USER/backup.list)'
+  echo '  -m --min              Minimum password length (characters)'
+  echo ''
+  exit 0
+}
+
+# If there are no options specified
+if [[ $NO_OF_ARGS == 0 ]]; then
+  show_help
+  exit 0
+fi
+
+# Get the commandline options
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    # backup list filename
+    # typically /home/$USER/backup.list
+    -l|--list)
+    shift
+    FRIENDS_SERVERS_LIST="$1"
+    ;;
+    # username within /home
+    -u|--user)
+    shift
+    MY_USERNAME="$1"
+    ;;
+    # Minimum password length
+    -m|--min)
+    shift
+    MINIMUM_PASSWORD_LENGTH="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+
+function interactive_configuration_remote_backups {
+  if [ ! $MY_USERNAME ]; then
+      echo 'Please specify a username with the -u option'
+      exit 7356
+  fi
+
+  if [ ! /home/$MY_USERNAME ]; then
+      echo "The user /home/$MY_USERNAME does not exist on the system"
+      exit 3689
+  fi
+
+  if [ ! $FRIENDS_SERVERS_LIST ]; then
+      FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
+  fi
+
+  # clear any existing list
+  if [ -f $FRIENDS_SERVERS_LIST ]; then
+      rm -f $FRIENDS_SERVERS_LIST
+      touch $FRIENDS_SERVERS_LIST
+  fi
+  # number of entries made
+  entering_remote_backups_ctr=1
+
+  entering_remote_backups_done="no"
+  while [[ $entering_remote_backups_done == "no" ]]
+  do
+      data=$(tempfile 2>/dev/null)
+      trap "rm -f $data" 0 1 2 5 15
+      dialog --backtitle "Freedombone Configuration" \
+          --title "Remote Backup ${entering_remote_backups_ctr}" \
+          --form "\nPlease specify the SSH login details:" 11 55 4 \
+          "Username:" 1 1 "" 1 16 16 15 \
+          "Domain:" 2 1 "" 2 16 16 15 \
+          "SSH port:" 3 1 "22" 3 16 5 4 \
+          "Password:" 4 1 "" 4 16 20 100 \
+          2> $data
+      sel=$?
+      case $sel in
+          1) entering_remote_backups_done="yes";;
+          255) entering_remote_backups_done="yes";;
+      esac
+      remote_ssh_username=$(cat $data | sed -n 1p)
+      remote_ssh_domain=$(cat $data | sed -n 2p)
+      remote_ssh_port=$(cat $data | sed -n 3p)
+      remote_ssh_password=$(cat $data | sed -n 4p)
+      if [[ $remote_ssh_username != "" && \
+          $remote_ssh_domain != "" && \
+          $remote_ssh_port != "" && \
+          $remote_ssh_password != "" ]]; then
+
+          if [ ${#remote_ssh_password} -lt $MINIMUM_PASSWORD_LENGTH ]; then
+              dialog --title "Password quality check" --msgbox "The password given was too short. It must be at least $MINIMUM_PASSWORD_LENGTH characters" 6 40
+          else
+              echo "$remote_ssh_username@$remote_ssh_domain:$remote_ssh_port//home/$remote_ssh_username $remote_ssh_password" >> $FRIENDS_SERVERS_LIST
+              entering_remote_backups_ctr=$((entering_remote_backups_ctr + 1))
+          fi
+      else
+          entering_remote_backups_done="yes"
+      fi
+  done
+  if [ -f $FRIENDS_SERVERS_LIST ]; then
+      chown $MY_USERNAME:$MY_USERNAME $FRIENDS_SERVERS_LIST
+  fi
+}
+
+function show_result {
+  clear
+  if (( $entering_remote_backups_ctr < 2 )); then
+      echo 'No remote backup locations were specified'
+      exit 0
+  fi
+  if [ ! -f $FRIENDS_SERVERS_LIST ]; then
+      echo "No remote backups list found: $FRIENDS_SERVERS_LIST"
+      exit 7358
+  fi
+  echo ''
+  echo "Remote backups list: $FRIENDS_SERVERS_LIST"
+  echo ''
+  echo 'Contents:'
+  echo ''
+  cat $FRIENDS_SERVERS_LIST
+  echo ''
+}
+
+interactive_configuration_remote_backups
+show_result
+exit 0
