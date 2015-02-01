@@ -84,52 +84,11 @@ Now the easiest way to install the system is via the interactive setup.
 
 You can select which variant you wish to install and then enter the details as requested.
 
-Non-Interactive Setup
-=====================
-If you don't want to install interactively then it's possible to manually create a configuration file as follows:
+Other types of setup
+====================
+See the manpage for details on other kinds of non-interactive setup.
 
-On the system where freedombone is to be installed create a configuration file.
-
-    ssh username@freedombone_IP_address
-    su
-    sudo apt-get update
-    apt-get install git
-    git clone https://github.com/bashrc/freedombone
-    cd freedombone
-    make install
-    nano /home/username/freedombone/freedombone.cfg
-
-Add the following, and set the values as needed.
-
-    MY_EMAIL_ADDRESS=
-    MY_NAME=
-    MY_BLOG_TITLE=
-    MY_BLOG_SUBTITLE=
-    FULLBLOG_DOMAIN_NAME=
-    MICROBLOG_DOMAIN_NAME=
-    REDMATRIX_DOMAIN_NAME=
-    OWNCLOUD_DOMAIN_NAME=
-    WIKI_DOMAIN_NAME=
-    WIKI_TITLE=
-    ENABLE_CJDNS=no
-    LOCAL_NETWORK_STATIC_IP_ADDRESS=
-    ROUTER_IP_ADDRESS=
-
-Both of the IP addresses are local IP addresses, typically of the form 192.168.x.x, with one being for the system and the other being for the internet router.
-
-Save the configuration file and exit from your editor.
-
-Now you can begin the installation. If you are doing this on a Beaglebone Black:
-
-    freedombone --bbb -d [default domain name] -u [username] --ddns [dynamic DNS provider domain] --ddnsuser [dynamic DNS username] --ddnspass [dynamic DNS password]
-
-Or on any other system don't include the *--bbb* option.
-
-    freedombone -d [default domain name] -u [username] --ddns [dynamic DNS provider domain] --ddnsuser [dynamic DNS username] --ddnspass [dynamic DNS password]
-
-The above command should be run in the same directory in which your configuration file exists. You can use any of your domains as the default one, but typically the default domain is the same as the one for your wiki.
-
-Also see the manpage for additional options which can be used instead of a configuration file. If you don't specify a variant type with the final option then everything will be installed. If you have a *freedombone.cfg* file then it should be in the same directory from which the *freedombone* command is run.
+    man freedombone
 
 Post-Setup
 ==========
