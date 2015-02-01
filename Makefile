@@ -16,6 +16,7 @@ install:
 	install -m 755 src/${APP}-client ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-remote ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-config ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-sec ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-prep.1.gz ${DESTDIR}${PREFIX}/share/man/man1
@@ -23,6 +24,7 @@ install:
 	install -m 644 man/${APP}-client.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-remote.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-config.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	install -m 644 man/${APP}-sec.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-prep.1.gz
@@ -30,6 +32,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}-client.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-remote.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-config.1.gz
+	rm -f ${PREFIX}/share/man/man1/${APP}-sec.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}
 	rm -f ${PREFIX}/bin/${APP}-prep
@@ -37,6 +40,7 @@ uninstall:
 	rm -f ${PREFIX}/bin/${APP}-client
 	rm -f ${PREFIX}/bin/${APP}-remote
 	rm -f ${PREFIX}/bin/${APP}-config
+	rm -f ${PREFIX}/bin/${APP}-sec
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}

@@ -1,0 +1,158 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Alters the security settings
+#
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+NO_OF_ARGS=$#
+
+SSL_PROTOCOLS=
+SSL_CIPHERS=
+SSH_CIPHERS=
+SSH_MACS=
+SSH_KEX=
+SSH_HOST_KEY_ALGORITHMS=
+XMPP_CIPHERS=
+XMPP_ECC_CURVE=
+
+WIKI_DOMAIN_NAME=
+WEBSITES_DIRECTORY='/etc/nginx/sites-available'
+DOVECOT_CIPHERS='/etc/dovecot/conf.d/10-ssl.conf'
+
+MINIMUM_LENGTH=6
+
+function get_protocols_from_website {
+  if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
+      return
+  fi
+  SSL_PROTOCOLS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_protocols' | awk -F "ssl_protocols" '{print $2}' | awk -F ';' '{print $1}')
+}
+
+function get_ciphers_from_website {
+  if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
+      return
+  fi
+  SSL_CIPHERS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_ciphers' | awk -F "ssl_ciphers" '{print $2}' | awk -F "'" '{print $2}')
+}
+
+function get_website_settings {
+  if [ ! -d $WEBSITES_DIRECTORY ]; then
+      return
+  fi
+
+  cd $WEBSITES_DIRECTORY
+  for file in `dir -d *` ; do
+      get_protocols_from_website $file
+      if [ ${#SSL_PROTOCOLS} -gt $MINIMUM_LENGTH ]; then
+          get_ciphers_from_website $file
+          if [ ${#SSL_CIPHERS} -gt $MINIMUM_LENGTH ]; then
+              break
+          else
+              SSL_PROTOCOLS=""
+          fi
+      fi
+  done
+}
+
+function get_imap_settings {
+  if [ ! -f $DOVECOT_CIPHERS ]; then
+      return
+  fi
+  # clear commented out cipher list
+  sed -i "s|#ssl_cipher_list.*||g" $DOVECOT_CIPHERS
+  if [ ! $SSL_CIPHERS ]; then
+      return
+  fi
+  if [ ${#SSL_CIPHERS} -lt $MINIMUM_LENGTH ]; then
+      return
+  fi
+  SSL_CIPHERS=$(cat $DOVECOT_CIPHERS | grep 'ssl_cipher_list' | awk -F '=' '{print $2}' | awk -F "'" '{print $2}')
+}
+
+function change_website_settings {
+  if [ ! $SSL_PROTOCOLS ]; then
+      return
+  fi
+  if [ ! $SSL_CIPHERS ]; then
+      return
+  fi
+  if [ ${#SSL_PROTOCOLS} -lt $MINIMUM_LENGTH ]; then
+      return
+  fi
+  if [ ${#SSL_CIPHERS} -lt $MINIMUM_LENGTH ]; then
+      return
+  fi
+  if [ ! -d $WEBSITES_DIRECTORY ]; then
+      return
+  fi
+
+  cd $WEBSITES_DIRECTORY
+  for file in `dir -d *` ; do
+      sed -i "s|ssl_protocols .*|ssl_protocols $SSL_PROTOCOLS;|g" $WEBSITES_DIRECTORY/$file
+      sed -i "s|ssl_ciphers .*|ssl_ciphers '$SSL_CIPHERS';|g" $WEBSITES_DIRECTORY/$file
+  done
+  service nginx restart
+}
+
+function change_imap_settings {
+  if [ ! -f $DOVECOT_CIPHERS ]; then
+      return
+  fi
+  if [ ! $SSL_CIPHERS ]; then
+      return
+  fi
+  if [ ${#SSL_CIPHERS} -lt $MINIMUM_LENGTH ]; then
+      return
+  fi
+  sed -i "s|ssl_cipher_list.*|ssl_cipher_list = '$SSL_CIPHERS'|g" $DOVECOT_CIPHERS
+  service dovecot restart
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    # username within /home
+    -u|--user)
+    shift
+    MY_USERNAME="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+get_website_settings
+#change_website_settings
+#change_imap_settings
+exit 0
