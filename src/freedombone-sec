@@ -39,9 +39,10 @@ SSH_HOST_KEY_ALGORITHMS=
 XMPP_CIPHERS=
 XMPP_ECC_CURVE=
 
-WIKI_DOMAIN_NAME=
 WEBSITES_DIRECTORY='/etc/nginx/sites-available'
 DOVECOT_CIPHERS='/etc/dovecot/conf.d/10-ssl.conf'
+SSH_CONFIG='/etc/ssh/sshd_config'
+XMPP_CONFIG='/etc/prosody/conf.avail/xmpp.cfg.lua'
 
 MINIMUM_LENGTH=6
 
@@ -49,14 +50,14 @@ function get_protocols_from_website {
   if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
       return
   fi
-  SSL_PROTOCOLS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_protocols' | awk -F "ssl_protocols" '{print $2}' | awk -F ';' '{print $1}')
+  SSL_PROTOCOLS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_protocols ' | awk -F "ssl_protocols " '{print $2}' | awk -F ';' '{print $1}')
 }
 
 function get_ciphers_from_website {
   if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
       return
   fi
-  SSL_CIPHERS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_ciphers' | awk -F "ssl_ciphers" '{print $2}' | awk -F "'" '{print $2}')
+  SSL_CIPHERS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_ciphers ' | awk -F "ssl_ciphers " '{print $2}' | awk -F "'" '{print $2}')
 }
 
 function get_website_settings {
@@ -84,17 +85,42 @@ function get_imap_settings {
   fi
   # clear commented out cipher list
   sed -i "s|#ssl_cipher_list.*||g" $DOVECOT_CIPHERS
-  if [ ! $SSL_CIPHERS ]; then
+  if [ $SSL_CIPHERS ]; then
       return
   fi
-  if [ ${#SSL_CIPHERS} -lt $MINIMUM_LENGTH ]; then
+  if [ ${#SSL_CIPHERS} -gt $MINIMUM_LENGTH ]; then
       return
   fi
   SSL_CIPHERS=$(cat $DOVECOT_CIPHERS | grep 'ssl_cipher_list' | awk -F '=' '{print $2}' | awk -F "'" '{print $2}')
 }
 
+function get_xmpp_settings {
+  if [ ! -f $XMPP_CONFIG ]; then
+      return
+  fi
+  XMPP_CIPHERS=$(cat $XMPP_CONFIG | grep 'ciphers ' | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
+  XMPP_ECC_CURVE=$(cat $XMPP_CONFIG | grep 'curve ' | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
+}
+
+function get_ssh_settings {
+  if [ -f $SSH_CONFIG ]; then
+      SSH_CIPHERS=$(cat $SSH_CONFIG | grep 'Ciphers ' | awk -F 'Ciphers ' '{print $2}')
+      SSH_MACS=$(cat $SSH_CONFIG | grep 'MACs ' | awk -F 'MACs ' '{print $2}')
+      SSH_KEX=$(cat $SSH_CONFIG | grep 'KexAlgorithms ' | awk -F 'KexAlgorithms ' '{print $2}')
+  fi
+  if [ -f /etc/ssh/ssh_config ]; then
+      SSH_HOST_KEY_ALGORITHMS=$(cat /etc/ssh/ssh_config | grep 'HostKeyAlgorithms ' | awk -F 'HostKeyAlgorithms ' '{print $2}')
+      if [ ! $SSH_CIPHERS ]; then
+          SSH_CIPHERS=$(cat /etc/ssh/ssh_config | grep 'Ciphers ' | awk -F 'Ciphers ' '{print $2}')
+      fi
+      if [ ! $SSH_MACS ]; then
+          SSH_MACS=$(cat /etc/ssh/ssh_config | grep 'MACs ' | awk -F 'MACs ' '{print $2}')
+      fi
+  fi
+}
+
 function change_website_settings {
-  if [ ! $SSL_PROTOCOLS ]; then
+  if [ ! "$SSL_PROTOCOLS" ]; then
       return
   fi
   if [ ! $SSL_CIPHERS ]; then
@@ -116,6 +142,7 @@ function change_website_settings {
       sed -i "s|ssl_ciphers .*|ssl_ciphers '$SSL_CIPHERS';|g" $WEBSITES_DIRECTORY/$file
   done
   service nginx restart
+  echo 'Web security settings changed'
 }
 
 function change_imap_settings {
@@ -130,6 +157,122 @@ function change_imap_settings {
   fi
   sed -i "s|ssl_cipher_list.*|ssl_cipher_list = '$SSL_CIPHERS'|g" $DOVECOT_CIPHERS
   service dovecot restart
+  echo 'imap security settings changed'
+}
+
+function change_ssh_settings {
+  if [ -f /etc/ssh/ssh_config ]; then
+      if [ $SSH_HOST_KEY_ALGORITHMS ]; then
+          sed -i "s|HostKeyAlgorithms .*|HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS|g" /etc/ssh/ssh_config
+          echo 'ssh client security settings changed'
+      fi
+  fi
+  if [ -f $SSH_CONFIG ]; then
+      if [ ! $SSH_CIPHERS ]; then
+          return
+      fi
+      if [ ! $SSH_MACS ]; then
+          return
+      fi
+      if [ ! $SSH_KEX ]; then
+          return
+      fi
+
+      sed -i "s|Ciphers .*|Ciphers $SSH_CIPHERS|g" $SSH_CONFIG
+      sed -i "s|MACs .*|MACs $SSH_MACS|g" $SSH_CONFIG
+      sed -i "s|KexAlgorithms .*|KexAlgorithms $SSH_KEX|g" $SSH_CONFIG
+      service ssh restart
+      echo 'ssh server security settings changed'
+  fi
+}
+
+function change_xmpp_settings {
+  if [ ! -f $XMPP_CONFIG ]; then
+      return
+  fi
+  if [ ! $XMPP_CIPHERS ]; then
+      return
+  fi
+  if [ ! $XMPP_ECC_CURVE ]; then
+      return
+  fi
+  sed -i "s|ciphers =.*|ciphers = \"$XMPP_CIPHERS\";|g" $XMPP_CONFIG
+  sed -i "s|curve =.*|curve = \"$XMPP_ECC_CURVE\";|g" $XMPP_CONFIG
+  service prosody restart
+  echo 'xmpp security settings changed'
+}
+
+function interactive_setup {
+  if [ $SSL_CIPHERS ]; then
+      data=$(tempfile 2>/dev/null)
+      trap "rm -f $data" 0 1 2 5 15
+      dialog --backtitle "Freedombone Security Configuration" \
+          --form "\nWeb/IMAP Ciphers:" 10 95 2 \
+          "Protocols:" 1 1 "$SSL_PROTOCOLS" 1 15 90 90 \
+          "Ciphers:" 2 1 "$SSL_CIPHERS" 2 15 90 512 \
+          2> $data
+      sel=$?
+      case $sel in
+          1) SSL_PROTOCOLS=$(cat $data | sed -n 1p)
+             SSL_CIPHERS=$(cat $data | sed -n 2p)
+             ;;
+          255) exit 0;;
+      esac
+  fi
+
+  data=$(tempfile 2>/dev/null)
+  trap "rm -f $data" 0 1 2 5 15
+  if [ $SSH_HOST_KEY_ALGORITHMS ]; then
+      dialog --backtitle "Freedombone Security Configuration" \
+        --form "\nSecure Shell Ciphers:" 13 95 4 \
+         "Ciphers:" 1 1 "$SSH_CIPHERS" 1 15 90 512 \
+         "MACs:" 2 1 "$SSH_MACS" 2 15 90 512 \
+         "KEX:" 3 1 "$SSH_KEX" 3 15 90 512 \
+         "Host key algorithms:" 4 1 "$SSH_HOST_KEY_ALGORITHMS" 4 15 90 512 \
+         2> $data
+      sel=$?
+      case $sel in
+          1) SSH_CIPHERS=$(cat $data | sed -n 1p)
+             SSH_MACS=$(cat $data | sed -n 2p)
+             SSH_KEX=$(cat $data | sed -n 3p)
+             SSH_HOST_KEY_ALGORITHMS=$(cat $data | sed -n 4p)
+             ;;
+          255) exit 0;;
+      esac
+  else
+      dialog --backtitle "Freedombone Security Configuration" \
+        --form "\nSecure Shell Ciphers:" 11 95 3 \
+         "Ciphers:" 1 1 "$SSH_CIPHERS" 1 15 90 512 \
+         "MACs:" 2 1 "$SSH_MACS" 2 15 90 512 \
+         "KEX:" 3 1 "$SSH_KEX" 3 15 90 512 \
+         2> $data
+      sel=$?
+      case $sel in
+          1) SSH_CIPHERS=$(cat $data | sed -n 1p)
+             SSH_MACS=$(cat $data | sed -n 2p)
+             SSH_KEX=$(cat $data | sed -n 3p)
+             ;;
+          255) exit 0;;
+      esac
+  fi
+
+  if [ $XMPP_CIPHERS ]; then
+      data=$(tempfile 2>/dev/null)
+      trap "rm -f $data" 0 1 2 5 15
+      dialog --backtitle "Freedombone Security Configuration" \
+          --form "\nXMPP Ciphers:" 10 95 2 \
+          "Ciphers:" 1 1 "$XMPP_CIPHERS" 1 15 90 512 \
+          "ECC Curve:" 2 1 "$XMPP_ECC_CURVE" 2 15 50 50 \
+          2> $data
+      sel=$?
+      case $sel in
+          1) XMPP_CIPHERS=$(cat $data | sed -n 1p)
+             XMPP_ECC_CURVE=$(cat $data | sed -n 2p)
+             ;;
+          255) exit 0;;
+      esac
+  fi
+  clear
 }
 
 while [[ $# > 1 ]]
@@ -153,6 +296,12 @@ shift
 done
 
 get_website_settings
-#change_website_settings
-#change_imap_settings
+get_imap_settings
+get_ssh_settings
+get_xmpp_settings
+interactive_setup
+change_website_settings
+change_imap_settings
+change_ssh_settings
+change_xmpp_settings
 exit 0
