@@ -6471,6 +6471,214 @@ quit" > $INSTALL_DIR/batch.sql
   fi
 }
 
+function install_gogs {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_CHAT" ]]; then
+      return
+  fi
+  if grep -Fxq "install_gogs" $COMPLETION_FILE; then
+      return
+  fi
+  # http://gogs.io/docs/installation/install_from_source.md
+
+  # install Go
+  apt-get -y install golang
+  export GOPATH=/etc/gocode
+  if [ ! -d $GOPATH ]; then
+      mkdir -p $GOPATH
+  fi
+  go get -u github.com/gpmgo/gopm
+
+  # add a gogs user account
+  sudo adduser --disabled-login --gecos 'Gogs' git
+
+  # clone the repo
+  mkdir -p $GOPATH/src/github.com/gogits
+  cd $GOPATH/src/github.com/gogits
+  git clone https://github.com/gogits/gogs.git
+  cd gogs
+
+  # install
+  go get ./...
+  go build
+
+  echo '#! /bin/sh' > /etc/init.d/gogs
+  echo '### BEGIN INIT INFO' >> /etc/init.d/gogs
+  echo '# Provides:          gogs' >> /etc/init.d/gogs
+  echo '# Required-Start:    $syslog $network' >> /etc/init.d/gogs
+  echo '# Required-Stop:     $syslog' >> /etc/init.d/gogs
+  echo '# Default-Start:     2 3 4 5' >> /etc/init.d/gogs
+  echo '# Default-Stop:      0 1 6' >> /etc/init.d/gogs
+  echo '# Short-Description: A self-hosted Git service written in Go.' >> /etc/init.d/gogs
+  echo '# Description:       A self-hosted Git service written in Go.' >> /etc/init.d/gogs
+  echo '### END INIT INFO' >> /etc/init.d/gogs
+  echo '# Author: Danny Boisvert' >> /etc/init.d/gogs
+  echo '' >> /etc/init.d/gogs
+  echo '# PATH should only include /usr/* if it runs after the mountnfs.sh script' >> /etc/init.d/gogs
+  echo 'PATH=/sbin:/usr/sbin:/bin:/usr/bin;' >> /etc/init.d/gogs
+  echo 'DESC="Go Git Service";' >> /etc/init.d/gogs
+  echo 'NAME=gogs' >> /etc/init.d/gogs
+  echo 'SERVICEVERBOSE=yes' >> /etc/init.d/gogs
+  echo 'PIDFILE=/var/run/$NAME.pid' >> /etc/init.d/gogs
+  echo 'SCRIPTNAME=/etc/init.d/$NAME' >> /etc/init.d/gogs
+  echo "WORKINGDIR=/etc/gocode/src/github.com/gogits" >> /etc/init.d/gogs
+  echo 'DAEMON=$WORKINGDIR/$NAME' >> /etc/init.d/gogs
+  echo 'DAEMON_ARGS="web"' >> /etc/init.d/gogs
+  echo 'USER=git' >> /etc/init.d/gogs
+  echo '' >> /etc/init.d/gogs
+  echo '# Read configuration variable file if it is present' >> /etc/init.d/gogs
+  echo '[ -r /etc/default/$NAME ] && . /etc/default/$NAME' >> /etc/init.d/gogs
+  echo '# Exit if the package is not installed' >> /etc/init.d/gogs
+  echo '[ -x "$DAEMON" ] || exit 0' >> /etc/init.d/gogs
+  echo '# Load the VERBOSE setting and other rcS variables' >> /etc/init.d/gogs
+  echo '. /lib/init/vars.sh' >> /etc/init.d/gogs
+  echo '# Define LSB log_* functions. Depend on lsb-base (>= 3.2-14) to ensure that this file is present and status_of_proc is working.' >> /etc/init.d/gogs
+  echo '. /lib/lsb/init-functions' >> /etc/init.d/gogs
+  echo '' >> /etc/init.d/gogs
+  echo '# Function that starts the daemon/service' >> /etc/init.d/gogs
+  echo 'do_start() {' >> /etc/init.d/gogs
+  echo 'sh -c "start-stop-daemon --start --quiet --pidfile $PIDFILE --make-pidfile --test       --exec /bin/sh -- - $USER -c \"cd \\\"$WORKINGDIR\\\" && $DAEMON -- $DAEMON_ARGS\" > /dev/null || return 1"' >> /etc/init.d/gogs
+  echo 'sh -c "start-stop-daemon --start --quiet --pidfile $PIDFILE --make-pidfile --background --exec /bin/su -- - $USER -c \"cd \\\"$WORKINGDIR\\\" && $DAEMON -- $DAEMON_ARGS\" || return 2"' >> /etc/init.d/gogs
+  echo '}' >> /etc/init.d/gogs
+  echo '' >> /etc/init.d/gogs
+  echo '# Function that stops the daemon/service' >> /etc/init.d/gogs
+  echo 'do_stop() {' >> /etc/init.d/gogs
+  echo '    start-stop-daemon --stop --quiet --retry=TERM/1/KILL/5 --pidfile $PIDFILE --name $NAME' >> /etc/init.d/gogs
+  echo '    RETVAL="$?"' >> /etc/init.d/gogs
+  echo '    [ "$RETVAL" = 2 ] && return 2' >> /etc/init.d/gogs
+  echo '    start-stop-daemon --stop --quiet --oknodo --retry=0/1/KILL/5 --exec $DAEMON' >> /etc/init.d/gogs
+  echo '    [ "$?" = 2 ] && return 2' >> /etc/init.d/gogs
+  echo '    # Many daemons dont delete their pidfiles when they exit.' >> /etc/init.d/gogs
+  echo '    rm -f $PIDFILE' >> /etc/init.d/gogs
+  echo '    return "$RETVAL"' >> /etc/init.d/gogs
+  echo '}' >> /etc/init.d/gogs
+  echo '' >> /etc/init.d/gogs
+  echo 'case "$1" in' >> /etc/init.d/gogs
+  echo '    start)' >> /etc/init.d/gogs
+  echo '        [ "$SERVICEVERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"' >> /etc/init.d/gogs
+  echo '        do_start' >> /etc/init.d/gogs
+  echo '        case "$?" in' >> /etc/init.d/gogs
+  echo '            0|1) [ "$SERVICEVERBOSE" != no ]  && log_end_msg 0 ;;' >> /etc/init.d/gogs
+  echo '            2) [ "$SERVICEVERBOSE" != no ]    && log_end_msg 1 ;;' >> /etc/init.d/gogs
+  echo '        esac' >> /etc/init.d/gogs
+  echo '        ;;' >> /etc/init.d/gogs
+  echo '    stop)' >> /etc/init.d/gogs
+  echo '        [ "$SERVICEVERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"' >> /etc/init.d/gogs
+  echo '        do_stop' >> /etc/init.d/gogs
+  echo '        case "$?" in' >> /etc/init.d/gogs
+  echo '            0|1) [ "$SERVICEVERBOSE" != no ]  && log_end_msg 0 ;;' >> /etc/init.d/gogs
+  echo '            2) [ "$SERVICEVERBOSE" != no ]    && log_end_msg 1 ;;' >> /etc/init.d/gogs
+  echo '        esac' >> /etc/init.d/gogs
+  echo '        ;;' >> /etc/init.d/gogs
+  echo '    status)' >> /etc/init.d/gogs
+  echo '        status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?' >> /etc/init.d/gogs
+  echo '        ;;' >> /etc/init.d/gogs
+  echo '    restart|force-reload)' >> /etc/init.d/gogs
+  echo '        log_daemon_msg "Restarting $DESC" "$NAME"' >> /etc/init.d/gogs
+  echo '        do_stop' >> /etc/init.d/gogs
+  echo '        case "$?" in' >> /etc/init.d/gogs
+  echo '            0|1)' >> /etc/init.d/gogs
+  echo '                do_start' >> /etc/init.d/gogs
+  echo '                case "$?" in' >> /etc/init.d/gogs
+  echo '                    0) log_end_msg 0 ;;' >> /etc/init.d/gogs
+  echo '                    *) log_end_msg 1 ;;' >> /etc/init.d/gogs
+  echo '                esac' >> /etc/init.d/gogs
+  echo '                ;;' >> /etc/init.d/gogs
+  echo '            *)' >> /etc/init.d/gogs
+  echo '                # Failed to stop' >> /etc/init.d/gogs
+  echo '                log_end_msg 1' >> /etc/init.d/gogs
+  echo '                ;;' >> /etc/init.d/gogs
+  echo '        esac' >> /etc/init.d/gogs
+  echo '        ;;' >> /etc/init.d/gogs
+  echo '    *)' >> /etc/init.d/gogs
+  echo '        echo "Usage: $SCRIPTNAME {start|stop|status|restart|force-reload}" >&2' >> /etc/init.d/gogs
+  echo '        exit 3' >> /etc/init.d/gogs
+  echo '        ;;' >> /etc/init.d/gogs
+  echo 'esac' >> /etc/init.d/gogs
+  echo ':' >> /etc/init.d/gogs
+  chmod +x /etc/init.d/gogs
+  update-rc.d gogs defaults
+  service gogs start
+  systemctl daemon-reload
+
+
+  if [ ! -d /var/www/$GIT_DOMAIN_NAME ]; then
+      mkdir /var/www/$GIT_DOMAIN_NAME
+  fi
+  if [ -d /var/www/$GIT_DOMAIN_NAME/htdocs ]; then
+      rm -rf /var/www/$GIT_DOMAIN_NAME/htdocs
+  fi
+
+  ln -s $GOPATH/src/github.com/gogits/gogs /var/www/$GIT_DOMAIN_NAME/htdocs
+
+  echo 'server {' > /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    listen 80;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    server_name $GIT_DOMAIN_NAME;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    error_log /var/log/nginx/$GIT_DOMAIN_NAME_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo 'server {' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    root /var/www/$GIT_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    server_name $GIT_DOMAIN_NAME;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    error_log /var/log/nginx/$GIT_DOMAIN_NAME_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    ssl on;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$GIT_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$GIT_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$GIT_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        proxy_pass http://localhost:3000;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    client_max_body_size 10G; # set max upload size' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    location = /robots.txt {' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        log_not_found off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        access_log off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+
+  configure_php
+
+  if [ ! -f /etc/ssl/certs/$GIT_DOMAIN_NAME.dhparam ]; then
+      makecert $GIT_DOMAIN_NAME
+      check_certificates $GIT_DOMAIN_NAME
+  fi
+
+  nginx_ensite $GIT_DOMAIN_NAME
+  service php5-fpm restart
+  service nginx restart
+
+  # update the dynamic DNS
+  CURRENT_DDNS_DOMAIN=$GIT_DOMAIN_NAME
+  add_ddns_domain
+
+  echo 'install_gogs' >> $COMPLETION_FILE
+}
+
 function install_xmpp {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" ]]; then
       return
