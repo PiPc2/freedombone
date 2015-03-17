@@ -50,6 +50,7 @@ VARIANT_MAILBOX="mailbox"
 VARIANT_NONMAILBOX="nonmailbox"
 VARIANT_SOCIAL="social"
 VARIANT_MEDIA="media"
+VARIANT_DEVELOPER="developer"
 
 MY_USERNAME=
 DEFAULT_DOMAIN_NAME=
@@ -79,6 +80,8 @@ REDMATRIX_DOMAIN_NAME=
 REDMATRIX_CODE=
 MICROBLOG_DOMAIN_NAME=
 MICROBLOG_CODE=
+GIT_DOMAIN_NAME=
+GIT_CODE=
 
 CONFIGURATION_FILE=
 
@@ -195,6 +198,12 @@ function save_configuration_file {
   if [ $MICROBLOG_CODE ]; then
       echo "MICROBLOG_CODE=$MICROBLOG_CODE" >> $CONFIGURATION_FILE
   fi
+  if [ $GIT_DOMAIN_NAME ]; then
+      echo "GIT_DOMAIN_NAME=$GIT_DOMAIN_NAME" >> $CONFIGURATION_FILE
+  fi
+  if [ $GIT_CODE ]; then
+      echo "GIT_CODE=$GIT_CODE" >> $CONFIGURATION_FILE
+  fi
 }
 
 # test a domain name to see if it's valid
@@ -224,7 +233,7 @@ function interactive_configuration {
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
   dialog --backtitle "Freedombone Configuration" \
-      --radiolist "Type of Installation:" 15 40 8 \
+      --radiolist "Type of Installation:" 15 40 9 \
       1 Full on \
       2 Writer off \
       3 Cloud off \
@@ -232,7 +241,8 @@ function interactive_configuration {
       5 Mailbox off \
       6 Non-Mailbox off \
       7 Social off \
-      8 Media off 2> $data
+      8 Media off \
+      9 Developer 2> $data
   sel=$?
   case $sel in
       1) exit 0;;
@@ -247,6 +257,7 @@ function interactive_configuration {
       6) SYSTEM_TYPE=$VARIANT_NONMAILBOX;;
       7) SYSTEM_TYPE=$VARIANT_SOCIAL;;
       8) SYSTEM_TYPE=$VARIANT_MEDIA;;
+      9) SYSTEM_TYPE=$VARIANT_DEVELOPER;;
   esac
   save_configuration_file
 
@@ -661,7 +672,7 @@ function interactive_configuration {
       done
       save_configuration_file
   fi
-
+  
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
       FULLBLOG_DETAILS_COMPLETE=
       while [ ! $FULLBLOG_DETAILS_COMPLETE ]
@@ -867,6 +878,56 @@ function interactive_configuration {
       save_configuration_file
   fi
 
+  if [[ $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
+      DEVELOPER_DETAILS_COMPLETE=
+      while [ ! $DEVELOPER_DETAILS_COMPLETE ]
+      do
+          data=$(tempfile 2>/dev/null)
+          trap "rm -f $data" 0 1 2 5 15
+
+          if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+              dialog --backtitle "Freedombone Configuration" \
+                     --title "Developer Configuration" \
+                     --form "\nPlease enter your Git hosting site details:" 11 55 3 \
+                     "Domain:" 1 1 "$(grep 'GIT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
+                     "Code:" 2 1 "$(grep 'GIT_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
+                     2> $data
+          else
+              dialog --backtitle "Freedombone Configuration" \
+                     --title "Developer Configuration" \
+                     --form "\nPlease enter your Git hosting site details:" 11 55 2 \
+                     "Domain:" 1 1 "$(grep 'GIT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
+                     2> $data
+          fi
+          sel=$?
+          case $sel in
+              1) exit 0;;
+              255) exit 0;;
+          esac
+          GIT_DOMAIN_NAME=$(cat $data | sed -n 1p)
+          if [ $GIT_DOMAIN_NAME ]; then
+              TEST_DOMAIN_NAME=$GIT_DOMAIN_NAME
+              validate_domain_name
+              if [[ $TEST_DOMAIN_NAME != $GIT_DOMAIN_NAME ]]; then
+                  GIT_DOMAIN_NAME=
+                  dialog --title "Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+              else
+                  if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                      GIT_CODE=$(cat $data | sed -n 2p)
+                      if [ ${#GIT_CODE} -lt 30 ]; then
+                          GIT_DOMAIN_NAME=
+                          dialog --title "FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                      fi
+                  fi
+              fi
+          fi
+          if [ $GIT_DOMAIN_NAME ]; then
+              DEVELOPER_DETAILS_COMPLETE="yes"
+          fi
+      done
+      save_configuration_file
+  fi
+
   DEFAULT_DOMAIN_DETAILS_COMPLETE=
   while [ ! $DEFAULT_DOMAIN_DETAILS_COMPLETE ]
   do
@@ -963,6 +1024,12 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "GIT_DOMAIN_NAME" $CONFIGURATION_FILE; then
+          GIT_DOMAIN_NAME=$(grep "GIT_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GIT_CODE" $CONFIGURATION_FILE; then
+          GIT_CODE=$(grep "GIT_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "MY_USERNAME" $CONFIGURATION_FILE; then
           MY_USERNAME=$(grep "MY_USERNAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
