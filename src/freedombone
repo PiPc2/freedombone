@@ -146,6 +146,7 @@ REDMATRIX_ADMIN_PASSWORD=
 GIT_DOMAIN_NAME=
 GIT_CODE=
 GIT_DOMAIN_REPO="https://github.com/friendica/red.git"
+GIT_ADMIN_PASSWORD=
 
 # Domain name for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
@@ -692,6 +693,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "GIT_ADMIN_PASSWORD" $CONFIGURATION_FILE; then
+          GIT_ADMIN_PASSWORD=$(grep "GIT_ADMIN_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "GIT_DOMAIN_NAME" $CONFIGURATION_FILE; then
           GIT_DOMAIN_NAME=$(grep "GIT_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1508,6 +1512,14 @@ function get_mariadb_gnusocial_admin_password {
   if [ -f /home/$MY_USERNAME/README ]; then
       if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
           MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
+function get_mariadb_git_admin_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "MariaDB git admin password" /home/$MY_USERNAME/README; then
+          GIT_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB git admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
       fi
   fi
 }
@@ -6513,6 +6525,32 @@ function install_gogs {
       exit 546750
   fi
 
+  install_mariadb
+  get_mariadb_password
+
+  get_mariadb_git_admin_password
+  if [ ! $GIT_ADMIN_PASSWORD ]; then
+      GIT_ADMIN_PASSWORD=$(openssl rand -base64 32)
+  fi
+
+  if ! grep -q "Gogs database admin user" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Gogs' >> /home/$MY_USERNAME/README
+      echo '====' >> /home/$MY_USERNAME/README
+      echo 'Gogs database admin user: gogsadmin' >> /home/$MY_USERNAME/README
+      echo "Gogs database password: $GIT_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+      echo 'Gogs database name: gogs' >> /home/$MY_USERNAME/README
+  fi
+
+  echo "create database gogs;
+CREATE USER 'gogsadmin'@'localhost' IDENTIFIED BY '$GOGS_ADMIN_PASSWORD';
+GRANT ALL PRIVILEGES ON gogs.* TO 'gogsadmin'@'localhost';
+quit" > $INSTALL_DIR/batch.sql
+  chmod 600 $INSTALL_DIR/batch.sql
+  mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
+  shred -zu $INSTALL_DIR/batch.sql
+  
   echo '#! /bin/sh' > /etc/init.d/gogs
   echo '### BEGIN INIT INFO' >> /etc/init.d/gogs
   echo '# Provides:          gogs' >> /etc/init.d/gogs
