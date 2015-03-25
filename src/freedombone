@@ -126,7 +126,7 @@ PRIVATE_MAILING_LIST=
 
 # Domain name for mediagoblin installation
 MEDIAGOBLIN_DOMAIN_NAME=
-MEDIAGOBLIN_REPO="git://gitorious.org/mediagoblin/mediagoblin.git"
+MEDIAGOBLIN_REPO="https://gitorious.org/mediagoblin/mediagoblin.git"
 MEDIAGOBLIN_ADMIN_PASSWORD=
 
 # Domain name for microblog installation
@@ -8297,7 +8297,6 @@ function install_dlna_server {
 }
 
 function install_mediagoblin {
-  # These instructions don't work and need fixing
   return
   if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
       return
@@ -8308,123 +8307,39 @@ function install_mediagoblin {
   if [ ! $MEDIAGOBLIN_DOMAIN_NAME ]; then
       return
   fi
+
   apt-get -y install git-core python python-dev python-lxml python-imaging python-virtualenv
-  apt-get -y install python-gst-1.0 libjpeg8-dev sqlite3 libapache2-mod-fcgid gstreamer1.0-plugins-base gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-libav python-numpy python-scipy libsndfile1-dev
-  apt-get -y install postgresql postgresql-client python-psycopg2 python-pip autotools-dev automake
+  apt-get -y install postgresql postgresql-client python-psycopg2
+  su -c "createuser -A -D mediagoblin" - postgres
+  su -c "createdb -E UNICODE -O mediagoblin mediagoblin" - postgres
+  adduser --disabled-login --gecos 'Mediagoblin' mediagoblin
 
-  sudo -u postgres createuser -A -D mediagoblin
-  sudo -u postgres createdb -E UNICODE -O mediagoblin mediagoblin
-
-  adduser --system mediagoblin
-
-  MEDIAGOBLIN_DOMAIN_ROOT="/srv/$MEDIAGOBLIN_DOMAIN_NAME"
+  MEDIAGOBLIN_DOMAIN_ROOT="/home/mediagoblin"
   MEDIAGOBLIN_PATH="$MEDIAGOBLIN_DOMAIN_ROOT/mediagoblin"
   MEDIAGOBLIN_PATH_BIN="$MEDIAGOBLIN_PATH/mediagoblin/bin"
-
-  if [ ! -d $MEDIAGOBLIN_DOMAIN_ROOT ]; then
-      mkdir -p $MEDIAGOBLIN_DOMAIN_ROOT
-  fi
-  cd $MEDIAGOBLIN_DOMAIN_ROOT
+  mkdir -p $MEDIAGOBLIN_DOMAIN_ROOT
   chown -hR mediagoblin: $MEDIAGOBLIN_DOMAIN_ROOT
   su -c "cd $MEDIAGOBLIN_DOMAIN_ROOT; git clone $MEDIAGOBLIN_REPO" - mediagoblin
+  cd $MEDIAGOBLIN_DOMAIN_ROOT
+  git checkout -q v0.7.1
   su -c "cd $MEDIAGOBLIN_PATH; git submodule init" - mediagoblin
   su -c "cd $MEDIAGOBLIN_PATH; git submodule update" - mediagoblin
-
-  #su -c 'cd $MEDIAGOBLIN_PATH; ./experimental-bootstrap.sh' - mediagoblin
-  #su -c 'cd $MEDIAGOBLIN_PATH; ./configure' - mediagoblin
-  #su -c 'cd $MEDIAGOBLIN_PATH; make' - mediagoblin
-
-  su -c "cd $MEDIAGOBLIN_PATH; virtualenv --system-site-packages ." - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH_BIN; python setup.py develop" - mediagoblin
-
-  su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
-  su -c "cp $MEDIAGOBLIN_PATH/paste.ini $MEDIAGOBLIN_PATH/paste_local.ini" - mediagoblin
-
-  # update the dynamic DNS
-  CURRENT_DDNS_DOMAIN=$MEDIAGOBLIN_DOMAIN_NAME
-  add_ddns_domain
-
-  # see https://wiki.mediagoblin.org/Deployment / uwsgi with configs
-  apt-get -y install uwsgi uwsgi-plugin-python nginx-full supervisor
-
-  echo 'server {' > /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        include /etc/nginx/mime.types;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        autoindex off;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        default_type  application/octet-stream;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        sendfile on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        # Gzip' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        gzip on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        gzip_min_length 1024;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        gzip_buffers 4 32k;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        gzip_types text/plain text/html application/x-javascript text/javascript text/xml text/css;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo "        server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        error_log /var/log/nginx/mg.error.log error;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        #include global/common.conf;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        client_max_body_size 100m;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo "        root $MEDIAGOBLIN_PATH/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        location /mgoblin_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo "                alias $MEDIAGOBLIN_PATH/static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        location /mgoblin_media/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo "                alias $MEDIAGOBL_PATH/media/public/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        location /theme_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        location /plugin_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        location / {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '                uwsgi_pass unix:///tmp/mg.uwsgi.sock;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '                uwsgi_param SCRIPT_NAME "/";' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '                include uwsgi_params;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '        }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-  echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-
-  echo 'uwsgi:' > /etc/uwsgi/apps-available/mg.yaml
-  echo ' uid: mediagoblin' >> /etc/uwsgi/apps-available/mg.yaml
-  echo ' gid: mediagoblin' >> /etc/uwsgi/apps-available/mg.yaml
-  echo ' socket: /tmp/mg.uwsgi.sock' >> /etc/uwsgi/apps-available/mg.yaml
-  echo ' chown-socket: www-data:www-data' >> /etc/uwsgi/apps-available/mg.yaml
-  echo ' plugins: python' >> /etc/uwsgi/apps-available/mg.yaml
-  echo " home: $MEDIAGOBLIN_PATH/" >> /etc/uwsgi/apps-available/mg.yaml
-  echo " chdir: $MEDIAGOBLIN_PATH/" >> /etc/uwsgi/apps-available/mg.yaml
-  echo " ini-paste: $MEDIAGOBLIN_PATH/paste_local.ini" >> /etc/uwsgi/apps-available/mg.yaml
-
-  echo '[program:celery]' > /etc/supervisor/conf.d/mediagoblin.conf
-  echo "command=$MEDIAGOBLIN_PATH_BIN/celery worker -l debug" >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo '' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo '; Set PYTHONPATH to the directory containing celeryconfig.py' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo "environment=PYTHONPATH='$MEDIAGOBLIN_PATH',MEDIAGOBLIN_CONFIG='$MEDIAGOBLIN_PATH/mediagoblin_local.ini',CELERY_CONFIG_MODULE='mediagoblin.init.celery.from_celery'" >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo '' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo "directory=$MEDIAGOBLIN_PATH/" >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo 'user=mediagoblin' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo 'numprocs=1' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo '; uncomment below to enable logs saving' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo ";stdout_logfile=/var/log/nginx/celeryd_stdout.log" >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo ";stderr_logfile=/var/log/nginx/celeryd_stderr.log" >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo 'autostart=true' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo 'autorestart=false' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo 'startsecs=10' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo '' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo '; Need to wait for currently executing tasks to finish at shutdown.' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo '; Increase this if you have very long running tasks.' >> /etc/supervisor/conf.d/mediagoblin.conf
-  echo 'stopwaitsecs = 600' >> /etc/supervisor/conf.d/mediagoblin.conf
-
-  ln -s /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME /etc/nginx/sites-enabled/
-  ln -s /etc/uwsgi/apps-available/mg.yaml /etc/uwsgi/apps-enabled/
-
-  # change settings
+  su -c "cd $MEDIAGOBLIN_PATH; (virtualenv --python=python2 --system-site-packages . || cd $MEDIAGOBLIN_PATH; virtualenv --python=python2 .) && ./bin/python setup.py develop" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH; ./bin/easy_install flup" - mediagoblin
+  if [ -f $MEDIAGOBLIN_PATH/lib/python2.7/no-global-site-packages.txt ]; then
+      virtualenv deactivate
+	  rm -f $MEDIAGOBLIN_PATH/lib/python2.7/no-global-site-packages.txt
+      su -c "cd $MEDIAGOBLIN_PATH; source bin/activate" - mediagoblin
+  fi
+  if [ -f $MEDIAGOBLIN_PATH/mediagoblin.example.ini ]; then
+	  # this is for versions > 0.7.1
+      su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.example.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
+      sed -i 's|# data_basedir.*|data_basedir = "/var/lib/mediagoblin"|g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
+  else
+      su -c "cp $MEDIAGOBLIN_PATH/mediagoblin.ini $MEDIAGOBLIN_PATH/mediagoblin_local.ini" - mediagoblin
+  fi
+  sed -i 's|# sql_engine.*|sql_engine = postgresql:///mediagoblin|g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
   sed -i "s/notice@mediagoblin.example.org/$MY_EMAIL_ADDRESS/g" $MEDIAGOBLIN_PATH/mediagoblin_local.ini
-  sed -i 's/email_debug_mode = true/email_debug_mode = false/g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
-  sed -i 's|# sql_engine = postgresql:///mediagoblin|sql_engine = postgresql:///mediagoblin|g' $MEDIAGOBLIN_PATH/mediagoblin_local.ini
 
   # add extra media types
   if grep -q "media_types.audio" $MEDIAGOBLIN_PATH/mediagoblin_local.ini; then
@@ -8437,8 +8352,78 @@ function install_mediagoblin {
       echo '[[mediagoblin.media_types.stl]]' >> $MEDIAGOBLIN_PATH/mediagoblin_local.ini
   fi
 
-  su -c "cd $MEDIAGOBLIN_PATH_BIN; pip install scikits.audiolab" - mediagoblin
-  su -c "cd $MEDIAGOBLIN_PATH_BIN; gmg dbupdate" - mediagoblin
+  #su -c "cd $MEDIAGOBLIN_PATH; git submodule update && ./bin/python setup.py develop --upgrade && ./bin/gmg dbupdate" - mediagoblin
+  su -c "cd $MEDIAGOBLIN_PATH; ./bin/gmg dbupdate" - mediagoblin
+
+
+  echo 'server {' > /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    listen 80;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    error_log /var/log/nginx/$MEDIAGOBLIN_DOMAIN_NAME_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '        proxy_pass http://localhost:6543;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    location ^~ /user/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '        rewrite ^ https://$server_name$request_uri?;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    location ^~ /admin/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '        rewrite ^ https://$server_name$request_uri?;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo 'server {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    root /var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    error_log /var/log/nginx/$MEDIAGOBLIN_DOMAIN_NAME_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    ssl on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    ssl_certificate /etc/ssl/certs/$MEDIAGOBLIN_DOMAIN_NAME.crt;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    ssl_certificate_key /etc/ssl/private/$MEDIAGOBLIN_DOMAIN_NAME.key;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    ssl_dhparam /etc/ssl/certs/$MEDIAGOBLIN_DOMAIN_NAME.dhparam;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    ssl_session_timeout 5m;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    ssl_prefer_server_ciphers on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    ssl_protocols $SSL_PROTOCOLS; # not possible to do exclusive" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo "    ssl_ciphers '$SSL_CIPHERS';" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security max-age=0;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '        proxy_pass http://localhost:6543;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    client_max_body_size 10G; # set max upload size' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    location = /robots.txt {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '        log_not_found off;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '        access_log off;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+
+  # update the dynamic DNS
+  CURRENT_DDNS_DOMAIN=$MEDIAGOBLIN_DOMAIN_NAME
+  add_ddns_domain
+
+
+  # TODO...
+
+
+
 
   # systemd init scripts
 
