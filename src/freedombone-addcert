@@ -1,0 +1,116 @@
+#!/bin/bash
+# A script for creating self-signed certificates on Debian
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+HOSTNAME=
+COUNTRY_CODE="US"
+AREA="Free Speech Zone"
+LOCATION="Freedomville"
+ORGANISATION="Freedombone"
+UNIT="Freedombone Unit"
+
+function show_help {
+    echo ''
+    echo 'freedombone-addcert -h [hostname] -c [country code] -a [area] -l [location]'
+    echo '                    -o [organisation] -u [unit]'
+    echo ''
+    echo 'Creates a self-signed certificate for the given hostname'
+    echo ''
+    echo '     --help                  Show help'
+    echo '  -h --hostname [name]       Hostname'
+    echo '  -c --country [code]        Optional country code (eg. US, GB, etc)'
+    echo '  -a --area [description]    Optional area description'
+    echo '  -l --location [locn]       Optional location name'
+    echo '  -o --organisation [name]   Optional organisation name'
+    echo '  -u --unit [name]           Optional unit name'
+    echo ''
+	exit 0
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    --help)
+    show_help
+    ;;
+    -h|--hostname)
+    shift
+    HOSTNAME="$1"
+    ;;
+    -c|--country)
+    shift
+    COUNTRY_CODE="$1"
+    ;;
+    -a|--area)
+    shift
+    AREA="$1"
+    ;;
+    -l|--location)
+    shift
+    LOCATION="$1"
+    ;;
+    -o|--organisation)
+    shift
+    ORGANISATION="$1"
+    ;;
+    -u|--unit)
+    shift
+    UNIT="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+if [ ! $HOSTNAME ]; then
+    echo 'No hostname specified'
+	exit 5748
+fi
+
+if ! which openssl > /dev/null ;then
+    echo "$0: openssl is not installed, exiting" 1>&2
+    exit 5689
+fi
+
+openssl req -x509 -nodes -days 3650 -sha256 -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME" -newkey rsa:4096 -keyout /etc/ssl/private/$HOSTNAME.key -out /etc/ssl/certs/$HOSTNAME.crt
+openssl dhparam -check -text -5 1024 -out /etc/ssl/certs/$HOSTNAME.dhparam
+chmod 400 /etc/ssl/private/$HOSTNAME.key
+chmod 640 /etc/ssl/certs/$HOSTNAME.crt
+chmod 640 /etc/ssl/certs/$HOSTNAME.dhparam
+
+if [ -f /etc/init.d/nginx ]; then
+  /etc/init.d/nginx reload
+fi
+
+# add the public certificate to a separate directory
+# so that we can redistribute it easily
+if [ ! -d /etc/ssl/mycerts ]; then
+  mkdir /etc/ssl/mycerts
+fi
+cp /etc/ssl/certs/$HOSTNAME.crt /etc/ssl/mycerts
+
+# Create a bundle of your certificates
+cat /etc/ssl/mycerts/*.crt > /etc/ssl/freedombone-bundle.crt
+tar -czvf /etc/ssl/freedombone-certs.tar.gz /etc/ssl/mycerts/*.crt
+exit 0
