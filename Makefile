@@ -21,6 +21,7 @@ install:
 	install -m 755 src/${APP}-addemail ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-renew-cert ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-rmlist ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-rmemail ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-prep.1.gz ${DESTDIR}${PREFIX}/share/man/man1
@@ -33,6 +34,7 @@ install:
 	install -m 644 man/${APP}-addemail.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-renew-cert.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-rmlist.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	install -m 644 man/${APP}-rmemail.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-prep.1.gz
@@ -45,6 +47,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}-addemail.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-renew-cert.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-rmlist.1.gz
+	rm -f ${PREFIX}/share/man/man1/${APP}-rmemail.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}
 	rm -f ${PREFIX}/bin/${APP}-prep
