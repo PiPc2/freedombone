@@ -1,0 +1,177 @@
+#!/bin/bash
+# A script for renewing SSL/TLS certificates
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+HOSTNAME=
+PROVIDER='startssl'
+
+function show_help {
+    echo ''
+    echo 'freedombone-renew-cert -h [hostname] -p [provider]'
+    echo ''
+    echo 'Makes it easier to renew a ssl/tls certificate for a website'
+    echo ''
+    echo '     --help                  Show help'
+    echo '  -h --hostname [name]       Hostname'
+    echo '  -p --provider [name]       eg. startssl'
+    echo ''
+    exit 0
+}
+
+function renew_startssl {
+    echo 'Renewing StartSSL certificate'
+    if [ -s /etc/ssl/certs/$HOSTNAME.new.crt ]; then
+        if ! grep -q "-BEGIN CERTIFICATE-" /etc/ssl/certs/$HOSTNAME.new.crt; then
+            echo '/etc/ssl/certs/$HOSTNAME.new.crt does not contain a public key'
+            return
+        fi
+
+        cp /etc/ssl/certs/$HOSTNAME.new.crt /etc/ssl/certs/$HOSTNAME.crt
+
+        if [ ! -d /etc/ssl/roots ]; then
+            mkdir /etc/ssl/roots
+        fi
+        if [ ! -d /etc/ssl/chains ]; then
+            mkdir /etc/ssl/chains
+        fi
+
+        # download intermediate certs
+        wget "http://www.startssl.com/certs/ca.pem" --output-document="/etc/ssl/roots/startssl-root.ca"
+        wget "http://www.startssl.com/certs/sub.class1.server.ca.pem" --output-document="/etc/ssl/chains/startssl-sub.class1.server.ca.pem"
+        wget "http://www.startssl.com/certs/sub.class2.server.ca.pem" --output-document="/etc/ssl/chains/startssl-sub.class2.server.ca.pem"
+        wget "http://www.startssl.com/certs/sub.class3.server.ca.pem" --output-document="/etc/ssl/chains/startssl-sub.class3.server.ca.pem"
+        ln -s "/etc/ssl/roots/startssl-root.ca" "/etc/ssl/roots/$HOSTNAME-root.ca"
+        ln -s "/etc/ssl/chains/startssl-sub.class1.server.ca.pem" "/etc/ssl/chains/$HOSTNAME.ca"
+        cp "/etc/ssl/certs/$HOSTNAME.crt" "/etc/ssl/certs/$HOSTNAME.crt+chain+root"
+        test -e "/etc/ssl/chains/$HOSTNAME.ca" && cat "/etc/ssl/chains/$HOSTNAME.ca" >> "/etc/ssl/certs/$HOSTNAME.crt+chain+root"
+        test -e "/etc/ssl/roots/$HOSTNAME-root.ca" && cat "/etc/ssl/roots/$HOSTNAME-root.ca" >> "/etc/ssl/certs/$HOSTNAME.crt+chain+root"
+
+        # remove the password from the private cert
+        openssl rsa -in /etc/ssl/private/$HOSTNAME.key -out /etc/ssl/private/$HOSTNAME.new.key
+        cp /etc/ssl/private/$HOSTNAME.new.key /etc/ssl/private/$HOSTNAME.key
+        shred -zu /etc/ssl/private/$HOSTNAME.new.key
+
+        # bundle the cert
+        cat /etc/ssl/certs/$HOSTNAME.crt /etc/ssl/chains/startssl-sub.class1.server.ca.pem > /etc/ssl/certs/$HOSTNAME.bundle.crt
+
+        # add it to mycerts
+        cp /etc/ssl/certs/$HOSTNAME.bundle.crt /etc/ssl/mycerts
+        cat /etc/ssl/mycerts/*.crt > /etc/ssl/freedombone-bundle.crt
+        tar -czvf /etc/ssl/freedombone-certs.tar.gz /etc/ssl/mycerts/*.crt
+
+        # create backups
+        if [ ! -d /etc/ssl/backups ]; then
+            mkdir /etc/ssl/backups
+        fi
+        if [ ! -d /etc/ssl/backups/certs ]; then
+            mkdir /etc/ssl/backups/certs
+        fi
+        if [ ! -d /etc/ssl/backups/private ]; then
+            mkdir /etc/ssl/backups/private
+        fi
+        cp /etc/ssl/certs/$HOSTNAME* /etc/ssl/backups/certs/
+        cp /etc/ssl/private/$HOSTNAME* /etc/ssl/backups/private/
+        chmod -R 400 /etc/ssl/backups/certs/*
+        chmod -R 400 /etc/ssl/backups/private/*
+
+        rm /etc/ssl/certs/$HOSTNAME.new.crt
+        rm /etc/ssl/requests/$HOSTNAME.csr
+        echo 'Certificate installed'
+        service nginx restart
+        return
+    fi
+
+    if [ -f /etc/ssl/requests/$HOSTNAME.csr ]; then
+        echo 'Certificate request already created:'
+        echo ''
+        cat /etc/ssl/requests/$HOSTNAME.csr
+        echo ''
+        echo "Save the requested public key to /etc/ssl/certs/$HOSTNAME.new.crt"
+        echo 'then run this command again.'
+        echo ''
+        return
+    fi
+    openssl genrsa -out /etc/ssl/private/$HOSTNAME.new.key 2048
+    chown root:ssl-cert /etc/ssl/private/$HOSTNAME.new.key
+    chmod 440 /etc/ssl/private/$HOSTNAME.new.key
+    if [ ! -d /etc/ssl/requests ]; then
+        mkdir /etc/ssl/requests
+    fi
+    openssl req -new -sha256 -key /etc/ssl/private/$HOSTNAME.new.key -out /etc/ssl/requests/$HOSTNAME.csr
+    echo ''
+    cat /etc/ssl/requests/$HOSTNAME.csr
+    echo ''
+    echo 'On the StartSSL site select Certificates Wizard then'
+    echo 'Web server SSL/TLS Certificate. You can then click on "skip"'
+    echo 'and then copy and paste the above certificate request into the text'
+    echo 'entry box. You may now need to wait a few hours for a confirmation'
+    echo 'email indicating that the new certificate was created.'
+    echo ''
+    echo 'Once you have retrieved the new public certificate paste it to:'
+    echo "/etc/ssl/certs/$HOSTNAME.new.crt then run this command again."
+    echo ''
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    --help)
+    show_help
+    ;;
+    -h|--hostname)
+    shift
+    HOSTNAME="$1"
+    ;;
+    -p|--provider)
+    shift
+    PROVIDER="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+if [ ! $HOSTNAME ]; then
+    echo 'No hostname specified'
+    exit 5748
+fi
+
+if ! which openssl > /dev/null ;then
+    echo "$0: openssl is not installed, exiting" 1>&2
+    exit 5689
+fi
+
+# check that the web site exists
+if [ ! -f /etc/nginx/sites-available/$HOSTNAME ]; then
+    echo "/etc/nginx/sites-available/$HOSTNAME does not exist"
+    return 7598
+fi
+
+if [[ $PROVIDER == 'startssl' || $PROVIDER == 'StartSSL' ]]; then
+    renew_startssl
+else
+    echo "$PROVIDER is not currently supported"
+fi
+
+exit 0
