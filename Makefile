@@ -24,6 +24,7 @@ install:
 	install -m 755 src/${APP}-rmemail ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-ignore ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-unignore ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-addxmpp ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-prep.1.gz ${DESTDIR}${PREFIX}/share/man/man1
@@ -39,6 +40,7 @@ install:
 	install -m 644 man/${APP}-rmemail.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-ignore.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-unignore.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	install -m 644 man/${APP}-addxmpp.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-prep.1.gz
@@ -54,6 +56,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}-rmemail.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-ignore.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-unignore.1.gz
+	rm -f ${PREFIX}/share/man/man1/${APP}-addxmpp.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}
 	rm -f ${PREFIX}/bin/${APP}-prep
@@ -68,6 +71,7 @@ uninstall:
 	rm -f ${PREFIX}/bin/${APP}-rmlist
 	rm -f ${PREFIX}/bin/${APP}-ignore
 	rm -f ${PREFIX}/bin/${APP}-unignore
+	rm -f ${PREFIX}/bin/${APP}-addxmpp
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}
