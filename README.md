@@ -9,6 +9,7 @@ The Freedombone system can be installed onto a Beaglebone Black, or any system c
  - **Media**: Runs media services such as DLNA to play music or videos on your devices
  - **Writer**: Host your blog and wiki
  - **Chat**: Encrypted IRC, XMPP and VoIP services for one-to-one and many-to-many chat
+ - **Developer**: Host your own git projects with a Github-like user interface
  - **Nonmailbox**: Installs eveything except for the email server
 
 Freedombone has an emphasis on security and privacy, and when installed on a Beaglebone Black it uses the built-in hardware random number generator as an entropy source.  All communications with the box are encrypted by default using the recommendations from https://bettercrypto.org. The firewall is configured to only allow communications on the necessary ports and to drop all other packets, icmp is disabled by default, emails are stored in encrypted form using your public key and time synchronisation occurs via TLS only.  Backups are also encrypted and can be local or remote.
