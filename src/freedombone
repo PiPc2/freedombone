@@ -1497,18 +1497,20 @@ function remove_instructions_from_motd {
 }
 
 function check_hwrng {
-  # If hardware random number generation was enabled then make sure that the device exists.
-  # if /dev/hwrng is not found then any subsequent cryptographic key generation would
-  # suffer from low entropy and might be insecure
-  if [ ! -f /etc/default/rng-tools ]; then
-      return
+  if [[ $HWRNG_TYPE == "beaglebone" ]]; then
+      # If hardware random number generation was enabled then make sure that the device exists.
+      # if /dev/hwrng is not found then any subsequent cryptographic key generation would
+      # suffer from low entropy and might be insecure
+      if [ ! -e /dev/hwrng ]; then
+          ls /dev/hw*
+          echo 'The hardware random number generator is enabled but could not be detected on'
+          echo '/dev/hwrng.  There may be a problem with the installation or the Beaglebone hardware.'
+          exit 75
+      fi
   fi
-  if [ ! -e /dev/hwrng ]; then
-      ls /dev/hw*
-      echo 'The hardware random number generator is enabled but could not be detected on'
-      echo '/dev/hwrng.  There may be a problem with the installation or the Beaglebone hardware.'
-      exit 75
-  fi
+
+  # If a OneRNG device was install then verify its firmware
+  check_onerng_verification
 }
 
 function get_mariadb_password {
@@ -4734,6 +4736,22 @@ function enable_zram {
   chmod +x /etc/init.d/zram
   update-rc.d zram defaults
   echo 'enable_zram' >> $COMPLETION_FILE
+}
+
+function check_onerng_verification {
+  if [[ $HWRNG_TYPE != "onerng" ]]; then
+      return
+  fi
+  echo 'Checking OneRNG firmware verification'
+  last_onerng_validation=$(cat /var/log/syslog.1 | grep "OneRNG: firmware verification" | awk '/./{line=$0} END{print line}')
+  if [[ $last_onerng_validation != *"passed OK"* ]]; then
+      last_onerng_validation=$(cat /var/log/syslog | grep "OneRNG: firmware verification" | awk '/./{line=$0} END{print line}')
+      if [[ $last_onerng_validation != *"passed OK"* ]]; then
+          echo $last_onerng_validation
+          echo 'OneRNG firmware verification failed'
+          exit 735026
+      fi
+  fi
 }
 
 function install_onerng {
