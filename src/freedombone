@@ -5655,26 +5655,72 @@ function configure_imap {
   sed -i 's/auth_mechanisms =.*/auth_mechanisms = plain login/g' /etc/dovecot/conf.d/10-auth.conf
   sed -i 's|mail_location =.*|mail_location = maildir:~/Maildir:LAYOUT=fs|g' /etc/dovecot/conf.d/10-mail.conf
 
-  # enable login via client certs
-  # http://strange.systems/certificate-based-auth-with-dovecot-sendmail/
-  #sed -i 's|#auth_ssl_require_client_cert =.*|auth_ssl_require_client_cert = yes|g' /etc/dovecot/conf.d/10-auth.conf
-  #sed -i 's|#auth_ssl_username_from_cert =.*|auth_ssl_username_from_cert = yes|g' /etc/dovecot/conf.d/10-auth.conf
-  #sed -i 's|#ssl_ca =.*|ssl_ca = /etc/ssl/certs/dovecot-ca.pem|g' /etc/dovecot/conf.d/10-ssl.conf
-  #sed -i 's|#ssl_cert_username_field =.*|ssl_cert_username_field = commonName|g' /etc/dovecot/conf.d/10-ssl.conf
-  #if ! grep -q "passdb {" /etc/dovecot/conf.d/10-auth.conf; then
-    #echo '' >> /etc/dovecot/conf.d/10-auth.conf
-    #echo 'passdb {' >> /etc/dovecot/conf.d/10-auth.conf
-    #echo '  driver = passwd-file' >> /etc/dovecot/conf.d/10-auth.conf
-    #echo '  args = /etc/dovecot/passwd-file' >> /etc/dovecot/conf.d/10-auth.conf
-    #echo '  deny = no' >> /etc/dovecot/conf.d/10-auth.conf
-    #echo '  master = no' >> /etc/dovecot/conf.d/10-auth.conf
-    #echo '  pass = no' >> /etc/dovecot/conf.d/10-auth.conf
-    #echo '}' >> /etc/dovecot/conf.d/10-auth.conf
-  #fi
-  #echo "$MY_USERNAME:{plain}::::::nopassword" > /etc/dovecot/passwd-file
-  #freedombone-addcert -h dovecot-ca --ca
   service dovecot restart
   echo 'configure_imap' >> $COMPLETION_FILE
+}
+
+function configure_imap_client_certs {
+  if grep -Fxq "configure_imap_client_certs" $COMPLETION_FILE; then
+      return
+  fi
+  # http://strange.systems/certificate-based-auth-with-dovecot-sendmail/
+  sed -i 's|#auth_ssl_require_client_cert =.*|auth_ssl_require_client_cert = yes|g' /etc/dovecot/conf.d/10-auth.conf
+  sed -i 's|#auth_ssl_username_from_cert =.*|auth_ssl_username_from_cert = yes|g' /etc/dovecot/conf.d/10-auth.conf
+  sed -i 's|#ssl_ca =.*|ssl_ca = /etc/ssl/certs/dovecot-ca.crt|g' /etc/dovecot/conf.d/10-ssl.conf
+  sed -i 's|#ssl_cert_username_field =.*|ssl_cert_username_field = commonName|g' /etc/dovecot/conf.d/10-ssl.conf
+  if ! grep -q "passdb {" /etc/dovecot/conf.d/10-auth.conf; then
+    echo '' >> /etc/dovecot/conf.d/10-auth.conf
+    echo 'passdb {' >> /etc/dovecot/conf.d/10-auth.conf
+    echo '  driver = passwd-file' >> /etc/dovecot/conf.d/10-auth.conf
+    echo '  args = /etc/dovecot/passwd-file' >> /etc/dovecot/conf.d/10-auth.conf
+    echo '  deny = no' >> /etc/dovecot/conf.d/10-auth.conf
+    echo '  master = no' >> /etc/dovecot/conf.d/10-auth.conf
+    echo '  pass = no' >> /etc/dovecot/conf.d/10-auth.conf
+    echo '}' >> /etc/dovecot/conf.d/10-auth.conf
+  fi
+  # make a CA cert
+  if [ ! -f /etc/ssl/private/dovecot-ca.key ]; then
+	  freedombone-addcert -h dovecot-ca --ca
+  fi
+  # CA configuration
+  echo '[ ca ]' > /etc/ssl/dovecot-ca.cnf
+  echo 'default_ca = dovecot-ca' >> /etc/ssl/dovecot-ca.cnf
+  echo '' >> /etc/ssl/dovecot-ca.cnf
+  echo '[ crl_ext ]' >> /etc/ssl/dovecot-ca.cnf
+  echo 'authorityKeyIdentifier=keyid:always' >> /etc/ssl/dovecot-ca.cnf
+  echo '' >> /etc/ssl/dovecot-ca.cnf
+  echo '[ dovecot-ca ]' >> /etc/ssl/dovecot-ca.cnf
+  echo 'new_certs_dir = .' >> /etc/ssl/dovecot-ca.cnf
+  echo 'unique_subject = no' >> /etc/ssl/dovecot-ca.cnf
+  echo 'certificate = /etc/ssl/certs/dovecot-ca.crt' >> /etc/ssl/dovecot-ca.cnf
+  echo 'database = ssldb' >> /etc/ssl/dovecot-ca.cnf
+  echo 'private_key = /etc/ssl/private/dovecot-ca.key' >> /etc/ssl/dovecot-ca.cnf
+  echo 'serial = sslserial' >> /etc/ssl/dovecot-ca.cnf
+  echo 'default_days = 3650' >> /etc/ssl/dovecot-ca.cnf
+  echo 'default_md = sha256' >> /etc/ssl/dovecot-ca.cnf
+  echo 'default_bits = 2048' >> /etc/ssl/dovecot-ca.cnf
+  echo 'policy = dovecot-ca_policy' >> /etc/ssl/dovecot-ca.cnf
+  echo 'x509_extensions = dovecot-ca_extensions' >> /etc/ssl/dovecot-ca.cnf
+  echo '' >> /etc/ssl/dovecot-ca.cnf
+  echo '[ dovecot-ca_policy ]' >> /etc/ssl/dovecot-ca.cnf
+  echo 'commonName = supplied' >> /etc/ssl/dovecot-ca.cnf
+  echo 'stateOrProvinceName = supplied' >> /etc/ssl/dovecot-ca.cnf
+  echo 'countryName = supplied' >> /etc/ssl/dovecot-ca.cnf
+  echo 'emailAddress = optional' >> /etc/ssl/dovecot-ca.cnf
+  echo 'organizationName = supplied' >> /etc/ssl/dovecot-ca.cnf
+  echo 'organizationalUnitName = optional' >> /etc/ssl/dovecot-ca.cnf
+  echo '' >> /etc/ssl/dovecot-ca.cnf
+  echo '[ dovecot-ca_extensions ]' >> /etc/ssl/dovecot-ca.cnf
+  echo 'basicConstraints = CA:false' >> /etc/ssl/dovecot-ca.cnf
+  echo 'subjectKeyIdentifier = hash' >> /etc/ssl/dovecot-ca.cnf
+  echo 'authorityKeyIdentifier = keyid:always' >> /etc/ssl/dovecot-ca.cnf
+  echo 'keyUsage = digitalSignature,keyEncipherment' >> /etc/ssl/dovecot-ca.cnf
+  echo 'extendedKeyUsage = clientAuth' >> /etc/ssl/dovecot-ca.cnf
+  touch /etc/ssl/ssldb
+  echo 0001 > /etc/ssl/sslserial
+  freedombone-clientcert -u $MY_USERNAME
+  service dovecot restart
+  echo 'configure_imap_client_certs' >> $COMPLETION_FILE
 }
 
 function configure_gpg {
@@ -9153,6 +9199,7 @@ configure_email
 create_procmail
 spam_filtering
 configure_imap
+configure_imap_client_certs
 configure_gpg
 encrypt_incoming_email
 encrypt_outgoing_email
