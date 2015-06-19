@@ -33,7 +33,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 USERNAME=
-CLIENT_CERT_PASSWORD=
 COUNTRY_CODE="US"
 AREA="Free Speech Zone"
 LOCATION="Freedomville"
@@ -49,7 +48,6 @@ function show_help {
     echo ''
     echo '     --help                  Show help'
     echo '  -u --username [name]       Username'
-    echo '  -p --password [text]       Client certificate install password'
     echo ''
     exit 0
 }
@@ -65,10 +63,6 @@ case $key in
     -u|--username)
     shift
     USERNAME="$1"
-    ;;
-    -p|--password)
-    shift
-    CLIENT_CERT_PASSWORD="$1"
     ;;
     *)
     # unknown option
@@ -113,7 +107,10 @@ if [ ! -f /etc/ssl/private/$USERNAME.key ]; then
 fi
 
 # create a certificate request
-openssl req -new -sha256 -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$USERNAME" -key /etc/ssl/private/$USERNAME.key -out /etc/ssl/requests/$USERNAME.csr
+openssl req -new -sha256 -subj \
+        "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$USERNAME" \
+        -key /etc/ssl/private/$USERNAME.key \
+        -out /etc/ssl/requests/$USERNAME.csr
 
 if [ ! -f /etc/ssl/requests/$USERNAME.csr ]; then
     echo 'Certificate request was not created'
@@ -123,7 +120,9 @@ fi
 
 # sign the certificate request
 cd /etc/ssl
-openssl ca -config /etc/ssl/dovecot-ca.cnf -in /etc/ssl/requests/$USERNAME.csr -out /etc/ssl/certs/$USERNAME.cer
+openssl ca -config /etc/ssl/dovecot-ca.cnf \
+        -in /etc/ssl/requests/$USERNAME.csr \
+        -out /etc/ssl/certs/$USERNAME.cer
 
 if [ ! -f /etc/ssl/certs/$USERNAME.cer ]; then
     echo 'Authentication certificate was not created'
@@ -137,12 +136,18 @@ mv /etc/ssl/certs/$USERNAME.cer /home/$USERNAME/emailcert
 cp /etc/ssl/certs/dovecot-ca.crt /home/$USERNAME/emailcert
 mv /etc/ssl/private/$USERNAME.key /home/$USERNAME/emailcert
 mv /etc/ssl/certs/$USERNAME.crt /home/$USERNAME/emailcert
-openssl pkcs12 -export -in /home/$USERNAME/emailcert/$USERNAME.cer -out /home/$USERNAME/emailcert/$USERNAME.p12 -inkey /home/$USERNAME/emailcert/$USERNAME.key -certfile /home/$USERNAME/emailcert/dovecot-ca.crt -password "$CLIENT_CERT_PASSWORD"
+openssl pkcs12 -export -in /home/$USERNAME/emailcert/$USERNAME.cer \
+        -out /home/$USERNAME/emailcert/$USERNAME.p12 \
+        -inkey /home/$USERNAME/emailcert/$USERNAME.key \
+        -certfile /home/$USERNAME/emailcert/dovecot-ca.crt \
+        -outpass pass:
 
 # make an install script
 echo '#!/bin/bash' > /home/$USERNAME/emailcert/install.sh
-echo "sudo mv $USERNAME.crt /etc/ssl/certs" >> /home/$USERNAME/emailcert/install.sh
-echo "sudo mv $USERNAME.key /etc/ssl/private" >> /home/$USERNAME/emailcert/install.sh
+echo "sudo mv $USERNAME.crt /etc/ssl/certs" >> \
+     /home/$USERNAME/emailcert/install.sh
+echo "sudo mv $USERNAME.key /etc/ssl/private" >> \
+     /home/$USERNAME/emailcert/install.sh
 echo 'exit 0' >> /home/$USERNAME/emailcert/install.sh
 
 # set permissions for the user
@@ -154,7 +159,7 @@ shred -zu /etc/ssl/requests/$USERNAME.csr
 
 echo 'Email authentication certificate created. You can obtain it on the client with:'
 echo ''
-echo "      scp -P 2222 -r $USERNAME@mydomainname:/home/$USERNAME/emailcert ~/"
+echo "      scp -P 2222 -r $USERNAME@$HOSTNAME:/home/$USERNAME/emailcert ~/"
 echo ''
 
 exit 0
