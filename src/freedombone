@@ -1533,6 +1533,9 @@ function get_batman_ipv6_address {
 function mesh_batman {
   # https://sudoroom.org/wiki/Mesh/Relay_setup
   # also see http://www.netlore.co.uk/airmesh/
+  # https://www.youtube.com/watch?v=CLKHWfQlFqQ
+  # http://pastebin.com/4U9vdFFm
+  # http://pastebin.com/eeTmL5XL
   if grep -Fxq "mesh_batman" $COMPLETION_FILE; then
       return
   fi
@@ -1544,24 +1547,6 @@ function mesh_batman {
   [ $? -ne 0 ] && echo "B.A.T.M.A.N module not available" && exit 76482
   if ! grep -q "batman_adv" /etc/modules; then
       echo 'batman_adv' >> /etc/modules
-  fi
-
-  modprobe l2tp_core
-  [ $? -ne 0 ] && echo "l2tp_core module not available" && exit 7358
-  if ! grep -q "l2tp_core" /etc/modules; then
-      echo 'l2tp_core' >> /etc/modules
-  fi
-
-  modprobe l2tp_eth
-  [ $? -ne 0 ] && echo "l2tp_eth module not available" && exit 8735
-  if ! grep -q "l2tp_eth" /etc/modules; then
-      echo 'l2tp_eth' >> /etc/modules
-  fi
-
-  modprobe l2tp_netlink
-  [ $? -ne 0 ] && echo "l2tp_netlink module not available" && exit 87367
-  if ! grep -q "l2tp_netlink" /etc/modules; then
-      echo 'l2tp_netlink' >> /etc/modules
   fi
 
   enable_ipv6
@@ -1591,48 +1576,35 @@ function mesh_batman {
       fi
   fi
 
+  # TODO add wlan0
+
   apt-get -y install iproute bridge-utils libnetfilter-conntrack3 python-dev libevent-dev ebtables python-pip git
 
-  cd $BUILD_PATH
-  git clone https://github.com/wlanslovenija/tunneldigger.git /opt/tunneldigger
-  chown root:root -R /opt/tunneldigger
-  cd /opt/tunneldigger/broker
-  pip install -r requirements.txt
+  # TODO turn the following into a script which can be run on startup
 
-  sed -i 's|address=.*|address=$BATMAN_IPV6|g' l2tp_broker.cfg
-  sed -i 's|interface=.*|interface=eth0|g' l2tp_broker.cfg
-  sed -i 's|session.up=.*|session.up=/opt/tunneldigger/broker/scripts/up_hook.sh|g' l2tp_broker.cfg
+  # stop network manager to make the mesh network work
+  service networking stop
 
-  cd /opt/tunneldigger/broker/scripts
-  echo '#!/bin/sh' > /opt/tunneldigger/broker/scripts/up_hook.sh
-  echo 'INTERFACE="$3"' >> /opt/tunneldigger/broker/scripts/up_hook.sh
-  echo 'ifconfig $INTERFACE up' >> /opt/tunneldigger/broker/scripts/up_hook.sh
-  echo 'batctl if add $INTERFACE' >> /opt/tunneldigger/broker/scripts/up_hook.sh
-  echo 'if [ `cat /sys/class/net/bat0/operstate` != "up" ]; then' >> /opt/tunneldigger/broker/scripts/up_hook.sh
-  echo "    ifconfig bat0 up" >> /opt/tunneldigger/broker/scripts/up_hook.sh
-  echo 'fi' >> /opt/tunneldigger/broker/scripts/up_hook.sh
-  chmod 755 up_hook.sh
+  # configure the wlan interface to operate with mtus of 1532(batman requires it) and turn enc off to ensure it works
+  ifconfig wlan0 down
+  ifconfig wlan0 mtu 1532
+  iwconfig wlan0 enc off
 
-  # make a systemd service to run ./l2tp_broker.py l2tp_broker.cfg
-  echo '[Unit]' > /etc/systemd/system/tunneldigger.service
-  echo 'Description=tunnerdigger (l2tp tunnel)' >> /etc/systemd/system/tunneldigger.service
-  echo 'After=syslog.target' >> /etc/systemd/system/tunneldigger.service
-  echo 'After=network.target' >> /etc/systemd/system/tunneldigger.service
-  echo '' >> /etc/systemd/system/tunneldigger.service
-  echo '[Service]' >> /etc/systemd/system/tunneldigger.service
-  echo 'Type=simple' >> /etc/systemd/system/tunneldigger.service
-  echo 'User=root' >> /etc/systemd/system/tunneldigger.service
-  echo 'Group=root' >> /etc/systemd/system/tunneldigger.service
-  echo 'WorkingDirectory=/opt/tunneldigger/broker' >> /etc/systemd/system/tunneldigger.service
-  echo 'ExecStart=/opt/tunneldigger/broker/l2tp_broker.py l2tp_broker.cfg' >> /etc/systemd/system/tunneldigger.service
-  echo 'Restart=always' >> /etc/systemd/system/tunneldigger.service
-  echo 'Environment="USER=root" "HOME=/opt/tunneldigger/broker"' >> /etc/systemd/system/tunneldigger.service
-  echo '' >> /etc/systemd/system/tunneldigger.service
-  echo '[Install]' >> /etc/systemd/system/tunneldigger.service
-  echo 'WantedBy=multi-user.target' >> /etc/systemd/system/tunneldigger.service
-  systemctl enable tunneldigger
-  systemctl daemon-reload
-  systemctl restart tunneldigger
+  # add the interface to the ad-hoc network - or create it.
+  iwconfig wlan0 mode ad-hoc essid NetworkName ap $BATMAN_IPV6 channel 2
+
+  # add wlan0 to the batman-adv virtual interface(so it can communicate with other batman-adv nodes)
+  batctl if add wlan0
+  ifconfig wlan0 up
+  ifconfig bat0 up
+
+  # make the bridge linking the batman-adv virtual interface to the ethernet port
+  brctl addbr bridge-link
+  brctl addif bridge-link bat0
+  brctl addif bridge-link eth0
+
+  #get the ip address for the bridge from the dhcp server
+  dhclient bridge-link
 
   if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
