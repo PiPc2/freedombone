@@ -79,6 +79,9 @@ MINIMUM_PASSWORD_LENGTH=10
 # number of CPU cores
 CPU_CORES=1
 
+# If the system is on an IPv6 network
+IPV6_NETWORK='2001:470:26:307'
+
 # The static IP address of the system within the local network
 LOCAL_NETWORK_STATIC_IP_ADDRESS="192.168.1.60"
 
@@ -376,7 +379,7 @@ CJDNS_PORT=
 
 # B.A.T.M.A.N settings
 ENABLE_BATMAN="no"
-BATMAN_IP='10.47.254.254'
+BATMAN_IPV6=
 
 function show_help {
   echo ''
@@ -713,6 +716,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "IPV6_NETWORK" $CONFIGURATION_FILE; then
+          IPV6_NETWORK=$(grep "IPV6_NETWORK" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "HWRNG_TYPE" $CONFIGURATION_FILE; then
           HWRNG_TYPE=$(grep "HWRNG_TYPE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -808,8 +814,8 @@ function read_configuration {
       if grep -q "ENABLE_BATMAN" $CONFIGURATION_FILE; then
           ENABLE_BATMAN=$(grep "ENABLE_BATMAN" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
-      if grep -q "BATMAN_IP" $CONFIGURATION_FILE; then
-          BATMAN_IP=$(grep "BATMAN_IP" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      if grep -q "BATMAN_IPV6" $CONFIGURATION_FILE; then
+          BATMAN_IPV6=$(grep "BATMAN_IPV6" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "ENABLE_CJDNS" $CONFIGURATION_FILE; then
           ENABLE_CJDNS=$(grep "ENABLE_CJDNS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -1202,6 +1208,15 @@ function get_cjdns_password {
   fi
 }
 
+function enable_ipv6 {
+  # endure that ipv6 is enabled and can route
+  sed -i 's/net.ipv6.conf.all.disable_ipv6.*/net.ipv6.conf.all.disable_ipv6 = 0/g' /etc/sysctl.conf
+  #sed -i "s/net.ipv6.conf.all.accept_redirects.*/net.ipv6.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
+  #sed -i "s/net.ipv6.conf.all.accept_source_route.*/net.ipv6.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
+  sed -i "s/net.ipv6.conf.all.forwarding.*/net.ipv6.conf.all.forwarding=1/g" /etc/sysctl.conf
+  echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+}
+
 function mesh_cjdns {
   if grep -Fxq "mesh_cjdns" $COMPLETION_FILE; then
       return
@@ -1282,12 +1297,7 @@ function mesh_cjdns {
       CJDNS_PORT=$(cat /etc/cjdns/cjdroute.conf | grep '"bind": "0.0.0.0:' | awk -F '"' '{print $4}' | awk -F ':' '{print $2}' | sed -n 1p)
   fi
 
-  # endure that ipv6 is enabled and can route
-  sed -i 's/net.ipv6.conf.all.disable_ipv6.*/net.ipv6.conf.all.disable_ipv6 = 0/g' /etc/sysctl.conf
-  #sed -i "s/net.ipv6.conf.all.accept_redirects.*/net.ipv6.conf.all.accept_redirects = 1/g" /etc/sysctl.conf
-  #sed -i "s/net.ipv6.conf.all.accept_source_route.*/net.ipv6.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
-  sed -i "s/net.ipv6.conf.all.forwarding.*/net.ipv6.conf.all.forwarding=1/g" /etc/sysctl.conf
-  echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+  enable_ipv6
 
   echo '#!/bin/sh -e' > /etc/init.d/cjdns
   echo '### BEGIN INIT INFO' >> /etc/init.d/cjdns
@@ -1411,7 +1421,7 @@ function mesh_cjdns {
       exit 4395
   fi
 
-  if ! grep -q "# Mesh network cjdns" /etc/network/interfaces; then
+  if ! grep -q "# Mesh Networking (cjdns)" /etc/network/interfaces; then
       echo '' >> /etc/network/interfaces
       echo '# Mesh Networking (cjdns)' >> /etc/network/interfaces
       echo 'iface eth0 inet6 static' >> /etc/network/interfaces
@@ -1510,6 +1520,16 @@ function mesh_cjdns_tools {
   echo 'mesh_cjdns_tools' >> $COMPLETION_FILE
 }
 
+function get_batman_ipv6_address {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "BATMAN IPv6 address" /home/$MY_USERNAME/README; then
+          if [ ! $BATMAN_IPV6 ]; then
+              BATMAN_IPV6=$(cat /home/$MY_USERNAME/README | grep "BATMAN IPv6 address" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
 function mesh_batman {
   # https://sudoroom.org/wiki/Mesh/Relay_setup
   # also see http://www.netlore.co.uk/airmesh/
@@ -1544,12 +1564,30 @@ function mesh_batman {
       echo 'l2tp_netlink' >> /etc/modules
   fi
 
-  if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /etc/network/interfaces; then
+  get_batman_ipv6_address
+
+  # If no address has been given then create a ramdom one
+  if [ ! $BATMAN_IPV6 ]; then
+      hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
+      a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+      b=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+      c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+      d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+      BATMAN_IPV6="$IPV6_NETWORK:$a:$b:$c:$d"
+  fi
+
+  if ! grep -q "# Mesh Networking (B.A.T.M.A.N)" /etc/network/interfaces; then
       echo '' >> /etc/network/interfaces
       echo '# Mesh Networking (B.A.T.M.A.N)' >> /etc/network/interfaces
-      echo 'iface bat0 inet static' >> /etc/network/interfaces
-      echo "    address $BATMAN_IP" >> /etc/network/interfaces
-      echo '    netmask 255.0.0.0' >> /etc/network/interfaces
+      echo 'iface bat0 inet6 static' >> /etc/network/interfaces
+      echo '    pre-up modprobe ipv6' >> /etc/network/interfaces
+      echo "    address $BATMAN_IPV6" >> /etc/network/interfaces
+      echo '    netmask 64' >> /etc/network/interfaces
+      service networking restart
+      if [ ! "$?" = "0" ]; then
+          systemctl status networking.service
+          exit 6949
+      fi
   fi
 
   apt-get -y install iproute bridge-utils libnetfilter-conntrack3 python-dev libevent-dev ebtables python-pip git
@@ -1560,8 +1598,7 @@ function mesh_batman {
   cd /opt/tunneldigger/broker
   pip install -r requirements.txt
 
-  EXTERNAL_IP=$(TODO)
-  sed -i 's|address=.*|address=$EXTERNAL_IP|g' l2tp_broker.cfg
+  sed -i 's|address=.*|address=$BATMAN_IPV6|g' l2tp_broker.cfg
   sed -i 's|interface=.*|interface=eth0|g' l2tp_broker.cfg
   sed -i 's|session.up=.*|session.up=/opt/tunneldigger/broker/scripts/up_hook.sh|g' l2tp_broker.cfg
 
@@ -1571,11 +1608,19 @@ function mesh_batman {
   echo 'ifconfig $INTERFACE up' >> /opt/tunneldigger/broker/scripts/up_hook.sh
   echo 'batctl if add $INTERFACE' >> /opt/tunneldigger/broker/scripts/up_hook.sh
   echo 'if [ `cat /sys/class/net/bat0/operstate` != "up" ]; then' >> /opt/tunneldigger/broker/scripts/up_hook.sh
-  echo "    ifconfig bat0 $BATMAN_IP netmask 255.0.0.0 up" >> /opt/tunneldigger/broker/scripts/up_hook.sh
+  echo "    ifconfig bat0 up" >> /opt/tunneldigger/broker/scripts/up_hook.sh
   echo 'fi' >> /opt/tunneldigger/broker/scripts/up_hook.sh
   chmod 755 up_hook.sh
 
   # TODO make a systemd service to run ./l2tp_broker.py l2tp_broker.cfg
+
+  if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Mesh Networking (B.A.T.M.A.N)' >> /home/$MY_USERNAME/README
+      echo '=============================' >> /home/$MY_USERNAME/README
+      echo "BATMAN IPv6 address: $BATMAN_IPV6" >> /home/$MY_USERNAME/README
+  fi
 
   echo 'mesh_batman' >> $COMPLETION_FILE
 }
