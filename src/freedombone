@@ -374,6 +374,10 @@ CJDNS_IPV6=
 CJDNS_PASSWORD=
 CJDNS_PORT=
 
+# B.A.T.M.A.N settings
+ENABLE_BATMAN="no"
+BATMAN_IP='10.47.254.254'
+
 function show_help {
   echo ''
   echo 'freedombone -c [configuration file]'
@@ -617,6 +621,11 @@ else
     shift
     ENABLE_CJDNS="yes"
     ;;
+    # Enable B.A.T.M.A.N
+    --batman)
+    shift
+    ENABLE_BATMAN="yes"
+    ;;
     # VoIP server password
     --vpass)
     shift
@@ -795,6 +804,12 @@ function read_configuration {
       fi
       if grep -q "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE; then
           LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep "LOCAL_NETWORK_STATIC_IP_ADDRESS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "ENABLE_BATMAN" $CONFIGURATION_FILE; then
+          ENABLE_BATMAN=$(grep "ENABLE_BATMAN" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "BATMAN_IP" $CONFIGURATION_FILE; then
+          BATMAN_IP=$(grep "BATMAN_IP" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "ENABLE_CJDNS" $CONFIGURATION_FILE; then
           ENABLE_CJDNS=$(grep "ENABLE_CJDNS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -1493,6 +1508,76 @@ function mesh_cjdns_tools {
   /usr/bin/cjdcmd cjdnsadmin -file /etc/cjdns/cjdroute.conf
 
   echo 'mesh_cjdns_tools' >> $COMPLETION_FILE
+}
+
+function mesh_batman {
+  # https://sudoroom.org/wiki/Mesh/Relay_setup
+  # also see http://www.netlore.co.uk/airmesh/
+  if grep -Fxq "mesh_batman" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $ENABLE_BATMAN != "yes" ]]; then
+      return
+  fi
+
+  modprobe batman-adv
+  [ $? -ne 0 ] && echo "B.A.T.M.A.N module not available" && exit 76482
+  if ! grep -q "batman_adv" /etc/modules; then
+      echo 'batman_adv' >> /etc/modules
+  fi
+
+  modprobe l2tp_core
+  [ $? -ne 0 ] && echo "l2tp_core module not available" && exit 7358
+  if ! grep -q "l2tp_core" /etc/modules; then
+      echo 'l2tp_core' >> /etc/modules
+  fi
+
+  modprobe l2tp_eth
+  [ $? -ne 0 ] && echo "l2tp_eth module not available" && exit 8735
+  if ! grep -q "l2tp_eth" /etc/modules; then
+      echo 'l2tp_eth' >> /etc/modules
+  fi
+
+  modprobe l2tp_netlink
+  [ $? -ne 0 ] && echo "l2tp_netlink module not available" && exit 87367
+  if ! grep -q "l2tp_netlink" /etc/modules; then
+      echo 'l2tp_netlink' >> /etc/modules
+  fi
+
+  if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /etc/network/interfaces; then
+      echo '' >> /etc/network/interfaces
+      echo '# Mesh Networking (B.A.T.M.A.N)' >> /etc/network/interfaces
+      echo 'iface bat0 inet static' >> /etc/network/interfaces
+      echo "    address $BATMAN_IP" >> /etc/network/interfaces
+      echo '    netmask 255.0.0.0' >> /etc/network/interfaces
+  fi
+
+  apt-get -y install iproute bridge-utils libnetfilter-conntrack3 python-dev libevent-dev ebtables python-pip git
+
+  cd $BUILD_PATH
+  git clone https://github.com/wlanslovenija/tunneldigger.git /opt/tunneldigger
+  chown root:root -R /opt/tunneldigger
+  cd /opt/tunneldigger/broker
+  pip install -r requirements.txt
+
+  EXTERNAL_IP=$(TODO)
+  sed -i 's|address=.*|address=$EXTERNAL_IP|g' l2tp_broker.cfg
+  sed -i 's|interface=.*|interface=eth0|g' l2tp_broker.cfg
+  sed -i 's|session.up=.*|session.up=/opt/tunneldigger/broker/scripts/up_hook.sh|g' l2tp_broker.cfg
+
+  cd /opt/tunneldigger/broker/scripts
+  echo '#!/bin/sh' > /opt/tunneldigger/broker/scripts/up_hook.sh
+  echo 'INTERFACE="$3"' >> /opt/tunneldigger/broker/scripts/up_hook.sh
+  echo 'ifconfig $INTERFACE up' >> /opt/tunneldigger/broker/scripts/up_hook.sh
+  echo 'batctl if add $INTERFACE' >> /opt/tunneldigger/broker/scripts/up_hook.sh
+  echo 'if [ `cat /sys/class/net/bat0/operstate` != "up" ]; then' >> /opt/tunneldigger/broker/scripts/up_hook.sh
+  echo "    ifconfig bat0 $BATMAN_IP netmask 255.0.0.0 up" >> /opt/tunneldigger/broker/scripts/up_hook.sh
+  echo 'fi' >> /opt/tunneldigger/broker/scripts/up_hook.sh
+  chmod 755 up_hook.sh
+
+  # TODO make a systemd service to run ./l2tp_broker.py l2tp_broker.cfg
+
+  echo 'mesh_batman' >> $COMPLETION_FILE
 }
 
 function remove_instructions_from_motd {
