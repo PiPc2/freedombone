@@ -65,6 +65,7 @@ MY_NAME=
 LOCAL_NETWORK_STATIC_IP_ADDRESS=
 ROUTER_IP_ADDRESS=
 ENABLE_CJDNS=
+ENABLE_BATMAN=
 DEBIAN_REPO=
 NAMESERVER1=
 NAMESERVER2=
@@ -164,6 +165,9 @@ function save_configuration_file {
   if [ $ENABLE_CJDNS ]; then
       echo "ENABLE_CJDNS=$ENABLE_CJDNS" >> $CONFIGURATION_FILE
   fi
+  if [ $ENABLE_BATMAN ]; then
+      echo "ENABLE_BATMAN=$ENABLE_BATMAN" >> $CONFIGURATION_FILE
+  fi
   echo "DEBIAN_REPO=$DEBIAN_REPO" >> $CONFIGURATION_FILE
   echo "NAMESERVER1=$NAMESERVER1" >> $CONFIGURATION_FILE
   echo "NAMESERVER2=$NAMESERVER2" >> $CONFIGURATION_FILE
@@ -231,6 +235,73 @@ function validate_domain_name {
   if (( $no_of_dots == 0 )); then
       TEST_DOMAIN_NAME="The domain $TEST_DOMAIN_NAME has no top level domain. It should be of the type w.x.y.z, x.y.z or y.z"
   fi
+}
+
+function interactive_gpg {
+  dialog --title "Encryption keys" \
+         --backtitle "Freedombone Configuration" \
+         --defaultno \
+         --yesno "\nDo you have existing GPG/PGP keys that you wish to install?" 7 60
+  sel=$?
+  case $sel in
+      1) return;;
+      255) exit 0;;
+  esac
+
+  dialog --title "Encryption keys" --msgbox 'Plug in a USB drive containing a copy of your .gnupg directory' 6 70
+
+  if [[ $INSTALLING_ON_BBB == "yes" ]]; then
+      GPG_USB_DRIVE='/dev/sda1'
+      if [ ! -b $GPG_USB_DRIVE ]; then
+          dialog --title "Encryption keys" --msgbox 'No USB drive found' 6 30
+          exit 739836
+      fi
+  else
+      GPG_USB_DRIVE='/dev/sdb1'
+      if [ ! -b $GPG_USB_DRIVE ]; then
+          GPG_USB_DRIVE='/dev/sdc1'
+          if [ ! -b $GPG_USB_DRIVE ]; then
+              GPG_USB_DRIVE='/dev/sdd1'
+              if [ ! -b $GPG_USB_DRIVE ]; then
+                  dialog --title "Encryption keys" --msgbox 'No USB drive found' 6 30
+                  exit 27852
+              fi
+          fi
+      fi
+  fi
+
+  GPG_USB_MOUNT='/mnt/usb'
+  umount -f $GPG_USB_MOUNT
+  if [ ! -d $GPG_USB_MOUNT ]; then
+      mkdir -p $GPG_USB_MOUNT
+  fi
+
+  if [ -f /dev/mapper/encrypted_usb ]; then
+      rm -rf /dev/mapper/encrypted_usb
+  fi
+  cryptsetup luksClose encrypted_usb
+  cryptsetup luksOpen $GPG_USB_DRIVE encrypted_usb
+  if [ "$?" = "0" ]; then
+      GPG_USB_DRIVE=/dev/mapper/encrypted_usb
+  fi
+  mount $GPG_USB_DRIVE $GPG_USB_MOUNT
+  if [ ! "$?" = "0" ]; then
+      dialog --title "Encryption keys" --msgbox "There was a problem mounting the USB drive to $GPG_USB_MOUNT" 6 70
+      rm -rf $GPG_USB_MOUNT
+      exit 74393
+  fi
+
+  if [ ! -d $GPG_USB_MOUNT/.gnupg ]; then
+      dialog --title "Encryption keys" --msgbox "The directory $GPG_USB_MOUNT/.gnupg was not found" 6 70
+      umount $GPG_USB_MOUNT
+      rm -rf $GPG_USB_MOUNT
+      exit 723814
+  fi
+
+  cp -r $GPG_USB_MOUNT/.gnupg /home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')
+
+  umount $GPG_USB_MOUNT
+  rm -rf $GPG_USB_MOUNT
 }
 
 function interactive_configuration {
@@ -324,6 +395,8 @@ function interactive_configuration {
       USB_DRIVE=/dev/sda1
   fi
   save_configuration_file
+
+  interactive_gpg
 
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
