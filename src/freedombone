@@ -1543,6 +1543,9 @@ function mesh_batman {
       return
   fi
 
+  apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
+  apt-get -y install python-dev libevent-dev ebtables python-pip git
+
   modprobe batman-adv
   [ $? -ne 0 ] && echo "B.A.T.M.A.N module not available" && exit 76482
   if ! grep -q "batman_adv" /etc/modules; then
@@ -1578,33 +1581,37 @@ function mesh_batman {
 
   # TODO add wlan0
 
-  apt-get -y install iproute bridge-utils libnetfilter-conntrack3 python-dev libevent-dev ebtables python-pip git
 
-  # TODO turn the following into a script which can be run on startup
+  echo '#!/bin/bash' > /usr/bin/mesh
+  echo '' > /usr/bin/mesh
+  echo '# stop network manager to make the mesh network work' >> /usr/bin/mesh
+  echo 'service networking stop' >> /usr/bin/mesh
+  echo '' >> /usr/bin/mesh
+  echo '# configure the wlan interface to operate with mtus of 1532(batman requires it) and turn enc off to ensure it works' >> /usr/bin/mesh
+  echo 'ifconfig wlan0 down' >> /usr/bin/mesh
+  echo 'ifconfig wlan0 mtu 1532' >> /usr/bin/mesh
+  echo 'iwconfig wlan0 enc off' >> /usr/bin/mesh
+  echo '' >> /usr/bin/mesh
+  echo '# add the interface to the ad-hoc network - or create it.' >> /usr/bin/mesh
+  echo "iwconfig wlan0 mode ad-hoc essid NetworkName ap $BATMAN_IPV6 channel 2" >> /usr/bin/mesh
+  echo '' >> /usr/bin/mesh
+  echo '# add wlan0 to the batman-adv virtual interface(so it can communicate with other batman-adv nodes)' >> /usr/bin/mesh
+  echo 'batctl if add wlan0' >> /usr/bin/mesh
+  echo 'ifconfig wlan0 up' >> /usr/bin/mesh
+  echo 'ifconfig bat0 up' >> /usr/bin/mesh
+  echo '' >> /usr/bin/mesh
+  echo '# make the bridge linking the batman-adv virtual interface to the ethernet port' >> /usr/bin/mesh
+  echo 'brctl addbr bridge-link' >> /usr/bin/mesh
+  echo 'brctl addif bridge-link bat0' >> /usr/bin/mesh
+  echo 'brctl addif bridge-link eth0' >> /usr/bin/mesh
+  echo '' >> /usr/bin/mesh
+  echo '#get the ip address for the bridge from the dhcp server' >> /usr/bin/mesh
+  echo 'dhclient bridge-link' >> /usr/bin/mesh
+  echo '' >> /usr/bin/mesh
+  echo 'exit 0' >> /usr/bin/mesh
+  chmod +x /usr/bin/mesh
 
-  # stop network manager to make the mesh network work
-  service networking stop
-
-  # configure the wlan interface to operate with mtus of 1532(batman requires it) and turn enc off to ensure it works
-  ifconfig wlan0 down
-  ifconfig wlan0 mtu 1532
-  iwconfig wlan0 enc off
-
-  # add the interface to the ad-hoc network - or create it.
-  iwconfig wlan0 mode ad-hoc essid NetworkName ap $BATMAN_IPV6 channel 2
-
-  # add wlan0 to the batman-adv virtual interface(so it can communicate with other batman-adv nodes)
-  batctl if add wlan0
-  ifconfig wlan0 up
-  ifconfig bat0 up
-
-  # make the bridge linking the batman-adv virtual interface to the ethernet port
-  brctl addbr bridge-link
-  brctl addif bridge-link bat0
-  brctl addif bridge-link eth0
-
-  #get the ip address for the bridge from the dhcp server
-  dhclient bridge-link
+  /usr/bin/mesh
 
   if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
