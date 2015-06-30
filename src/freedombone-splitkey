@@ -1,0 +1,139 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# A script which splits a user's gpg key into fragments which
+# may then be shared
+
+# To get a random fragment
+# get a random fragment
+#     fragment_files=($FRAGMENTS_DIR/*)
+#     FRAGMENT_FILE="${files[RANDOM % ${#files[@]}]}"
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+KEY_FRAGMENTS=3
+MY_USERNAME=
+MY_EMAIL_ADDRESS=
+
+function show_help {
+    echo ''
+    echo 'freedombone-splitkey -u [username] -n [number of fragments] -e [email address]'
+    echo ''
+    exit 0
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    -u|--user)
+    shift
+    MY_USERNAME="$1"
+    ;;
+    -n|--fragments)
+    shift
+    KEY_FRAGMENTS=$1
+    ;;
+    -e|--email)
+    shift
+    MY_EMAIL_ADDRESS=$1
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+if [ ! $MY_USERNAME ]; then
+    show_help
+fi
+if [ ! -d /home/$MY_USERNAME ]; then
+    echo "User $MY_USERNAME does not exist on the system"
+    exit 7270
+fi
+
+if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
+    echo 'No gpg key found'
+    exit 5393
+fi
+
+FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
+if [ -d $FRAGMENTS_DIR ]; then
+    exit 0
+fi
+
+# get the gpg key ID
+if [ ! $MY_EMAIL_ADDRESS ]; then
+    MY_EMAIL_ADDRESS=$MY_USERNAME@$HOSTNAME
+fi
+KEYID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - \
+        $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+
+# create the key file
+KEYS_FILE=/home/$MY_USERNAME/tempdatafile.asc
+gpg --output /home/$MY_USERNAME/pubkey.txt --armor --export $KEYID
+if [ ! "$?" = "0" ]; then
+    echo "Unable to extract public key for $KEYID"
+    exit 7835
+fi
+gpg --output /home/$MY_USERNAME/privkey.txt --armor --export-secret-key $KEYID
+if [ ! "$?" = "0" ]; then
+    echo "Unable to extract private key for $KEYID"
+    exit 7823
+fi
+cat /home/$MY_USERNAME/pubkey.txt /home/$MY_USERNAME/privkey.txt > $KEYS_FILE
+shred -zu /home/$MY_USERNAME/privkey.txt
+shred -zu /home/$MY_USERNAME/pubkey.txt
+
+# encrypt the keys file with a passphrase
+gpg --output $KEYS_FILE.gpg --symmetric $KEYS_FILE
+if [ ! "$?" = "0" ]; then
+    echo "Unable to encrypt the data prior to splitting"
+    exit 7352
+fi
+shred -zu $KEYS_FILE
+
+# generate fragments
+GPG_KEYS_SIZE_BYTES=$(wc -c <"$KEYS_FILE.gpg")
+GPG_BYTES_PER_FRAGMENT=$((GPG_KEYS_SIZE_BYTES / KEY_FRAGMENTS))
+GPG_BYTES_PER_FRAGMENT=$((GPG_BYTES_PER_FRAGMENT + 1))
+mkdir -p $FRAGMENTS_DIR
+echo "$GPG_BYTES_PER_FRAGMENT / $GPG_KEYS_SIZE_BYTES"
+split --bytes=$GPG_BYTES_PER_FRAGMENT $KEYS_FILE.gpg $FRAGMENTS_DIR/data
+#chown -R $MY_USERNAME:$MY_USERNAME $FRAGMENTS_DIR
+#chmod -R 600 $FRAGMENTS_DIR
+
+# delete the keys file
+shred -zu $KEYS_FILE.gpg
+
+echo "$KEY_FRAGMENTS key fragments created"
+
+exit 0
