@@ -1,0 +1,119 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# A script which recovers a user's gpg key from a number of fragments
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+function show_help {
+    echo ''
+    echo 'freedombone-recoverkey -u [username]'
+    echo ''
+    exit 0
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    -u|--user)
+    shift
+    MY_USERNAME="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+if [ ! $MY_USERNAME ]; then
+    show_help
+fi
+if [ ! -d /home/$MY_USERNAME ]; then
+    echo "User $MY_USERNAME does not exist on the system"
+    exit 7270
+fi
+
+if [ ! $MY_USERNAME ]; then
+    echo 'No username given'
+    exit 3578
+fi
+if [ ! -d /home/$MY_USERNAME ]; then
+    echo "User $MY_USERNAME does not exist on the system"
+    exit 7270
+fi
+FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
+if [ ! -d $FRAGMENTS_DIR ]; then
+    echo 'No fragments have been recovered, so the key cannot be recovered'
+    exit 7483
+fi
+
+# join the fragments
+if [ ! -d /home/$MY_USERNAME/.tempgnupg ]; then
+    mkdir /home/$MY_USERNAME/.tempgnupg
+fi
+KEYS_FILE=/home/$MY_USERNAME/.tempgnupg/tempfile.asc
+cat $FRAGMENTS_DIR/data* > $KEYS_FILE.gpg
+if [ ! "$?" = "0" ]; then
+    echo 'Unable to find key fragments'
+    exit 8727
+fi
+
+# decrypt the file
+cd /home/$MY_USERNAME/.tempgnupg
+gpg -d $KEYS_FILE.gpg -o $KEYS_FILE
+if [ ! "$?" = "0" ]; then
+    echo 'Unable to decrypt data. This may mean that not enough fragments are available'
+    exit 6283
+fi
+shred -zu $KEYS_FILE.gpg
+if [ ! -f $KEYS_FILE ]; then
+    echo 'Unable to find decrypted key file. This may mean that not enough fragments are available'
+    exit 8358
+fi
+echo 'Key fragments decrypted'
+
+# import the gpg key
+su -c "gpg --allow-secret-key-import --import $KEYS_FILE" - $MY_USERNAME
+if [ ! "$?" = "0" ]; then
+    echo 'Unable to import gpg key'
+    shred -zu $KEYS_FILE
+    rm -rf /home/$MY_USERNAME/.tempgnupg
+    exit 3682
+fi
+shred -zu $KEYS_FILE
+chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+chmod -R 600 /home/$MY_USERNAME/.gnupg
+rm -rf /home/$MY_USERNAME/.tempgnupg
+
+echo 'GPG key was recovered'
+
+exit 0
