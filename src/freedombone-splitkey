@@ -37,10 +37,11 @@
 KEY_FRAGMENTS=3
 MY_USERNAME=
 MY_EMAIL_ADDRESS=
+PASSPHRASE=
 
 function show_help {
     echo ''
-    echo 'freedombone-splitkey -u [username] -n [number of fragments] -e [email address]'
+    echo 'freedombone-splitkey -u [username] -n [number of fragments] -e [email address] -p [passphrase]'
     echo ''
     exit 0
 }
@@ -64,6 +65,10 @@ case $key in
     -e|--email)
     shift
     MY_EMAIL_ADDRESS=$1
+    ;;
+    -p|--passphrase)
+    shift
+    PASSPHRASE=$1
     ;;
     *)
     # unknown option
@@ -113,13 +118,32 @@ cat /home/$MY_USERNAME/pubkey.txt /home/$MY_USERNAME/privkey.txt > $KEYS_FILE
 shred -zu /home/$MY_USERNAME/privkey.txt
 shred -zu /home/$MY_USERNAME/pubkey.txt
 
+# generate a random passphrase if one isn't supplied
+if [ ! $PASSPHRASE ]; then
+    PASSPHRASE=$(openssl rand -base64 64)
+fi
+
 # encrypt the keys file with a passphrase
-gpg --output $KEYS_FILE.gpg --symmetric $KEYS_FILE
+echo "$PASSPHRASE" | gpg --passphrase-fd 0 --output $KEYS_FILE.gpg --symmetric $KEYS_FILE
 if [ ! "$?" = "0" ]; then
     echo "Unable to encrypt the data prior to splitting"
     exit 7352
 fi
 shred -zu $KEYS_FILE
+
+# split the passphrase into shares
+echo "$PASSPHRASE" | ssss-split -q -t $KEY_FRAGMENTS -n $KEY_FRAGMENTS > \
+                                /home/$MY_USERNAME/.gnupg_fragments/shares.txt
+
+# (maybe) overwrite passphrase after use
+PASSPHRASE=$(openssl rand -base64 64)
+
+# check that passphrase shares were created
+if [ ! -f /home/$MY_USERNAME/.gnupg_fragments/shares.txt ]; then
+    echo 'Passphrase for key fragments could not be split'
+    shred -zu $KEYS_FILE.gpg
+    exit 74549
+fi
 
 # generate fragments
 GPG_KEYS_SIZE_BYTES=$(wc -c <"$KEYS_FILE.gpg")

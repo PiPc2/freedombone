@@ -381,6 +381,9 @@ CJDNS_PORT=
 ENABLE_BATMAN="no"
 BATMAN_IPV6=
 
+# social key management
+ENABLE_SOCIAL_KEY_MANAGEMENT="no"
+
 function show_help {
   echo ''
   echo 'freedombone -c [configuration file]'
@@ -716,6 +719,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "ENABLE_SOCIAL_KEY_MANAGEMENT" $CONFIGURATION_FILE; then
+          ENABLE_SOCIAL_KEY_MANAGEMENT=$(grep "ENABLE_SOCIAL_KEY_MANAGEMENT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "IPV6_NETWORK" $CONFIGURATION_FILE; then
           IPV6_NETWORK=$(grep "IPV6_NETWORK" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1696,7 +1702,7 @@ function create_backup_script {
   if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
       return
   fi
-  apt-get -y install rsyncrypto cryptsetup
+  apt-get -y install rsyncrypto cryptsetup ssss
 
   get_mariadb_password
   get_mariadb_gnusocial_admin_password
@@ -3801,25 +3807,29 @@ function backup_to_friends_servers {
   echo -n '    echo "$NOW Starting backup to $REMOTE_SERVER" >> ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "$REMOTE_BACKUPS_LOG" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
-  echo "    if [ -d /home/$MY_USERNAME/.gnupg_fragments ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "        cd /home/$MY_USERNAME/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '        no_of_fragments=$(ls -afq | wc -l)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '        no_of_fragments=$((no_of_fragments - 2))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '        if [[ ${no_of_fragments} > 0 ]]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '            key_files=(/home/$MY_USERNAME/.gnupg_fragments/data*)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '            key_filename=${key_files[ctr]}' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "            mkdir -p /home/$MY_USERNAME/tempkey/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "            cp $key_filename /home/$MY_USERNAME/tempkey/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo -n '            /usr/bin/sshpass -p $REMOTE_PASSWORD ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "scp -r -P $REMOTE_SSH_PORT /home/$MY_USERNAME/tempkey/.gnupg_fragments $REMOTE_SERVER" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "            shred -zu /home/$MY_USERNAME/tempkey/.gnupg_fragments/*" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo "            rm -rf /home/$MY_USERNAME/tempkey" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '            ctr=$((ctr + 1))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '            if [[ ${ctr} >= ${no_of_fragments} ]]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '                ctr=0' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '            fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '        fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  if [[ $ENABLE_SOCIAL_KEY_MANAGEMENT == "yes" ]]; then
+      echo "    if [ -d /home/$MY_USERNAME/.gnupg_fragments ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "        cd /home/$MY_USERNAME/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '        no_of_fragments=$(ls -afq data* | wc -l)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '        no_of_fragments=$((no_of_fragments - 2))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '        if [[ ${no_of_fragments} > 0 ]]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            key_files=(/home/$MY_USERNAME/.gnupg_fragments/data*)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            key_filename=${key_files[ctr]}' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "            mkdir -p /home/$MY_USERNAME/tempkey/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            ctrb=$((ctr + 1))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "            sed \"$ctrbq;d\" /home/$MY_USERNAME/.gnupg_fragments/shares.txt > /home/$MY_USERNAME/tempkey/.gnupg_fragments/share.txt" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "            cp $key_filename /home/$MY_USERNAME/tempkey/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '            /usr/bin/sshpass -p $REMOTE_PASSWORD ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "scp -r -P $REMOTE_SSH_PORT /home/$MY_USERNAME/tempkey/.gnupg_fragments $REMOTE_SERVER" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "            shred -zu /home/$MY_USERNAME/tempkey/.gnupg_fragments/*" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "            rm -rf /home/$MY_USERNAME/tempkey" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            ctr=$((ctr + 1))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            if [[ ${ctr} >= ${no_of_fragments} ]]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                ctr=0' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '        fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  fi
 
   echo -n '    rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '$SERVER_DIRECTORY/backup $REMOTE_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
