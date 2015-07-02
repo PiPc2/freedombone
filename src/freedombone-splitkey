@@ -37,11 +37,10 @@
 KEY_FRAGMENTS=3
 MY_USERNAME=
 MY_EMAIL_ADDRESS=
-PASSPHRASE=
 
 function show_help {
     echo ''
-    echo 'freedombone-splitkey -u [username] -n [number of fragments] -e [email address] -p [passphrase]'
+    echo 'freedombone-splitkey -u [username] -n [number of fragments] -e [email address]'
     echo ''
     exit 0
 }
@@ -65,10 +64,6 @@ case $key in
     -e|--email)
     shift
     MY_EMAIL_ADDRESS=$1
-    ;;
-    -p|--passphrase)
-    shift
-    PASSPHRASE=$1
     ;;
     *)
     # unknown option
@@ -103,60 +98,38 @@ KEYID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - \
         $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
 
 # create the key file
-KEYS_FILE=/home/$MY_USERNAME/tempdatafile.asc
-gpg --output /home/$MY_USERNAME/pubkey.txt --armor --export $KEYID
+mkdir -p $FRAGMENTS_DIR
+KEYS_FILE=$FRAGMENTS_DIR/keyshare.asc
+gpg --output $FRAGMENTS_DIR/pubkey.txt --armor --export $KEYID
 if [ ! "$?" = "0" ]; then
     echo "Unable to extract public key for $KEYID"
     exit 7835
 fi
-gpg --output /home/$MY_USERNAME/privkey.txt --armor --export-secret-key $KEYID
+gpg --output $FRAGMENTS_DIR/privkey.txt --armor --export-secret-key $KEYID
 if [ ! "$?" = "0" ]; then
     echo "Unable to extract private key for $KEYID"
     exit 7823
 fi
-cat /home/$MY_USERNAME/pubkey.txt /home/$MY_USERNAME/privkey.txt > $KEYS_FILE
-shred -zu /home/$MY_USERNAME/privkey.txt
-shred -zu /home/$MY_USERNAME/pubkey.txt
+cat $FRAGMENTS_DIR/pubkey.txt $FRAGMENTS_DIR/privkey.txt > $KEYS_FILE
+shred -zu $FRAGMENTS_DIR/privkey.txt
+shred -zu $FRAGMENTS_DIR/pubkey.txt
 
-# generate a random passphrase if one isn't supplied
-if [ ! $PASSPHRASE ]; then
-    PASSPHRASE="$(openssl rand -base64 100)"
-fi
-
-# encrypt the keys file with a passphrase
-echo "$PASSPHRASE" | gpg --passphrase-fd 0 --output $KEYS_FILE.gpg --symmetric $KEYS_FILE
+KEY_SHARES=$((KEY_FRAGMENTS * 2))
+gfsplit -n $KEY_FRAGMENTS -m $KEY_SHARES $KEYS_FILE
 if [ ! "$?" = "0" ]; then
-    echo "Unable to encrypt the data prior to splitting"
-    exit 7352
+    echo "Unable to split the gpg key"
+    rm -rf $FRAGMENTS_DIR
+    if [ -f $KEYS_FILE ]; then
+        shred -zu $KEYS_FILE
+    fi
+    exit 63028
 fi
 shred -zu $KEYS_FILE
 
-# split the passphrase into shares
-echo "$PASSPHRASE" | ssss-split -q -t $KEY_FRAGMENTS -n $KEY_FRAGMENTS > \
-                                /home/$MY_USERNAME/.gnupg_fragments/shares.txt
-
-# (maybe) overwrite passphrase after use
-PASSPHRASE="$(openssl rand -base64 100)"
-
-# check that passphrase shares were created
-if [ ! -f /home/$MY_USERNAME/.gnupg_fragments/shares.txt ]; then
-    echo 'Passphrase for key fragments could not be split'
-    shred -zu $KEYS_FILE.gpg
-    exit 74549
-fi
-
-# generate fragments
-GPG_KEYS_SIZE_BYTES=$(wc -c <"$KEYS_FILE.gpg")
-GPG_BYTES_PER_FRAGMENT=$((GPG_KEYS_SIZE_BYTES / KEY_FRAGMENTS))
-GPG_BYTES_PER_FRAGMENT=$((GPG_BYTES_PER_FRAGMENT + 1))
-mkdir -p $FRAGMENTS_DIR
-split --bytes=$GPG_BYTES_PER_FRAGMENT $KEYS_FILE.gpg $FRAGMENTS_DIR/data
+# set permissions
 chown -R $MY_USERNAME:$MY_USERNAME $FRAGMENTS_DIR
 chmod -R 600 $FRAGMENTS_DIR
 
-# delete the keys file
-shred -zu $KEYS_FILE.gpg
-
-echo "$KEY_FRAGMENTS key fragments created"
+echo "$KEY_SHARES key shares created"
 
 exit 0
