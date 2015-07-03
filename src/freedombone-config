@@ -271,65 +271,136 @@ function interactive_gpg_from_remote {
   return 0
 }
 
-function interactive_gpg_from_usb {
-  dialog --title "Encryption keys" --msgbox 'Plug in a USB drive containing a copy of your .gnupg directory' 6 70
+function reconstruct_key {
+    if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
+        return
+    fi
+    cd /home/$MY_USERNAME/.gnupg_fragments
+    no_of_shares=$(ls -afq keyshare* | wc -l)
+    no_of_shares=$((no_of_shares - 2))
+    if [[ ${no_of_shares} < 4 ]]; then
+        dialog --title "Encryption keys" --msgbox 'Not enough fragments to reconstruct the key' 6 70
+        exit 7348
+    fi
+    gfcombine /home/$MY_USERNAME/.gnupg_fragments/keyshare*
+    if [ ! "$?" = "0" ]; then
+        dialog --title "Encryption keys" --msgbox 'Unable to reconstruct the key' 6 70
+        exit 7348
+    fi
 
-  if [[ $INSTALLING_ON_BBB == "yes" ]]; then
-      GPG_USB_DRIVE='/dev/sda1'
-      if [ ! -b $GPG_USB_DRIVE ]; then
-          dialog --title "Encryption keys" --msgbox 'No USB drive found' 6 30
-          exit 739836
-      fi
-  else
-      GPG_USB_DRIVE='/dev/sdb1'
-      if [ ! -b $GPG_USB_DRIVE ]; then
-          GPG_USB_DRIVE='/dev/sdc1'
+    KEYS_FILE=/home/$MY_USERNAME/.gnupg_fragments/keyshare.asc
+    if [ ! -f $KEYS_FILE ]; then
+        dialog --title "Encryption keys" --msgbox 'Unable to reconstruct the key' 6 70
+    fi
+
+    su -c "gpg --allow-secret-key-import --import $KEYS_FILE" - $MY_USERNAME
+    if [ ! "$?" = "0" ]; then
+        echo 'Unable to import gpg key'
+        shred -zu $KEYS_FILE
+        rm -rf /home/$MY_USERNAME/.tempgnupg
+        exit 9654
+    fi
+
+    dialog --title "Encryption keys" --msgbox 'Key has been reconstructed' 6 70
+}
+
+function interactive_gpg_from_usb {
+  dialog --title "Encryption keys" --msgbox 'Plug in a USB drive containing a copy of your full key or key fragment' 6 70
+
+  GPG_LOADING="yes"
+  GPG_CTR=0
+  while [[ $GPG_LOADING == "yes" ]]
+  do
+      if [[ $INSTALLING_ON_BBB == "yes" ]]; then
+          GPG_USB_DRIVE='/dev/sda1'
           if [ ! -b $GPG_USB_DRIVE ]; then
-              GPG_USB_DRIVE='/dev/sdd1'
+              if [[ ${GPG_CTR} > 0 ]]; then
+                  reconstruct_key
+                  return 0
+              fi
+              dialog --title "Encryption keys" --msgbox 'No USB drive found' 6 30
+              exit 739836
+          fi
+      else
+          GPG_USB_DRIVE='/dev/sdb1'
+          if [ ! -b $GPG_USB_DRIVE ]; then
+              GPG_USB_DRIVE='/dev/sdc1'
               if [ ! -b $GPG_USB_DRIVE ]; then
-                  dialog --title "Encryption keys" --msgbox 'No USB drive found' 6 30
-                  exit 27852
+                  GPG_USB_DRIVE='/dev/sdd1'
+                  if [ ! -b $GPG_USB_DRIVE ]; then
+                      if [[ ${GPG_CTR} > 0 ]]; then
+                          reconstruct_key
+                          return 0
+                      fi
+                      dialog --title "Encryption keys" --msgbox 'No USB drive found' 6 30
+                      exit 27852
+                  fi
               fi
           fi
       fi
-  fi
 
-  GPG_USB_MOUNT='/mnt/usb'
-  umount -f $GPG_USB_MOUNT
-  if [ ! -d $GPG_USB_MOUNT ]; then
-      mkdir -p $GPG_USB_MOUNT
-  fi
+      GPG_USB_MOUNT='/mnt/usb'
+      umount -f $GPG_USB_MOUNT
+      if [ ! -d $GPG_USB_MOUNT ]; then
+          mkdir -p $GPG_USB_MOUNT
+      fi
 
-  if [ -f /dev/mapper/encrypted_usb ]; then
-      rm -rf /dev/mapper/encrypted_usb
-  fi
-  cryptsetup luksClose encrypted_usb
-  cryptsetup luksOpen $GPG_USB_DRIVE encrypted_usb
-  if [ "$?" = "0" ]; then
-      GPG_USB_DRIVE=/dev/mapper/encrypted_usb
-  fi
-  mount $GPG_USB_DRIVE $GPG_USB_MOUNT
-  if [ ! "$?" = "0" ]; then
-      dialog --title "Encryption keys" --msgbox "There was a problem mounting the USB drive to $GPG_USB_MOUNT" 6 70
-      rm -rf $GPG_USB_MOUNT
-      exit 74393
-  fi
+      if [ -f /dev/mapper/encrypted_usb ]; then
+          rm -rf /dev/mapper/encrypted_usb
+      fi
+      cryptsetup luksClose encrypted_usb
+      cryptsetup luksOpen $GPG_USB_DRIVE encrypted_usb
+      if [ "$?" = "0" ]; then
+          GPG_USB_DRIVE=/dev/mapper/encrypted_usb
+      fi
+      mount $GPG_USB_DRIVE $GPG_USB_MOUNT
+      if [ ! "$?" = "0" ]; then
+          if [[ ${GPG_CTR} > 0 ]]; then
+              rm -rf $GPG_USB_MOUNT
+              reconstruct_key
+              return 0
+          fi
+          dialog --title "Encryption keys" \
+                 --msgbox "There was a problem mounting the USB drive to $GPG_USB_MOUNT" 6 70
+          rm -rf $GPG_USB_MOUNT
+          exit 74393
+      fi
 
-  if [ ! -d $GPG_USB_MOUNT/.gnupg ]; then
-      dialog --title "Encryption keys" --msgbox "The directory $GPG_USB_MOUNT/.gnupg was not found" 6 70
+      if [ ! -d $GPG_USB_MOUNT/.gnupg ]; then
+          if [ ! -d $GPG_USB_MOUNT/.gnupg_fragments ]; then
+              if [[ ${GPG_CTR} > 0 ]]; then
+                  umount $GPG_USB_MOUNT
+                  rm -rf $GPG_USB_MOUNT
+                  reconstruct_key
+                  return 0
+              fi
+              dialog --title "Encryption keys" \
+                     --msgbox "The directory $GPG_USB_MOUNT/.gnupg or $GPG_USB_MOUNT/.gnupg_fragments was not found" 6 70
+              umount $GPG_USB_MOUNT
+              rm -rf $GPG_USB_MOUNT
+              exit 723814
+          fi
+      fi
+
+      if [ -d $GPG_USB_MOUNT/.gnupg ]; then
+          cp -r $GPG_USB_MOUNT/.gnupg /home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')
+          GPG_LOADING="no"
+      else
+          cp -r $GPG_USB_MOUNT/.gnupg_fragments /home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')
+      fi
+
+      if [ -d $GPG_USB_MOUNT/.ssh ]; then
+          cp $GPG_USB_MOUNT/.ssh/* /home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')/.ssh
+      fi
+
       umount $GPG_USB_MOUNT
       rm -rf $GPG_USB_MOUNT
-      exit 723814
-  fi
-
-  cp -r $GPG_USB_MOUNT/.gnupg /home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')
-
-  if [ -d $GPG_USB_MOUNT/.ssh ]; then
-      cp $GPG_USB_MOUNT/.ssh/* /home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')/.ssh
-  fi
-
-  umount $GPG_USB_MOUNT
-  rm -rf $GPG_USB_MOUNT
+      if [[ $GPG_LOADING == "yes" ]]; then
+          dialog --title "Encryption keys" \
+                 --msgbox "Now remove the USB drive. Insert the next drive containing a key fragment, or select Ok to finish" 6 70
+      fi
+      GPG_CTR=$((GPG_CTR + 1))
+  done
 }
 
 function interactive_gpg {
@@ -342,7 +413,7 @@ function interactive_gpg {
       dialog --backtitle "Freedombone Configuration" \
           --radiolist "GPG/PGP keys for your system:" 13 70 3 \
           1 "Generate new keys (new user)" on \
-          2 "Import keys from a USB drive" off \
+          2 "Import keys from USB drive/s" off \
           3 "Retrieve keys from friends servers" off 2> $data
       sel=$?
       case $sel in
@@ -354,7 +425,7 @@ function interactive_gpg {
           2) interactive_gpg_from_usb
              return;;
           3) interactive_gpg_from_remote
-			 if [ ! "$?" = "0" ]; then
+             if [ ! "$?" = "0" ]; then
                  GPG_CONFIGURED="no"
              fi;;
       esac
