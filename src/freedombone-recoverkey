@@ -28,9 +28,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+FRIENDS_SERVERS_LIST=
+MY_USERNAME=
+
 function show_help {
     echo ''
-    echo 'freedombone-recoverkey -u [username]'
+    echo 'freedombone-recoverkey -u [username] -l [friends servers list filename]'
     echo ''
     exit 0
 }
@@ -46,6 +49,12 @@ case $key in
     -u|--user)
     shift
     MY_USERNAME="$1"
+    ;;
+    # backup list filename
+    # typically /home/$USER/backup.list
+    -l|--list)
+    shift
+    FRIENDS_SERVERS_LIST="$1"
     ;;
     *)
     # unknown option
@@ -70,11 +79,63 @@ if [ ! -d /home/$MY_USERNAME ]; then
     echo "User $MY_USERNAME does not exist on the system"
     exit 7270
 fi
+
 FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
+
+# find the remote backup list
+if [ ! $FRIENDS_SERVERS_LIST ]; then
+    if [ -f /home/$MY_USERNAME/backup.list ]; then
+        FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
+    fi
+fi
+
+# obtain shares/fragments from remote locations
+if [ $FRIENDS_SERVERS_LIST ]; then
+    # For each remote server
+    while read remote_server
+    do
+        # Get the server and its password
+        # Format is:
+        #   username@domain:/home/username <port number> <ssh password>
+        REMOTE_SERVER=$(echo "${remote_server}" | awk -F ' ' '{print $1}')
+        if [ $REMOTE_SERVER ]; then
+            REMOTE_SSH_PORT=$(echo "${remote_server}" | awk -F ' ' '{print $2}')
+            REMOTE_PASSWORD=$(echo "${remote_server}" | awk -F ' ' '{print $3}')
+
+            # create a directory if it doesn't exist
+            if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
+                mkdir -p /home/$MY_USERNAME/.gnupg_fragments
+            fi
+
+            echo -n "Starting key retrieval from $REMOTE_SERVER..."
+            /usr/bin/sshpass -p $REMOTE_PASSWORD \
+                scp -r -P $REMOTE_SSH_PORT $REMOTE_SERVER/.gnupg_fragments/* /home/$MY_USERNAME/.gnupg_fragments
+            if [ ! "$?" = "0" ]; then
+                echo 'FAILED'
+            else
+                echo 'Ok'
+            fi
+        fi
+    done < $FRIENDS_SERVERS_LIST
+fi   
+
+# was a directory created?
 if [ ! -d $FRAGMENTS_DIR ]; then
     echo 'No fragments have been recovered, so the key cannot be recovered'
     exit 7483
 fi
+
+# was anything downloaded?
+cd $FRAGMENTS_DIR
+no_of_shares=$(ls -afq keyshare* | wc -l)
+no_of_shares=$((no_of_shares - 2))
+if [[ ${no_of_shares} == 0 ]]; then
+    echo 'No key fragments were retrieved'
+    exit 76882
+fi
+
+# set permissions on the fragments
+chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg_fragments
 
 # decrypt the file
 KEYS_FILE=$FRAGMENTS_DIR/keyshare.asc

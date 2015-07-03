@@ -224,7 +224,7 @@ function save_configuration_file {
       echo "HWRNG=$HWRNG" >> $CONFIGURATION_FILE
   fi
   if [ $ENABLE_SOCIAL_KEY_MANAGEMENT ]; then
-	  echo "ENABLE_SOCIAL_KEY_MANAGEMENT=$ENABLE_SOCIAL_KEY_MANAGEMENT" >> $CONFIGURATION_FILE
+      echo "ENABLE_SOCIAL_KEY_MANAGEMENT=$ENABLE_SOCIAL_KEY_MANAGEMENT" >> $CONFIGURATION_FILE
   fi
 }
 
@@ -241,17 +241,43 @@ function validate_domain_name {
   fi
 }
 
-function interactive_gpg {
-  dialog --title "Encryption keys" \
-         --backtitle "Freedombone Configuration" \
-         --defaultno \
-         --yesno "\nDo you have existing GPG/PGP/ssh keys that you wish to install?" 7 60
-  sel=$?
-  case $sel in
-      1) return;;
-      255) exit 0;;
-  esac
+function interactive_gpg_from_remote {
+  REMOTE_SERVERS_LIST=/home/$MY_USERNAME/keyshareservers.txt
 
+  # get a list of remote servers
+  freedombone-remote -u $MY_USERNAME -l $REMOTE_SERVERS_LIST
+  if [ ! "$?" = "0" ]; then
+      echo "1"
+      return
+  fi
+
+  if [ ! -f $REMOTE_SERVERS_LIST ]; then
+      echo "2"
+      return
+  fi
+  
+  # check the number of entries in the file
+  no_of_servers=$(cat $REMOTE_SERVERS_LIST | wc -l)
+  if [[ ${no_of_servers} < 3 ]]; then
+      dialog --title "Encryption keys" --msgbox 'There must be at least three servers to recover the key' 6 70
+      echo "3"
+      return
+  fi
+  
+  # try to recover the key from the servers
+  freedombone-recoverkey -u $MY_USERNAME -l $REMOTE_SERVERS_LIST
+  if [ ! "$?" = "0" ]; then
+      dialog --title "Encryption keys" --msgbox 'Your key could not be recovered' 6 70
+      echo "4"
+      return
+  fi
+
+  dialog --title "Encryption keys" --msgbox 'Your key has been recovered' 6 70
+
+  echo '0'
+}
+
+function interactive_gpg_from_usb {
   dialog --title "Encryption keys" --msgbox 'Plug in a USB drive containing a copy of your .gnupg directory' 6 70
 
   if [[ $INSTALLING_ON_BBB == "yes" ]]; then
@@ -310,6 +336,35 @@ function interactive_gpg {
 
   umount $GPG_USB_MOUNT
   rm -rf $GPG_USB_MOUNT
+}
+
+function interactive_gpg {
+  GPG_CONFIGURED="no"
+  while [[ $GPG_CONFIGURED != "yes" ]]
+  do
+      GPG_CONFIGURED="yes"
+      data=$(tempfile 2>/dev/null)
+      trap "rm -f $data" 0 1 2 5 15
+      dialog --backtitle "Freedombone Configuration" \
+          --radiolist "GPG/PGP keys for your system:" 17 40 3 \
+          1 "Generate new keys (new user)" on \
+          2 "Import keys from a USB drive" off \
+          3 "Retrieve keys from friends servers" off 2> $data
+      sel=$?
+      case $sel in
+          1) exit 0;;
+          255) exit 0;;
+      esac
+      case $(cat $data) in
+          1) return;;
+          2) interactive_gpg_from_usb
+             return;;
+          3) retval=interactive_gpg_from_remote
+             if [[ retval != '0' ]]; then
+                 GPG_CONFIGURED="no"
+             fi;;
+      esac
+  done
 }
 
 function interactive_configuration {

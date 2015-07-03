@@ -3782,7 +3782,6 @@ function backup_to_friends_servers {
   # we just need to rsync it to each friend
 
   echo '# For each remote server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo 'ctr_share=0' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'while read remote_server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'do' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  # Get the server and its password' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -3793,6 +3792,12 @@ function backup_to_friends_servers {
   echo -n '$1' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '  if [ $REMOTE_SERVER ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '    REMOTE_DOMAIN=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "awk -F ':' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$1' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n "}' | awk -F '@' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo -n '$2' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "}')" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    REMOTE_SSH_PORT=$(echo "${remote_server}" | ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '$2' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -3808,27 +3813,49 @@ function backup_to_friends_servers {
   echo "$REMOTE_BACKUPS_LOG" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
   if [[ $ENABLE_SOCIAL_KEY_MANAGEMENT == "yes" ]]; then
+      echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '    # Social key management' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "    if [ -d /home/$MY_USERNAME/.gnupg_fragments ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "        cd /home/$MY_USERNAME/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '        no_of_shares=$(ls -afq keyshare* | wc -l)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '        no_of_shares=$((no_of_fragments - 2))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '        if [[ ${no_of_shares} > 0 ]]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '            share_files=(/home/$MY_USERNAME/.gnupg_fragments/keyshare*)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '            share_filename=${key_files[ctr_share]}' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "            mkdir -p /home/$MY_USERNAME/tempkey/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "            cp $share_filename /home/$MY_USERNAME/tempkey/.gnupg_fragments/data" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo -n '            /usr/bin/sshpass -p $REMOTE_PASSWORD ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '        if [ $REMOTE_DOMAIN ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "            cd /home/$MY_USERNAME/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            no_of_shares=$(ls -afq keyshare* | wc -l)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            no_of_shares=$((no_of_fragments - 2))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '            if [[ ${no_of_shares} > 0 ]]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                # Pick a share index based on the domain name' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                # This ensures that the same share is always given to the same domain' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                sharenumstr=$(md5sum <<< "$REMOTE_DOMAIN")' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                share_index=$(echo $((0x${sharenumstr%% *} % ${no_of_shares})) | tr -d -)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                # get the share filename' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                share_files=(/home/$MY_USERNAME/.gnupg_fragments/keyshare*)' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                share_filename=${share_files[share_index]}' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                # create a temp directory containing the share' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "                mkdir -p /home/$MY_USERNAME/tempkey/.gnupg_fragments" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "                cp $share_filename /home/$MY_USERNAME/tempkey/.gnupg_fragments/" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                # copy the fragments directory to the remote server' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '                /usr/bin/sshpass -p $REMOTE_PASSWORD ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo "scp -r -P $REMOTE_SSH_PORT /home/$MY_USERNAME/tempkey/.gnupg_fragments $REMOTE_SERVER" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "            shred -zu /home/$MY_USERNAME/tempkey/.gnupg_fragments/*" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo "            rm -rf /home/$MY_USERNAME/tempkey" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '            ctr_share=$((ctr_share + 1))' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '            if [[ ${ctr_share} >= ${no_of_shares} ]]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-      echo '                ctr_share=0' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                    # Send a warning email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '                    echo "Key share to $REMOTE_SERVER failed" | mail -s "Freedombone social key management" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$MY_EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                # remove the temp file/directory' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "                shred -zu /home/$MY_USERNAME/tempkey/.gnupg_fragments/*" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "                rm -rf /home/$MY_USERNAME/tempkey" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo '                # Send a confirmation email' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo -n '                echo "Key shared to $REMOTE_SERVER" | mail -s "Freedombone social key management" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+      echo "$MY_EMAIL_ADDRESS" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '            fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '        fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
       echo '    fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   fi
 
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo -n '    rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" ' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '$SERVER_DIRECTORY/backup $REMOTE_SERVER' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -4480,6 +4507,14 @@ function restore_from_friend {
   echo '    rm -rf /root/tempdlna' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  if [[ $ENABLE_SOCIAL_KEY_MANAGEMENT == "yes" ]]; then
+      echo '' >> /usr/bin/$RESTORE_FROM_FRIENDS_SCRIPT_NAME
+      echo '# Retrieve key fragments' >> /usr/bin/$RESTORE_FROM_FRIENDS_SCRIPT_NAME
+      echo -n '/usr/bin/sshpass -p $REMOTE_PASSWORD ' >> /usr/bin/$RESTORE_FROM_FRIENDS_SCRIPT_NAME
+      echo "scp -r -P $REMOTE_SSH_PORT $REMOTE_SERVER/.gnupg_fragments /home/$MY_USERNAME/" >> /usr/bin/$RESTORE_FROM_FRIENDS_SCRIPT_NAME
+  fi
+
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'echo "*** Remote restore was successful ***"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
