@@ -1,0 +1,192 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Makes a USB drive containing a gpg key fragment
+#
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+
+USB_DRIVE=/dev/sdb1
+USB_MOUNT=/mnt/usb
+FRAGMENTS_DIR=$USB_MOUNT/.gnupg_fragments
+MY_USERNAME=$USER
+MASTER_DRIVE="no"
+
+function show_help {
+    echo ''
+    echo 'freedombone-keydrive -u [username] -d [device, eg. sdb] --master [yes/no]'
+    echo ''
+    exit 0
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    -u|--user)
+    shift
+    MY_USERNAME="$1"
+    ;;
+    -d|--dev)
+    shift
+    USB_DRIVE=/dev/${1}1
+    echo $USB_DRIVE
+    ;;
+    -m|--master)
+    shift
+    MASTER_DRIVE="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+if [ ! $MY_USERNAME ]; then
+    echo 'No username given'
+    exit 69350
+fi
+
+if [ ! -d /home/$MY_USERNAME ]; then
+    echo "Home directory for $MY_USERNAME not found. This user may not exist on the system"
+    exit 72378
+fi
+
+if [ ! -b $USB_DRIVE ]; then
+  echo 'Please attach a USB drive'
+  exit 65743
+fi
+
+umount -f $USB_MOUNT
+if [ ! -d $USB_MOUNT ]; then
+  mkdir $USB_MOUNT
+fi
+if [ -f /dev/mapper/encrypted_usb ]; then
+  rm -rf /dev/mapper/encrypted_usb
+fi
+cryptsetup luksClose encrypted_usb
+cryptsetup luksOpen $USB_DRIVE encrypted_usb
+if [ "$?" = "0" ]; then
+  USB_DRIVE=/dev/mapper/encrypted_usb
+fi
+echo -n "mount $USB_DRIVE"
+if [ ! "$?" = "0" ]; then
+  echo "There was a problem mounting the USB drive to $USB_MOUNT"
+  rm -rf $USB_MOUNT
+  exit 78543
+fi
+
+# optionally create a master drive which contains the full GPG keyring
+if [[ $MASTER_DRIVE == "yes" || $MASTER_DRIVE == "y" || $MASTER_DRIVE == "1" ]]; then
+  if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
+      echo "No .gnupg directory was found for $MY_USERNAME"
+      umount $USB_MOUNT
+      rm -rf $USB_MOUNT
+      exit 73025
+  fi
+  cp -rf /home/$MY_USERNAME/.gnupg $USB_MOUNT
+  if [ -d $USB_MOUNT/.gnupg ]; then
+      echo "GPG Keyring copied to $USB_DRIVE. You may now remove the drive."
+  else
+      echo "Unable to copy gpg keyring to $USB_DRIVE"
+  fi
+  umount $USB_MOUNT
+  rm -rf $USB_MOUNT
+  exit 0
+fi
+
+# Append the username as a subdirectory.
+# This has a down side in that it does identify a given fragment
+# as belonging to a given user, but has the convenience upside
+# of being able to carry key fragments for multiple friends on
+# the same USB drive
+FRAGMENTS_DIR=$FRAGMENTS_DIR/$MY_USERNAME
+
+# make a directory to contain the fragments
+if [ ! -d $FRAGMENTS_DIR ]; then
+  mkdir -p $FRAGMENTS_DIR
+fi
+if [ ! -d $FRAGMENTS_DIR ]; then
+  echo "There was a problem making the directory $FRAGMENTS_DIR"
+  umount $USB_MOUNT
+  rm -rf $USB_MOUNT
+  exit 6843
+fi
+
+no_of_usb_shares=$(ls -afq $FRAGMENTS_DIR/keyshare.asc.* | wc -l)
+no_of_usb_shares=$((no_of_usb_shares - 2))
+if [[ ${no_of_usb_shares} > 0 ]]; then
+  echo "A key fragment already exists on the drive for the user $MY_USERNAME"
+  umount $USB_MOUNT
+  rm -rf $USB_MOUNT
+  exit 58945
+fi
+
+# copy a random fragment to the drive
+LOCAL_FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
+cd $LOCAL_FRAGMENTS_DIR
+
+if [ ! -d $LOCAL_FRAGMENTS_DIR ]; then
+    freedombone-splitkey -u $MY_USERNAME
+fi
+
+no_of_local_shares=$(ls -afq $LOCAL_FRAGMENTS_DIR/keyshare.asc.* | wc -l)
+no_of_local_shares=$((no_of_shares - 2))
+if [[ ${no_of_local_shares} < 3 ]]; then
+    freedombone-splitkey -u $MY_USERNAME
+    no_of_local_shares=$(ls -afq $LOCAL_FRAGMENTS_DIR/keyshare.asc.* | wc -l)
+    no_of_local_shares=$((no_of_shares - 2))
+fi
+
+if [[ ${no_of_local_shares} < 3 ]]; then
+    echo 'Not enough key fragments available'
+    umount $USB_MOUNT
+    rm -rf $USB_MOUNT
+    exit 63386
+fi
+
+share_files=($LOCAL_FRAGMENTS_DIR/keyshare.asc.*)
+SHARE_FILENAME=${files[RANDOM % ${#share_files[@]}]}
+
+cp -f $SHARE_FILENAME $FRAGMENTS_DIR
+no_of_usb_shares=$(ls -afq $FRAGMENTS_DIR/keyshare.asc.* | wc -l)
+no_of_usb_shares=$((no_of_usb_shares - 2))
+if [[ ${no_of_usb_shares} != 1 ]]; then
+    echo "There was a problem copying the key fragment to $USB_DRIVE"
+    umount $USB_MOUNT
+    rm -rf $USB_MOUNT
+    exit 54292
+fi
+umount $USB_MOUNT
+rm -rf $USB_MOUNT
+echo "Key fragment copied to $USB_DRIVE. You may now remove the drive."
+
+exit 0

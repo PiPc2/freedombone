@@ -11,6 +11,7 @@ source:
 install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP} ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-keydrive ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-splitkey ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-recoverkey ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-prep ${DESTDIR}${PREFIX}/bin
@@ -32,6 +33,7 @@ install:
 	install -m 755 src/${APP}-xmpp-pass ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	install -m 644 man/${APP}-keydrive.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-splitkey.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-recoverkey.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-prep.1.gz ${DESTDIR}${PREFIX}/share/man/man1
@@ -53,6 +55,7 @@ install:
 	install -m 644 man/${APP}-xmpp-pass.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}.1.gz
+	rm -f ${PREFIX}/share/man/man1/${APP}-keydrive.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-splitkey.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-recoverkey.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-prep.1.gz
@@ -74,6 +77,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}-xmpp-pass.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}
+	rm -f ${PREFIX}/bin/${APP}-keydrive
 	rm -f ${PREFIX}/bin/${APP}-splitkey
 	rm -f ${PREFIX}/bin/${APP}-recoverkey
 	rm -f ${PREFIX}/bin/${APP}-prep
