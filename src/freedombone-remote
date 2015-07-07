@@ -45,6 +45,11 @@ entering_remote_backups_ctr=0
 # Title shown
 TITLE='Remote Backup'
 
+# Whether to include the capability of adding reciprocal user accounts
+# such that whoever is running a remote server can also use your server to
+# store backups
+RECIPROCAL="no"
+
 function show_help {
   echo ''
   echo 'freedombone-remote -u [username] -l [backup list filename] -m [min password length]'
@@ -56,6 +61,7 @@ function show_help {
   echo '  -u --username         User to create the backups.list file for'
   echo '  -l --list             Remote backup list (usually /home/$USER/backup.list)'
   echo '  -m --min              Minimum password length (characters)'
+  echo '  -r --reciprocal       Whether to add reciprocal user accounts'
   echo '  -t --title            Title shown'
   echo ''
   exit 0
@@ -91,6 +97,11 @@ case $key in
     shift
     TITLE="$1"
     ;;
+    # reciprocal user accounts
+    -r|--reciprocal)
+    shift
+    RECIPROCAL="yes"
+    ;;
     *)
     # unknown option
     ;;
@@ -123,18 +134,37 @@ function interactive_configuration_remote_backups {
   entering_remote_backups_ctr=1
 
   entering_remote_backups_done="no"
+  remote_ssh_username=""
+  remote_ssh_domain=""
+  remote_ssh_port=""
+  remote_ssh_password=""
+  remote_ssh_reciprocal_username=""
+  remote_ssh_reciprocal_password=""
   while [[ $entering_remote_backups_done == "no" ]]
   do
       data=$(tempfile 2>/dev/null)
       trap "rm -f $data" 0 1 2 5 15
-      dialog --backtitle "Freedombone Configuration" \
-          --title "$TITLE ${entering_remote_backups_ctr}" \
-          --form "\nPlease specify the SSH login details:" 11 55 4 \
-          "Username:" 1 1 "" 1 16 16 15 \
-          "Domain:" 2 1 "" 2 16 16 15 \
-          "SSH port:" 3 1 "22" 3 16 5 4 \
-          "Password:" 4 1 "" 4 16 20 100 \
-          2> $data
+      if [[ $RECIPROCAL == "yes" ]]; then
+          dialog --backtitle "Freedombone Configuration" \
+              --title "$TITLE ${entering_remote_backups_ctr}" \
+              --form "\nPlease specify the SSH login details for the remote server\n\nThe reciprocal entries are optional, and can be used if you wish to set up a user account on this system for whoever runs the remote server to also use for backups" 20 50 8 \
+              "Username:" 1 1 "$remote_ssh_username" 1 23 16 15 \
+              "Domain:" 2 1 "$remote_ssh_domain" 2 23 16 15 \
+              "SSH port:" 3 1 "22" 3 23 5 4 \
+              "Password:" 4 1 "$remote_ssh_password" 4 23 20 100 \
+              "Reciprocal Username:" 5 1 "$remote_ssh_reciprocal_username" 5 23 20 100 \
+              "Reciprocal Password:" 6 1 "$remote_ssh_reciprocal_password" 6 23 20 100 \
+              2> $data
+      else
+          dialog --backtitle "Freedombone Configuration" \
+              --title "$TITLE ${entering_remote_backups_ctr}" \
+              --form "\nPlease specify the SSH login details for the remote server" 15 50 4 \
+              "Username:" 1 1 "$remote_ssh_username" 1 23 16 15 \
+              "Domain:" 2 1 "$remote_ssh_domain" 2 23 16 15 \
+              "SSH port:" 3 1 "22" 3 23 5 4 \
+              "Password:" 4 1 "$remote_ssh_password" 4 23 20 100 \
+              2> $data
+      fi
       sel=$?
       case $sel in
           1) entering_remote_backups_done="yes";;
@@ -144,6 +174,8 @@ function interactive_configuration_remote_backups {
       remote_ssh_domain=$(cat $data | sed -n 2p)
       remote_ssh_port=$(cat $data | sed -n 3p)
       remote_ssh_password=$(cat $data | sed -n 4p)
+      remote_ssh_reciprocal_username=$(cat $data | sed -n 5p)
+      remote_ssh_reciprocal_password=$(cat $data | sed -n 6p)
       if [[ $remote_ssh_username != "" && \
           $remote_ssh_domain != "" && \
           $remote_ssh_port != "" && \
@@ -152,8 +184,33 @@ function interactive_configuration_remote_backups {
           if [ ${#remote_ssh_password} -lt $MINIMUM_PASSWORD_LENGTH ]; then
               dialog --title "Password quality check" --msgbox "The password given was too short. It must be at least $MINIMUM_PASSWORD_LENGTH characters" 6 40
           else
-              echo "$remote_ssh_username@$remote_ssh_domain:$remote_ssh_port//home/$remote_ssh_username $remote_ssh_password" >> $FRIENDS_SERVERS_LIST
-              entering_remote_backups_ctr=$((entering_remote_backups_ctr + 1))
+
+              if [[ $RECIPROCAL == "yes" ]]; then
+                  if [[ $remote_ssh_reciprocal_username != "" && \
+                        $remote_ssh_reciprocal_password != "" ]]; then
+                      if [ ${#remote_ssh_reciprocal_password} -lt $MINIMUM_PASSWORD_LENGTH ]; then
+                          dialog --title "Password quality check" --msgbox "The reciprocal password given was too short. It must be at least $MINIMUM_PASSWORD_LENGTH characters" 6 40
+                      else
+                          echo ${remote_ssh_reciprocal_username}:${remote_ssh_reciprocal_password}::::/home/${remote_ssh_reciprocal_username}:bash | newusers
+                          echo "$remote_ssh_username@$remote_ssh_domain:$remote_ssh_port//home/$remote_ssh_username $remote_ssh_password" >> $FRIENDS_SERVERS_LIST
+                          remote_ssh_username=""
+                          remote_ssh_domain=""
+                          remote_ssh_port=""
+                          remote_ssh_password=""
+                          remote_ssh_reciprocal_username=""
+                          remote_ssh_reciprocal_password=""
+                          entering_remote_backups_ctr=$((entering_remote_backups_ctr + 1))
+                      fi
+                  fi
+              else
+                  echo "$remote_ssh_username@$remote_ssh_domain:$remote_ssh_port//home/$remote_ssh_username $remote_ssh_password" >> $FRIENDS_SERVERS_LIST
+                  remote_ssh_username=""
+                  remote_ssh_domain=""
+                  remote_ssh_port=""
+                  remote_ssh_password=""
+                  entering_remote_backups_ctr=$((entering_remote_backups_ctr + 1))
+              fi
+
           fi
       else
           entering_remote_backups_done="yes"
