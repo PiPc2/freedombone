@@ -8,7 +8,7 @@ The Freedombone system can be installed onto a Beaglebone Black, or any system c
  - **Social**: Social networking with Red Matrix and GNU Social
  - **Media**: Runs media services such as DLNA to play music or videos on your devices
  - **Writer**: Host your blog and wiki
- - **Chat**: Encrypted IRC, XMPP and VoIP services for one-to-one and many-to-many chat
+ - **Chat**: Encrypted IRC, XMPP, Tox and VoIP services for one-to-one and many-to-many chat
  - **Developer**: Host your own git projects with a Github-like user interface
  - **Nonmailbox**: Installs eveything except for the email server
 
