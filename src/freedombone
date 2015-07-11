@@ -384,6 +384,16 @@ BATMAN_IPV6=
 # social key management
 ENABLE_SOCIAL_KEY_MANAGEMENT="no"
 
+TOX_PORT=33445
+TOX_REPO='git://github.com/irungentoo/toxcore.git'
+# These are some default nodes, but you can replace them with trusted nodes
+# as you prefer. See https://wiki.tox.im/Nodes
+TOX_NODE=
+#TOX_NODES=(
+#  '192.254.75.102,2607:5600:284::2,33445,951C88B7E75C867418ACDB5D273821372BB5BD652740BCDF623A4FA293E75D2F,Tox RELENG,US'
+#  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
+#)
+
 function show_help {
   echo ''
   echo 'freedombone -c [configuration file]'
@@ -719,6 +729,15 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "TOX_PORT" $CONFIGURATION_FILE; then
+          TOX_PORT=$(grep "TOX_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "TOX_NODES" $CONFIGURATION_FILE; then
+          TOX_NODES=$(grep "TOX_NODES" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "TOX_REPO" $CONFIGURATION_FILE; then
+          TOX_REPO=$(grep "TOX_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "ENABLE_SOCIAL_KEY_MANAGEMENT" $CONFIGURATION_FILE; then
           ENABLE_SOCIAL_KEY_MANAGEMENT=$(grep "ENABLE_SOCIAL_KEY_MANAGEMENT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -5481,6 +5500,19 @@ function configure_firewall_for_web_server {
   echo 'configure_firewall_for_web_server' >> $COMPLETION_FILE
 }
 
+function configure_firewall_for_tox {
+  if grep -Fxq "configure_firewall_for_tox" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+      # docker does its own firewalling
+      return
+  fi
+  iptables -A INPUT -i eth0 -p tcp --dport $TOX_PORT -j ACCEPT
+  save_firewall_settings
+  echo 'configure_firewall_for_tox' >> $COMPLETION_FILE
+}
+
 function configure_firewall_for_ssh {
   if grep -Fxq "configure_firewall_for_ssh" $COMPLETION_FILE; then
       return
@@ -7478,6 +7510,93 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'install_gogs' >> $COMPLETION_FILE
 }
 
+function install_tox_node {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+      return
+  fi
+  if grep -Fxq "install_tox_node" $COMPLETION_FILE; then
+      return
+  fi
+
+  # toxcore
+  apt-get -y install build-essential libtool autotools-dev
+  apt-get -y install automake checkinstall check git yasm
+  apt-get -y install libsodium13 libsodium-dev libcap2-bin
+
+  cd $INSTALL_DIR
+  git clone $TOX_REPO
+  cd $INSTALL_DIR/toxcore
+  autoreconf -i
+  ./configure
+  if [ ! "$?" = "0" ]; then
+      exit 78467
+  fi
+  make
+  if [ ! "$?" = "0" ]; then
+      exit 84562
+  fi
+  make install
+
+  useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment "Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
+  chmod 700 /var/lib/tox-bootstrapd
+  if [ ! -f $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf ]; then
+      echo "File not found $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf"
+      exit 476835
+  fi
+
+  # create configuration file
+  echo "port = $TOX_PORT" > /etc/tox-bootstrapd.conf
+  echo 'keys_file_path = "/var/lib/tox-bootstrapd/keys"' >> /etc/tox-bootstrapd.conf
+  echo 'pid_file_path = "/var/run/tox-bootstrapd/tox-bootstrapd.pid"' >> /etc/tox-bootstrapd.conf
+  echo 'enable_ipv6 = true' >> /etc/tox-bootstrapd.conf
+  echo 'enable_ipv4_fallback = true' >> /etc/tox-bootstrapd.conf
+  echo 'enable_lan_discovery = true' >> /etc/tox-bootstrapd.conf
+  echo 'enable_tcp_relay = true' >> /etc/tox-bootstrapd.conf
+  echo "tcp_relay_ports = [443, 3389, $TOX_PORT]" >> /etc/tox-bootstrapd.conf
+  echo 'enable_motd = true' >> /etc/tox-bootstrapd.conf
+  echo 'motd = "tox-bootstrapd"' >> /etc/tox-bootstrapd.conf
+
+  if [ $TOX_NODES ]; then
+      echo 'bootstrap_nodes = (' >> /etc/tox-bootstrapd.conf
+      toxcount=0
+      while [ "x${TOX_NODES[toxcount]}" != "x" ]
+      do
+          toxval_ipv4=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $1}')
+          toxval_ipv6=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $2}')
+          toxval_port=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $3}')
+          toxval_pubkey=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $4}')
+          toxval_maintainer=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $5}')
+          echo "{ // $toxval_maintainer" >> /etc/tox-bootstrapd.conf
+          if [[ $toxval_ipv6 != 'NONE' ]]; then
+              echo "  address = \"$toxval_ipv6\"" >> /etc/tox-bootstrapd.conf
+          else
+              echo "  address = \"$toxval_ipv4\"" >> /etc/tox-bootstrapd.conf
+          fi
+          echo "  port = $toxval_port" >> /etc/tox-bootstrapd.conf
+          echo "  public_key = \"$toxval_pubkey\"" >> /etc/tox-bootstrapd.conf
+          toxcount=$(( $toxcount + 1 ))
+          if [ "x${TOX_NODES[toxcount]}" != "x" ]; then
+              echo "}," >> /etc/tox-bootstrapd.conf
+          else
+              echo "}" >> /etc/tox-bootstrapd.conf
+          fi
+      done
+      echo ')' >> /etc/tox-bootstrapd.conf
+  fi
+
+  cp $INSTALL_DIR/toxcore/tox-bootstrapd.service /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable tox-bootstrapd.service
+  systemctl start tox-bootstrapd.service
+  if [ ! "$?" = "0" ]; then
+      systemctl status tox-bootstrapd.service
+      exit 5846
+  fi
+  configure_firewall_for_tox
+
+  echo 'install_tox_node' >> $COMPLETION_FILE
+}
+
 function install_xmpp {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
       return
@@ -9055,6 +9174,17 @@ function create_upgrade_script {
       echo 'systemctl restart gogs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
       echo 'systemctl daemon-reload' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
+  if [ -d $INSTALL_DIR/toxcore ]; then
+      echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo '# Tox node' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo "cd $INSTALL_DIR/toxcore" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'autoreconf -i' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo './configure' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'make' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      echo 'make install' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  fi
 
   echo '# update email encryption script' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if [ -d $INSTALL_DIR/gpgit ]; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
@@ -9511,6 +9641,7 @@ install_owncloud
 install_owncloud_music_app
 install_gogs
 install_xmpp
+install_tox_node
 configure_firewall_for_xmpp
 install_irc_server
 configure_firewall_for_irc
