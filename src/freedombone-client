@@ -31,6 +31,9 @@ CURR_USER=$USER
 # Version number of this script
 VERSION="1.01"
 
+# mesh networking settings
+BATMAN_IPV6=
+
 # ssh (from https://stribika.github.io/2015/01/04/secure-secure-shell.html)
 SSH_CIPHERS="chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
 SSH_MACS="hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-ripemd160-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160,umac-128@openssh.com"
@@ -79,6 +82,81 @@ function configure_ssh_client {
   echo ''
 }
 
+function mesh_batman {
+  if [ ! $BATMAN_IPV6 ]; then
+      return
+  fi
+  sudo apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
+  sudo apt-get -y install python-dev libevent-dev ebtables python-pip git
+
+  sudo modprobe batman-adv
+  [ $? -ne 0 ] && echo "B.A.T.M.A.N module not available" && exit 76482
+  if ! grep -q "batman_adv" /etc/modules; then
+      sudo echo 'batman_adv' >> /etc/modules
+  fi
+
+  echo '#!/bin/bash' > /tmp/freedombone_mesh
+  echo '' > /tmp/freedombone_mesh
+  echo '# stop network manager to make the mesh network work' >> /tmp/freedombone_mesh
+  echo 'service networking stop' >> /tmp/freedombone_mesh
+  echo '' >> /tmp/freedombone_mesh
+  echo -n '# configure the wlan interface to operate with ' >> /tmp/freedombone_mesh
+  echo 'mtus of 1532(batman requires it) and turn enc off ' >> /tmp/freedombone_mesh
+  echo 'to ensure it works' >> /tmp/freedombone_mesh
+  echo 'ifconfig wlan0 down' >> /tmp/freedombone_mesh
+  echo 'ifconfig wlan0 mtu 1532' >> /tmp/freedombone_mesh
+  echo 'iwconfig wlan0 enc off' >> /tmp/freedombone_mesh
+  echo '' >> /tmp/freedombone_mesh
+  echo '# add the interface to the ad-hoc network - or create it.' >> /tmp/freedombone_mesh
+  echo -n "iwconfig wlan0 mode ad-hoc essid mesh ap " >> /tmp/freedombone_mesh
+  echo "$BATMAN_IPV6 channel 2" >> /tmp/freedombone_mesh
+  echo '' >> /tmp/freedombone_mesh
+  echo -n '# add wlan0 to the batman-adv virtual interface(so it can ' >> /tmp/freedombone_mesh
+  echo 'communicate with other batman-adv nodes)' >> /tmp/freedombone_mesh
+  echo 'batctl if add wlan0' >> /tmp/freedombone_mesh
+  echo 'ifconfig wlan0 up' >> /tmp/freedombone_mesh
+  echo 'ifconfig bat0 up' >> /tmp/freedombone_mesh
+  echo '' >> /tmp/freedombone_mesh
+  echo '# get the ip address for the node from the bridge connected to the dhcp server' >> /tmp/freedombone_mesh
+  echo 'dhclient bat0' >> /tmp/freedombone_mesh
+  echo '' >> /tmp/freedombone_mesh
+  echo 'exit 0' >> /tmp/freedombone_mesh
+  chmod +x /tmp/freedombone_mesh
+  sudo mv /tmp/freedombone_mesh /usr/bin/mesh
+}
+
+function show_help {
+    echo ''
+    echo 'freedombone-client --mesh-ip [mesh bridge IPv6 address]'
+    echo ''
+    exit 0
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    --mesh-ip)
+    shift
+    BATMAN_IPV6="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
 echo 'Configuring client'
 configure_ssh_client
+mesh_batman
 echo 'Configuration complete'
+if [[ $BATMAN_IPV6 ]]; then
+    echo ''
+    echo 'Type "sudo mesh" to connect to the mesh network'
+fi
+exit 0
