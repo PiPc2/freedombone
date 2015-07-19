@@ -53,6 +53,7 @@ VARIANT_NONMAILBOX="nonmailbox"
 VARIANT_SOCIAL="social"
 VARIANT_MEDIA="media"
 VARIANT_DEVELOPER="developer"
+VARIANT_MESH="mesh"
 
 DEFAULT_DOMAIN_NAME=
 DEFAULT_DOMAIN_CODE=
@@ -376,6 +377,7 @@ CJDNS_PORT=
 # B.A.T.M.A.N settings
 ENABLE_BATMAN="no"
 BATMAN_IPV6=
+MESH_ESSID=
 
 # social key management
 ENABLE_SOCIAL_KEY_MANAGEMENT="no"
@@ -431,7 +433,9 @@ function show_help {
   echo '------------'
   echo 'This can either be blank if you wish to install the full system,'
   echo "or for more specialised variants you can specify '$VARIANT_MAILBOX', '$VARIANT_CLOUD',"
-  echo "'$VARIANT_CHAT', '$VARIANT_SOCIAL', '$VARIANT_MEDIA', '$VARIANT_WRITER' or '$VARIANT_DEVELOPER'."
+  echo "'$VARIANT_CHAT', '$VARIANT_SOCIAL', '$VARIANT_MEDIA', '$VARIANT_WRITER', '$VARIANT_DEVELOPER'"
+  echo "or '$VARIANT_MESH'."
+  echo ''
   echo "If you wish to install everything except email then use the '$VARIANT_NONMAILBOX' variaint."
   echo ''
   exit 0
@@ -703,7 +707,7 @@ function parse_args {
   if [ ! $SYSTEM_TYPE ]; then
       SYSTEM_TYPE=$VARIANT_FULL
   fi
-  if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_NONMAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL && $SYSTEM_TYPE != $VARIANT_MEDIA && $SYSTEM_TYPE != $VARIANT_DEVELOPER && $SYSTEM_TYPE != $VARIANT_FULL ]]; then
+  if [[ $SYSTEM_TYPE != $VARIANT_WRITER && $SYSTEM_TYPE != $VARIANT_CLOUD && $SYSTEM_TYPE != $VARIANT_CHAT && $SYSTEM_TYPE != $VARIANT_MAILBOX && $SYSTEM_TYPE != $VARIANT_NONMAILBOX && $SYSTEM_TYPE != $VARIANT_SOCIAL && $SYSTEM_TYPE != $VARIANT_MEDIA && $SYSTEM_TYPE != $VARIANT_DEVELOPER && $SYSTEM_TYPE != $VARIANT_MESH && $SYSTEM_TYPE != $VARIANT_FULL ]]; then
       echo "'$SYSTEM_TYPE' is an unrecognised Freedombone variant."
       exit 30
   fi
@@ -725,6 +729,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "MESH_ESSID" $CONFIGURATION_FILE; then
+          MESH_ESSID=$(grep "MESH_ESSID" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "TOX_PORT" $CONFIGURATION_FILE; then
           TOX_PORT=$(grep "TOX_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1552,6 +1559,14 @@ function get_batman_ipv6_address {
   fi
 }
 
+function get_mesh_essid {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q 'Mesh ESSID:' /home/$MY_USERNAME/README; then
+          MESH_ESSID==$(cat /home/$MY_USERNAME/README | grep "Mesh ESSID" | awk -F ':' '{print $2}' | sed 's/^ *//')
+      fi
+  fi
+}
+
 function mesh_batman {
   # https://sudoroom.org/wiki/Mesh/Relay_setup
   # also see http://www.netlore.co.uk/airmesh/
@@ -1601,8 +1616,10 @@ function mesh_batman {
       fi
   fi
 
-  # TODO add wlan0
-
+  get_mesh_essid
+  if [ ! $MESH_ESSID ]; then
+      MESH_ESSID="$(openssl rand -base64 3)"
+  fi
 
   echo '#!/bin/bash' > /usr/bin/mesh
   echo '' > /usr/bin/mesh
@@ -1615,7 +1632,7 @@ function mesh_batman {
   echo 'iwconfig wlan0 enc off' >> /usr/bin/mesh
   echo '' >> /usr/bin/mesh
   echo '# add the interface to the ad-hoc network - or create it.' >> /usr/bin/mesh
-  echo "iwconfig wlan0 mode ad-hoc essid NetworkName ap $BATMAN_IPV6 channel 2" >> /usr/bin/mesh
+  echo "iwconfig wlan0 mode ad-hoc essid mesh-$MESH_ESSID ap $BATMAN_IPV6 channel 2" >> /usr/bin/mesh
   echo '' >> /usr/bin/mesh
   echo '# add wlan0 to the batman-adv virtual interface(so it can communicate with other batman-adv nodes)' >> /usr/bin/mesh
   echo 'batctl if add wlan0' >> /usr/bin/mesh
@@ -1640,6 +1657,7 @@ function mesh_batman {
       echo '' >> /home/$MY_USERNAME/README
       echo 'Mesh Networking (B.A.T.M.A.N)' >> /home/$MY_USERNAME/README
       echo '=============================' >> /home/$MY_USERNAME/README
+      echo "Mesh ESSID: $MESH_ESSID" >> /home/$MY_USERNAME/README
       echo "BATMAN IPv6 address: $BATMAN_IPV6" >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
       chmod 600 /home/$MY_USERNAME/README
@@ -4678,6 +4696,9 @@ function change_login_message {
   if [[ $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
       echo '             D E V E L O P E R   E D I T I O N' >> /etc/motd
   fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+      echo '                   M E S H   E D I T I O N' >> /etc/motd
+  fi
 
   echo '' >> /etc/motd
   echo '                  Freedom in the Cloud' >> /etc/motd
@@ -4697,7 +4718,7 @@ function search_for_attached_usb_drive {
           mkdir $USB_MOUNT
           mount $USB_DRIVE $USB_MOUNT
       fi
-      if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+      if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
           if [ -d $USB_MOUNT/Maildir ]; then
               echo 'Maildir found on USB drive'
               IMPORT_MAILDIR=$USB_MOUNT/Maildir
@@ -5419,7 +5440,7 @@ function save_firewall_settings {
 }
 
 function configure_firewall_for_voip {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "configure_firewall_for_voip" $COMPLETION_FILE; then
@@ -5592,7 +5613,7 @@ function configure_firewall_for_git {
 }
 
 function configure_firewall_for_email {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
       return
   fi
   if grep -Fxq "configure_firewall_for_email" $COMPLETION_FILE; then
@@ -7042,7 +7063,7 @@ function repair_databases_script {
 }
 
 function install_owncloud_music_app {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
@@ -7107,7 +7128,7 @@ function add_ddns_domain {
 }
 
 function install_owncloud {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   OWNCLOUD_COMPLETION_MSG1=" *** Freedombone $SYSTEM_TYPE is now installed ***"
@@ -7562,7 +7583,7 @@ quit" > $INSTALL_DIR/batch.sql
 }
 
 function install_tox_node {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "install_tox_node" $COMPLETION_FILE; then
@@ -7682,7 +7703,7 @@ function install_tox_node {
 }
 
 function install_tox_client {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "install_tox_client" $COMPLETION_FILE; then
@@ -7703,7 +7724,7 @@ function install_tox_client {
 }
 
 function install_xmpp {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "install_xmpp" $COMPLETION_FILE; then
@@ -7829,7 +7850,7 @@ function install_watchdog_script {
 }
 
 function install_irc_server {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "install_irc_server" $COMPLETION_FILE; then
@@ -7912,7 +7933,7 @@ function get_wiki_admin_password {
 }
 
 function install_wiki {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MASH" ]]; then
       return
   fi
   if grep -Fxq "install_wiki" $COMPLETION_FILE; then
@@ -8199,7 +8220,7 @@ function get_blog_admin_password {
 }
 
 function install_blog {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "install_blog" $COMPLETION_FILE; then
@@ -8447,7 +8468,7 @@ function install_gnu_social {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if [ ! $MICROBLOG_DOMAIN_NAME ]; then
@@ -8692,7 +8713,7 @@ function install_redmatrix {
   if grep -Fxq "install_redmatrix" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if [ ! $REDMATRIX_DOMAIN_NAME ]; then
@@ -8997,7 +9018,7 @@ function install_dlna_server {
   if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   apt-get -y install minidlna
@@ -9048,7 +9069,7 @@ function install_mediagoblin {
   if grep -Fxq "install_mediagoblin" $COMPLETION_FILE; then
       return
   fi
-  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if [ ! $MEDIAGOBLIN_DOMAIN_NAME ]; then
@@ -9589,7 +9610,7 @@ function get_voip_server_password {
 }
 
 function install_voip {
-  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if grep -Fxq "install_voip" $COMPLETION_FILE; then
@@ -9719,6 +9740,7 @@ configure_internet_protocol
 create_git_project
 mesh_cjdns
 mesh_cjdns_tools
+mesh_batman
 backup_github_projects
 configure_ssh
 remove_instructions_from_motd
