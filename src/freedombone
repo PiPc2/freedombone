@@ -1576,6 +1576,67 @@ function get_batman_ipv6_address {
   fi
 }
 
+function install_vpn_tunnel {
+  if ! grep -q "repo.universe-factory.net" /etc/apt/sources.list; then
+      echo 'deb http://repo.universe-factory.net/debian/ sid main' >> /etc/apt/sources.list
+      gpg --keyserver pgpkeys.mit.edu --recv-key 16EF3F64CB201D9C
+      if [ ! "$?" = "0" ]; then
+          exit 76272
+      fi
+      gpg -a --export 16EF3F64CB201D9C | sudo apt-key add -
+      apt-get update
+      apt-get -y install fastd
+      if [ ! "$?" = "0" ]; then
+          exit 52026
+      fi
+  fi
+}
+
+# ath9k_htc driver
+function install_atheros_wifi {
+  if grep -Fxq "install_atheros_wifi" $COMPLETION_FILE; then
+      return
+  fi
+  if [ $INSTALLING_ON_BBB != "yes" ]; then
+      return
+  fi
+  if [[ $ENABLE_BABEL != "yes" && $ENABLE_BATMAN != "yes" && $ENABLE_CJDNS != "yes" ]]; then
+      return
+  fi
+  if [ -d $INSTALL_DIR/open-ath9k-htc-firmware ]; then
+      return
+  fi
+  apt-get -y install build-essential cmake git m4 texinfo
+  if [ ! -d $INSTALL_DIR ]; then
+      mkdir -p $INSTALL_DIR
+  fi
+  cd $INSTALL_DIR
+  if [ ! -d $INSTALL_DIR/open-ath9k-htc-firmware ]; then
+      git clone https://github.com/qca/open-ath9k-htc-firmware.git
+      if [ ! "$?" = "0" ]; then
+          rm -rf $INSTALL_DIR/open-ath9k-htc-firmware
+          exit 74283
+      fi
+  fi
+  cd $INSTALL_DIR/open-ath9k-htc-firmware
+  git checkout 1.4.0
+  make toolchain
+  if [ ! "$?" = "0" ]; then
+      rm -rf $INSTALL_DIR/open-ath9k-htc-firmware
+      exit 24820
+  fi
+  make firmware
+  if [ ! "$?" = "0" ]; then
+      rm -rf $INSTALL_DIR/open-ath9k-htc-firmware
+      exit 63412
+  fi
+  cp target_firmware/*.fw /lib/firmware/
+  if [ ! "$?" = "0" ]; then
+      exit 74681
+  fi
+  echo 'install_atheros_wifi' >> $COMPLETION_FILE
+}
+
 function mesh_babel {
   if grep -Fxq "mesh_babel" $COMPLETION_FILE; then
       return
@@ -1617,7 +1678,10 @@ function mesh_batman_bridge {
 
   apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
   apt-get -y install python-dev libevent-dev ebtables python-pip git
+  apt-get -y install avahi-utils avahi-autoipd wireless-tools
 
+  install_vpn_tunnel
+  
   modprobe batman-adv
   [ $? -ne 0 ] && echo "B.A.T.M.A.N module not available" && exit 76482
   if ! grep -q "batman_adv" /etc/modules; then
@@ -1640,50 +1704,22 @@ function mesh_batman_bridge {
   if ! grep -q "# Mesh Networking (B.A.T.M.A.N)" /etc/network/interfaces; then
       echo '' >> /etc/network/interfaces
       echo '# Mesh Networking (B.A.T.M.A.N)' >> /etc/network/interfaces
-      echo 'iface bat0 inet6 static' >> /etc/network/interfaces
-      echo '    pre-up modprobe ipv6' >> /etc/network/interfaces
-      echo "    address $BATMAN_IPV6" >> /etc/network/interfaces
-      echo '    netmask 64' >> /etc/network/interfaces
-      service networking restart
-      if [ ! "$?" = "0" ]; then
-          systemctl status networking.service
-          exit 6949
-      fi
+      echo 'auto wlan0' >> /etc/network/interfaces
+      echo 'iface wlan0 inet static' >> /etc/network/interfaces
+      echo '    pre-up modprobe batman_adv' >> /etc/network/interfaces
+      echo '    post-down modprobe -rf batman_adv' >> /etc/network/interfaces
+      echo '    address 0.0.0.0' >> /etc/network/interfaces
+      echo '    mtu 1532' >> /etc/network/interfaces
+      echo '    wireless-mode ad-hoc' >> /etc/network/interfaces
+      echo "    wireless-essid mesh" >> /etc/network/interfaces
+      echo "    wireless-channel 2" >> /etc/network/interfaces
+      echo "    wireless-ap 02:12:34:56:78:9A" >> /etc/network/interfaces
   fi
-
-  echo '#!/bin/bash' > /usr/bin/mesh
-  echo '' > /usr/bin/mesh
-  echo '# stop network manager to make the mesh network work' >> /usr/bin/mesh
-  echo 'systemctl stop networking' >> /usr/bin/mesh
-  echo '' >> /usr/bin/mesh
-  echo -n '# configure the wlan interface to operate with ' >> /usr/bin/mesh
-  echo 'mtus of 1532(batman requires it) and turn enc off ' >> /usr/bin/mesh
-  echo 'to ensure it works' >> /usr/bin/mesh
-  echo 'ifconfig wlan0 down' >> /usr/bin/mesh
-  echo 'ifconfig wlan0 mtu 1532' >> /usr/bin/mesh
-  echo 'iwconfig wlan0 enc off' >> /usr/bin/mesh
-  echo '' >> /usr/bin/mesh
-  echo '# add the interface to the ad-hoc network - or create it.' >> /usr/bin/mesh
-  echo -n "iwconfig wlan0 mode ad-hoc essid mesh ap " >> /usr/bin/mesh
-  echo "$BATMAN_IPV6 channel 2" >> /usr/bin/mesh
-  echo '' >> /usr/bin/mesh
-  echo -n '# add wlan0 to the batman-adv virtual interface(so it can ' >> /usr/bin/mesh
-  echo 'communicate with other batman-adv nodes)' >> /usr/bin/mesh
-  echo 'batctl if add wlan0' >> /usr/bin/mesh
-  echo 'ifconfig wlan0 up' >> /usr/bin/mesh
-  echo 'ifconfig bat0 up' >> /usr/bin/mesh
-  echo '' >> /usr/bin/mesh
-  echo -n '# make the bridge linking the batman-adv virtual ' >> /usr/bin/mesh
-  echo 'interface to the ethernet port' >> /usr/bin/mesh
-  echo 'brctl addbr bridge-link' >> /usr/bin/mesh
-  echo 'brctl addif bridge-link bat0' >> /usr/bin/mesh
-  echo '#brctl addif bridge-link eth0' >> /usr/bin/mesh
-  echo '' >> /usr/bin/mesh
-  echo '# get the ip address for the bridge from the dhcp server' >> /usr/bin/mesh
-  echo 'dhclient bridge-link' >> /usr/bin/mesh
-  echo '' >> /usr/bin/mesh
-  echo 'exit 0' >> /usr/bin/mesh
-  chmod +x /usr/bin/mesh
+  systemctl restart networking.service
+  if [ ! "$?" = "0" ]; then
+      systemctl status networking.service
+      exit 6949
+  fi
 
   if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
@@ -9813,6 +9849,7 @@ set_your_domain_name
 time_synchronisation
 configure_internet_protocol
 create_git_project
+install_atheros_wifi
 mesh_cjdns
 mesh_cjdns_tools
 mesh_batman_bridge
