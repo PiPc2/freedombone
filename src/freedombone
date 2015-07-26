@@ -366,6 +366,8 @@ EXTERNAL_IP_SERVICES=( \
   'http://ipinfo.io/' \
   'http://httpbin.org/ip')
 
+WIFI_CHANNEL=2
+
 # cjdns settings
 ENABLE_CJDNS="no"
 CJDNS_PRIVATE_KEY=
@@ -377,6 +379,8 @@ CJDNS_PORT=
 # B.A.T.M.A.N settings
 ENABLE_BATMAN="no"
 BATMAN_IPV6=
+BATMAN_CELLID='02:BA:00:00:03:01'
+ESSID='mesh'
 
 # Babel mesh
 ENABLE_BABEL="no"
@@ -746,6 +750,15 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "WIFI_CHANNEL" $CONFIGURATION_FILE; then
+          WIFI_CHANNEL=$(grep "WIFI_CHANNEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "BATMAN_CELLID" $CONFIGURATION_FILE; then
+          BATMAN_CELLID=$(grep "BATMAN_CELLID" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "ESSID" $CONFIGURATION_FILE; then
+          ESSID=$(grep "ESSID" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "TOX_PORT" $CONFIGURATION_FILE; then
           TOX_PORT=$(grep "TOX_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1726,188 +1739,135 @@ function mesh_batman_bridge {
       BATMAN_IPV6="$IPV6_NETWORK:$a:$b:$c:$d"
   fi
 
-  echo '#!/bin/sh' > /etc/init.d/batman
-  echo '### BEGIN INIT INFO' >> /etc/init.d/batman
-  echo '# Provides:          mesh-node' >> /etc/init.d/batman
-  echo '# Required-Start:    $local_fs $remote_fs $network' >> /etc/init.d/batman
-  echo '# Required-Stop:     $local_fs $remote_fs' >> /etc/init.d/batman
-  echo '# Default-Start:     2 3 4 5' >> /etc/init.d/batman
-  echo '# Default-Stop:      0 1 6' >> /etc/init.d/batman
-  echo '# Short-Description: Enable batman-adv based mesh node' >> /etc/init.d/batman
-  echo '# Description:       Configure the first wifi network card found as a' >> /etc/init.d/batman
-  echo '#                    batman-adv mesh node.' >> /etc/init.d/batman
-  echo '### END INIT INFO' >> /etc/init.d/batman
-  echo '#' >> /etc/init.d/batman
-  echo '# Based on http://www.open-mesh.org/projects/batman-adv/wiki/Quick-start-guide' >> /etc/init.d/batman
-  echo '# and http://freifunk.in-kiel.de/wiki/Eigenen_Rechner_in_das_Freifunk-Netz' >> /etc/init.d/batman
-  echo '#' >> /etc/init.d/batman
-  echo '# Set up bat0 network interface on Linux to join the mesh network in' >> /etc/init.d/batman
-  echo '# Oslo, Norway by default.  The mesh setup can be adjusted by creating' >> /etc/init.d/batman
-  echo '# /etc/default/batctl.' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '# Exit on first error' >> /etc/init.d/batman
-  echo '#set -e' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '# Mesh definition' >> /etc/init.d/batman
-  echo "ESSID=mesh" >> /etc/init.d/batman
-  echo "CELLID=02:BA:00:00:03:01" >> /etc/init.d/batman
-  echo 'CHANNEL=2' >> /etc/init.d/batman
-  echo 'FREQUENCY=2437' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '# Ethernet bridge definition (bridged do bat0)' >> /etc/init.d/batman
-  echo 'BRIDGE=br-mesh' >> /etc/init.d/batman
-  echo 'EIFACE=eth0' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'if [ -e /etc/default/batctl ] ; then' >> /etc/init.d/batman
-  echo '    . /etc/default/batctl' >> /etc/init.d/batman
-  echo 'fi' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'install_dependencies() {' >> /etc/init.d/batman
-  echo '    echo "info: installing dependencies"' >> /etc/init.d/batman
-  echo '    apt-get update -qq' >> /etc/init.d/batman
-  echo '    DEBIAN_FRONTEND=noninteractive \' >> /etc/init.d/batman
-  echo '        apt-get install -qqy \' >> /etc/init.d/batman
-  echo '        rfkill \' >> /etc/init.d/batman
-  echo '        batctl \' >> /etc/init.d/batman
-  echo '        wireless-tools \' >> /etc/init.d/batman
-  echo '        bridge-utils ' >> /etc/init.d/batman
-  echo '}' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'first_wifi_interface() {' >> /etc/init.d/batman
-  echo '    IFACE=$(ls -d /sys/class/net/*/wireless 2>/dev/null | sort | head -1|cut -d/ -f5)' >> /etc/init.d/batman
-  echo '    if [ -z "$IFACE" ] ;then' >> /etc/init.d/batman
-  echo '        IFACE=$(iwconfig 2>/dev/null | sort | awk "/IEEE 802/ {print $1; exit}")' >> /etc/init.d/batman
-  echo '    fi' >> /etc/init.d/batman
-  echo '    echo $IFACE' >> /etc/init.d/batman
-  echo '}' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'start() {' >> /etc/init.d/batman
-  echo '    if [ -z "$IFACE" ] ; then' >> /etc/init.d/batman
-  echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> /etc/init.d/batman
-  echo '        return' >> /etc/init.d/batman
-  echo '    fi' >> /etc/init.d/batman
-  echo '    echo "info: enabling batman-adv mesh network $ESSID on $IFACE"' >> /etc/init.d/batman
-  echo '    $NETWORKMANAGER stop' >> /etc/init.d/batman
-  echo '    sleep 5' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    # Might have to re-enable wifi' >> /etc/init.d/batman
-  echo '    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    ifconfig $IFACE down' >> /etc/init.d/batman
-  echo '    ifconfig $IFACE mtu 1528' >> /etc/init.d/batman
-  echo '    iwconfig $IFACE enc off' >> /etc/init.d/batman
-  echo '    iwconfig $IFACE mode ad-hoc essid $ESSID channel $CHANNEL' >> /etc/init.d/batman
-  echo '    sleep 1' >> /etc/init.d/batman
-  echo '    iwconfig $IFACE ap $CELLID' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    modprobe batman-adv' >> /etc/init.d/batman
-  echo '    batctl if add $IFACE' >> /etc/init.d/batman
-  echo '    ifconfig $IFACE up' >> /etc/init.d/batman
-  echo '    ifconfig bat0 up promisc' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    #Use persistent HWAddr' >> /etc/init.d/batman
-  echo '    ether_new=$(ifconfig eth0 | grep HWaddr | sed -e "s/.*HWaddr //")' >> /etc/init.d/batman
-  echo '    if [ ! -f /var/lib/mesh-node/bat0 ]' >> /etc/init.d/batman
-  echo '    then' >> /etc/init.d/batman
-  echo '        mkdir /var/lib/mesh-node' >> /etc/init.d/batman
-  echo '        echo "${ether_new}" > /var/lib/mesh-node/bat0' >> /etc/init.d/batman
-  echo '    else' >> /etc/init.d/batman
-  echo '        ether=$(cat /var/lib/mesh-node/bat0)' >> /etc/init.d/batman
-  echo '        ifconfig bat0 hw ether ${ether}' >> /etc/init.d/batman
-  echo '    fi' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    if [ "$EIFACE" ] ; then' >> /etc/init.d/batman
-  echo '        ifconfig $EIFACE up promisc' >> /etc/init.d/batman
-  echo '        brctl addbr $BRIDGE' >> /etc/init.d/batman
-  echo '        brctl addif $BRIDGE bat0' >> /etc/init.d/batman
-  echo '        brctl addif $BRIDGE $EIFACE' >> /etc/init.d/batman
-  echo '        ifconfig $BRIDGE up' >> /etc/init.d/batman
-  echo '    fi' >> /etc/init.d/batman
-  echo '}' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'stop() {' >> /etc/init.d/batman
-  echo '    if [ -z "$IFACE" ] ; then' >> /etc/init.d/batman
-  echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> /etc/init.d/batman
-  echo '        return' >> /etc/init.d/batman
-  echo '    fi' >> /etc/init.d/batman
-  echo '    if [ "$EIFACE" ] ; then' >> /etc/init.d/batman
-  echo '        brctl delif $BRIDGE bat0' >> /etc/init.d/batman
-  echo '        brctl delif $BRIDGE $EIFACE' >> /etc/init.d/batman
-  echo '        ifconfig $BRIDGE down || true' >> /etc/init.d/batman
-  echo '        brctl delbr $BRIDGE' >> /etc/init.d/batman
-  echo '        ifconfig $EIFACE down -promisc' >> /etc/init.d/batman
-  echo '    fi' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    ifconfig bat0 down -promisc' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    batctl if del $IFACE' >> /etc/init.d/batman
-  echo '    rmmod batman-adv' >> /etc/init.d/batman
-  echo '    ifconfig $IFACE mtu 1500' >> /etc/init.d/batman
-  echo '    ifconfig $IFACE down' >> /etc/init.d/batman
-  echo '    iwconfig $IFACE mode managed' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '    $NETWORKMANAGER restart' >> /etc/init.d/batman
-  echo '}' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'status() {' >> /etc/init.d/batman
-  echo '    batctl o' >> /etc/init.d/batman
-  echo '}' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'IFACE=$(first_wifi_interface)' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo '# Work even if network-manager isnt installed' >> /etc/init.d/batman
-  echo 'if [ -e /etc/init.d/network-manager ] || [ -e /etc/init/network-manager ] ; then' >> /etc/init.d/batman
-  echo '    NETWORKMANAGER="service network-manager"' >> /etc/init.d/batman
-  echo 'else' >> /etc/init.d/batman
-  echo '    NETWORKMANAGER=true' >> /etc/init.d/batman
-  echo 'fi' >> /etc/init.d/batman
-  echo '' >> /etc/init.d/batman
-  echo 'case "$1" in' >> /etc/init.d/batman
-  echo '    setup)' >> /etc/init.d/batman
-  echo '        install_dependencies' >> /etc/init.d/batman
-  echo '        ;;' >> /etc/init.d/batman
-  echo '    start|stop|status)' >> /etc/init.d/batman
-  echo '        $1' >> /etc/init.d/batman
-  echo '        ;;' >> /etc/init.d/batman
-  echo '    force-reload)' >> /etc/init.d/batman
-  echo '        ;;' >> /etc/init.d/batman
-  echo '    *)' >> /etc/init.d/batman
-  echo '    echo "error: invalid parameter $1"' >> /etc/init.d/batman
-  echo '    echo "usage: $0 {start|stop|status}"' >> /etc/init.d/batman
-  echo '    exit 1' >> /etc/init.d/batman
-  echo '    ;;' >> /etc/init.d/batman
-  echo 'esac' >> /etc/init.d/batman
-  echo 'exit 0' >> /etc/init.d/batman
-  chmod +x /etc/init.d/batman
-  update-rc.d batman defaults
+  batman_script=/var/lib/batman
 
-  if ! grep -q "# Mesh Networking (B.A.T.M.A.N)" /etc/network/interfaces; then
-      echo '' >> /etc/network/interfaces
-      echo '# Mesh Networking (B.A.T.M.A.N)' >> /etc/network/interfaces
-      echo 'auto wlan0' >> /etc/network/interfaces
-      echo 'iface wlan0 inet static' >> /etc/network/interfaces
-      echo '    pre-up modprobe batman_adv' >> /etc/network/interfaces
-      echo '    post-down modprobe -rf batman_adv' >> /etc/network/interfaces
-      echo '    address 0.0.0.0' >> /etc/network/interfaces
-      echo '    mtu 1532' >> /etc/network/interfaces
-      echo '    wireless-mode ad-hoc' >> /etc/network/interfaces
-      echo "    wireless-essid mesh" >> /etc/network/interfaces
-      echo "    wireless-channel 2" >> /etc/network/interfaces
-      echo "    wireless-ap 02:12:34:56:78:9A" >> /etc/network/interfaces
-  fi
-  systemctl restart networking.service
-  if [ ! "$?" = "0" ]; then
-      systemctl status networking.service
-      exit 6949
-  fi
+  echo '#!/bin/sh' > $batman_script
+  echo '' >> $batman_script
+  echo '# Mesh definition' >> $batman_script
+  echo "ESSID=$ESSID" >> $batman_script
+  echo "CELLID=$BATMAN_CELLID" >> $batman_script
+  echo "CHANNEL=$WIFI_CHANNEL" >> $batman_script
+  echo '' >> $batman_script
+  echo '# Ethernet bridge definition (bridged do bat0)' >> $batman_script
+  echo 'BRIDGE=br-mesh' >> $batman_script
+  echo 'EIFACE=eth0' >> $batman_script
+  echo '' >> $batman_script
+  echo 'if [ -e /etc/default/batctl ]; then' >> $batman_script
+  echo '    . /etc/default/batctl' >> $batman_script
+  echo 'fi' >> $batman_script
+  echo '' >> $batman_script
+  echo 'first_wifi_interface() {' >> $batman_script
+  echo '    IFACE=$(ls -d /sys/class/net/*/wireless 2>/dev/null | sort | head -1|cut -d/ -f5)' >> $batman_script
+  echo '    if [ -z "$IFACE" ] ;then' >> $batman_script
+  echo '        IFACE=$(iwconfig 2>/dev/null | sort | awk "/IEEE 802/ {print $1; exit}")' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '    echo $IFACE' >> $batman_script
+  echo '}' >> $batman_script
+  echo '' >> $batman_script
+  echo 'start() {' >> $batman_script
+  echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
+  echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
+  echo '        return' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '    echo "info: enabling batman-adv mesh network $ESSID on $IFACE"' >> $batman_script
+  echo '    systemctl stop networking' >> $batman_script
+  echo '    sleep 5' >> $batman_script
+  echo '' >> $batman_script
+  echo '    # Might have to re-enable wifi' >> $batman_script
+  echo '    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true' >> $batman_script
+  echo '' >> $batman_script
+  echo '    ifconfig $IFACE down' >> $batman_script
+  echo '    ifconfig $IFACE mtu 1528' >> $batman_script
+  echo '    iwconfig $IFACE enc off' >> $batman_script
+  echo '    iwconfig $IFACE mode ad-hoc essid $ESSID channel $CHANNEL' >> $batman_script
+  echo '    sleep 1' >> $batman_script
+  echo '    iwconfig $IFACE ap $CELLID' >> $batman_script
+  echo '' >> $batman_script
+  echo '    modprobe batman-adv' >> $batman_script
+  echo '    batctl if add $IFACE' >> $batman_script
+  echo '    ifconfig $IFACE up' >> $batman_script
+  echo '    ifconfig bat0 up promisc' >> $batman_script
+  echo '' >> $batman_script
+  echo '    #Use persistent HWAddr' >> $batman_script
+  echo '    ether_new=$(ifconfig eth0 | grep HWaddr | sed -e "s/.*HWaddr //")' >> $batman_script
+  echo '    if [ ! -f /var/lib/mesh-node/bat0 ]' >> $batman_script
+  echo '    then' >> $batman_script
+  echo '        mkdir /var/lib/mesh-node' >> $batman_script
+  echo '        echo "${ether_new}" > /var/lib/mesh-node/bat0' >> $batman_script
+  echo '    else' >> $batman_script
+  echo '        ether=$(cat /var/lib/mesh-node/bat0)' >> $batman_script
+  echo '        ifconfig bat0 hw ether ${ether}' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '' >> $batman_script
+  echo '    if [ "$EIFACE" ] ; then' >> $batman_script
+  echo '        ifconfig $EIFACE up promisc' >> $batman_script
+  echo '        brctl addbr $BRIDGE' >> $batman_script
+  echo '        brctl addif $BRIDGE bat0' >> $batman_script
+  echo '        brctl addif $BRIDGE $EIFACE' >> $batman_script
+  echo '        ifconfig $BRIDGE up' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '}' >> $batman_script
+  echo '' >> $batman_script
+  echo 'stop() {' >> $batman_script
+  echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
+  echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
+  echo '        return' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '    if [ "$EIFACE" ] ; then' >> $batman_script
+  echo '        brctl delif $BRIDGE bat0' >> $batman_script
+  echo '        brctl delif $BRIDGE $EIFACE' >> $batman_script
+  echo '        ifconfig $BRIDGE down || true' >> $batman_script
+  echo '        brctl delbr $BRIDGE' >> $batman_script
+  echo '        ifconfig $EIFACE down -promisc' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '' >> $batman_script
+  echo '    ifconfig bat0 down -promisc' >> $batman_script
+  echo '' >> $batman_script
+  echo '    batctl if del $IFACE' >> $batman_script
+  echo '    rmmod batman-adv' >> $batman_script
+  echo '    ifconfig $IFACE mtu 1500' >> $batman_script
+  echo '    ifconfig $IFACE down' >> $batman_script
+  echo '    iwconfig $IFACE mode managed' >> $batman_script
+  echo '' >> $batman_script
+  echo '    systemctl restart networking' >> $batman_script
+  echo '}' >> $batman_script
+  echo '' >> $batman_script
+  echo 'IFACE=$(first_wifi_interface)' >> $batman_script
+  echo '' >> $batman_script
+  echo 'case "$1" in' >> $batman_script
+  echo '    start|stop)' >> $batman_script
+  echo '        $1' >> $batman_script
+  echo '        ;;' >> $batman_script
+  echo '    *)' >> $batman_script
+  echo '    echo "error: invalid parameter $1"' >> $batman_script
+  echo '    echo "usage: $0 {start|stop}"' >> $batman_script
+  echo '    exit 1' >> $batman_script
+  echo '    ;;' >> $batman_script
+  echo 'esac' >> $batman_script
+  echo 'exit 0' >> $batman_script
+
+  echo '[Unit]' > /etc/systemd/system/batman.service
+  echo 'Description=B.A.T.M.A.N. Advanced' >> /etc/systemd/system/batman.service
+  echo '' >> /etc/systemd/system/batman.service
+  echo '[Service]' >> /etc/systemd/system/batman.service
+  echo 'Type=oneshot' >> /etc/systemd/system/batman.service
+  echo "ExecStart=$batman_script start" >> /etc/systemd/system/batman.service
+  echo "ExecStop=$batman_script stop" >> /etc/systemd/system/batman.service
+  echo 'RemainAfterExit=yes' >> /etc/systemd/system/batman.service
+  echo '' >> /etc/systemd/system/batman.service
+  echo '[Install]' >> /etc/systemd/system/batman.service
+  echo 'WantedBy=multi-user.target' >> /etc/systemd/system/batman.service
+  systemctl enable batman
+  systemctl daemon-reload
 
   if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'Mesh Networking (B.A.T.M.A.N)' >> /home/$MY_USERNAME/README
       echo '=============================' >> /home/$MY_USERNAME/README
-      echo 'Mesh ESSID: mesh' >> /home/$MY_USERNAME/README
-      echo "Mesh internet bridge IP address: $BATMAN_IPV6" >> /home/$MY_USERNAME/README
+      echo "Mesh ESSID: $ESSID" >> /home/$MY_USERNAME/README
+      echo "Mesh cell ID: $BATMAN_CELLID" >> /home/$MY_USERNAME/README
+      echo "Mesh wifi channel: $WIFI_CHANNEL" >> /home/$MY_USERNAME/README
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
       chmod 600 /home/$MY_USERNAME/README
   fi
