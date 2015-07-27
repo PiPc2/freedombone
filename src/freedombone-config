@@ -163,7 +163,9 @@ function save_configuration_file {
   echo "DDNS_PROVIDER=$DDNS_PROVIDER" >> $CONFIGURATION_FILE
   echo "DDNS_USERNAME=$DDNS_USERNAME" >> $CONFIGURATION_FILE
   echo "DDNS_PASSWORD=$DDNS_PASSWORD" >> $CONFIGURATION_FILE
-  echo "MY_NAME=$MY_NAME" >> $CONFIGURATION_FILE
+  if [ $MY_NAME ]; then
+      echo "MY_NAME=$MY_NAME" >> $CONFIGURATION_FILE
+  fi
   echo "MY_EMAIL_ADDRESS=$MY_EMAIL_ADDRESS" >> $CONFIGURATION_FILE
   echo "LOCAL_NETWORK_STATIC_IP_ADDRESS=$LOCAL_NETWORK_STATIC_IP_ADDRESS" >> $CONFIGURATION_FILE
   echo "ROUTER_IP_ADDRESS=$ROUTER_IP_ADDRESS" >> $CONFIGURATION_FILE
@@ -639,32 +641,26 @@ function interactive_configuration {
 
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
-  if [[ $INSTALLING_ON_BBB == "no" ]]; then
+  if [[ $INSTALLING_ON_BBB != "yes" ]]; then
       dialog --backtitle "Freedombone Configuration" \
-          --radiolist "Type of Random Number Generator:" 10 40 3 \
+          --radiolist "Type of Random Number Generator:" 10 40 2 \
           1 Haveged on \
-          2 "Beaglebone built-in HRNG" off \
-          3 OneRNG off 2> $data
+          2 OneRNG off 2> $data
+      sel=$?
+      case $sel in
+          1) exit 1;;
+          255) exit 1;;
+      esac
+      case $(cat $data) in
+          2) HWRNG_TYPE="onerng"
+             dialog --title "OneRNG Device" \
+                    --msgbox "Please ensure that the OneRNG device is disconnected. You can reconnect it later during the installation" 8 60
+             ;;
+          255) exit 1;;
+      esac
   else
-      dialog --backtitle "Freedombone Configuration" \
-          --radiolist "Type of Random Number Generator:" 10 40 3 \
-          1 Haveged off \
-          2 "Beaglebone built-in HRNG" on \
-          3 OneRNG off 2> $data
+      HWRNG_TYPE="beaglebone"
   fi
-  sel=$?
-  case $sel in
-      1) exit 1;;
-      255) exit 1;;
-  esac
-  case $(cat $data) in
-      2) HWRNG_TYPE="beaglebone";;
-      3) HWRNG_TYPE="onerng"
-         dialog --title "OneRNG Device" \
-                --msgbox "Please ensure that the OneRNG device is disconnected. You can reconnect it later during the installation" 8 60
-         ;;
-      255) exit 1;;
-  esac
   save_configuration_file
 
   data=$(tempfile 2>/dev/null)
@@ -938,20 +934,22 @@ function interactive_configuration {
       save_configuration_file
   fi
 
-  while [ ! $MY_NAME ]
-  do
-      data=$(tempfile 2>/dev/null)
-      trap "rm -f $data" 0 1 2 5 15
-      dialog --backtitle "Freedombone Configuration" \
-          --inputbox "Your full name (or nick)" 10 30 "$(grep 'MY_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
-      sel=$?
-      case $sel in
-          0) MY_NAME=$(cat $data);;
-          1) exit 1;;
-          255) exit 1;;
-      esac
-  done
-  save_configuration_file
+  if [[ $SYSTEM_TYPE != $VARIANT_MESH ]]; then
+      while [ ! $MY_NAME ]
+      do
+          data=$(tempfile 2>/dev/null)
+		  trap "rm -f $data" 0 1 2 5 15
+		  dialog --backtitle "Freedombone Configuration" \
+				 --inputbox "Your full name (or nick)" 10 30 "$(grep 'MY_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
+		  sel=$?
+		  case $sel in
+			  0) MY_NAME=$(cat $data);;
+			  1) exit 1;;
+			  255) exit 1;;
+		  esac
+	  done
+	  save_configuration_file
+  fi
 
   if [ ! $LOCAL_NETWORK_STATIC_IP_ADDRESS ]; then
       LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep 'LOCAL_NETWORK_STATIC_IP_ADDRESS' temp.cfg | awk -F '=' '{print $2}')
