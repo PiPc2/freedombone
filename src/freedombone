@@ -1670,19 +1670,32 @@ function mesh_babel {
   fi
   apt-get -y install babeld
 
-  numarray=( 1 2 3 4 5 6 7 8 9 0 )
-  a=${numarray[$RANDOM%2]}${numarray[$RANDOM%10]}${numarray[$RANDOM%10]}
-  b=${numarray[$RANDOM%2]}${numarray[$RANDOM%10]}${numarray[$RANDOM%10]}
-  echo '#!/bin/sh' > /usr/bin/mesh-babel
-  echo 'systemctl stop networking' >> /usr/bin/mesh-babel
-  echo 'ifconfig wlan0 down' >> /usr/bin/mesh-babel
-  echo 'iwconfig wlan0 mode ad-hoc channel 11 essid “mesh"' >> /usr/bin/mesh-babel
-  echo 'ifconfig wlan0 up' >> /usr/bin/mesh-babel
-  echo 'avahi-autoipd wlan0' >> /usr/bin/mesh-babel
-  echo "ifconfig wlan0:avahi 192.168.$a.$b netmask 255.255.255.0 broadcast 192.168.13.255" >> /usr/bin/mesh-babel
-  echo "babeld -D wlan0:avahi -p $BABEL_PORT -d 5 wlan0" >> /usr/bin/mesh-babel
-  echo 'exit 0' >> /usr/bin/mesh-babel
-  chmod +x /usr/bin/mesh-babel
+  babel_script=/var/lib/babel
+
+  echo '#!/bin/sh' > $babel_script
+  echo 'systemctl stop networking' >> $babel_script
+  echo 'ifconfig wlan0 down' >> $babel_script
+  echo "iwconfig wlan0 mode ad-hoc channel $WIFI_CHANNEL essid \"$ESSID\"" >> $babel_script
+  echo 'ifconfig wlan0 up' >> $babel_script
+  echo 'avahi-autoipd wlan0' >> $babel_script
+  echo -n "ifconfig wlan0:avahi $LOCAL_NETWORK_STATIC_IP_ADDRESS netmask " >> $babel_script
+  echo '255.255.255.0 broadcast 192.168.13.255' >> $babel_script
+  echo "babeld -D wlan0:avahi -p $BABEL_PORT -d 5 wlan0" >> $babel_script
+  echo 'exit 0' >> $babel_script
+  chmod +x $babel_script
+
+  echo '[Unit]' > /etc/systemd/system/babel.service
+  echo 'Description=Babel Mesh' >> /etc/systemd/system/babel.service
+  echo '' >> /etc/systemd/system/babel.service
+  echo '[Service]' >> /etc/systemd/system/babel.service
+  echo 'Type=oneshot' >> /etc/systemd/system/babel.service
+  echo "ExecStart=$babel_script start" >> /etc/systemd/system/babel.service
+  echo "ExecStop=$babel_script stop" >> /etc/systemd/system/babel.service
+  echo 'RemainAfterExit=yes' >> /etc/systemd/system/babel.service
+  echo '' >> /etc/systemd/system/babel.service
+  echo '[Install]' >> /etc/systemd/system/babel.service
+  echo 'WantedBy=multi-user.target' >> /etc/systemd/system/babel.service
+  systemctl enable babel
 
   echo 'mesh_babel' >> $COMPLETION_FILE
 }
@@ -1834,7 +1847,6 @@ function mesh_batman_bridge {
   echo '[Install]' >> /etc/systemd/system/batman.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/batman.service
   systemctl enable batman
-  systemctl daemon-reload
 
   if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
