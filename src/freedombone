@@ -1673,14 +1673,27 @@ function mesh_babel {
   babel_script=/var/lib/babel
 
   echo '#!/bin/sh' > $babel_script
+  echo 'IFACE=wlan0' >> $babel_script
+  echo 'IFACE_EXISTS=$(grep "$IFACE" /proc/net/dev)' >> $babel_script
+  echo '' >> $babel_script
+  echo 'if [ ! $IFACE_EXISTS ]; then' >> $babel_script
+  echo '    echo "Interface $IFACE was not found"' >> $babel_script
+  echo '    ifconfig $IFACE down' >> $babel_script
+  echo '    systemctl restart networking' >> $babel_script
+  echo '    exit 1' >> $babel_script
+  echo 'fi' >> $babel_script
+  echo '' >> $babel_script
   echo 'systemctl stop networking' >> $babel_script
-  echo 'ifconfig wlan0 down' >> $babel_script
-  echo "iwconfig wlan0 mode ad-hoc channel $WIFI_CHANNEL essid \"$ESSID\"" >> $babel_script
-  echo 'ifconfig wlan0 up' >> $babel_script
-  echo 'avahi-autoipd wlan0' >> $babel_script
-  echo -n "ifconfig wlan0:avahi $LOCAL_NETWORK_STATIC_IP_ADDRESS netmask " >> $babel_script
+  echo 'ifconfig $IFACE down' >> $babel_script
+  echo -n 'iwconfig $IFACE mode ad-hoc channel ' >> $babel_script
+  echo "$WIFI_CHANNEL essid \"$ESSID\"" >> $babel_script
+  echo 'ifconfig $IFACE up' >> $babel_script
+  echo 'avahi-autoipd $IFACE' >> $babel_script
+  echo -n 'ifconfig $IFACE:avahi ' >> $babel_script
+  echo -n "$LOCAL_NETWORK_STATIC_IP_ADDRESS netmask " >> $babel_script
   echo '255.255.255.0 broadcast 192.168.13.255' >> $babel_script
-  echo "babeld -D wlan0:avahi -p $BABEL_PORT -d 5 wlan0" >> $babel_script
+  echo -n 'babeld -D $IFACE:avahi -p ' >> $babel_script
+  echo "$BABEL_PORT -d 5 wlan0" >> $babel_script
   echo 'exit 0' >> $babel_script
   chmod +x $babel_script
 
@@ -1738,19 +1751,13 @@ function mesh_batman_bridge {
   echo '' >> $batman_script
   echo '# Ethernet bridge definition (bridged do bat0)' >> $batman_script
   echo 'BRIDGE=br-mesh' >> $batman_script
+  echo 'IFACE=wlan0' >> $batman_script
   echo 'EIFACE=eth0' >> $batman_script
+  echo 'IFACE_EXISTS=$(grep "$IFACE" /proc/net/dev)' >> $batman_script
   echo '' >> $batman_script
   echo 'if [ -e /etc/default/batctl ]; then' >> $batman_script
   echo '    . /etc/default/batctl' >> $batman_script
   echo 'fi' >> $batman_script
-  echo '' >> $batman_script
-  echo 'first_wifi_interface() {' >> $batman_script
-  echo '    IFACE=$(ls -d /sys/class/net/*/wireless 2>/dev/null | sort | head -1|cut -d/ -f5)' >> $batman_script
-  echo '    if [ -z "$IFACE" ] ;then' >> $batman_script
-  echo '        IFACE=$(iwconfig 2>/dev/null | sort | awk "/IEEE 802/ {print $1; exit}")' >> $batman_script
-  echo '    fi' >> $batman_script
-  echo '    echo $IFACE' >> $batman_script
-  echo '}' >> $batman_script
   echo '' >> $batman_script
   echo 'start() {' >> $batman_script
   echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
@@ -1820,7 +1827,11 @@ function mesh_batman_bridge {
   echo '    systemctl restart networking' >> $batman_script
   echo '}' >> $batman_script
   echo '' >> $batman_script
-  echo 'IFACE=$(first_wifi_interface)' >> $batman_script
+  echo 'if [ ! $IFACE_EXISTS ]; then' >> $batman_script
+  echo '    echo "Interface $IFACE was not found"' >> $batman_script
+  echo '    stop' >> $batman_script
+  echo '    exit 1' >> $batman_script
+  echo 'fi' >> $batman_script
   echo '' >> $batman_script
   echo 'case "$1" in' >> $batman_script
   echo '    start|stop)' >> $batman_script
@@ -1829,7 +1840,7 @@ function mesh_batman_bridge {
   echo '    *)' >> $batman_script
   echo '    echo "error: invalid parameter $1"' >> $batman_script
   echo '    echo "usage: $0 {start|stop}"' >> $batman_script
-  echo '    exit 1' >> $batman_script
+  echo '    exit 2' >> $batman_script
   echo '    ;;' >> $batman_script
   echo 'esac' >> $batman_script
   echo 'exit 0' >> $batman_script
