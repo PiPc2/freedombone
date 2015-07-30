@@ -31,9 +31,11 @@ CURR_USER=$USER
 # Version number of this script
 VERSION="1.01"
 
-# mesh networking settings
-BRIDGE_BATMAN_IPV6=
-PEER_BATMAN_IPV6=
+WIFI_CHANNEL=2
+
+# B.A.T.M.A.N settings
+BATMAN_CELLID='02:BA:00:00:03:01'
+ESSID='mesh'
 
 # ssh (from https://stribika.github.io/2015/01/04/secure-secure-shell.html)
 SSH_CIPHERS="chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
@@ -84,69 +86,116 @@ function configure_ssh_client {
 }
 
 function mesh_batman {
-  if [ ! $BRIDGE_BATMAN_IPV6 ]; then
-      return
-  fi
-  sudo apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
-  sudo apt-get -y install python-dev libevent-dev ebtables python-pip git
+  apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
+  apt-get -y install python-dev libevent-dev ebtables python-pip
+  apt-get -y install wireless-tools rfkill
 
-  sudo modprobe batman-adv
-  [ $? -ne 0 ] && echo "B.A.T.M.A.N module not available" && exit 76482
-  if ! grep -q "batman_adv" /etc/modules; then
-      sudo echo 'batman_adv' >> /etc/modules
-  fi
+  batman_script=/tmp/batman
 
-  # If no address has been given then create a ramdom one
-  if [ ! $PEER_BATMAN_IPV6 ]; then
-      hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
-      a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-      b=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-      c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-      d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-      PEER_BATMAN_IPV6="$IPV6_NETWORK:$a:$b:$c:$d"
-  fi
-
-  sudo cp /etc/network/interfaces ~/interfaces
-  if ! grep -q "# Mesh Networking (B.A.T.M.A.N)" ~/interfaces; then
-      echo '' >> ~/interfaces
-      echo '# Mesh Networking (B.A.T.M.A.N)' >> ~/interfaces
-      echo 'iface bat0 inet6 static' >> ~/interfaces
-      echo '    pre-up modprobe ipv6' >> ~/interfaces
-      echo "    address $PEER_BATMAN_IPV6" >> ~/interfaces
-      echo '    netmask 64' >> ~/interfaces
-      sudo mv ~/interfaces /etc/network/interfaces
-  else
-      sudo rm ~/interfaces
-  fi
-
-  echo '#!/bin/bash' > /tmp/freedombone_mesh
-  echo '' > /tmp/freedombone_mesh
-  echo '# stop network manager to make the mesh network work' >> /tmp/freedombone_mesh
-  echo 'service networking stop' >> /tmp/freedombone_mesh
-  echo '' >> /tmp/freedombone_mesh
-  echo -n '# configure the wlan interface to operate with ' >> /tmp/freedombone_mesh
-  echo 'mtus of 1532(batman requires it) and turn enc off ' >> /tmp/freedombone_mesh
-  echo 'to ensure it works' >> /tmp/freedombone_mesh
-  echo 'ifconfig wlan0 down' >> /tmp/freedombone_mesh
-  echo 'ifconfig wlan0 mtu 1532' >> /tmp/freedombone_mesh
-  echo 'iwconfig wlan0 enc off' >> /tmp/freedombone_mesh
-  echo '' >> /tmp/freedombone_mesh
-  echo '# add the interface to the ad-hoc network - or create it.' >> /tmp/freedombone_mesh
-  echo -n "iwconfig wlan0 mode ad-hoc essid mesh ap " >> /tmp/freedombone_mesh
-  echo "$BRIDGE_BATMAN_IPV6 channel 2" >> /tmp/freedombone_mesh
-  echo '' >> /tmp/freedombone_mesh
-  echo -n '# add wlan0 to the batman-adv virtual interface(so it can ' >> /tmp/freedombone_mesh
-  echo 'communicate with other batman-adv nodes)' >> /tmp/freedombone_mesh
-  echo 'batctl if add wlan0' >> /tmp/freedombone_mesh
-  echo 'ifconfig wlan0 up' >> /tmp/freedombone_mesh
-  echo 'ifconfig bat0 up' >> /tmp/freedombone_mesh
-  echo '' >> /tmp/freedombone_mesh
-  echo '# get the ip address for the node from the bridge connected to the dhcp server' >> /tmp/freedombone_mesh
-  echo 'dhclient bat0' >> /tmp/freedombone_mesh
-  echo '' >> /tmp/freedombone_mesh
-  echo 'exit 0' >> /tmp/freedombone_mesh
-  chmod +x /tmp/freedombone_mesh
-  sudo mv /tmp/freedombone_mesh /usr/bin/mesh
+  echo '#!/bin/sh' > $batman_script
+  echo '' >> $batman_script
+  echo '# Mesh definition' >> $batman_script
+  echo "ESSID=$ESSID" >> $batman_script
+  echo "CELLID=$BATMAN_CELLID" >> $batman_script
+  echo "CHANNEL=$WIFI_CHANNEL" >> $batman_script
+  echo '' >> $batman_script
+  echo '# Ethernet bridge definition (bridged do bat0)' >> $batman_script
+  echo 'BRIDGE=br-mesh' >> $batman_script
+  echo 'IFACE=wlan0' >> $batman_script
+  echo 'EIFACE=eth0' >> $batman_script
+  echo 'IFACE_EXISTS=$(grep "$IFACE" /proc/net/dev)' >> $batman_script
+  echo '' >> $batman_script
+  echo 'if [ -e /etc/default/batctl ]; then' >> $batman_script
+  echo '    . /etc/default/batctl' >> $batman_script
+  echo 'fi' >> $batman_script
+  echo '' >> $batman_script
+  echo 'start() {' >> $batman_script
+  echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
+  echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
+  echo '        return' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '    echo "info: enabling batman-adv mesh network $ESSID on $IFACE"' >> $batman_script
+  echo '    systemctl stop networking' >> $batman_script
+  echo '    sleep 5' >> $batman_script
+  echo '' >> $batman_script
+  echo '    # Might have to re-enable wifi' >> $batman_script
+  echo '    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true' >> $batman_script
+  echo '' >> $batman_script
+  echo '    ifconfig $IFACE down' >> $batman_script
+  echo '    ifconfig $IFACE mtu 1528' >> $batman_script
+  echo '    iwconfig $IFACE enc off' >> $batman_script
+  echo '    iwconfig $IFACE mode ad-hoc essid $ESSID channel $CHANNEL' >> $batman_script
+  echo '    sleep 1' >> $batman_script
+  echo '    iwconfig $IFACE ap $CELLID' >> $batman_script
+  echo '' >> $batman_script
+  echo '    modprobe batman-adv' >> $batman_script
+  echo '    batctl if add $IFACE' >> $batman_script
+  echo '    ifconfig $IFACE up' >> $batman_script
+  echo '    ifconfig bat0 up promisc' >> $batman_script
+  echo '' >> $batman_script
+  echo '    #Use persistent HWAddr' >> $batman_script
+  echo '    ether_new=$(ifconfig eth0 | grep HWaddr | sed -e "s/.*HWaddr //")' >> $batman_script
+  echo '    if [ ! -f /var/lib/mesh-node/bat0 ]' >> $batman_script
+  echo '    then' >> $batman_script
+  echo '        mkdir /var/lib/mesh-node' >> $batman_script
+  echo '        echo "${ether_new}" > /var/lib/mesh-node/bat0' >> $batman_script
+  echo '    else' >> $batman_script
+  echo '        ether=$(cat /var/lib/mesh-node/bat0)' >> $batman_script
+  echo '        ifconfig bat0 hw ether ${ether}' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '' >> $batman_script
+  echo '    if [ "$EIFACE" ] ; then' >> $batman_script
+  echo '        ifconfig $EIFACE up promisc' >> $batman_script
+  echo '        brctl addbr $BRIDGE' >> $batman_script
+  echo '        brctl addif $BRIDGE bat0' >> $batman_script
+  echo '        brctl addif $BRIDGE $EIFACE' >> $batman_script
+  echo '        ifconfig $BRIDGE up' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '}' >> $batman_script
+  echo '' >> $batman_script
+  echo 'stop() {' >> $batman_script
+  echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
+  echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
+  echo '        return' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '    if [ "$EIFACE" ] ; then' >> $batman_script
+  echo '        brctl delif $BRIDGE bat0' >> $batman_script
+  echo '        brctl delif $BRIDGE $EIFACE' >> $batman_script
+  echo '        ifconfig $BRIDGE down || true' >> $batman_script
+  echo '        brctl delbr $BRIDGE' >> $batman_script
+  echo '        ifconfig $EIFACE down -promisc' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo '' >> $batman_script
+  echo '    ifconfig bat0 down -promisc' >> $batman_script
+  echo '' >> $batman_script
+  echo '    batctl if del $IFACE' >> $batman_script
+  echo '    rmmod batman-adv' >> $batman_script
+  echo '    ifconfig $IFACE mtu 1500' >> $batman_script
+  echo '    ifconfig $IFACE down' >> $batman_script
+  echo '    iwconfig $IFACE mode managed' >> $batman_script
+  echo '' >> $batman_script
+  echo '    systemctl restart networking' >> $batman_script
+  echo '}' >> $batman_script
+  echo '' >> $batman_script
+  echo 'if [ ! $IFACE_EXISTS ]; then' >> $batman_script
+  echo '    echo "Interface $IFACE was not found"' >> $batman_script
+  echo '    stop' >> $batman_script
+  echo '    exit 1' >> $batman_script
+  echo 'fi' >> $batman_script
+  echo '' >> $batman_script
+  echo 'case "$1" in' >> $batman_script
+  echo '    start|stop)' >> $batman_script
+  echo '        $1' >> $batman_script
+  echo '        ;;' >> $batman_script
+  echo '    *)' >> $batman_script
+  echo '    echo "error: invalid parameter $1"' >> $batman_script
+  echo '    echo "usage: $0 {start|stop}"' >> $batman_script
+  echo '    exit 2' >> $batman_script
+  echo '    ;;' >> $batman_script
+  echo 'esac' >> $batman_script
+  echo 'exit 0' >> $batman_script
+  chmod +x $batman_script
+  sudo mv $batman_script /usr/bin/batman
 }
 
 function show_help {
@@ -163,10 +212,6 @@ key="$1"
 case $key in
     -h|--help)
     show_help
-    ;;
-    --bridge-ip)
-    shift
-    BRIDGE_BATMAN_IPV6="$1"
     ;;
     *)
     # unknown option
