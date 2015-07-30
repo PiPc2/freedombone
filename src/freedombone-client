@@ -85,10 +85,51 @@ function configure_ssh_client {
   echo ''
 }
 
+function mesh_babel {
+  sudo apt-get -y install babeld
+
+  babel_script=/tmp/babel
+
+  echo '#!/bin/sh' > $babel_script
+  echo 'IFACE=wlan0' >> $babel_script
+  echo 'IFACE_EXISTS=$(grep "$IFACE" /proc/net/dev)' >> $babel_script
+  echo '' >> $babel_script
+  echo 'if [[ ! $IFACE_EXISTS || $1 == "stop" ]]; then' >> $babel_script
+  echo '    echo "Interface $IFACE was not found"' >> $babel_script
+  echo '    ifconfig $IFACE down' >> $babel_script
+  echo '    pkill babeld' >> $babel_script
+  echo '    if [ -f /etc/init.d/networking ]; then' >> $babel_script
+  echo '        service networking restart' >> $babel_script
+  echo '    else' >> $babel_script
+  echo '        systemctl restart networking' >> $babel_script
+  echo '    fi' >> $babel_script
+  echo '    exit 1' >> $babel_script
+  echo 'fi' >> $babel_script
+  echo '' >> $babel_script
+  echo 'if [ -f /etc/init.d/networking ]; then' >> $babel_script
+  echo '    service networking stop' >> $babel_script
+  echo 'else' >> $babel_script
+  echo '    systemctl stop networking' >> $babel_script
+  echo 'fi' >> $babel_script
+  echo 'ifconfig $IFACE down' >> $babel_script
+  echo -n 'iwconfig $IFACE mode ad-hoc channel ' >> $babel_script
+  echo "$WIFI_CHANNEL essid \"$ESSID\"" >> $babel_script
+  echo 'ifconfig $IFACE up' >> $babel_script
+  echo 'avahi-autoipd $IFACE' >> $babel_script
+  echo -n 'ifconfig $IFACE:avahi ' >> $babel_script
+  echo -n "$LOCAL_NETWORK_STATIC_IP_ADDRESS netmask " >> $babel_script
+  echo '255.255.255.0 broadcast 192.168.13.255' >> $babel_script
+  echo -n 'babeld -D $IFACE:avahi -p ' >> $babel_script
+  echo "$BABEL_PORT -d 5 wlan0" >> $babel_script
+  echo 'exit 0' >> $babel_script
+  chmod +x $babel_script
+  sudo mv $babel_script /usr/bin/babel
+}
+
 function mesh_batman {
-  apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
-  apt-get -y install python-dev libevent-dev ebtables python-pip
-  apt-get -y install wireless-tools rfkill
+  sudo apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
+  sudo apt-get -y install python-dev libevent-dev ebtables python-pip
+  sudo apt-get -y install wireless-tools rfkill
 
   batman_script=/tmp/batman
 
@@ -223,6 +264,7 @@ done
 echo 'Configuring client'
 configure_ssh_client
 mesh_batman
+mesh_babel
 echo 'Configuration complete'
 if [[ $BRIDGE_BATMAN_IPV6 ]]; then
     echo ''
