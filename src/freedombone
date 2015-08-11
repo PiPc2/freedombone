@@ -1734,12 +1734,8 @@ function mesh_babel {
   echo '    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
   echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
   echo '    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-  echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal [NOTFOUND=return] dns $(hostname)|g" /etc/nsswitch.conf' >> $babel_script
-  echo '    if [ -f /bin/systemctl ]; then' >> $babel_script
-  echo '        systemctl restart avahi-daemon' >> $babel_script
-  echo '    else' >> $babel_script
-  echo '        service avahi-daemon restart' >> $babel_script
-  echo '    fi' >> $babel_script
+  echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf' >> $babel_script
+  echo '    systemctl restart avahi-daemon' >> $babel_script
   echo 'fi' >> $babel_script
   echo '' >> $babel_script
   echo "IFACE=$WIFI_INTERFACE" >> $babel_script
@@ -1767,19 +1763,11 @@ function mesh_babel {
   echo '    fi' >> $babel_script
   echo '    ifconfig $IFACE down' >> $babel_script
   echo '    pkill babeld' >> $babel_script
-  echo '    if [ -f /bin/systemctl ]; then' >> $babel_script
-  echo '        systemctl restart network-manager' >> $babel_script
-  echo '    else' >> $babel_script
-  echo '        service network-manager restart' >> $babel_script
-  echo '    fi' >> $babel_script
+  echo '    systemctl restart network-manager' >> $babel_script
   echo '    exit 1' >> $babel_script
   echo 'fi' >> $babel_script
   echo '' >> $babel_script
-  echo 'if [ -f /bin/systemctl ]; then' >> $babel_script
-  echo '    systemctl stop network-manager' >> $babel_script
-  echo 'else' >> $babel_script
-  echo '    service network-manager stop' >> $babel_script
-  echo 'fi' >> $babel_script
+  echo 'systemctl stop network-manager' >> $babel_script
   echo 'ifconfig $IFACE down' >> $babel_script
   echo -n 'iwconfig $IFACE mode ad-hoc channel ' >> $babel_script
   echo "$WIFI_CHANNEL essid \"$ESSID\"" >> $babel_script
@@ -1834,11 +1822,22 @@ function mesh_batman_bridge {
       echo 'batman_adv' >> /etc/modules
   fi
 
-  enable_ipv6
-
   batman_script=/var/lib/batman
 
-  echo '#!/bin/sh' > $batman_script
+  echo '#!/bin/bash' > $batman_script
+  echo '' >> $batman_script
+  echo 'if [[ $1 == "start" ]]; then' >> $batman_script
+  echo '    # install avahi' >> $batman_script
+  echo '    apt-get -y install avahi-utils avahi-autoipd avahi-daemon avahi-dnsconfd' >> $batman_script
+  echo '    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
+  echo '    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
+  echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
+  echo '    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
+  echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf' >> $batman_script
+  echo '    if ! grep -q "avahi-daemon" /etc/crontab; then' >> $batman_script
+  echo "        echo '* *\t* * *\troot\tsystemctl restart avahi-daemon > /dev/null' >> /etc/crontab" >> $batman_script
+  echo '    fi' >> $batman_script
+  echo 'fi' >> $batman_script
   echo '' >> $batman_script
   echo '# Mesh definition' >> $batman_script
   echo "ESSID=$ESSID" >> $batman_script
@@ -1855,22 +1854,35 @@ function mesh_batman_bridge {
   echo '        IFACE=wlan1' >> $batman_script
   echo '    fi' >> $batman_script
   echo 'fi' >> $batman_script
+  echo 'if [[ $IFACE == "wlan0" ]]; then' >> $batman_script
+  echo '    if grep -q "wlan2" /proc/net/dev; then' >> $batman_script
+  echo '        IFACE=wlan2' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo 'fi' >> $batman_script
+  echo 'if [[ $IFACE == "wlan0" ]]; then' >> $batman_script
+  echo '    if grep -q "wlan3" /proc/net/dev; then' >> $batman_script
+  echo '        IFACE=wlan3' >> $batman_script
+  echo '    fi' >> $batman_script
+  echo 'fi' >> $batman_script
   echo '' >> $batman_script
   echo 'if [ -e /etc/default/batctl ]; then' >> $batman_script
   echo '    . /etc/default/batctl' >> $batman_script
   echo 'fi' >> $batman_script
   echo '' >> $batman_script
   echo 'start() {' >> $batman_script
-  echo '    if [ -z "$IFACE" ]; then' >> $batman_script
+  echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
   echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
   echo '        return' >> $batman_script
   echo '    fi' >> $batman_script
-  echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
-  echo '    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
-  echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf' >> $batman_script
   echo '    echo "info: enabling batman-adv mesh network $ESSID on $IFACE"' >> $batman_script
+
   echo '    systemctl stop network-manager' >> $batman_script
   echo '    sleep 5' >> $batman_script
+  echo '' >> $batman_script
+  echo "    # remove an avahi service which isn't used" >> $batman_script
+  echo '    if [ -f /etc/avahi/services/udisks.service ]; then' >> $batman_script
+  echo '        sudo rm /etc/avahi/services/udisks.service' >> $batman_script
+  echo '    fi' >> $batman_script
   echo '' >> $batman_script
   echo '    # Might have to re-enable wifi' >> $batman_script
   echo '    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true' >> $batman_script
@@ -1899,7 +1911,7 @@ function mesh_batman_bridge {
   echo '        ifconfig bat0 hw ether ${ether}' >> $batman_script
   echo '    fi' >> $batman_script
   echo '' >> $batman_script
-  echo '    if [ "$EIFACE" ]; then' >> $batman_script
+  echo '    if [ "$EIFACE" ] ; then' >> $batman_script
   echo '        brctl addbr $BRIDGE' >> $batman_script
   echo '        brctl addif $BRIDGE bat0' >> $batman_script
   echo '        brctl addif $BRIDGE $EIFACE' >> $batman_script
@@ -1909,19 +1921,22 @@ function mesh_batman_bridge {
   echo '        ifconfig $BRIDGE up' >> $batman_script
   echo '    fi' >> $batman_script
   echo '' >> $batman_script
-  echo '    if [ -f /bin/systemctl ]; then' >> $batman_script
-  echo '        systemctl restart avahi-daemon' >> $batman_script
-  echo '    else' >> $batman_script
-  echo '        service avahi-daemon restart' >> $batman_script
-  echo '    fi' >> $batman_script
+  echo '    iptables -A INPUT -p tcp -m state -m tcp --dport 548 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -A INPUT -p udp -m state -m udp --dport 548 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -A INPUT -p tcp -m state -m tcp --dport 5353 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -A INPUT -p udp -m state -m udp --dport 5353 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -A INPUT -p tcp -m state -m tcp --dport 5354 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -A INPUT -p udp -m state -m udp --dport 5354 --state NEW -j ACCEPT' >> $batman_script
+  echo '' >> $batman_script
+  echo '    systemctl restart avahi-daemon' >> $batman_script
   echo '}' >> $batman_script
   echo '' >> $batman_script
   echo 'stop() {' >> $batman_script
-  echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
+  echo '    if [ -z "$IFACE" ]; then' >> $batman_script
   echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
   echo '        return' >> $batman_script
   echo '    fi' >> $batman_script
-  echo '    if [ "$EIFACE" ] ; then' >> $batman_script
+  echo '    if [ "$EIFACE" ]; then' >> $batman_script
   echo '        brctl delif $BRIDGE bat0' >> $batman_script
   echo '        brctl delif $BRIDGE $EIFACE' >> $batman_script
   echo '        ifconfig $BRIDGE down || true' >> $batman_script
@@ -1938,6 +1953,13 @@ function mesh_batman_bridge {
   echo '    ifconfig $IFACE mtu 1500' >> $batman_script
   echo '    ifconfig $IFACE down' >> $batman_script
   echo '    iwconfig $IFACE mode managed' >> $batman_script
+  echo '' >> $batman_script
+  echo '    iptables -D INPUT -p tcp -m state -m tcp --dport 548 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -D INPUT -p udp -m state -m udp --dport 548 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -D INPUT -p tcp -m state -m tcp --dport 5353 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -D INPUT -p udp -m state -m udp --dport 5353 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -D INPUT -p tcp -m state -m tcp --dport 5354 --state NEW -j ACCEPT' >> $batman_script
+  echo '    iptables -D INPUT -p udp -m state -m udp --dport 5354 --state NEW -j ACCEPT' >> $batman_script
   echo '' >> $batman_script
   echo '    systemctl restart network-manager' >> $batman_script
   echo '}' >> $batman_script
@@ -1968,7 +1990,7 @@ function mesh_batman_bridge {
   echo '        ;;' >> $batman_script
   echo '    *)' >> $batman_script
   echo '    echo "error: invalid parameter $1"' >> $batman_script
-  echo '    echo "usage: $0 {start|stop|restart|status|ping|list|ls}"' >> $batman_script
+  echo '    echo "usage: $0 {start|stop|restart|status|ping|ls|list}"' >> $batman_script
   echo '    exit 2' >> $batman_script
   echo '    ;;' >> $batman_script
   echo 'esac' >> $batman_script
@@ -6056,6 +6078,9 @@ function configure_internet_protocol {
   if grep -Fxq "configure_internet_protocol" $COMPLETION_FILE; then
       return
   fi
+  if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+      return
+  fi
   sed -i "s/#net.ipv4.tcp_syncookies=1/net.ipv4.tcp_syncookies=1/g" /etc/sysctl.conf
   sed -i "s/#net.ipv4.conf.all.accept_redirects = 0/net.ipv4.conf.all.accept_redirects = 0/g" /etc/sysctl.conf
   sed -i "s/#net.ipv6.conf.all.accept_redirects = 0/net.ipv6.conf.all.accept_redirects = 0/g" /etc/sysctl.conf
@@ -6066,15 +6091,13 @@ function configure_internet_protocol {
   sed -i "s/#net.ipv4.conf.all.rp_filter=1/net.ipv4.conf.all.rp_filter=1/g" /etc/sysctl.conf
   sed -i "s/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=0/g" /etc/sysctl.conf
   sed -i "s/#net.ipv6.conf.all.forwarding=1/net.ipv6.conf.all.forwarding=0/g" /etc/sysctl.conf
-  if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
-      echo '# ignore pings' >> /etc/sysctl.conf
-      echo 'net.ipv4.icmp_echo_ignore_all = 1' >> /etc/sysctl.conf
-      echo 'net.ipv6.icmp_echo_ignore_all = 1' >> /etc/sysctl.conf
-      echo '# disable ipv6' >> /etc/sysctl.conf
-      echo 'net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
-      echo 'net.ipv4.tcp_synack_retries = 2' >> /etc/sysctl.conf
-      echo 'net.ipv4.tcp_syn_retries = 1' >> /etc/sysctl.conf
-  fi
+  echo '# ignore pings' >> /etc/sysctl.conf
+  echo 'net.ipv4.icmp_echo_ignore_all = 1' >> /etc/sysctl.conf
+  echo 'net.ipv6.icmp_echo_ignore_all = 1' >> /etc/sysctl.conf
+  echo '# disable ipv6' >> /etc/sysctl.conf
+  echo 'net.ipv6.conf.all.disable_ipv6 = 1' >> /etc/sysctl.conf
+  echo 'net.ipv4.tcp_synack_retries = 2' >> /etc/sysctl.conf
+  echo 'net.ipv4.tcp_syn_retries = 1' >> /etc/sysctl.conf
   echo '# keepalive' >> /etc/sysctl.conf
   echo 'net.ipv4.tcp_keepalive_probes = 9' >> /etc/sysctl.conf
   echo 'net.ipv4.tcp_keepalive_intvl = 75' >> /etc/sysctl.conf
