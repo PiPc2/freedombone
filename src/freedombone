@@ -402,6 +402,9 @@ TOX_NODE=
 
 ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
 
+# Default diffie-hellman key length in bits
+DH_KEYLENGTH=3072
+
 function show_help {
   echo ''
   echo 'freedombone -c [configuration file]'
@@ -753,6 +756,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "DH_KEYLENGTH" $CONFIGURATION_FILE; then
+          DH_KEYLENGTH=$(grep "DH_KEYLENGTH" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "WIFI_INTERFACE" $CONFIGURATION_FILE; then
           WIFI_INTERFACE=$(grep "WIFI_INTERFACE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1595,7 +1601,7 @@ function install_zeronet {
 
   apt-get -y install python python-msgpack python-gevent python-pip
   pip install msgpack-python --upgrade
-  
+
   adduser --home /opt/zeronet/ --shell /bin/false --no-create-home --ingroup daemon --disabled-password --disabled-login zeronet
   git clone $ZERONET_REPO /opt/zeronet
   sudo chown -R zeronet:zeronet /opt/zeronet
@@ -1615,10 +1621,10 @@ function install_zeronet {
   echo '' >> /etc/systemd/system/zeronet.service
   echo '[Install]' >> /etc/systemd/system/zeronet.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/zeronet.service
-  
+
   systemctl enable zeronet.service
   systemctl start zeronet.service
-  
+
   echo 'mesh_zeronet' >> $COMPLETION_FILE
 }
 
@@ -1830,7 +1836,7 @@ function mesh_babel {
   echo 'RemainAfterExit=yes' >> /etc/systemd/system/babel.service
   echo '' >> /etc/systemd/system/babel.service
   echo '# Allow time for the server to start/stop' >> /etc/systemd/system/babel.service
-  echo 'TimeoutSec=300' >> /etc/systemd/system/babel.service  
+  echo 'TimeoutSec=300' >> /etc/systemd/system/babel.service
   echo '' >> /etc/systemd/system/babel.service
   echo '[Install]' >> /etc/systemd/system/babel.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/babel.service
@@ -2048,7 +2054,7 @@ function mesh_batman_bridge {
   echo 'RemainAfterExit=yes' >> /etc/systemd/system/batman.service
   echo '' >> /etc/systemd/system/batman.service
   echo '# Allow time for the server to start/stop' >> /etc/systemd/system/batman.service
-  echo 'TimeoutSec=300' >> /etc/systemd/system/batman.service  
+  echo 'TimeoutSec=300' >> /etc/systemd/system/batman.service
   echo '' >> /etc/systemd/system/batman.service
   echo '[Install]' >> /etc/systemd/system/batman.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/batman.service
@@ -2199,7 +2205,7 @@ function create_backup_script {
 
   echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '    echo "Creating backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    freedombone-addcert -h backup' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo "    freedombone-addcert -h backup --dhkey $DH_KEYLENGTH" >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
@@ -3644,7 +3650,7 @@ function backup_to_friends_servers {
 
   echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '    echo "Creating backup key"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
-  echo '    freedombone-addcert -h backup' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo "    freedombone-addcert -h backup --dhkey $DH_KEYLENGTH" >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
@@ -6202,7 +6208,7 @@ function configure_email {
 
   # make a tls certificate for email
   if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
-      freedombone-addcert -h exim
+      freedombone-addcert -h exim --dhkey $DH_KEYLENGTH
       check_certificates exim
   fi
   cp /etc/ssl/private/exim.key /etc/exim4
@@ -6431,7 +6437,7 @@ function configure_imap {
   fi
 
   if [ ! -f /etc/ssl/certs/dovecot.dhparam ]; then
-      freedombone-addcert -h dovecot
+      freedombone-addcert -h dovecot --dhkey $DH_KEYLENGTH
       check_certificates dovecot
   fi
   chown root:dovecot /etc/ssl/certs/dovecot.*
@@ -6518,7 +6524,7 @@ function configure_imap_client_certs {
   fi
   # make a CA cert
   if [ ! -f /etc/ssl/private/ca-$DEFAULT_DOMAIN_NAME.key ]; then
-      freedombone-addcert -h $DEFAULT_DOMAIN_NAME --ca ""
+      freedombone-addcert -h $DEFAULT_DOMAIN_NAME --ca "" --dhkey $DH_KEYLENGTH
   fi
   # CA configuration
   echo '[ ca ]' > /etc/ssl/dovecot-ca.cnf
@@ -7820,7 +7826,7 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $OWNCLOUD_DOMAIN_NAME
+      freedombone-addcert -h $OWNCLOUD_DOMAIN_NAME --dhkey $DH_KEYLENGTH
       check_certificates $OWNCLOUD_DOMAIN_NAME
   fi
 
@@ -8069,7 +8075,7 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$GIT_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $GIT_DOMAIN_NAME
+      freedombone-addcert -h $GIT_DOMAIN_NAME --dhkey $DH_KEYLENGTH
       check_certificates $GIT_DOMAIN_NAME
   fi
 
@@ -8242,7 +8248,7 @@ function install_xmpp {
   fi
 
   if [ ! -f /etc/ssl/certs/xmpp.dhparam ]; then
-      freedombone-addcert -h xmpp
+      freedombone-addcert -h xmpp --dhkey $DH_KEYLENGTH
       check_certificates xmpp
   fi
   chown prosody:prosody /etc/ssl/private/xmpp.key
@@ -8367,7 +8373,7 @@ function install_irc_server {
   fi
 
   if [ ! -f /etc/ssl/certs/ngircd.dhparam ]; then
-      freedombone-addcert -h ngircd
+      freedombone-addcert -h ngircd --dhkey $DH_KEYLENGTH
       check_certificates ngircd
   fi
 
@@ -8464,7 +8470,7 @@ function install_wiki {
       rm -rf /var/www/$WIKI_DOMAIN_NAME/htdocs
   fi
   if [ ! -f /etc/ssl/certs/$WIKI_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $WIKI_DOMAIN_NAME
+      freedombone-addcert -h $WIKI_DOMAIN_NAME --dhkey $DH_KEYLENGTH
       check_certificates $WIKI_DOMAIN_NAME
   fi
 
@@ -8750,7 +8756,7 @@ function install_blog {
   chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
 
   if [ ! -f /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $FULLBLOG_DOMAIN_NAME
+      freedombone-addcert -h $FULLBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
       check_certificates $FULLBLOG_DOMAIN_NAME
   fi
 
@@ -9115,7 +9121,7 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$MICROBLOG_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $MICROBLOG_DOMAIN_NAME
+      freedombone-addcert -h $MICROBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
       check_certificates $MICROBLOG_DOMAIN_NAME
   fi
 
@@ -9384,7 +9390,7 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$REDMATRIX_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $REDMATRIX_DOMAIN_NAME
+      freedombone-addcert -h $REDMATRIX_DOMAIN_NAME --dhkey $DH_KEYLENGTH
       check_certificates $REDMATRIX_DOMAIN_NAME
   fi
 
@@ -9702,7 +9708,7 @@ function install_mediagoblin {
   echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
 
   if [ ! -f /etc/ssl/certs/$MEDIAGOBLIN_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $MEDIAGOBLIN_DOMAIN_NAME
+      freedombone-addcert -h $MEDIAGOBLIN_DOMAIN_NAME --dhkey $DH_KEYLENGTH
       check_certificates $MEDIAGOBLIN_DOMAIN_NAME
   fi
 
@@ -10141,7 +10147,7 @@ function install_voip {
 
   # Make an ssl cert for the server
   if [ ! -f /etc/ssl/certs/mumble.dhparam ]; then
-      freedombone-addcert -h mumble
+      freedombone-addcert -h mumble --dhkey $DH_KEYLENGTH
       check_certificates mumble
   fi
 
