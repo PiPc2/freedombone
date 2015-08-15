@@ -400,6 +400,8 @@ TOX_NODE=
 #  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
 #)
 
+ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
+
 function show_help {
   echo ''
   echo 'freedombone -c [configuration file]'
@@ -1583,6 +1585,43 @@ function mesh_cjdns_tools {
   echo 'mesh_cjdns_tools' >> $COMPLETION_FILE
 }
 
+function install_zeronet {
+  if grep -Fxq "install_zeronet" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
+      return
+  fi
+
+  apt-get -y install python python-msgpack python-gevent python-pip
+  pip install msgpack-python --upgrade
+  
+  adduser --home /opt/zeronet/ --shell /bin/false --no-create-home --ingroup daemon --disabled-password --disabled-login zeronet
+  git clone $ZERONET_REPO /opt/zeronet
+  sudo chown -R zeronet:zeronet /opt/zeronet
+
+  echo '[Unit]' > /etc/systemd/system/zeronet.service
+  echo 'Description=Zeronet Server' >> /etc/systemd/system/zeronet.service
+  echo 'After=syslog.target' >> /etc/systemd/system/zeronet.service
+  echo 'After=network.target' >> /etc/systemd/system/zeronet.service
+  echo '[Service]' >> /etc/systemd/system/zeronet.service
+  echo 'Type=simple' >> /etc/systemd/system/zeronet.service
+  echo 'User=zeronet' >> /etc/systemd/system/zeronet.service
+  echo 'Group=zeronet' >> /etc/systemd/system/zeronet.service
+  echo 'WorkingDirectory=/opt/zeronet' >> /etc/systemd/system/zeronet.service
+  echo 'ExecStart=/usr/bin/python zeronet.py' >> /etc/systemd/system/zeronet.service
+  echo '' >> /etc/systemd/system/zeronet.service
+  echo 'TimeoutSec=300' >> /etc/systemd/system/zeronet.service
+  echo '' >> /etc/systemd/system/zeronet.service
+  echo '[Install]' >> /etc/systemd/system/zeronet.service
+  echo 'WantedBy=multi-user.target' >> /etc/systemd/system/zeronet.service
+  
+  systemctl enable zeronet.service
+  systemctl start zeronet.service
+  
+  echo 'mesh_zeronet' >> $COMPLETION_FILE
+}
+
 function install_vpn_tunnel {
   if ! grep -q "repo.universe-factory.net" /etc/apt/sources.list; then
       echo 'deb http://repo.universe-factory.net/debian/ sid main' >> /etc/apt/sources.list
@@ -1790,6 +1829,9 @@ function mesh_babel {
   echo "ExecStop=$babel_script stop" >> /etc/systemd/system/babel.service
   echo 'RemainAfterExit=yes' >> /etc/systemd/system/babel.service
   echo '' >> /etc/systemd/system/babel.service
+  echo '# Allow time for the server to start/stop' >> /etc/systemd/system/babel.service
+  echo 'TimeoutSec=300' >> /etc/systemd/system/babel.service  
+  echo '' >> /etc/systemd/system/babel.service
   echo '[Install]' >> /etc/systemd/system/babel.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/babel.service
   systemctl enable babel
@@ -1828,7 +1870,6 @@ function mesh_batman_bridge {
   echo '' >> $batman_script
   echo 'if [[ $1 == "start" ]]; then' >> $batman_script
   echo '    # install avahi' >> $batman_script
-  echo '    apt-get -y install avahi-utils avahi-autoipd avahi-daemon avahi-dnsconfd' >> $batman_script
   echo '    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
   echo '    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
   echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
@@ -2005,6 +2046,9 @@ function mesh_batman_bridge {
   echo "ExecStart=$batman_script start" >> /etc/systemd/system/batman.service
   echo "ExecStop=$batman_script stop" >> /etc/systemd/system/batman.service
   echo 'RemainAfterExit=yes' >> /etc/systemd/system/batman.service
+  echo '' >> /etc/systemd/system/batman.service
+  echo '# Allow time for the server to start/stop' >> /etc/systemd/system/batman.service
+  echo 'TimeoutSec=300' >> /etc/systemd/system/batman.service  
   echo '' >> /etc/systemd/system/batman.service
   echo '[Install]' >> /etc/systemd/system/batman.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/batman.service
@@ -10216,6 +10260,7 @@ check_hwrng
 search_for_attached_usb_drive
 regenerate_ssh_keys
 create_upgrade_script
+install_zeronet
 configure_avahi
 install_atheros_wifi
 configure_firewall_for_cjdns
