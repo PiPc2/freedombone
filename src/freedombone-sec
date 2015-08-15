@@ -50,6 +50,10 @@ EXPORT_FILE=
 
 CURRENT_DIR=$(pwd)
 
+REGENERATE_SSH_HOST_KEYS="no"
+REGENERATE_DH_KEYS="no"
+DH_KEYLENGTH=3072
+
 function get_protocols_from_website {
   if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
       return
@@ -317,6 +321,74 @@ function interactive_setup {
   clear
 }
 
+function regenerate_ssh_host_keys {
+  if [[ $REGENERATE_SSH_HOST_KEYS == "yes" ]]; then
+      rm -f /etc/ssh/ssh_host_*
+      dpkg-reconfigure openssh-server
+      echo 'ssh host keys regenerated'
+      # remove small moduli
+      awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
+      mv ~/moduli /etc/ssh/moduli
+      echo 'ssh small moduli removed'
+      systemctl restart ssh
+  fi
+}
+
+function regenerate_dh_keys {
+  if [[ $REGENERATE_DH_KEYS == "yes" ]]; then
+      if [ ! -d /etc/ssl/mycerts ]; then
+          return
+      fi
+
+      data=$(tempfile 2>/dev/null)
+      trap "rm -f $data" 0 1 2 5 15
+      dialog --backtitle "Freedombone Security Configuration" \
+             --radiolist "Select a key length:" 10 40 2 \
+             1 "1024 bits" off \
+             2 "3072 bits" on 2> $data
+      sel=$?
+      case $sel in
+          1) exit 1;;
+          255) exit 1;;
+      esac
+      case $(cat $data) in
+          1) DH_KEYLENGTH=1024;;
+          2) DH_KEYLENGTH=3072;;
+      esac
+
+      for file in /etc/ssl/mycerts/*
+      do
+          if [[ -f $file ]]; then
+              filename=/etc/ssl/certs/$(echo $file | awk -F '/etc/ssl/mycerts/' '{print $2}' | awk -F '.crt' '{print $1}').dhparam
+              if [ -f $filename ]; then
+                  openssl dhparam -check -text -5 $DH_KEYLENGTH -out $filename
+              fi
+          fi
+      done
+  fi
+}
+
+function housekeeping {
+  cmd=(dialog --separate-output \
+              --backtitle "Freedombone Security Configuration" \
+              --checklist "Housekeeping options. If you don't need to do any of these things then just press Enter:" 10 76 16)
+  options=(1 "Regenerate ssh host keys" off
+           2 "Regenerate Diffie-Hellman keys" off)
+  choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
+  clear
+  for choice in $choices
+  do
+    case $choice in
+      1)
+        REGENERATE_SSH_HOST_KEYS="yes"
+        ;;
+      2)
+        REGENERATE_DH_KEYS="yes"
+        ;;
+    esac
+  done
+}
+
 function import_settings {
   cd $CURRENT_DIR
 
@@ -532,6 +604,7 @@ esac
 shift
 done
 
+housekeeping
 get_website_settings
 get_imap_settings
 get_ssh_settings
@@ -543,4 +616,6 @@ change_website_settings
 change_imap_settings
 change_ssh_settings
 change_xmpp_settings
+regenerate_ssh_host_keys
+regenerate_dh_keys
 exit 0
