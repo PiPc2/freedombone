@@ -1748,13 +1748,17 @@ function configure_avahi {
   echo '</service>' >> /etc/avahi/services/irc.service
   echo '</service-group>' >> /etc/avahi/services/irc.service
 
-  systemctl restart avahi-daemon
+  # keep the daemon running
+  echo '' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '# keep avahi daemon running' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'AVAHI_RUNNING=$(pgrep avahi-daemon > /dev/null && echo Running)' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'if [ ! $AVAHI_RUNNING ]; then' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '  systemctl start avahi-daemon' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '  echo -n $CURRENT_DATE >> $LOGFILE' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo '  echo " Avahi daemon restarted" >> $LOGFILE' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
 
-  # this is a blatant hack, but I couldn't find a better way of mitigating the problem
-  # of avahi-daemon stopping after a few minutes
-  if ! grep -q "avahi-daemon" /etc/crontab; then
-      echo '* *     * * *   root    systemctl restart avahi-daemon > /dev/null' >> /etc/crontab
-  fi
+  systemctl restart avahi-daemon
 
   echo 'configure_avahi' >> $COMPLETION_FILE
 }
@@ -1884,9 +1888,6 @@ function mesh_batman_bridge {
   echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
   echo '    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
   echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf' >> $batman_script
-  echo '    if ! grep -q "avahi-daemon" /etc/crontab; then' >> $batman_script
-  echo "        echo '* *\t* * *\troot\tsystemctl restart avahi-daemon > /dev/null' >> /etc/crontab" >> $batman_script
-  echo '    fi' >> $batman_script
   echo 'fi' >> $batman_script
   echo '' >> $batman_script
   echo '# Mesh definition' >> $batman_script
@@ -10328,6 +10329,7 @@ search_for_attached_usb_drive
 regenerate_ssh_keys
 create_upgrade_script
 install_zeronet
+install_watchdog_script
 configure_avahi
 install_atheros_wifi
 configure_firewall_for_cjdns
@@ -10338,7 +10340,6 @@ mesh_batman_bridge
 configure_firewall_for_babel
 mesh_babel
 route_outgoing_traffic_through_tor
-install_watchdog_script
 configure_email
 create_procmail
 spam_filtering
