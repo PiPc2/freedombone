@@ -8142,6 +8142,68 @@ quit" > $INSTALL_DIR/batch.sql
   echo 'install_gogs' >> $COMPLETION_FILE
 }
 
+function tox_avahi {
+  if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
+      return
+  fi
+  if grep -Fxq "tox_avahi" $COMPLETION_FILE; then
+      return
+  fi
+
+  if [ ! -d /etc/avahi ]; then
+      echo 'tox_avahi: avahi is not installed'
+      exit 87359
+  fi
+  
+  # install a command to obtain the Tox ID
+  cd $INSTALL_DIR
+  git clone https://github.com/bashrc/toxid
+  if [ ! -d $INSTALL_DIR/toxid ]; then
+      exit 63921
+  fi
+  cd $INSTALL_DIR/toxid
+  make
+  if [ ! "$?" = "0" ]; then
+      exit 58432
+  fi
+  make install  
+
+  # script to publish the tox user
+  if [ ! -f /usr/bin/publish-to-avahi ]; then
+      echo '#!/bin/bash' > /usr/bin/publish-to-avahi
+  fi
+  echo '' >> /usr/bin/publish-to-avahi
+  echo "DATA_FILE=/home/$MY_USERNAME/.config/tox/data" >> /usr/bin/publish-to-avahi
+  echo 'if [ ! -f $DATA_FILE ]; then' >> /usr/bin/publish-to-avahi
+  echo '    exit 0' >> /usr/bin/publish-to-avahi
+  echo 'fi' >> /usr/bin/publish-to-avahi
+  echo '' >> /usr/bin/publish-to-avahi
+  echo -n 'TOX_ID=$(/usr/bin/toxid -u ' >> /usr/bin/publish-to-avahi
+  echo "$MY_USERNAME)" >> /usr/bin/publish-to-avahi
+  echo '' >> /usr/bin/publish-to-avahi
+
+  echo "echo \"<?xml version=\"1.0\" standalone=\"no\"?><!--*-nxml-*-->\" > /etc/avahi/services/tox.service" >> /usr/bin/publish-to-avahi
+  echo "echo '<!DOCTYPE service-group SYSTEM \"avahi-service.dtd\">' >> /etc/avahi/services/tox.service" >> /usr/bin/publish-to-avahi
+  echo "echo '<service-group>' >> /etc/avahi/services/tox.service" >> /usr/bin/publish-to-avahi
+  echo "echo '  <name replace-wildcards=\"yes\">%h $TOX_ID</name>' >> /etc/avahi/services/tox.service" >> /usr/bin/publish-to-avahi
+  echo "echo '  <service>' >> /etc/avahi/services/ssh.service" >> /usr/bin/publish-to-avahi
+  echo "echo '    <type>_tox._tcp</type>' >> /etc/avahi/services/ssh.service" >> /usr/bin/publish-to-avahi
+  echo "echo \"    <port>$TOX_PORT</port>\" >> /etc/avahi/services/ssh.service" >> /usr/bin/publish-to-avahi
+  echo "echo '  </service>' >> /etc/avahi/services/ssh.service" >> /usr/bin/publish-to-avahi
+  echo "echo '</service-group>' >> /etc/avahi/services/ssh.service" >> /usr/bin/publish-to-avahi
+
+  echo '' >> /usr/bin/publish-to-avahi
+  echo 'exit 0' >> /usr/bin/publish-to-avahi
+  chmod +x /usr/bin/publish-to-avahi
+
+  # publish regularly
+  if ! grep -Fxq "publish-to-avahi" /etc/crontab; then
+      echo '*/1            * *   *   *   root /usr/bin/publish-to-avahi > /dev/null' >> /etc/crontab
+  fi
+  
+  echo 'tox_avahi' >> $COMPLETION_FILE  
+}
+
 function install_tox_node {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
       return
@@ -10387,6 +10449,7 @@ install_gogs
 install_xmpp
 install_tox_node
 install_tox_client
+tox_avahi
 configure_firewall_for_xmpp
 install_irc_server
 configure_firewall_for_irc
