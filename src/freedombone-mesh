@@ -28,11 +28,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+IRSSI_PATH=/usr/bin/irssi
+MUMBLE_PATH=/usr/bin/mumble
+TOXIC_PATH=/usr/local/bin/toxic
+DHTNODES=/usr/local/share/toxic/DHTnodes
+
 IRC_PORT=6697
 PEERS_FILE=/tmp/meshpeers.txt
 
 if [ ! -f /usr/bin/batman ]; then
     freedombone-client
+fi
+
+# alternative toxic paths
+if [ -f /usr/bin/toxic ]; then
+    TOXIC_PATH=/usr/bin/toxic
+fi
+if [ -f /usr/share/toxic/DHTnodes ]; then
+    DHTNODES=/usr/share/toxic/DHTnodes
 fi
 
 if [ ! -f /tmp/meshtype ]; then
@@ -66,7 +79,7 @@ echo "|                      |              |                   "
 echo "|--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-. "
 echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' "
 echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'"
-echo '                   M E S H   N E T W O R K'
+echo '                    Freedom in the Mesh'
 echo ''
 echo 'Please choose a peer to connect to:'
 idx=1
@@ -101,30 +114,55 @@ if [ ! $AVAHI_DOMAIN ]; then
 fi
 
 # Connect to IRC
-if [ ! -f /usr/bin/irssi ]; then
-    if [ -f /usr/bin/mumble ]; then
-        mumble &
-        exit 0
+if [ ! -f $IRSSI_PATH ]; then
+    if [ ! -f $TOXIC_PATH ]; then
+        if [ -f $MUMBLE_PATH ]; then
+            MUMBLE_PATH &
+            exit 0
+        fi
+        echo 'You need irssi/mumble/toxic installed on your system'
+        sudo batman stop
+        exit 4
     fi
-    echo 'You need irssi and/or mumble installed on your system'
-    sudo batman stop
-    exit 4
 fi
 
-if [ ! -f /usr/bin/mumble ]; then
-    if [ -f /usr/bin/irssi ]; then
-        irssi -c $AVAHI_DOMAIN -p $IRC_PORT -n $USER
-        exit 0
+if [ ! -f $MUMBLE_PATH ]; then
+    if [ ! -f $TOXIC_PATH ]; then
+        if [ -f $IRSSI_PATH ]; then
+            $IRSSI_PATH -c $AVAHI_DOMAIN -p $IRC_PORT -n $USER
+            exit 0
+        fi
+        echo 'You need irssi/mumble/toxic installed on your system'
+        sudo batman stop
+        exit 4
     fi
-    echo 'You need irssi and/or mumble installed on your system'
-    sudo batman stop
-    exit 4
+fi
+
+if [ ! -f $MUMBLE_PATH ]; then
+    if [ ! -f $IRSSI_PATH ]; then
+        if [ -f $TOXIC_PATH ]; then
+            lstox -f dht > $DHTNODES
+            PEER_TOX_ID=$(lstox -p $AVAHI_DOMAIN | head -n 1 | awk -F ' ' '{print $2}')
+            if [ ${#PEER_TOX_ID} -gt 30 ]; then
+                echo "/add $PEER_TOX_ID
+" | $TOXIC_PATH -d
+                exit 0
+            else
+                echo "Tox ID for $AVAHI_DOMAIN was not found"
+                exit 6
+            fi
+        fi
+        echo 'You need irssi/mumble/toxic installed on your system'
+        sudo batman stop
+        exit 4
+    fi
 fi
 
 echo ''
 echo 'Choose communication service:'
-echo '    1. VoIP + Instant Messaging'
-echo '    2. IRC (WARNING: not encrypted)'
+echo '    1. VoIP'
+echo '    2. Tox Chat'
+echo '    3. IRC (WARNING: not encrypted)'
 echo ''
 
 read peer_index
@@ -137,19 +175,46 @@ if [ ! $peer_index ]; then
 fi
 
 if [[ $peer_index == 1 ]]; then
-    echo ''
-    echo 'To setup for the first time click "Add New", then set:'
-    echo "    Label:    $AVAHI_DOMAIN"
-    echo "    Address:  $AVAHI_DOMAIN"
-    echo '    Port:     64738'
-    echo "    Username: $USER"
-    echo ''
-    echo 'Press Enter to continue.'
-    echo ''
-    read peer_index
-    mumble &
+    if [ -f $MUMBLE_PATH ]; then
+        echo ''
+        echo 'To setup for the first time click "Add New", then set:'
+        echo "    Label:    $AVAHI_DOMAIN"
+        echo "    Address:  $AVAHI_DOMAIN"
+        echo '    Port:     64738'
+        echo "    Username: $USER"
+        echo ''
+        echo 'Press Enter to continue.'
+        echo ''
+        read peer_index
+        $MUMBLE_PATH &
+    else
+        echo 'Mumble may not be installed on this system'
+        exit 5
+    fi
 else
-    irssi -c $AVAHI_DOMAIN -p $IRC_PORT -n $USER
+    if [[ $peer_index == 2 ]]; then
+        if [ -f $TOX_PATH ]; then
+            lstox -f dht > $DHTNODES
+            PEER_TOX_ID=$(lstox -p $AVAHI_DOMAIN | head -n 1 | awk -F ' ' '{print $2}')
+            if [ ${#PEER_TOX_ID} -gt 30 ]; then
+                echo "/add $PEER_TOX_ID
+" | $TOXIC_PATH -d
+            else
+                echo "Tox ID for $AVAHI_DOMAIN was not found"
+                exit 6
+            fi
+        else
+            echo 'Tox may not be installed on this system'
+            exit 7
+        fi
+    else
+        if [ -f $IRSSI_PATH ]; then
+            $IRSSI_PATH -c $AVAHI_DOMAIN -p $IRC_PORT -n $USER
+        else
+            echo 'Irssi may not be installed on this system'
+            exit 8
+        fi
+    fi
 fi
 
 exit 0
