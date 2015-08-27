@@ -36,6 +36,175 @@ DHTNODES=/usr/share/toxic/DHTnodes
 IRC_PORT=6697
 PEERS_FILE=/tmp/meshpeers.txt
 
+TOX_PORT=33445
+TOX_REPO='git://github.com/irungentoo/toxcore.git'
+TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
+
+function install_toxcore {
+    if [ -f $TOX_BOOTSTRAP_ID_FILE ]; then
+        return
+    fi
+
+    sudo apt-get -y install build-essential libtool autotools-dev
+    sudo apt-get -y install automake checkinstall check git yasm
+    sudo apt-get -y install libsodium13 libsodium-dev libcap2-bin
+    sudo apt-get -y install libconfig9 libconfig-dev
+
+    if [ ! -d ~/develop ]; then
+        mkdir ~/develop
+    fi
+    cd ~/develop
+    git clone $TOXCORE_REPO
+    cd ~/develop/toxcore
+    autoreconf -i
+    ./configure --enable-daemon
+    if [ ! "$?" = "0" ]; then
+        exit 78467
+    fi
+    make
+    if [ ! "$?" = "0" ]; then
+        exit 84562
+    fi
+    sudo make install
+    sudo cp /usr/local/lib/libtoxcore* /usr/lib/
+
+    if [ ! -f /usr/local/bin/tox-bootstrapd ]; then
+        echo "File not found /usr/local/bin/tox-bootstrapd"
+        exit 73862
+    fi
+
+    sudo useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment "Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
+    sudo chmod 700 /var/lib/tox-bootstrapd
+    if [ ! -f ~/develop/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf ]; then
+        echo "File not found $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf"
+        exit 476835
+    fi
+
+    # create configuration file
+    echo "port = $TOX_PORT" > /tmp/tox-bootstrapd.conf
+    echo 'keys_file_path = "/var/lib/tox-bootstrapd/keys"' >> /tmp/tox-bootstrapd.conf
+    echo 'pid_file_path = "/var/run/tox-bootstrapd/tox-bootstrapd.pid"' >> /tmp/tox-bootstrapd.conf
+    echo 'enable_ipv6 = true' >> /tmp/tox-bootstrapd.conf
+    echo 'enable_ipv4_fallback = true' >> /tmp/tox-bootstrapd.conf
+    echo 'enable_lan_discovery = true' >> /tmp/tox-bootstrapd.conf
+    echo 'enable_tcp_relay = true' >> /tmp/tox-bootstrapd.conf
+    echo "tcp_relay_ports = [443, 3389, $TOX_PORT]" >> /tmp/tox-bootstrapd.conf
+    echo 'enable_motd = true' >> /tmp/tox-bootstrapd.conf
+    echo 'motd = "tox-bootstrapd"' >> /tmp/tox-bootstrapd.conf
+    sudo cp /tmp/tox-bootstrapd.conf /etc/tox-bootstrapd.conf
+    rm /tmp/tox-bootstrapd.conf
+
+    if [ -f /bin/systemctl ]; then
+        if [ ! -f ~/develop/toxcore/other/bootstrap_daemon/tox-bootstrapd.service ]; then
+            echo "File not found ~/develop/toxcore/other/bootstrap_daemon/tox-bootstrapd.service"
+            exit 7359
+        fi
+        sudo cp ~/develop/toxcore/other/bootstrap_daemon/tox-bootstrapd.service /etc/systemd/system/
+
+        sudo systemctl daemon-reload
+        sudo systemctl enable tox-bootstrapd.service
+        sudo systemctl start tox-bootstrapd.service
+        if [ ! "$?" = "0" ]; then
+            sudo systemctl status tox-bootstrapd.service
+            exit 5846
+        fi
+
+        sudo systemctl restart tox-bootstrapd.service
+    else
+        sudo cp ~/develop/toxcore/other/bootstrap_daemon/tox-bootstrapd.sh /etc/init.d/tox-bootstrapd
+        sudo chmod 755 /etc/init.d/tox-bootstrapd
+        sudo update-rc.d tox-bootstrapd defaults
+        sudo service tox-bootstrapd start
+    fi
+
+    TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
+    if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
+        echo 'Could not obtain the tox node public key'
+        exit 6529
+    fi
+
+    # save the public key for later reference
+    echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
+}
+
+function install_toxid {
+    if [ -f /usr/local/bin/toxid ]; then
+        return
+    fi
+    cd ~/develop
+    git clone https://github.com/bashrc/toxid
+    cd ~/develop/toxid
+    make
+    sudo make install
+
+    if [ ! -f /usr/local/bin/toxid ]; then
+        echo "Couldn't install toxid"
+        exit 6389
+    fi
+
+    if ! grep -Fxq "toxavahi" /etc/crontab; then
+        cp /etc/crontab /tmp/crontab
+        echo "* *       * * *   root    toxavahi > /dev/null" >> /tmp/crontab
+        sudo cp /tmp/crontab /etc/crontab
+        rm /tmp/crontab
+    fi
+}
+
+function run_tox {
+    if [ -f $TOXIC_PATH ]; then
+        # update bootstrap nodes
+        if [ -f $DHTNODES ]; then
+            if [ ! -f $DHTNODES.internet ]; then
+                sudo cp $DHTNODES $DHTNODES.internet
+            fi
+        fi
+        lstox -f dht > /tmp/dht
+        sudo cp /tmp/dht $DHTNODES
+
+        # get a list of peers
+        PEER_TOX_ID_LIST=$(lstox | grep $AVAHI_DOMAIN | sort -u)
+        if [ ! $PEER_TOX_ID_LIST ]; then
+            echo 'No peers found'
+            exit 0
+        fi
+        PEER_TOX_ID_LIST_COUNT=$(echo $PEER_TOX_ID_LIST | wc -l)
+        PEER_TOX_ID=''
+        if [ $PEER_TOX_ID_LIST_COUNT -lt "2" ]; then
+            # single peer
+            PEER_TOX_ID=$(echo $PEER_TOX_ID_LIST | awk -F ' ' '{print $3}')
+        else
+            # choose a user from a list
+            echo ''
+            echo "Select a user on $AVAHI_DOMAIN:"
+            ctr=0
+            while IFS='' read -r line || [[ -n "$line" ]]; do
+                toxusername=$(echo $line | awk -F ' ' '{print $2}')
+                echo "    $ctr. $toxusername"
+                ctr=$((ctr + 1))
+            done < "$PEER_TOX_ID_LIST"
+            read user_index
+            PEER_TOX_ID=$(echo $PEER_TOX_ID_LIST | tail -n+${user_index} | head -n1 | awk -F ' ' '{print $3}')
+        fi
+
+        # if this is a valid ID
+        if [ ${#PEER_TOX_ID} -gt 30 ]; then
+            # start client and make a friend request
+            echo "/nick $USER
+/add $PEER_TOX_ID
+/exit
+" | $TOXIC_PATH -d
+            # Running twice is a hack to get around buggyness in the client
+            $TOXIC_PATH -d
+            exit 0
+        else
+            # ID was invalid
+            echo $PEER_TOX_ID
+            echo "Tox ID for $AVAHI_DOMAIN was not found"
+            exit 6
+        fi
+    fi
+}
+
 if [ ! -f /usr/bin/batman ]; then
     freedombone-client
 fi
@@ -49,13 +218,15 @@ if [ -f /usr/local/share/toxic/DHTnodes ]; then
 fi
 
 if [ ! -f /tmp/meshtype ]; then
+    install_toxcore
+    install_toxid
     sudo batman start
     if [ ! "$?" = "0" ]; then
         exit 2
     fi
 fi
 
-avahi-browse -atl | grep "Workstation" | awk -F ' ' '{print $4}' > $PEERS_FILE
+avahi-browse -atl | grep "Workstation" | awk -F ' ' '{print $4}' | sort -u > $PEERS_FILE
 
 if [ ! -f $PEERS_FILE ]; then
    echo 'No peers were found'
@@ -113,7 +284,7 @@ if [ ! $AVAHI_DOMAIN ]; then
     exit 3
 fi
 
-# Connect to IRC
+# if only mumble is installed
 if [ ! -f $IRSSI_PATH ]; then
     if [ ! -f $TOXIC_PATH ]; then
         if [ -f $MUMBLE_PATH ]; then
@@ -126,6 +297,7 @@ if [ ! -f $IRSSI_PATH ]; then
     fi
 fi
 
+# if only irssi is installed
 if [ ! -f $MUMBLE_PATH ]; then
     if [ ! -f $TOXIC_PATH ]; then
         if [ -f $IRSSI_PATH ]; then
@@ -138,33 +310,10 @@ if [ ! -f $MUMBLE_PATH ]; then
     fi
 fi
 
+# if only tox is installed
 if [ ! -f $MUMBLE_PATH ]; then
     if [ ! -f $IRSSI_PATH ]; then
-        if [ -f $TOXIC_PATH ]; then
-            if [ -f $DHTNODES ]; then
-                if [ ! -f $DHTNODES.internet ]; then
-                    sudo cp $DHTNODES $DHTNODES.internet
-                fi
-            fi
-            lstox -f dht > /tmp/dht
-            sudo cp /tmp/dht $DHTNODES
-            PEER_TOX_ID=$(lstox | grep $AVAHI_DOMAIN | head -n 1 | awk -F ' ' '{print $2}')
-            if [ ${#PEER_TOX_ID} -gt 30 ]; then
-                echo "/nick $USER
-/add $PEER_TOX_ID
-/exit
-" | $TOXIC_PATH -d
-                $TOXIC_PATH -d
-                exit 0
-            else
-                echo $PEER_TOX_ID
-                echo "Tox ID for $AVAHI_DOMAIN was not found"
-                exit 6
-            fi
-        fi
-        echo 'You need irssi/mumble/toxic installed on your system'
-        sudo batman stop
-        exit 4
+        run_tox
     fi
 fi
 
@@ -172,7 +321,7 @@ echo ''
 echo 'Choose communication service:'
 echo '    1. VoIP'
 echo '    2. Tox Chat'
-echo '    3. IRC (WARNING: not encrypted)'
+echo '    3. IRC (WARNING: not secure)'
 echo ''
 
 read peer_index
@@ -203,34 +352,12 @@ if [[ $peer_index == 1 ]]; then
     fi
 else
     if [[ $peer_index == 2 ]]; then
-        if [ -f $TOX_PATH ]; then
-            if [ -f $DHTNODES ]; then
-                if [ ! -f $DHTNODES.internet ]; then
-                    sudo cp $DHTNODES $DHTNODES.internet
-                fi
-            fi
-            lstox -f dht > /tmp/dht
-            sudo cp /tmp/dht $DHTNODES
-            PEER_TOX_ID=$(lstox | grep $AVAHI_DOMAIN | head -n 1 | awk -F ' ' '{print $2}')
-            if [ ${#PEER_TOX_ID} -gt 30 ]; then
-                echo "/nick $USER
-/add $PEER_TOX_ID
-/exit
-" | $TOXIC_PATH -d
-                $TOXIC_PATH -d
-            else
-                echo "Tox ID for $AVAHI_DOMAIN was not found"
-                exit 6
-            fi
-        else
-            echo 'Tox may not be installed on this system'
-            exit 7
-        fi
+        run_tox
     else
         if [ -f $IRSSI_PATH ]; then
             $IRSSI_PATH -c $AVAHI_DOMAIN -p $IRC_PORT -n $USER
         else
-            echo 'Irssi may not be installed on this system'
+            echo 'Irssi/toxic/mumble may not be installed on this system'
             exit 8
         fi
     fi
