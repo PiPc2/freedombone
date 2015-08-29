@@ -11,6 +11,7 @@ source:
 install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP} ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/zeronetavahi ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-keydrive ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-splitkey ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-recoverkey ${DESTDIR}${PREFIX}/bin
@@ -81,6 +82,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}-mesh.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}
+	rm -f ${PREFIX}/bin/zeronetavahi
 	rm -f ${PREFIX}/bin/${APP}-keydrive
 	rm -f ${PREFIX}/bin/${APP}-splitkey
 	rm -f ${PREFIX}/bin/${APP}-recoverkey
