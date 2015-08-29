@@ -401,8 +401,10 @@ TOX_NODE=
 #  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
 #)
 
-ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
+#ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
+ZERONET_REPO='https://github.com/bashrc/ZeroNet.git'
 ZERONET_PORT=15441
+TRACKER_PORT=51413
 
 # Default diffie-hellman key length in bits
 DH_KEYLENGTH=1024
@@ -761,6 +763,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "TRACKER_PORT" $CONFIGURATION_FILE; then
+          TRACKER_PORT=$(grep "TRACKER_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "ZERONET_PORT" $CONFIGURATION_FILE; then
           ZERONET_PORT=$(grep "ZERONET_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1616,12 +1621,18 @@ function install_zeronet {
       return
   fi
 
-  apt-get -y install python python-msgpack python-gevent python-pip
+  apt-get -y install python python-msgpack python-gevent
+  apt-get -y install python-pip transmission-daemon
   pip install msgpack-python --upgrade
 
   useradd -d /opt/zeronet/ -s /bin/false zeronet
   git clone $ZERONET_REPO /opt/zeronet
+  if [ ! -d /opt/zeronet ]; then
+      exit 56823
+  fi
   sudo chown -R zeronet:zeronet /opt/zeronet
+  cd /opt/zeronet
+  git checkout bashrc/bootstrap-file
 
   echo '[Unit]' > /etc/systemd/system/zeronet.service
   echo 'Description=Zeronet Server' >> /etc/systemd/system/zeronet.service
@@ -1638,6 +1649,11 @@ function install_zeronet {
   echo '' >> /etc/systemd/system/zeronet.service
   echo '[Install]' >> /etc/systemd/system/zeronet.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/zeronet.service
+
+  # publish regularly
+  if ! grep -Fxq "zeronetavahi" /etc/crontab; then
+      echo "* *       * * *   root    zeronetavahi > /dev/null" >> /etc/crontab
+  fi
 
   systemctl enable zeronet.service
   systemctl start zeronet.service
@@ -6001,6 +6017,7 @@ function configure_firewall_for_zeronet {
   fi
   iptables -A INPUT -i $WIFI_INTERFACE -p udp --dport $ZERONET_PORT -j ACCEPT
   iptables -A INPUT -i $WIFI_INTERFACE -p tcp --dport $ZERONET_PORT -j ACCEPT
+  iptables -A INPUT -i $WIFI_INTERFACE -p udp --dport $TRACKER_PORT -j ACCEPT
   save_firewall_settings
   echo 'configure_firewall_for_zeronet' >> $COMPLETION_FILE
 }
