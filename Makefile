@@ -34,6 +34,8 @@ install:
 	install -m 755 src/${APP}-xmpp-pass ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-mesh ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-mesh ${DESTDIR}${PREFIX}/bin/mesh
+	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/mesh
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-keydrive.1.gz ${DESTDIR}${PREFIX}/share/man/man1
@@ -104,6 +106,8 @@ uninstall:
 	rm -f ${PREFIX}/bin/${APP}-xmpp-pass
 	rm -f ${PREFIX}/bin/${APP}-mesh
 	rm -f ${PREFIX}/bin/mesh
+	rm -f ${PREFIX}/bin/${APP}-meshweb
+	rm -f ${PREFIX}/bin/meshweb
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}
