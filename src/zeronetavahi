@@ -30,10 +30,14 @@
 
 TRACKER_PORT=6969
 BOOTSTRAP_FILE=/opt/zeronet/bootstrap
+BLOGS_FILE=/opt/zeronet/blogs
+FORUM_FILE=/opt/zeronet/forum
 
 if [ ! -d /opt/zeronet ]; then
     if [ -d ~/zeronet ]; then
         BOOTSTRAP_FILE=~/zeronet/bootstrap
+        BLOGS_FILE=~/zeronet/blogs
+        FORUM_FILE=~/zeronet/forum
     else
         exit 0
     fi
@@ -43,10 +47,16 @@ if [ ! -d /etc/avahi ]; then
     exit 0
 fi
 
+TEMPFILE_BASE=/tmp/tmpzeronetavahibase.txt
 TEMPFILE=/tmp/tmpzeronetavahi.txt
-avahi-browse -atr | grep "Workstation\|hostname =\|address =\|port =" > $TEMPFILE
+avahi-browse -atr > $TEMPFILE_BASE
+cat $TEMPFILE_BASE | grep "Workstation\|hostname =\|address =\|port =" > $TEMPFILE
 if [ ! -f $TEMPFILE ]; then
     exit 1
+fi
+
+if [ -f $BOOTSTRAP_FILE.new ]; then
+    rm -f $BOOTSTRAP_FILE.new
 fi
 
 state=0
@@ -71,11 +81,95 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
     fi
 done < "$TEMPFILE"
 
+# detect blogs in the mesh
+if [ -f $BLOGS_FILE.new ]; then
+    rm -f $BLOGS_FILE.new
+fi
+
+cat $TEMPFILE_BASE | grep "ZeroNet Blog\|hostname =\|address =\|port =\|txt-record =" > $TEMPFILE
+
+state=0
+address=""
+peer=""
+while IFS='' read -r line || [[ -n "$line" ]]; do
+    if [ ${state} -eq "3" ]; then
+        if [[ $line == *"txt-record ="* ]]; then
+            blog_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            echo "$peer $blog_url" >> $BLOGS_FILE.new
+            state=0
+        fi
+    fi
+    if [ ${state} -eq "2" ]; then
+        if [[ $line == *"address ="* ]]; then
+            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=3
+        fi
+    fi
+    if [ ${state} -eq "1" ]; then
+        if [[ $line == *"hostname ="* ]]; then
+            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=2
+        fi
+    fi
+    if [[ $line == *"ZeroNet Blog"* && $line == "= "* ]]; then
+        state=1
+    fi
+done < "$TEMPFILE"
+
+# detect fora in the mesh
+if [ -f $FORUM_FILE.new ]; then
+    rm -f $FORUM_FILE.new
+fi
+
+cat $TEMPFILE_BASE | grep "ZeroNet Forum\|hostname =\|address =\|port =\|txt-record =" > $TEMPFILE
+
+state=0
+address=""
+peer=""
+while IFS='' read -r line || [[ -n "$line" ]]; do
+    if [ ${state} -eq "3" ]; then
+        if [[ $line == *"txt-record ="* ]]; then
+            forum_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            echo "$peer $forum_url" >> $FORUM_FILE.new
+            state=0
+        fi
+    fi
+    if [ ${state} -eq "2" ]; then
+        if [[ $line == *"address ="* ]]; then
+            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=3
+        fi
+    fi
+    if [ ${state} -eq "1" ]; then
+        if [[ $line == *"hostname ="* ]]; then
+            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=2
+        fi
+    fi
+    if [[ $line == *"ZeroNet Forum"* && $line == "= "* ]]; then
+        state=1
+    fi
+done < "$TEMPFILE"
+
+rm -f $TEMPFILE_BASE
 rm -f $TEMPFILE
+
 cp -f $BOOTSTRAP_FILE.new $BOOTSTRAP_FILE
 rm -f $BOOTSTRAP_FILE.new
 if [ -d /home/zeronet ]; then
     sudo chown zeronet:zeronet $BOOTSTRAP_FILE
+fi
+
+cp -f $BLOGS_FILE.new $BLOGS_FILE
+rm -f $BLOGS_FILE.new
+if [ -d /home/zeronet ]; then
+    sudo chown zeronet:zeronet $BLOGS_FILE
+fi
+
+cp -f $FORUM_FILE.new $FORUM_FILE
+rm -f $FORUM_FILE.new
+if [ -d /home/zeronet ]; then
+    sudo chown zeronet:zeronet $FORUM_FILE
 fi
 
 exit 0
