@@ -9,9 +9,101 @@ SERVER_INSTALLATION="no"
 PEERS_FILE=/tmp/meshwebstart
 
 ZERONET_REPO='https://github.com/bashrc/ZeroNet'
+ZERONET_BLOG_REPO='https://github.com/HelloZeroNet/ZeroBlog'
+ZERONET_FORUM_REPO='https://github.com/HelloZeroNet/ZeroTalk'
 ZERONET_DIR=~/zeronet
 ZERONET_URL=http://127.0.0.1:43110
 TRACKER_PORT=6969
+
+MY_USERNAME=$USER
+
+function install_zeronet_blog {
+    if [ ! -f /home/$MY_USERNAME/README ]; then
+        touch /home/$MY_USERNAME/README
+    fi
+
+    if grep -q "ZeroNet Blog address" /home/$MY_USERNAME/README; then
+        return
+    fi
+
+    cd $ZERONET_DIR
+    python zeronet.py --batch siteCreate 2> $ZERONET_DIR/blog.txt
+    if [ ! -f $ZERONET_DIR/blog.txt ]; then
+        echo 'Unable to create blog'
+        exit 479
+    fi
+    blog_address=$(cat blog.txt | grep "Site address" | awk -F ':' '{print $2}')
+    blog_private_key=$(cat blog.txt | grep "Site private key" | awk -F ':' '{print $2}')
+    ZERONET_BLOG_ADDRESS=${blog_address//[[:blank:]]/}
+    ZERONET_BLOG_PRIVATE_KEY=${blog_private_key//[[:blank:]]/}
+
+    if [ ! -d "$ZERONET_DIR/data/$ZERONET_BLOG_ADDRESS" ]; then
+        echo "Unable to find site directory: $$ZERONET_DIR/data/$ZERONET_BLOG_ADDRESS"
+        exit 7638
+    fi
+
+    git clone $ZERONET_BLOG_REPO ZeroBlog
+    if [ ! -d $ZERONET_DIR/ZeroBlog ]; then
+        echo 'ZeroBlog repo could not be cloned'
+        exit 6739
+    fi
+    echo "Blog address:     $ZERONET_BLOG_ADDRESS"
+    echo "Blog private key: $ZERONET_BLOG_PRIVATE_KEY"
+    cp -r $ZERONET_DIR/ZeroBlog/* $ZERONET_DIR/data/$ZERONET_BLOG_ADDRESS
+    python zeronet.py siteSign $ZERONET_BLOG_ADDRESS $ZERONET_BLOG_PRIVATE_KEY
+
+    if ! grep -q "ZeroNet Blog address" /home/$MY_USERNAME/README; then
+        echo '' >> /home/$MY_USERNAME/README
+        echo "ZeroNet Blog address: $ZERONET_BLOG_ADDRESS" >> /home/$MY_USERNAME/README
+        echo "ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY" >> /home/$MY_USERNAME/README
+    fi
+
+    echo 'Zeronet blog installed'
+}
+
+function install_zeronet_forum {
+    if [ ! -f /home/$MY_USERNAME/README ]; then
+        touch /home/$MY_USERNAME/README
+    fi
+
+    if grep -q "ZeroNet Forum address" /home/$MY_USERNAME/README; then
+        return
+    fi
+
+    cd $ZERONET_DIR
+    python zeronet.py --batch siteCreate 2> $ZERONET_DIR/forum.txt
+    if [ ! -f $ZERONET_DIR/forum.txt ]; then
+        echo 'Unable to create forum'
+        exit 479
+    fi
+    forum_address=$(cat forum.txt | grep "Site address" | awk -F ':' '{print $2}')
+    forum_private_key=$(cat forum.txt | grep "Site private key" | awk -F ':' '{print $2}')
+    ZERONET_FORUM_ADDRESS=${forum_address//[[:blank:]]/}
+    ZERONET_FORUM_PRIVATE_KEY=${forum_private_key//[[:blank:]]/}
+
+    if [ ! -d "$ZERONET_DIR/data/$ZERONET_FORUM_ADDRESS" ]; then
+        echo "Unable to find site directory: $$ZERONET_DIR/data/$ZERONET_FORUM_ADDRESS"
+        exit 7638
+    fi
+
+    git clone $ZERONET_FORUM_REPO ZeroTalk
+    if [ ! -d $ZERONET_DIR/ZeroTalk ]; then
+        echo 'ZeroTalk repo could not be cloned'
+        exit 6739
+    fi
+    echo "Forum address:     $ZERONET_FORUM_ADDRESS"
+    echo "Forum private key: $ZERONET_FORUM_PRIVATE_KEY"
+    cp -r $ZERONET_DIR/ZeroTalk/* $ZERONET_DIR/data/$ZERONET_FORUM_ADDRESS
+    python zeronet.py siteSign $ZERONET_FORUM_ADDRESS $ZERONET_FORUM_PRIVATE_KEY
+
+    if ! grep -q "ZeroNet Forum address" /home/$MY_USERNAME/README; then
+        echo '' >> /home/$MY_USERNAME/README
+        echo "ZeroNet Forum address: $ZERONET_FORUM_ADDRESS" >> /home/$MY_USERNAME/README
+        echo "ZeroNet Forum private key: $ZERONET_FORUM_PRIVATE_KEY" >> /home/$MY_USERNAME/README
+    fi
+
+    echo 'Zeronet forum installed'
+}
 
 function install_web_server {
     if [ -d /etc/nginx ]; then
@@ -45,7 +137,6 @@ function install_zeronet {
   fi
   cd $ZERONET_DIR
   git checkout bashrc/bootstrap-file
-  #git checkout bashrc/test
 }
 
 if [ -f /var/lib/batman ]; then
@@ -63,6 +154,8 @@ if [[ $SERVER_INSTALLATION == "no" ]]; then
         sudo apt-get update
         install_web_server
         install_zeronet
+        install_zeronet_blog
+        install_zeronet_forum
         sudo batman start
         if [ ! "$?" = "0" ]; then
             exit 2
