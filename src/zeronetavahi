@@ -10,6 +10,9 @@
 #
 # A script for using avahi to discover peers and update zeronet trackers
 
+# Blogs and fora are discovered on the network and then published
+# to an index file which can be opened in a browser
+
 # License
 # =======
 #
@@ -28,6 +31,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+WEB_PAGE_TITLE="Freedombone Mesh"
 TRACKER_PORT=6969
 ZERONET_INSTALL=/opt/zeronet
 
@@ -40,13 +44,60 @@ if [ ! -d $ZERONET_INSTALL ]; then
 fi
 
 BOOTSTRAP_FILE=$ZERONET_INSTALL/bootstrap
-BLOGS_FILE=$ZERONET_INSTALL/blogs
-FORUM_FILE=$ZERONET_INSTALL/forum
+BLOGS_FILE=$ZERONET_INSTALL/freedombone-blogs
+FORUM_FILE=$ZERONET_INSTALL/freedombone-fora
+ZERONET_INDEX=/home/$USER/mesh.html
+
+function create_index {
+    if [ -f $ZERONET_INDEX ]; then
+        return
+    fi
+    echo '<!DOCTYPE html>' > $ZERONET_INDEX
+    echo '<html>' >> $ZERONET_INDEX
+    echo '<head>' >> $ZERONET_INDEX
+    echo "<title>$WEB_PAGE_TITLE</title>" >> $ZERONET_INDEX
+    echo '</head>' >> $ZERONET_INDEX
+    echo '<body>' >> $ZERONET_INDEX
+    echo "<H1>$WEB_PAGE_TITLE</H1>" >> $ZERONET_INDEX
+    echo '' >> $ZERONET_INDEX
+    echo '<ol type="square">' >> $ZERONET_INDEX
+    echo "  <li><a href=\"${BLOGS_FILE}.html\">Blogs</a></li>" >> $ZERONET_INDEX
+    echo "  <li><a href=\"${FORUM_FILE}.html\">Fora</a></li>" >> $ZERONET_INDEX
+    echo '</ol>' >> $ZERONET_INDEX
+    echo '' >> $ZERONET_INDEX
+    echo '</body>' >> $ZERONET_INDEX
+    echo '</html>' >> $ZERONET_INDEX
+}
+
+function create_header {
+    header_file=${1}-header.html
+    if [ -f $header_file ]; then
+        return
+    fi
+    echo '<!DOCTYPE html>' > $header_file
+    echo '<html>' >> $header_file
+    echo '<head>' >> $header_file
+    echo "<title>$WEB_PAGE_TITLE - $2</title>" >> $header_file
+    echo '<meta http-equiv="refresh" content="60">' >> $header_file
+    echo '</head>' >> $header_file
+    echo '<body>' >> $header_file
+    echo "<H1>$2</H1>" >> $header_file
+}
+
+function create_footer {
+    footer_file=${1}-header.html
+    if [ -f $footer_file ]; then
+        return
+    fi
+    echo '</body>' >> $footer_file
+    echo '</html>' >> $footer_file
+}
 
 if [ ! -d /etc/avahi ]; then
     exit 0
 fi
 
+# Create a list of bootstrap nodes
 TEMPFILE_BASE=/tmp/tmpzeronetavahibase.txt
 TEMPFILE=/tmp/tmpzeronetavahi.txt
 avahi-browse -atr > $TEMPFILE_BASE
@@ -91,11 +142,12 @@ cat $TEMPFILE_BASE | grep "ZeroNet Blog\|hostname =\|address =\|port =\|txt-reco
 state=0
 address=""
 peer=""
+echo '<ol type="square">' >> $BLOGS_FILE.new
 while IFS='' read -r line || [[ -n "$line" ]]; do
     if [ ${state} -eq "3" ]; then
         if [[ $line == *"txt-record ="* ]]; then
             blog_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            echo "$peer $blog_url" >> $BLOGS_FILE.new
+            echo "  <li><a href=\"${blog_url}\">${peer}</a></li>" >> $BLOGS_FILE.new
             state=0
         fi
     fi
@@ -115,6 +167,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
         state=1
     fi
 done < "$TEMPFILE"
+echo '</ol>' >> $BLOGS_FILE.new
 
 # detect fora in the mesh
 if [ -f $FORUM_FILE.new ]; then
@@ -126,11 +179,12 @@ cat $TEMPFILE_BASE | grep "ZeroNet Forum\|hostname =\|address =\|port =\|txt-rec
 state=0
 address=""
 peer=""
+echo '<ol type="square">' >> $FORUM_FILE.new
 while IFS='' read -r line || [[ -n "$line" ]]; do
     if [ ${state} -eq "3" ]; then
         if [[ $line == *"txt-record ="* ]]; then
             forum_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            echo "$peer $forum_url" >> $FORUM_FILE.new
+            echo "  <li><a href=\"${forum_url}\">${peer}</a></li>" >> $FORUM_FILE.new
             state=0
         fi
     fi
@@ -150,6 +204,7 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
         state=1
     fi
 done < "$TEMPFILE"
+echo '<ol>' >> $FORUM_FILE.new
 
 rm -f $TEMPFILE_BASE
 rm -f $TEMPFILE
@@ -160,14 +215,25 @@ if [ -d /home/zeronet ]; then
     sudo chown zeronet:zeronet $BOOTSTRAP_FILE
 fi
 
-cp -f $BLOGS_FILE.new $BLOGS_FILE
-rm -f $BLOGS_FILE.new
+# make some html headers and footers
+create_header $BLOGS_FILE "Blogs"
+create_header $FORUM_FILE "Fora"
+create_footer $BLOGS_FILE
+create_footer $FORUM_FILE
+
+# make the index page
+create_index
+
+# create a web page showing the available blogs
+cat ${BLOGS_FILE}-header.html ${BLOGS_FILE}.new ${BLOGS_FILE}-footer.html > ${BLOGS_FILE}.html
+rm -f ${BLOGS_FILE}.new
 if [ -d /home/zeronet ]; then
     sudo chown zeronet:zeronet $BLOGS_FILE
 fi
 
-cp -f $FORUM_FILE.new $FORUM_FILE
-rm -f $FORUM_FILE.new
+# create a web page showing the available fora
+cat ${FORUM_FILE}-header.html ${FORUM_FILE}.new ${FORUM_FILE}-footer.html > ${FORUM_FILE}.html
+rm -f ${FORUM_FILE}.new
 if [ -d /home/zeronet ]; then
     sudo chown zeronet:zeronet $FORUM_FILE
 fi
