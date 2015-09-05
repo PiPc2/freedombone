@@ -52,6 +52,7 @@ VARIANT_SOCIAL="social"
 VARIANT_MEDIA="media"
 VARIANT_DEVELOPER="developer"
 VARIANT_MESH="mesh"
+VARIANT_MESH_USER="mesh-user"
 
 MY_USERNAME=
 DEFAULT_DOMAIN_NAME=
@@ -490,7 +491,7 @@ function interactive_configuration {
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
   dialog --backtitle "Freedombone Configuration" \
-      --radiolist "Type of Installation:" 17 40 10 \
+      --radiolist "Type of Installation:" 18 40 11 \
       1 Full on \
       2 Writer off \
       3 Cloud off \
@@ -500,7 +501,8 @@ function interactive_configuration {
       7 Social off \
       8 Media off \
       9 Developer off \
-      10 Mesh off 2> $data
+      10 "Mesh (router)" off \
+      11 "Mesh (user device)" off 2> $data
   sel=$?
   case $sel in
       1) exit 1;;
@@ -517,10 +519,11 @@ function interactive_configuration {
       8) SYSTEM_TYPE=$VARIANT_MEDIA;;
       9) SYSTEM_TYPE=$VARIANT_DEVELOPER;;
       10) SYSTEM_TYPE=$VARIANT_MESH;;
+      11) SYSTEM_TYPE=$VARIANT_MESH_USER;;
   esac
   save_configuration_file
 
-  if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+  if [[ $SYSTEM_TYPE == "$VARIANT_MESH" || $SYSTEM_TYPE == "$VARIANT_MESH_USER" ]]; then
       ENABLE_BATMAN="yes"
       ENABLE_CJDNS="no"
       ENABLE_BABEL="no"
@@ -556,31 +559,66 @@ function interactive_configuration {
       esac
       save_configuration_file
 
-      data=$(tempfile 2>/dev/null)
-      trap "rm -f $data" 0 1 2 5 15
-      dialog --backtitle "Freedombone Configuration" \
-          --inputbox "Give your mesh peer a name" 10 40 "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
-      sel=$?
-      case $sel in
-          0) DEFAULT_DOMAIN_NAME=$(cat $data);;
-          1) exit 1;;
-          255) exit 1;;
-      esac
+      if [[ $SYSTEM_TYPE != "$VARIANT_MESH_USER" ]]; then
+          data=$(tempfile 2>/dev/null)
+          trap "rm -f $data" 0 1 2 5 15
+          dialog --backtitle "Freedombone Configuration" \
+                 --inputbox "Give your mesh peer a name" 10 40 "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
+          sel=$?
+          case $sel in
+              0) DEFAULT_DOMAIN_NAME=$(cat $data);;
+              1) exit 1;;
+              255) exit 1;;
+          esac
+      else
+          DEFAULT_DOMAIN_NAME=$(hostname)
+      fi
       save_configuration_file
   fi
 
-  if [[ $ENABLE_BATMAN == "yes" ]]; then
-      data=$(tempfile 2>/dev/null)
-      trap "rm -f $data" 0 1 2 5 15
-      dialog --backtitle "Freedombone Configuration" \
-          --inputbox "Optionally register with an Access Point" 10 40 "$(grep 'BATMAN_CELLID' temp.cfg | awk -F '=' '{print $2}')" 2> $data
-      sel=$?
-      case $sel in
-          0) BATMAN_CELLID=$(cat $data);;
-          1) exit 1;;
-          255) exit 1;;
-      esac
-      save_configuration_file
+  #if [[ $ENABLE_BATMAN == "yes" ]]; then
+  #    data=$(tempfile 2>/dev/null)
+  #    trap "rm -f $data" 0 1 2 5 15
+  #    dialog --backtitle "Freedombone Configuration" \
+  #        --inputbox "Optionally register with an Access Point" 10 40 "$(grep 'BATMAN_CELLID' temp.cfg | awk -F '=' '{print $2}')" 2> $data
+  #    sel=$?
+  #    case $sel in
+  #        0) BATMAN_CELLID=$(cat $data);;
+  #        1) exit 1;;
+  #        255) exit 1;;
+  #    esac
+  #    save_configuration_file
+  #fi
+
+  if [[ $SYSTEM_TYPE == "$VARIANT_MESH_USER" ]]; then
+      freedombone-client
+      if [ "$?" = "0" ]; then
+          clear
+          echo ".---.                  .              .                   "
+          echo "|                      |              |                   "
+          echo "|--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-. "
+          echo "|    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-' "
+          echo "'    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'"
+          echo ''
+          echo 'Your system is now ready for connection to the mesh network'
+          echo ''
+          echo 'To connect to the network open a terminal and type:'
+          echo ''
+          echo '    meshweb'
+          echo ''
+          echo 'To disconnect from the mesh and return to the internet type:'
+          echo ''
+          echo '    sudo batman stop'
+          echo ''
+          echo 'To turn your system into a dedicated mesh peer you could add'
+          echo 'the meshweb command to your startup applications'
+          echo ''
+          touch /tmp/meshuserdevice
+          exit 0
+      else
+          echo 'Failed to fully install the mesh networking system'
+          exit 74589
+      fi
   fi
 
   if [[ $SYSTEM_TYPE == "$VARIANT_MESH" && $DEFAULT_DOMAIN_NAME && -d /home/$DEFAULT_DOMAIN_NAME ]]; then
@@ -635,9 +673,9 @@ function interactive_configuration {
   esac
   if [[ $INSTALLING_ON_BBB == "yes" ]]; then
       USB_DRIVE=/dev/sda1
-	  # here a short diffie-hellman key length is used, because otherwise creation of keys
-	  # becomes impractically long on the beaglebone.
-	  DH_KEYLENGTH=1024
+      # here a short diffie-hellman key length is used, because otherwise creation of keys
+      # becomes impractically long on the beaglebone.
+      DH_KEYLENGTH=1024
   fi
   save_configuration_file
 
