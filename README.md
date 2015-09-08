@@ -5,7 +5,7 @@ The Freedombone system can be installed onto a Beaglebone Black, or any system c
  - **Full install**: Installs eveything
  - **Mailbox**: An email server with GPG encryption and mailing list
  - **Cloud**: Share files, maintain a calendar and collaborate on document editing
- - **Social**: Social networking with Red Matrix and GNU Social
+ - **Social**: Social networking with Hubzilla and GNU Social
  - **Media**: Runs media services such as DLNA to play music or videos on your devices
  - **Writer**: Host your blog and wiki
  - **Chat**: Encrypted IRC, XMPP, Tox and VoIP services for one-to-one and many-to-many chat
@@ -29,7 +29,7 @@ To get started you will need:
  - Access to the internet via a router with ethernet sockets
  - USB thumb drive (for backups or storing media)
  - One or more domains available via a dynamic DNS provider, such as https://freedns.afraid.org
- - A purchased domain name and SSL certificate (only needed for Red Matrix)
+ - A purchased domain name and SSL certificate (only needed for Hubzilla)
  - A laptop or desktop machine with the ability to write to a microSD card (might need an adaptor)
 
 You will also need to know, or find out, the IP address of your internet router and have a suitable static IP address for the Beaglebone on your local network. The router should allow you to forward ports to the Beaglebone (often this is under firewall or "advanced" settings).
