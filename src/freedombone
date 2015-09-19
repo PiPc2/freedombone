@@ -6290,6 +6290,10 @@ function configure_imap {
   fi
   sed -i 's|mail_location =.*|mail_location = maildir:~/Maildir:LAYOUT=fs|g' /etc/dovecot/conf.d/10-mail.conf
 
+  # This long notify interval makes the system more suited for use with
+  # battery powered mobile devices
+  sed -i 's|#imap_idle_notify_interval =.*|imap_idle_notify_interval = 29|g' /etc/dovecot/conf.d/20-imap.conf
+
   service dovecot restart
   echo 'configure_imap' >> $COMPLETION_FILE
 }
@@ -6368,6 +6372,43 @@ function configure_imap_client_certs {
   #freedombone-clientcert -u $MY_USERNAME
   service dovecot restart
   echo 'configure_imap_client_certs' >> $COMPLETION_FILE
+}
+
+function create_gpg_subkey {
+  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+      return
+  fi
+  if grep -Fxq "create_gpg_subkey" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y install gnupg
+
+  GPG_KEY_USAGE=$1
+  if [[ $GPG_KEY_USAGE != "sign" && $GPG_KEY_USAGE != "auth" && $GPG_KEY_USAGE != "encrypt" ]]; then
+      echo "Unknown subkey usage: $GPG_KEY_USAGE"
+      echo 'Available types: sign|auth|encrypt'
+      exit 14783
+  fi
+
+  KEYGRIP=$(gpg --fingerprint --fingerprint $MY_EMAIL_ADDRESS | grep fingerprint | tail -1 | cut -d= -f2 | sed -e 's/ //g')
+
+  # Generate a GPG subkey
+  # Here a 2048bit length is used to be compatible with yubikey
+  echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
+  echo "Key-Grip: $KEYGRIP" > /home/$MY_USERNAME/gpg-genkey.conf
+  echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo 'Subkey-Length: 2048' >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo "subkey-Usage: $GPG_KEY_USAGE" > /home/$MY_USERNAME/gpg-genkey.conf
+  echo "Name-Real:  $MY_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo "Name-Comment: $GPG_KEY_USAGE" >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+  su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+  shred -zu /home/$MY_USERNAME/gpg-genkey.conf
+  MY_GPG_SUBKEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+
+  echo 'create_gpg_subkey' >> $COMPLETION_FILE
 }
 
 function configure_gpg {
