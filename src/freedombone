@@ -2908,7 +2908,6 @@ function restore_database {
   echo '      fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  rm -rf /root/temp${1}' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
 }
 
@@ -3231,6 +3230,9 @@ function create_restore_script {
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_WEBSITES="yes"
       restore_database gnusocial $MICROBLOG_DOMAIN_NAME
+      echo 'if [ -d /root/tempgnusocial ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempgnusocial' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
 
   if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
@@ -3242,6 +3244,9 @@ function create_restore_script {
       echo "  fi" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  chmod 777 /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/store/[data]/smarty3" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo "  chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/*" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  if [ -d /root/temphubzilla ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    rm -rf /root/temphubzilla' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
@@ -3257,6 +3262,7 @@ function create_restore_script {
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 982' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempowncloud' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempowncloud2' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  chown -R www-data:www-data /var/lib/owncloud/data' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  chown -R www-data:www-data /var/lib/owncloud/backup' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -3271,7 +3277,6 @@ function create_restore_script {
       restore_database gogs $GIT_DOMAIN_NAME
       echo "if [ -d $USB_MOUNT/backup/gogs ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  echo "Restoring Gogs settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-      restore_directory_from_usb /root/tempgogs gogs
       echo '  if [ ! -d /home/git/go/src/github.com/gogits/gogs/custom ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    mkdir -p /home/git/go/src/github.com/gogits/gogs/custom' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -3300,6 +3305,7 @@ function create_restore_script {
       echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '    exit 8463' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  rm -rf /root/tempgogs' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempgogsrepos' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  rm -rf /root/tempgogsssh' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '  chown -R git:git /home/git' >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -4091,6 +4097,42 @@ function restore_directory_from_friend {
   fi
 }
 
+function restore_database_from_friend {
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "if [ -d $SERVER_DIRECTORY/backup/${1} ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  echo \"Restoring ${1} database\"" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  restore_directory_from_friend /root/temp${1}data ${1}data
+  echo "  if [ ! -f /root/temp${1}data/remoterestore/backup/${1}data/temp${1}data/${1}.sql ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    echo \"Unable to restore ${1} database\"" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    rm -rf /root/temp${1}data" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    exit 503' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo -n '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "${1} -o < /root/temp${1}data/remoterestore/backup/${1}data/temp${1}data/${1}.sql)" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    exit 964' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  shred -zu /root/temp${1}data/remoterestore/backup/${1}data/temp${1}data/*" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  rm -rf /root/temp${1}data" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  echo \"Restoring ${1} installation\"" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  restore_directory_from_friend /root/temp${1} ${1}
+  echo "  if [ ${1} ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "    if [ -d /var/www/${2}/htdocs ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "      rm -rf /var/www/${2}/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "      mv /root/temp${1}/remoterestore/backup/${1}/www/${2}/htdocs /var/www/${2}/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '      if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '        exit 683' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '      fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '      # Ensure that the bundled SSL cert is being used' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "      if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "        sed -i 's|${2}.crt|${2}.bundle.crt|g' /etc/nginx/sites-available/${2}" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '      fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+}
+
 function restore_from_friend {
   if grep -Fxq "restore_from_friend" $COMPLETION_FILE; then
       return
@@ -4374,93 +4416,33 @@ function restore_from_friend {
 
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_WEBSITES="yes"
-      echo 'if [ -d $SERVER_DIRECTORY/backup/gnusocial ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring microblog database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/tempgnusocialdata gnusocialdata
-      echo '  if [ ! -f /root/tempgnusocialdata/remoterestore/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "Unable to restore microblog database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 503' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD gnusocial -o < /root/tempgnusocialdata/remoterestore/backup/gnusocialdata/tempgnusocialdata/gnusocial.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 964' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  shred -zu /root/tempgnusocialdata/remoterestore/backup/gnusocialdata/tempgnusocialdata/*' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  rm -rf /root/tempgnusocialdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring microblog installation"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/tempgnusocial gnusocial
-      echo "  rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  mv /root/tempgnusocial/remoterestore/backup/gnusocial/www/$MICROBLOG_DOMAIN_NAME/htdocs /var/www/$MICROBLOG_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 683' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  rm -rf /root/tempgnusocial' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  # Ensure that the bundled SSL cert is being used' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  if [ -f /etc/ssl/certs/$MICROBLOG_DOMAIN_NAME.bundle.crt ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    sed -i 's|$MICROBLOG_DOMAIN_NAME.crt|$MICROBLOG_DOMAIN_NAME.bundle.crt|g' /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      restore_database_from_friend gnusocial $MICROBLOG_DOMAIN_NAME
+      echo "if [ -d /root/tempgnusocial ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  rm -rf /root/tempgnusocial" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "fi" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
   if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
       BACKUP_INCLUDES_WEBSITES="yes"
+      restore_database_from_friend hubzilla $HUBZILLA_DOMAIN_NAME
       echo 'if [ -d $SERVER_DIRECTORY/backup/hubzilla ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring Hubzilla database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/temphubzilladata hubzilladata
-      echo '  if [ ! -f /root/temphubzilladata/remoterestore/backup/hubzilladata/temphubzilladata/hubzilla.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "Unable to restore Hubzilla database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    rm -rf /root/temphubzilladata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 504' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD hubzilla -o < /root/temphubzilladata/remoterestore/backup/hubzilladata/temphubzilladata/hubzilla.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 965' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  shred -zu /root/temphubzilladata/remoterestore/backup/hubzilladata/temphubzilladata/*' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  rm -rf /root/temphubzilladata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring Hubzilla installation"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/temphubzilla hubzilla
-      echo "  rm -rf /var/www/$HUBZILLA_DOMAIN_NAME/htdocs" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    cp -r /root/temphubzilla/remoterestore/backup/hubzilla/www/$HUBZILLA_DOMAIN_NAME/htdocs/* /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  else' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    mv /root/temphubzilla/remoterestore/backup/hubzilla/www/$HUBZILLA_DOMAIN_NAME/htdocs /var/www/$HUBZILLA_DOMAIN_NAME/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 759' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  rm -rf /root/temphubzilla' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  # Ensure that the bundled SSL cert is being used' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  if [ -f /etc/ssl/certs/$HUBZILLA_DOMAIN_NAME.bundle.crt ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    sed -i 's|$HUBZILLA_DOMAIN_NAME.crt|$HUBZILLA_DOMAIN_NAME.bundle.crt|g' /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  if [ ! -d /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/store/[data]/smarty3 ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "    mkdir -p /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/store/[data]/smarty3" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  chmod 777 /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/store/[data]/smarty3" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo "  chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/*" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "if [ -d /root/temphubzilla ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "  rm -rf /root/temphubzilla" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+      echo "fi" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       BACKUP_INCLUDES_WEBSITES="yes"
+      restore_database_from_friend owncloud $OWNCLOUD_DOMAIN_NAME
       echo 'if [ -d $SERVER_DIRECTORY/backup/owncloud ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring owncloud database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/tempownclouddata ownclouddata
-      echo '  if [ ! -f /root/tempownclouddata/remoterestore/backup/ownclouddata/tempownclouddata/owncloud.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "Unable to restore Owncloud database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 505' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD owncloud -o < /root/tempownclouddata/remoterestore/backup/ownclouddata/tempownclouddata/owncloud.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 965' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  echo "Restoring Owncloud installation"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/tempowncloud owncloud
       echo "  cp -r /root/tempowncloud/remoterestore/backup/owncloud/lib/owncloud/* /var/lib/owncloud/" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    exit 981' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -4472,36 +4454,18 @@ function restore_from_friend {
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempowncloud' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempowncloud2' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  rm -rf /root/tempownclouddata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  chown -R www-data:www-data /var/lib/owncloud/data' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  chown -R www-data:www-data /var/lib/owncloud/backup' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  chown -R www-data:www-data /var/lib/owncloud/assets' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  occ files:scan $MY_USERNAME' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  # Ensure that the bundled SSL cert is being used' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  if [ -f /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.bundle.crt ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    sed -i 's|$OWNCLOUD_DOMAIN_NAME.crt|$OWNCLOUD_DOMAIN_NAME.bundle.crt|g' /etc/nginx/sites-available/$OWNCLOUD_DOMAIN_NAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
 
   if grep -Fxq "install_gogs" $COMPLETION_FILE; then
       BACKUP_INCLUDES_WEBSITES="yes"
+      restore_database_from_friend gogs $GIT_DOMAIN_NAME
       echo 'if [ -d $SERVER_DIRECTORY/backup/gogs ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring gogs database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/tempgogsdata gogsdata
-      echo '  if [ ! -f /root/tempgogsdata/remoterestore/backup/gogsdata/tempgogsdata/gogs.sql ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "Unable to restore Gogs database"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    rm -rf /root/tempgogsdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 8548' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD gogs -o < /root/tempgogsdata/remoterestore/backup/gogsdata/tempgogsdata/gogs.sql)' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    echo "$mysqlsuccess"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '    exit 3695' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  echo "Restoring Gogs settings"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      restore_directory_from_friend /root/tempgogs gogs
       echo '  if [ ! -d /home/git/go/src/github.com/gogits/gogs/custom ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '    mkdir -p /home/git/go/src/github.com/gogits/gogs/custom' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -4525,14 +4489,9 @@ function restore_from_friend {
       echo '    exit 74239' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempgogs' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  rm -rf /root/tempgogsdata' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempgogsrepos' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  rm -rf /root/tempgogsssh' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '  chown -R git:git /home/git' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  # Ensure that the bundled SSL cert is being used' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "  if [ -f /etc/ssl/certs/$GIT_DOMAIN_NAME.bundle.crt ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo "    sed -i 's|$GIT_DOMAIN_NAME.crt|$GIT_DOMAIN_NAME.bundle.crt|g' /etc/nginx/sites-available/$GIT_DOMAIN_NAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-      echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   fi
