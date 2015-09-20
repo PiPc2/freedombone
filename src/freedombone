@@ -2417,7 +2417,13 @@ function get_mariadb_owncloud_admin_password {
 
 function backup_directory_to_usb {
   if [[ $BACKUP_TYPE == 'obnam' ]]; then
-      echo "obnam backup -r $USB_MOUNT/backup/${2} ${1}" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      BACKUP_KEY_EXISTS=$("gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\"")
+      if [ ! "$?" = "0" ]; then
+          echo "Backup key could not be found"
+          exit 43382
+      fi
+      MY_BACKUP_KEY_ID=$(gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\" | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      echo "obnam backup -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}" >> /usr/bin/$BACKUP_SCRIPT_NAME
   else
       # For rsyncrypto usage see http://archive09.linux.com/feature/125322
       echo "rsyncrypto -v -r ${1} $USB_MOUNT/backup/${2} $USB_MOUNT/backup/${2}.keys $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -2525,18 +2531,19 @@ function create_backup_script {
   echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
 
-  echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    echo "Creating backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "    freedombone-addcert -h backup --dhkey $DH_KEYLENGTH" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo "if [ ! -f $BACKUP_CERTIFICATE.gpg ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "GPG encrypt the backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  gpg -c $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "cp $BACKUP_CERTIFICATE.gpg $USB_MOUNT/backup/key.gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  if [[ $BACKUP_TYPE != 'obnam' ]]; then
+      echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '    echo "Creating backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "    freedombone-addcert -h backup --dhkey $DH_KEYLENGTH" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "if [ ! -f $BACKUP_CERTIFICATE.gpg ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '  echo "GPG encrypt the backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "  gpg -c $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "cp $BACKUP_CERTIFICATE.gpg $USB_MOUNT/backup/key.gpg" >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  fi
 
   echo '# MariaDB password' >> /usr/bin/$BACKUP_SCRIPT_NAME
   echo -n 'DATABASE_PASSWORD=$(cat ' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -2975,34 +2982,36 @@ function create_restore_script {
   echo 'cp -r /home/$MY_USERNAME/.gnupg /root' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  echo "if [ -f $USB_MOUNT/backup/key.gpg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    rm $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  cp $USB_MOUNT/backup/key.gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "  if [ -f /root/tempbackupkey ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    echo "Backup key decrypted"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    cp /root/tempbackupkey $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    shred -zu /root/tempbackupkey" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    chmod 400 $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    echo "Backup certificate installed"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  else' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    echo "Unable to decrypt the backup key"' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    exit 735' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  if [[ $BACKUP_TYPE != 'obnam' ]]; then
+      echo "if [ -f $USB_MOUNT/backup/key.gpg ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  if [ -f $BACKUP_CERTIFICATE.new ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm $BACKUP_CERTIFICATE.new" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  cp $USB_MOUNT/backup/key.gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  gpg /root/tempbackupkey.gpg" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "  if [ -f /root/tempbackupkey ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Backup key decrypted"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    cp /root/tempbackupkey $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    shred -zu /root/tempbackupkey" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    chmod 400 $BACKUP_CERTIFICATE" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Backup certificate installed"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  else' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    echo "Unable to decrypt the backup key"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 735' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
-  echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    echo 'No backup key was found. Copy your backup key to $BACKUP_CERTIFICATE'" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '    exit 563' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
-  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    echo 'No backup key was found. Copy your backup key to $BACKUP_CERTIFICATE'" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    umount $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo "    rm -rf $USB_MOUNT" >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '    exit 563' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+      echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  fi
   echo '# MariaDB password' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo -n 'DATABASE_PASSWORD=$(cat ' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/$RESTORE_SCRIPT_NAME
@@ -3557,7 +3566,15 @@ function create_freedns_updater {
 
 function backup_directory_to_friend {
   if [[ $BACKUP_TYPE == 'obnam' ]]; then
-      echo -n 'obnam backup -r $SERVER_DIRECTORY/backup/' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      BACKUP_KEY_EXISTS=$("gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\"")
+      if [ ! "$?" = "0" ]; then
+          echo "Backup key could not be found"
+          exit 43382
+      fi
+      MY_BACKUP_KEY_ID=$(gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\" | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+
+      echo -n 'obnam backup -r $SERVER_DIRECTORY/backup/ ' >> /usr/bin/$BACKUP_SCRIPT_NAME
+      echo "--encrypt-with $MY_BACKUP_KEY_ID " >> /usr/bin/$BACKUP_SCRIPT_NAME
       echo "${2} ${1}" >> /usr/bin/$BACKUP_SCRIPT_NAME
   else
       # For rsyncrypto usage see http://archive09.linux.com/feature/125322
@@ -6303,6 +6320,9 @@ function configure_backup_key {
       return
   fi
   if grep -Fxq "configure_backup_key" $COMPLETION_FILE; then
+      return
+  fi
+  if [[ $BACKUP_TYPE != 'obnam' ]]; then
       return
   fi
   apt-get -y install gnupg
