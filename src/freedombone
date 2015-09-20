@@ -6516,6 +6516,57 @@ function configure_gpg {
   echo 'configure_gpg' >> $COMPLETION_FILE
 }
 
+function configure_backup_key {
+  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+      return
+  fi
+  if grep -Fxq "configure_backup_key" $COMPLETION_FILE; then
+      return
+  fi
+  apt-get -y install gnupg
+
+  BACKUP_KEY_EXISTS=$(su -c "gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\"" - $MY_USERNAME)
+  if [ ! "$?" = "0" ]; then
+      return
+  fi
+
+  # Generate a GPG key for backups
+  echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
+  echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo "Name-Real:  $MY_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo "Name-Comment: backup key" >> /home/$MY_USERNAME/gpg-genkey.conf
+  echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+  su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+  shred -zu /home/$MY_USERNAME/gpg-genkey.conf
+  BACKUP_KEY_EXISTS=$(su -c "gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\"" - $MY_USERNAME)
+  if [ ! "$?" = "0" ]; then
+      echo 'Backup key could not be created'
+      exit 43382
+  fi
+  MY_BACKUP_KEY_ID=$(su -c "gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\" | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+  echo "Backup key: $MY_BACKUP_KEY_ID"
+  MY_BACKUP_KEY=/home/$MY_USERNAME/backup_key.gpg
+  su -c "gpg --output $MY_BACKUP_KEY --armor --export $MY_BACKUP_KEY_ID" - $MY_USERNAME
+
+  if ! grep -q "Backup key" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'Backup key' >> /home/$MY_USERNAME/README
+      echo '==========' >> /home/$MY_USERNAME/README
+      echo 'A GPG key has been created which will be used for making backups' >> /home/$MY_USERNAME/README
+      echo 'This can be found in the home directory (backup_key.gpg).' >> /home/$MY_USERNAME/README
+      echo 'You should transfer this to somewhere safe so that it can be restored.' >> /home/$MY_USERNAME/README
+  fi
+  chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+  chmod 600 /home/$MY_USERNAME/README
+
+  echo 'configure_backup_key' >> $COMPLETION_FILE
+}
+
 function encrypt_incoming_email {
   # encrypts incoming mail using your GPG public key
   # so even if an attacker gains access to the data at rest they still need
@@ -10221,6 +10272,7 @@ spam_filtering
 configure_imap
 #configure_imap_client_certs
 configure_gpg
+configure_backup_key
 encrypt_incoming_email
 encrypt_outgoing_email
 email_client
