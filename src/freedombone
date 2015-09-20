@@ -6327,7 +6327,7 @@ function configure_backup_key {
   fi
   apt-get -y install gnupg
 
-  BACKUP_KEY_EXISTS=$(su -c "gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\"" - $MY_USERNAME)
+  BACKUP_KEY_EXISTS=$(gpg --list-keys "$MY_EMAIL_ADDRESS (backup key)")
   if [ "$?" = "0" ]; then
       return
   fi
@@ -6351,17 +6351,30 @@ function configure_backup_key {
   fi
   MY_BACKUP_KEY_ID=$(su -c "gpg --list-keys \"$MY_EMAIL_ADDRESS (backup key)\" | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
   echo "Backup key: $MY_BACKUP_KEY_ID"
-  MY_BACKUP_KEY=/home/$MY_USERNAME/backup_key.gpg
-  su -c "gpg --output $MY_BACKUP_KEY --armor --export $MY_BACKUP_KEY_ID" - $MY_USERNAME
+  MY_BACKUP_KEY=/home/$MY_USERNAME/backup_key
+  su -c "gpg --output ${MY_BACKUP_KEY}_public.asc --armor --export $MY_BACKUP_KEY_ID" - $MY_USERNAME
+  su -c "gpg --output ${MY_BACKUP_KEY}_private.asc --armor --export-secret-key $MY_BACKUP_KEY_ID" - $MY_USERNAME
+  if [ ! -f ${MY_BACKUP_KEY}_public.asc ]; then
+      echo 'Public backup key could not be exported'
+      exit 36829
+  fi
+  if [ ! -f ${MY_BACKUP_KEY}_private.asc ]; then
+      echo 'Private backup key could not be exported'
+      exit 29235
+  fi
+
+  # import backup key to root user
+  gpg --import --import ${MY_BACKUP_KEY}_public.asc
+  gpg --allow-secret-key-import --import ${MY_BACKUP_KEY}_private.asc
 
   if ! grep -q "Backup key" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
       echo '' >> /home/$MY_USERNAME/README
       echo 'Backup key' >> /home/$MY_USERNAME/README
       echo '==========' >> /home/$MY_USERNAME/README
-      echo 'A GPG key has been created which will be used for making backups' >> /home/$MY_USERNAME/README
-      echo 'This can be found in the home directory (backup_key.gpg).' >> /home/$MY_USERNAME/README
-      echo 'You should transfer this to somewhere safe so that it can be restored.' >> /home/$MY_USERNAME/README
+      echo 'GPG keys have been created which will be used for making backups' >> /home/$MY_USERNAME/README
+      echo 'These can be found in the home directory (backup_key_*.asc).' >> /home/$MY_USERNAME/README
+      echo 'You should transfer these to somewhere safe so that it can be restored.' >> /home/$MY_USERNAME/README
   fi
   chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
   chmod 600 /home/$MY_USERNAME/README
