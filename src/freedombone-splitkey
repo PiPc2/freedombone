@@ -37,10 +37,11 @@
 KEY_FRAGMENTS=3
 MY_USERNAME=
 MY_EMAIL_ADDRESS=
+MY_NAME=
 
 function show_help {
     echo ''
-    echo 'freedombone-splitkey -u [username] -n [number of fragments] -e [email address]'
+    echo 'freedombone-splitkey -u [username] -n [number of fragments] -e [email address] --fullname [Full name]'
     echo ''
     exit 0
 }
@@ -64,6 +65,10 @@ case $key in
     -e|--email)
     shift
     MY_EMAIL_ADDRESS=$1
+    ;;
+    --fullname)
+    shift
+    MY_NAME=$1
     ;;
     *)
     # unknown option
@@ -95,7 +100,19 @@ if [ ! $MY_EMAIL_ADDRESS ]; then
     MY_EMAIL_ADDRESS=$MY_USERNAME@$HOSTNAME
 fi
 KEYID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - \
-        $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+           $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+if [ ${#KEYID} -lt 4 ]; then
+    echo "gpg key for $MY_EMAIL_ADDRESS was not found"
+    return 3682
+fi
+
+MY_BACKUP_KEY_ID=$(gpg --list-keys "$MY_NAME (backup key)" | \
+                          grep 'pub ' | awk -F ' ' '{print $2}' | \
+                          awk -F '/' '{print $2}')
+if [ ${#MY_BACKUP_KEY_ID} -lt 4 ]; then
+    echo "gpg backup key for '$MY_NAME' was not found"
+    return 58213
+fi
 
 # create the key file
 mkdir -p $FRAGMENTS_DIR
@@ -105,14 +122,33 @@ if [ ! "$?" = "0" ]; then
     echo "Unable to extract public key for $KEYID"
     exit 7835
 fi
-gpg --output $FRAGMENTS_DIR/privkey.txt --armor --export-secret-key $KEYID
+gpg --output $FRAGMENTS_DIR/privkey.txt \
+    --armor --export-secret-key $KEYID
 if [ ! "$?" = "0" ]; then
     echo "Unable to extract private key for $KEYID"
     exit 7823
 fi
-cat $FRAGMENTS_DIR/pubkey.txt $FRAGMENTS_DIR/privkey.txt > $KEYS_FILE
+gpg --output $FRAGMENTS_DIR/backup_pubkey.txt \
+    --armor --export $MY_BACKUP_KEY_ID
+if [ ! "$?" = "0" ]; then
+    echo "Unable to extract backup public key for $MY_BACKUP_KEY_ID"
+    exit 62928
+fi
+gpg --output $FRAGMENTS_DIR/backup_privkey.txt \
+    --armor --export-secret-key $MY_BACKUP_KEY_ID
+if [ ! "$?" = "0" ]; then
+    echo "Unable to extract backup private key for $MY_BACKUP_KEY_ID"
+    exit 13783
+fi
+
+cat $FRAGMENTS_DIR/pubkey.txt \
+    $FRAGMENTS_DIR/privkey.txt \
+    $FRAGMENTS_DIR/backup_pubkey.txt \
+    $FRAGMENTS_DIR/backup_privkey.txt > $KEYS_FILE
 shred -zu $FRAGMENTS_DIR/privkey.txt
 shred -zu $FRAGMENTS_DIR/pubkey.txt
+shred -zu $FRAGMENTS_DIR/backup_privkey.txt
+shred -zu $FRAGMENTS_DIR/backup_pubkey.txt
 
 KEY_SHARES=$((KEY_FRAGMENTS * 2))
 gfsplit -n $KEY_FRAGMENTS -m $KEY_SHARES $KEYS_FILE
