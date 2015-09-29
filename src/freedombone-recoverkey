@@ -30,37 +30,43 @@
 
 FRIENDS_SERVERS_LIST=
 MY_USERNAME=
+GPG_USB_DRIVE='sdb1'
 
 function show_help {
     echo ''
-    echo 'freedombone-recoverkey -u [username] -l [friends servers list filename]'
+    echo 'freedombone-recoverkey -u [username] -d [drive]'
+    echo '                       -l [friends servers list filename]'
     echo ''
     exit 0
 }
 
 while [[ $# > 1 ]]
 do
-key="$1"
+    key="$1"
 
-case $key in
-    -h|--help)
-    show_help
-    ;;
-    -u|--user)
+    case $key in
+        -h|--help)
+            show_help
+            ;;
+        -u|--user)
+            shift
+            MY_USERNAME="$1"
+            ;;
+        # backup list filename
+        # typically /home/$USER/backup.list
+        -l|--list)
+            shift
+            FRIENDS_SERVERS_LIST="$1"
+            ;;
+        -d|--drive)
+            shift
+            GPG_USB_DRIVE=/dev/$1
+            ;;
+        *)
+            # unknown option
+            ;;
+    esac
     shift
-    MY_USERNAME="$1"
-    ;;
-    # backup list filename
-    # typically /home/$USER/backup.list
-    -l|--list)
-    shift
-    FRIENDS_SERVERS_LIST="$1"
-    ;;
-    *)
-    # unknown option
-    ;;
-esac
-shift
 done
 
 if [ ! $MY_USERNAME ]; then
@@ -82,11 +88,149 @@ fi
 
 FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
 
-# find the remote backup list
-if [ ! $FRIENDS_SERVERS_LIST ]; then
-    if [ -f /home/$MY_USERNAME/backup.list ]; then
-        FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
+function reconstruct_key {
+    if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
+        return
     fi
+    cd /home/$MY_USERNAME/.gnupg_fragments
+    no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
+    if (( no_of_shares < 4 )); then
+        dialog --title "Encryption keys" --msgbox 'Not enough fragments to reconstruct the key' 6 70
+        exit 7348
+    fi
+    apt-get -y install libgfshare-bin gnupg
+    gfcombine /home/$MY_USERNAME/.gnupg_fragments/keyshare*
+    if [ ! "$?" = "0" ]; then
+        dialog --title "Encryption keys" --msgbox 'Unable to reconstruct the key' 6 70
+        exit 7348
+    fi
+
+    KEYS_FILE=/home/$MY_USERNAME/.gnupg_fragments/keyshare.asc
+    if [ ! -f $KEYS_FILE ]; then
+        dialog --title "Encryption keys" --msgbox 'Unable to reconstruct the key' 6 70
+    fi
+
+    su -c "gpg --allow-secret-key-import --import $KEYS_FILE" - $MY_USERNAME
+    if [ ! "$?" = "0" ]; then
+        echo 'Unable to import gpg key'
+        shred -zu $KEYS_FILE
+        rm -rf /home/$MY_USERNAME/.tempgnupg
+        exit 9654
+    fi
+    shred -zu $KEYS_FILE
+
+    dialog --title "Encryption keys" --msgbox 'Key has been reconstructed' 6 70
+}
+
+function interactive_gpg_from_usb {
+    dialog --title "Encryption keys" \
+           --msgbox 'Plug in a USB drive containing a copy of your full key or key fragment' 6 70
+
+    HOME_DIR=/home/$MY_USERNAME
+    GPG_LOADING="yes"
+    SSH_IMPORTED="no"
+    GPG_CTR=0
+    while [[ $GPG_LOADING == "yes" ]]
+    do
+        if [ ! -b $GPG_USB_DRIVE ]; then
+            GPG_USB_DRIVE='/dev/sdc1'
+            if [ ! -b $GPG_USB_DRIVE ]; then
+                GPG_USB_DRIVE='/dev/sdd1'
+                if [ ! -b $GPG_USB_DRIVE ]; then
+                    if (( GPG_CTR > 0 )); then
+                        reconstruct_key
+                        return 0
+                    fi
+                    dialog --title "Encryption keys" --msgbox 'No USB drive found' 6 30
+                    exit 27852
+                fi
+            fi
+        fi
+
+        GPG_USB_MOUNT='/mnt/usb'
+        umount -f $GPG_USB_MOUNT
+        if [ ! -d $GPG_USB_MOUNT ]; then
+            mkdir -p $GPG_USB_MOUNT
+        fi
+
+        if [ -f /dev/mapper/encrypted_usb ]; then
+            rm -rf /dev/mapper/encrypted_usb
+        fi
+        cryptsetup luksClose encrypted_usb
+        cryptsetup luksOpen $GPG_USB_DRIVE encrypted_usb
+        if [ "$?" = "0" ]; then
+            GPG_USB_DRIVE=/dev/mapper/encrypted_usb
+        fi
+        mount $GPG_USB_DRIVE $GPG_USB_MOUNT
+        if [ ! "$?" = "0" ]; then
+            if (( GPG_CTR > 0 )); then
+                rm -rf $GPG_USB_MOUNT
+                reconstruct_key
+                return 0
+            fi
+            dialog --title "Encryption keys" \
+                   --msgbox "There was a problem mounting the USB drive to $GPG_USB_MOUNT" 6 70
+            rm -rf $GPG_USB_MOUNT
+            exit 74393
+        fi
+
+        if [ ! -d $GPG_USB_MOUNT/.gnupg ]; then
+            if [ ! -d $GPG_USB_MOUNT/.gnupg_fragments ]; then
+                if (( GPG_CTR > 0 )); then
+                    umount -f $GPG_USB_MOUNT
+                    rm -rf $GPG_USB_MOUNT
+                    reconstruct_key
+                    return 0
+                fi
+                dialog --title "Encryption keys" \
+                       --msgbox "The directory $GPG_USB_MOUNT/.gnupg or $GPG_USB_MOUNT/.gnupg_fragments was not found" 6 70
+                umount -f $GPG_USB_MOUNT
+                rm -rf $GPG_USB_MOUNT
+                exit 723814
+            fi
+        fi
+
+        if [ -d $GPG_USB_MOUNT/.gnupg ]; then
+            if [ ! -d $HOME_DIR/.gnupg ]; then
+                mkdir $HOME_DIR/.gnupg
+            fi
+            cp -r $GPG_USB_MOUNT/.gnupg/* $HOME_DIR/.gnupg
+            GPG_LOADING="no"
+            dialog --title "Encryption keys" \
+                   --msgbox "GPG Keyring loaded to $HOME_DIR" 6 70
+        else
+            if [ ! -d $HOME_DIR/.gnupg_fragments ]; then
+                mkdir $HOME_DIR/.gnupg_fragments
+            fi
+            cp -r $GPG_USB_MOUNT/.gnupg_fragments/* $HOME_DIR/.gnupg_fragments
+        fi
+
+        if [[ $SSH_IMPORTED == "no" ]]; then
+            if [ -d $GPG_USB_MOUNT/.ssh ]; then
+                if [ ! -d $HOME_DIR/.ssh ]; then
+                    mkdir $HOME_DIR/.ssh
+                fi
+                cp $GPG_USB_MOUNT/.ssh/* $HOME_DIR/.ssh
+                dialog --title "Encryption keys" \
+                       --msgbox "ssh keys imported" 6 70
+                SSH_IMPORTED="yes"
+            fi
+        fi
+
+        umount -f $GPG_USB_MOUNT
+        rm -rf $GPG_USB_MOUNT
+        if [[ $GPG_LOADING == "yes" ]]; then
+            dialog --title "Encryption keys" \
+                   --msgbox "Now remove the USB drive. Insert the next drive containing a key fragment, or select Ok to finish" 6 70
+        fi
+        GPG_CTR=$((GPG_CTR + 1))
+    done
+}
+
+# if no remote backup list was given then assume recover from USB
+if [ ! $FRIENDS_SERVERS_LIST ]; then
+    interactive_gpg_from_usb
+    exit 0
 fi
 
 # obtain shares/fragments from remote locations
@@ -109,7 +253,7 @@ if [ $FRIENDS_SERVERS_LIST ]; then
 
             echo -n "Starting key retrieval from $REMOTE_SERVER..."
             /usr/bin/sshpass -p $REMOTE_PASSWORD \
-                scp -r -P $REMOTE_SSH_PORT $REMOTE_SERVER/.gnupg_fragments/* /home/$MY_USERNAME/.gnupg_fragments
+                             scp -r -P $REMOTE_SSH_PORT $REMOTE_SERVER/.gnupg_fragments/* /home/$MY_USERNAME/.gnupg_fragments
             if [ ! "$?" = "0" ]; then
                 echo 'FAILED'
             else
