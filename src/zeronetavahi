@@ -47,6 +47,7 @@ fi
 
 BLOGS_FILE=$ZERONET_INSTALL/freedombone-blogs
 FORUM_FILE=$ZERONET_INSTALL/freedombone-fora
+IPFS_FILE=$ZERONET_INSTALL/freedombone-ipfs
 TOX_USERS_FILE=$ZERONET_INSTALL/freedombone-tox-users
 ZERONET_INDEX=/home/$MY_USERNAME/mesh.html
 ZERONET_CONFIG=$ZERONET_INSTALL/bootstrap
@@ -78,6 +79,7 @@ function create_index {
     echo "  <li><a href=\"${BLOGS_FILE}.html\">Blogs</a></li>" >> $ZERONET_INDEX
     echo "  <li><a href=\"${FORUM_FILE}.html\">Fora</a></li>" >> $ZERONET_INDEX
     echo "  <li><a href=\"${TOX_USERS_FILE}.html\">Tox Users</a></li>" >> $ZERONET_INDEX
+    echo "  <li><a href=\"${IPFS_FILE}.html\">File shares</a></li>" >> $ZERONET_INDEX
     echo '</ol>' >> $ZERONET_INDEX
     echo '' >> $ZERONET_INDEX
     echo '</body>' >> $ZERONET_INDEX
@@ -223,6 +225,45 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 done < "$TEMPFILE"
 echo '<ol>' >> $FORUM_FILE.new
 
+
+# detect fora in the mesh
+if [ -f $IPFS_FILE.new ]; then
+    rm -f $IPFS_FILE.new
+fi
+
+cat $TEMPFILE_BASE | grep "IPFS\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+state=0
+address=""
+peer=""
+echo '<ol type="square">' >> $IPFS_FILE.new
+while IFS='' read -r line || [[ -n "$line" ]]; do
+    if [ ${state} -eq "3" ]; then
+        if [[ $line == *"txt ="* ]]; then
+            ipfs_peer_id=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            echo "  <li><a href=http://localhost:5001/ipfs/${ipfs_peer_id}>${peer}</a></li>" >> $IPFS_FILE.new
+            state=0
+        fi
+    fi
+    if [ ${state} -eq "2" ]; then
+        if [[ $line == *"address ="* ]]; then
+            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=3
+        fi
+    fi
+    if [ ${state} -eq "1" ]; then
+        if [[ $line == *"hostname ="* ]]; then
+            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=2
+        fi
+    fi
+    if [[ $line == *"IPFS"* && $line == "= "* ]]; then
+        state=1
+    fi
+done < "$TEMPFILE"
+echo '<ol>' >> $FORUM_FILE.new
+
+
 # detect Tox users
 lstox > $TEMPFILE
 toxctr=0
@@ -258,6 +299,7 @@ fi
 create_header $BLOGS_FILE "Blogs"
 create_header $FORUM_FILE "Fora"
 create_header $TOX_USERS_FILE "Tox Users"
+create_header $IPFS_FILE "File Shares"
 create_footer $BLOGS_FILE
 create_footer $FORUM_FILE
 create_footer $TOX_USERS_FILE
@@ -284,6 +326,13 @@ cat ${TOX_USERS_FILE}-header.html ${TOX_USERS_FILE}.new ${TOX_USERS_FILE}-footer
 rm -f ${TOX_USERS_FILE}.new
 if [ -d $ZERONET_USER_HOME ]; then
     sudo chown zeronet:zeronet $TOX_USERS_FILE
+fi
+
+# create a web page showing the file shares
+cat ${IPFS_FILE}-header.html ${IPFS_FILE}.new ${IPFS_FILE}-footer.html > ${IPFS_FILE}.html
+rm -f ${IPFS_FILE}.new
+if [ -d $ZERONET_USER_HOME ]; then
+    sudo chown zeronet:zeronet $IPFS_FILE
 fi
 
 exit 0
