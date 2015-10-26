@@ -1,0 +1,109 @@
+#!/bin/bash
+MY_USERNAME=$1
+GPG_KEYSERVER='hkp://keys.gnupg.net'
+SSH_PORT=2222
+
+if [ ! $MY_USERNAME ]; then
+    echo 'No username was given'
+	exit 1
+fi
+
+if [ -d /home/$MY_USERNAME ]; then
+    echo "The user $MY_USERNAME already exists"
+	exit 2
+fi
+
+NEW_USER_PASSWORD="$(openssl rand -base64 10 | cut -c1-8)"
+useradd -m -p "$NEW_USER_PASSWORD" -s /bin/bash $MY_USERNAME
+adduser $MY_USERNAME sasl
+
+if [ ! -d /home/$MY_USERNAME ]; then
+	echo 'Home directory was not created'
+	exit 3
+fi
+
+if [ ! -d /home/$MY_USERNAME/Maildir ]; then
+	echo 'Email directory was not created'
+	userdel -r $MY_USERNAME
+	exit 4
+fi
+
+# generate a gpg key
+echo "Making a GPG key for $MY_USERNAME@$HOSTNAME"
+mkdir /home/$MY_USERNAME/.gnupg
+echo "keyserver $GPG_KEYSERVER" >> /home/$MY_USERNAME/.gnupg/gpg.conf
+echo 'keyserver-options auto-key-retrieve' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+echo '' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+echo '# default preferences' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+echo 'personal-digest-preferences SHA256' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+echo 'cert-digest-algo SHA256' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+echo 'default-preference-list SHA512 SHA384 SHA256 SHA224 AES256 AES192 AES CAST5 ZLIB BZIP2 ZIP Uncompressed' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+
+chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+chmod 700 /home/$MY_USERNAME/.gnupg
+chmod 600 /home/$MY_USERNAME/.gnupg/*
+
+# Generate a GPG key
+echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
+echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
+echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+echo "Name-Real:  $MY_USERNAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+echo "Name-Email: $MY_USERNAME@$HOSTNAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
+chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+shred -zu /home/$MY_USERNAME/gpg-genkey.conf
+MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$HOSTNAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
+su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+
+if ! grep -q "Change your GPG password" /home/$MY_USERNAME/README; then
+    echo '' >> /home/$MY_USERNAME/README
+    echo '' >> /home/$MY_USERNAME/README
+    echo 'Change your GPG password' >> /home/$MY_USERNAME/README
+    echo '========================' >> /home/$MY_USERNAME/README
+    echo "It's very important to add a password to your GPG key so that" >> /home/$MY_USERNAME/README
+    echo "if anyone does get access to your email they still won't be able" >> /home/$MY_USERNAME/README
+    echo 'to read them without knowning the GPG password.' >> /home/$MY_USERNAME/README
+    echo 'You can change the it with:' >> /home/$MY_USERNAME/README
+    echo '' >> /home/$MY_USERNAME/README
+    echo "  gpg --edit-key $MY_GPG_PUBLIC_KEY_ID" >> /home/$MY_USERNAME/README
+    echo '  passwd' >> /home/$MY_USERNAME/README
+    echo '  save' >> /home/$MY_USERNAME/README
+    echo '  quit' >> /home/$MY_USERNAME/README
+fi
+
+if ! grep -q "Publish your GPG public key" /home/$MY_USERNAME/README; then
+    echo '' >> /home/$MY_USERNAME/README
+    echo '' >> /home/$MY_USERNAME/README
+    echo 'Publish your GPG public key' >> /home/$MY_USERNAME/README
+    echo '===========================' >> /home/$MY_USERNAME/README
+    echo 'So that others can send emails to you securely you should' >> /home/$MY_USERNAME/README
+    echo 'publish your GPG public key with the command:' >> /home/$MY_USERNAME/README
+    echo '' >> /home/$MY_USERNAME/README
+    echo "  gpg --send-keys $MY_GPG_PUBLIC_KEY_ID" >> /home/$MY_USERNAME/README
+fi
+
+chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+chmod 600 /home/$MY_USERNAME/README
+
+echo "Adding an XMPP account for $MY_USERNAME"
+freedombone-addxmpp -e "$MY_USERNAME@$HOSTNAME" "$NEW_USER_PASSWORD"
+
+clear
+echo "New user $MY_USERNAME was created"
+echo "Their login password is $NEW_USER_PASSWORD"
+echo ''
+echo 'IMPORTANT: Make a note of the password, because it will not be saved'
+echo 'anywhere else. Preferably give it to them in person on paper or via'
+echo 'a secure channel, not in an unencrypted email.'
+echo ''
+echo "They can download their GPG keys with:"
+echo ''
+echo "    scp -P $SSH_PORT -r $MY_USERNAME@$HOSTNAME:/home/$MY_USERNAME/.gnupg ~/"
+echo ''
+echo 'They should also run freedombone-client on their system to ensure'
+echo 'the best security.'
+
+exit 0
