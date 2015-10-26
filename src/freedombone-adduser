@@ -5,12 +5,12 @@ SSH_PORT=2222
 
 if [ ! $MY_USERNAME ]; then
     echo 'No username was given'
-	exit 1
+    exit 1
 fi
 
 if [ -d /home/$MY_USERNAME ]; then
     echo "The user $MY_USERNAME already exists"
-	exit 2
+    exit 2
 fi
 
 NEW_USER_PASSWORD="$(openssl rand -base64 10 | cut -c1-8)"
@@ -18,14 +18,14 @@ useradd -m -p "$NEW_USER_PASSWORD" -s /bin/bash $MY_USERNAME
 adduser $MY_USERNAME sasl
 
 if [ ! -d /home/$MY_USERNAME ]; then
-	echo 'Home directory was not created'
-	exit 3
+    echo 'Home directory was not created'
+    exit 3
 fi
 
 if [ ! -d /home/$MY_USERNAME/Maildir ]; then
-	echo 'Email directory was not created'
-	userdel -r $MY_USERNAME
-	exit 4
+    echo 'Email directory was not created'
+    userdel -r $MY_USERNAME
+    exit 4
 fi
 
 # generate a gpg key
@@ -55,8 +55,14 @@ chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
 su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
 shred -zu /home/$MY_USERNAME/gpg-genkey.conf
 MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_USERNAME@$HOSTNAME | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
-MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
+MY_GPG_PUBLIC_KEY=/home/$MY_USERNAME/public_key.gpg
 su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+
+if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
+    echo "GPG public key was not generated for $MY_USERNAME@$HOSTNAME $MY_GPG_PUBLIC_KEY_ID"
+    userdel -r $MY_USERNAME
+    exit 5
+fi
 
 if ! grep -q "Change your GPG password" /home/$MY_USERNAME/README; then
     echo '' >> /home/$MY_USERNAME/README
@@ -86,6 +92,7 @@ if ! grep -q "Publish your GPG public key" /home/$MY_USERNAME/README; then
 fi
 
 chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+chown $MY_USERNAME:$MY_USERNAME $MY_GPG_PUBLIC_KEY
 chmod 600 /home/$MY_USERNAME/README
 
 echo "Adding an XMPP account for $MY_USERNAME"
