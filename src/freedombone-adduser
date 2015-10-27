@@ -2,6 +2,7 @@
 MY_USERNAME=$1
 GPG_KEYSERVER='hkp://keys.gnupg.net'
 SSH_PORT=2222
+COMPLETION_FILE=$HOME/freedombone-completed.txt
 
 if [ ! $MY_USERNAME ]; then
     echo 'No username was given'
@@ -13,19 +14,25 @@ if [ -d /home/$MY_USERNAME ]; then
     exit 2
 fi
 
+if [ ! -f $COMPLETION_FILE ]; then
+    echo "$COMPLETION_FILE not found"
+    userdel -r $MY_USERNAME
+    exit 3
+fi
+
 NEW_USER_PASSWORD="$(openssl rand -base64 10 | cut -c1-8)"
 useradd -m -p "$NEW_USER_PASSWORD" -s /bin/bash $MY_USERNAME
 adduser $MY_USERNAME sasl
 
 if [ ! -d /home/$MY_USERNAME ]; then
     echo 'Home directory was not created'
-    exit 3
+    exit 4
 fi
 
 if [ ! -d /home/$MY_USERNAME/Maildir ]; then
     echo 'Email directory was not created'
     userdel -r $MY_USERNAME
-    exit 4
+    exit 5
 fi
 
 if grep -q "set from=" /home/$MY_USERNAME/.muttrc; then
@@ -69,7 +76,7 @@ su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" -
 if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
     echo "GPG public key was not generated for $MY_USERNAME@$HOSTNAME $MY_GPG_PUBLIC_KEY_ID"
     userdel -r $MY_USERNAME
-    exit 5
+    exit 6
 fi
 
 # encrypt outgoing mail to the "sent" folder
@@ -123,7 +130,22 @@ freedombone-addxmpp -e "$MY_USERNAME@$HOSTNAME" -p "$NEW_USER_PASSWORD"
 if [ ! "$?" = "0" ]; then
     echo "XMPP account not created"
     userdel -r $MY_USERNAME
-    exit 6
+    exit 7
+fi
+
+if grep -q "Blog domain" $COMPLETION_FILE; then
+    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+    if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users ]; then
+        echo 'Blog users directory not found'
+        userdel -r $MY_USERNAME
+        exit 8     
+    fi
+    echo ';Password' > /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo "password = '$NEW_USER_PASSWORD'" >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo 'encryption = clear' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo ';Role' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo 'role = admin' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo "$MY_USERNAME added as a blog user"
 fi
 
 clear
