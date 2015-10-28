@@ -120,6 +120,3 @@ clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}
 	rm -f ../${APP}*.deb ../${APP}*.changes ../${APP}*.asc ../${APP}*.dsc
-sourcedeb:
-	tar -cvf ../${APP}_${VERSION}.orig.tar ../${APP}-${VERSION} --exclude-vcs --exclude 'debian'
-	gzip -f9n ../${APP}_${VERSION}.orig.tar
