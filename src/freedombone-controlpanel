@@ -1,0 +1,362 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Administrator control panel for the Freedombone system
+#
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+COMPLETION_FILE=$HOME/freedombone-completed.txt
+SELECTED_USERNAME=
+
+function any_key {
+    echo ' '
+    read -n1 -r -p "Press any key to continue..." key
+}
+
+function add_user {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle "Freedombone Control Panel" \
+           --title "Add new user" \
+           --form "\n" 8 40 3 \
+              "Username:" 1 1 "" 1 11 16 15 \
+              "ssh public key (optional):" 2 1 "" 3 1 40 10000 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    new_user_username=$(cat $data | sed -n 1p)
+    new_user_ssh_public_key=$(cat $data | sed -n 2p)
+    if [ ${#new_user_username} -lt 2 ]; then
+        dialog --title "New username" --msgbox "No username was given" 6 40
+        return
+    fi
+    if [[ "$new_user_username" == *" "* ]]; then
+        dialog --title "Invalid username" --msgbox "The username should not contain any spaces" 6 40
+        return
+    fi
+    if [ ${#new_user_ssh_public_key} -lt 20 ]; then
+        clear
+        freedombone-adduser "$new_user_username"
+        any_key
+    else
+        if [[ "$new_user_ssh_public_key" == "ssh-"* ]]; then
+            clear
+            freedombone-adduser "$new_user_username" "$new_user_ssh_public_key"
+            any_key
+        else
+            dialog --title "ssh public key" --msgbox "This does not look like an ssh public key" 6 40
+        fi
+    fi
+}
+
+function select_user {
+    SELECTED_USERNAME=
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title "Select a user" \
+           --backtitle "Freedombone Control Panel" \
+           --dselect "/home/" 14 40 2> $data
+    sel=$?
+    case $sel in
+        0) SELECTED_USERNAME=$(cat $data | awk -F '/' '{print $3}');;
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    if [ ${#SELECTED_USERNAME} -lt 2 ]; then
+        SELECTED_USERNAME=
+    fi
+    if [ ! -d /home/$SELECTED_USERNAME/Maildir ]; then
+        dialog --title "User directory check" --msgbox "This does not look like a user directory" 6 40
+        SELECTED_USERNAME=
+    fi
+}
+
+function delete_user {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    if grep -Fxq "Admin user: $SELECTED_USERNAME" $COMPLETION_FILE; then
+        dialog --title "Administrator user" --msgbox "You can't delete the administrator user" 6 40
+        return
+    fi
+    clear
+    freedombone-rmuser $SELECTED_USERNAME
+    any_key
+}
+
+function change_password {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    clear
+    su -c "passwd" - $SELECTED_USERNAME
+    any_key
+}
+
+function add_to_mailing_list {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle "Freedombone Control Panel" \
+           --title "Subscribe $SELECTED_USERNAME to a mailing list" \
+           --form "\n" 8 68 4 \
+              "List folder name:" 1 1 "" 1 35 26 25 \
+              "Name between [] on subject line:" 2 1 "" 2 35 26 25 \
+              "List email address:" 3 1 "" 3 35 26 25 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    LIST_NAME=$(cat $data | sed -n 1p)
+    LIST_SUBJECT=$(cat $data | sed -n 2p)
+    LIST_EMAIL=$(cat $data | sed -n 3p)
+
+    if [ ${#LIST_NAME} -lt 2 ]; then
+        dialog --title "Add mailing list" --msgbox "No mailing list name was given" 6 40
+        return
+    fi
+    if [ ${#LIST_SUBJECT} -lt 2 ]; then
+        dialog --title "Add mailing list" --msgbox "No mailing list subject was given" 6 40
+        return
+    fi
+    if [ ${#LIST_EMAIL} -lt 2 ]; then
+        dialog --title "Add mailing list" --msgbox "No mailing list email address was given" 6 40
+        return
+    fi
+    if [[ "$LIST_EMAIL" != *"@"* || "$LIST_EMAIL" != *"."* ]]; then
+        dialog --title "Add mailing list" --msgbox "Unrecognised email address" 6 40
+        return
+    fi
+
+    freedombone-addlist -u $SELECTED_USERNAME -l "$LIST_NAME" -s "$LIST_SUBJECT" -e "$LIST_EMAIL"
+    dialog --title "Add mailing list" --msgbox "$LIST_NAME list was added" 6 40
+}
+
+function email_rule {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle "Freedombone Control Panel" \
+           --title "Email rule for user $SELECTED_USERNAME" \
+           --form "\n" 8 65 3 \
+              "When email arrives from address:" 1 1 "" 1 35 24 28 \
+              "Move to folder:" 2 1 "" 2 35 24 28 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    RULE_EMAIL=$(cat $data | sed -n 1p)
+    RULE_FOLDER=$(cat $data | sed -n 2p)
+
+    if [ ${#RULE_EMAIL} -lt 2 ]; then
+        dialog --title "Add email rule" --msgbox "No email address was given" 6 40
+        return
+    fi
+    if [ ${#RULE_FOLDER} -lt 2 ]; then
+        dialog --title "Add email rule" --msgbox "No folder name was given" 6 40
+        return
+    fi
+    if [[ "$RULE_EMAIL" != *"@"* || "$RULE_EMAIL" != *"."* ]]; then
+        dialog --title "Add email rule" --msgbox "Unrecognised email address" 6 40
+        return
+    fi
+
+    freedombone-addemail -u $SELECTED_USERNAME -e "$RULE_EMAIL" -g "$RULE_FOLDER"
+    dialog --title "Add email rule" --msgbox "Email rule for $RULE_EMAIL was added" 6 40
+}
+
+function block_unblock_email {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle "Freedombone Control Panel" \
+           --title "Block/Unblock email going to $SELECTED_USERNAME" \
+           --form "\n" 8 65 3 \
+              "When email arrives from address:" 1 1 "" 1 35 24 28 \
+              "Block it:" 2 1 "yes" 2 35 4 4 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    BLOCK_EMAIL=$(cat $data | sed -n 1p)
+    BLOCK=$(cat $data | sed -n 2p)
+    if [ ${#BLOCK_EMAIL} -lt 2 ]; then
+        dialog --title "Block/Unblock an email" --msgbox "No email address was given" 6 40
+        return
+    fi
+    if [[ "$BLOCK_EMAIL" != *"@"* || "$BLOCK_EMAIL" != *"."* ]]; then
+        dialog --title "Block/Unblock an email" --msgbox "Unrecognised email address" 6 40
+        return
+    fi
+    if [[ $BLOCK == "y"* || $BLOCK == "Y"* ]]; then
+        freedombone-ignore -u $SELECTED_USERNAME -e "$BLOCK_EMAIL"
+        dialog --title "Block an email" --msgbox "Email from $BLOCK_EMAIL to $SELECTED_USERNAME blocked" 6 40
+    else
+        freedombone-unignore -u $SELECTED_USERNAME -e "$BLOCK_EMAIL"
+        dialog --title "Unblock an email" --msgbox "Email from $BLOCK_EMAIL to $SELECTED_USERNAME unblocked" 6 40
+    fi
+}
+
+function block_unblock_subject {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle "Freedombone Control Panel" \
+           --title "Block/Unblock email going to $SELECTED_USERNAME" \
+           --form "\n" 8 70 3 \
+              "When email arrives with subject text:" 1 1 "" 1 40 24 28 \
+              "Block it:" 2 1 "yes" 2 40 4 4 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    BLOCK_SUBJECT=$(cat $data | sed -n 1p)
+    BLOCK=$(cat $data | sed -n 2p)
+    if [ ${#BLOCK_SUBJECT} -lt 2 ]; then
+        dialog --title "Block/Unblock an email" --msgbox "No subject was given" 6 40
+        return
+    fi
+    if [[ $BLOCK == "y"* || $BLOCK == "Y"* ]]; then
+        freedombone-ignore -u $SELECTED_USERNAME -t "$BLOCK_SUBJECT"
+        dialog --title "Block an email" --msgbox "Email with subject $BLOCK_SUBJECT to $SELECTED_USERNAME blocked" 6 40
+    else
+        freedombone-unignore -u $SELECTED_USERNAME -t "$BLOCK_SUBJECT"
+        dialog --title "Unblock an email" --msgbox "Email with subject $BLOCK_SUBJECT to $SELECTED_USERNAME unblocked" 6 40
+    fi
+}
+
+function create_keydrive_master {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    dialog --title "USB Master Keydrive" --msgbox "Plug in a LUKS encrypted USB drive" 6 40
+    clear
+    freedombone-keydrive -u $SELECTED_USERNAME --master 'yes'
+    any_key
+}
+
+function create_keydrive_fragment {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    dialog --title "USB Fragment Keydrive" --msgbox "Plug in a LUKS encrypted USB drive" 6 40
+    clear
+    freedombone-keydrive -u $SELECTED_USERNAME
+    any_key
+}
+
+function backup_data {
+    dialog --title "Backup data to USB" --msgbox "Plug in a LUKS encrypted USB drive" 6 40
+    clear
+    backup
+    any_key
+}
+
+function restore_data {
+    dialog --title "Restore data from USB" --msgbox "Plug in your backup USB drive" 6 40
+    clear
+    restore
+    any_key
+}
+
+function menu_top_level {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle "Freedombone Control Panel" \
+               --title "Control Panel" \
+               --radiolist "Choose an operation:" 20 70 13 \
+               1 "Backup data to USB drive" off \
+               2 "Restore data from USB drive" off \
+               3 "Add a user" off \
+               4 "Delete a user" off \
+               5 "Change user password or ssh public key" off \
+               6 "Add a user to a mailing list" off \
+               7 "Add an email rule" off \
+               8 "Block/Unblock an email address" off \
+               9 "Block/Unblock email with subject text" off \
+               10 "Change security settings" off \
+               11 "Backup GPG key to USB drive (master keydrive)" off \
+               12 "Backup GPG key to USB drive (fragment keydrive)" off \
+               13 "Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) exit 1;;
+            255) exit 1;;
+        esac
+        case $(cat $data) in
+            1) backup_data;;
+            2) restore_data;;
+            3) add_user;;
+            4) delete_user;;
+            5) change_password;;
+            6) add_to_mailing_list;;
+            7) email_rule;;
+            8) block_unblock_email;;
+            9) block_unblock_subject;;
+            10) freedombone-sec;;
+            11) create_keydrive_master;;
+            12) create_keydrive_fragment;;
+            13) break;;
+        esac
+    done
+}
+
+if [ ! -f $COMPLETION_FILE ]; then
+    echo 'This command should only be run on an installed Freedombone system'
+    exit 1
+fi
+
+menu_top_level
+exit 0
