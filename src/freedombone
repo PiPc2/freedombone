@@ -316,6 +316,8 @@ GET_IP_ADDRESS_URL="checkip.two-dns.de"
 VOIP_SERVER_PASSWORD=
 # Port on which VoIP server listens
 VOIP_PORT=64738
+SIP_SERVER_PASSWORD=
+SIP_PORT=5060
 
 # Location of VoIP database and configuration
 VOIP_DATABASE="mumble-server.sqlite"
@@ -10685,6 +10687,16 @@ function get_voip_server_password {
   fi
 }
 
+function get_sip_server_password {
+  if [ -f /home/$MY_USERNAME/README ]; then
+      if grep -q "SIP server password" /home/$MY_USERNAME/README; then
+          if [ ! $SIP_SERVER_PASSWORD ]; then
+              SIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "SIP server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+          fi
+      fi
+  fi
+}
+
 function install_ipfs {
   if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
       return
@@ -10886,6 +10898,80 @@ function install_voip {
   echo 'install_voip' >> $COMPLETION_FILE
 }
 
+function install_sip {
+  if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+      return
+  fi
+  if grep -Fxq "install_sip" $COMPLETION_FILE; then
+      return
+  fi
+
+  apt-get -y install sipwitch
+
+  get_sip_server_password
+  if [ ! $SIP_SERVER_PASSWORD ]; then
+      SIP_SERVER_PASSWORD="$(openssl rand -base64 10)"
+  fi
+
+  echo '<?xml version="1.0"?>' > /etc/sipwitch.conf
+  echo '<sipwitch>' >> /etc/sipwitch.conf
+  echo '<provision>' >> /etc/sipwitch.conf
+
+  echo "<user id=\"$MY_USERNAME\">" >> /etc/sipwitch.conf
+  echo '<extension>201</extension>' >> /etc/sipwitch.conf
+  echo "<secret>$SIP_SERVER_PASSWORD</secret>" >> /etc/sipwitch.conf
+  echo "<display>$MY_USERNAME 201</display>" >> /etc/sipwitch.conf
+  echo '</user>' >> /etc/sipwitch.conf
+
+  echo '</provision>' >> /etc/sipwitch.conf
+  echo '<access>' >> /etc/sipwitch.conf
+  echo '</access>' >> /etc/sipwitch.conf
+  echo '<stack>' >> /etc/sipwitch.conf
+  echo "  <localnames>$DEFAULT_DOMAIN_NAME</localnames>" >> /etc/sipwitch.conf
+  echo '  <mapped>200</mapped>' >> /etc/sipwitch.conf
+  echo '  <threading>2</threading>' >> /etc/sipwitch.conf
+  echo '  <interface>*</interface>' >> /etc/sipwitch.conf
+  echo '  <dumping>false</dumping>' >> /etc/sipwitch.conf
+  echo '  <system>system</system>' >> /etc/sipwitch.conf
+  echo '  <anon>anonymous</anon>' >> /etc/sipwitch.conf
+  echo '</stack>' >> /etc/sipwitch.conf
+  echo '<timers>' >> /etc/sipwitch.conf
+  echo '  <!-- ring every 4 seconds -->' >> /etc/sipwitch.conf
+  echo '  <ring>4</ring>' >> /etc/sipwitch.conf
+  echo '  <!-- call forward no answer after x rings -->' >> /etc/sipwitch.conf
+  echo '  <cfna>4</cfna>' >> /etc/sipwitch.conf
+  echo '  <!-- call reset to clear cid in stack, 6 seconds -->' >> /etc/sipwitch.conf
+  echo '  <reset>6</reset>' >> /etc/sipwitch.conf
+  echo '</timers>' >> /etc/sipwitch.conf
+  echo '<!-- we have 2xx numbers plus space for external users -->' >> /etc/sipwitch.conf
+  echo '<registry>' >> /etc/sipwitch.conf
+  echo '  <prefix>200</prefix>'
+  echo '  <range>100</range>' >> /etc/sipwitch.conf
+  echo '  <keysize>77</keysize>' >> /etc/sipwitch.conf
+  echo '  <mapped>200</mapped>' >> /etc/sipwitch.conf
+  echo '  <!-- <realm>GNU Telephony</realm> -->' >> /etc/sipwitch.conf
+  echo '</registry>' >> /etc/sipwitch.conf
+  echo '<routing>' >> /etc/sipwitch.conf
+  echo '</routing>' >> /etc/sipwitch.conf
+  echo '</sipwitch>' >> /etc/sipwitch.conf
+
+  service sipwitch start
+
+  if ! grep -q "SIP Server" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      echo 'SIP Server' >> /home/$MY_USERNAME/README
+      echo '==========' >> /home/$MY_USERNAME/README
+      echo "SIP server username: $MY_USERNAME" >> /home/$MY_USERNAME/README
+      echo "SIP server extension: 201" >> /home/$MY_USERNAME/README
+      echo "SIP server password: $SIP_SERVER_PASSWORD" >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+      chmod 600 /home/$MY_USERNAME/README
+  fi
+
+  echo 'install_sip' >> $COMPLETION_FILE
+}
+
 function install_final {
   if grep -Fxq "install_final" $COMPLETION_FILE; then
       return
@@ -10993,6 +11079,7 @@ configure_firewall_for_xmpp
 install_irc_server
 configure_firewall_for_irc
 install_voip
+install_sip
 install_wiki
 install_blog
 mark_blog_domain
