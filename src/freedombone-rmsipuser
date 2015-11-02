@@ -29,4 +29,77 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+MY_USERNAME=$1
+CONFIG_FILE=/etc/sipwitch.conf
+USER_EXISTS="no"
+
+function show_help {
+    echo ''
+    echo 'freedombone-rmsipuser [username]'
+    echo ''
+    exit 0
+}
+
+function sip_user_exists {
+    for line in $ (cat $CONFIG_FILE)
+    do
+        if [[ "$line" == "<user id=\"$MY_USERNAME\">" ]]; then
+            USER_EXISTS="yes"
+            return
+        fi
+    done
+}
+
+function remove_sip_user {
+    USER_FOUND=
+    NEW_CONFIG_FILE="${CONFIG_FILE}.new"
+    if [ -f $NEW_CONFIG_FILE ]; then
+        rm -f $NEW_CONFIG_FILE
+    fi
+    touch $NEW_CONFIG_FILE
+    for line in $ (cat $CONFIG_FILE)
+    do
+        if [ ! $USER_FOUND ]; then
+            if [[ "$line" == "<user id=\"$MY_USERNAME\">" ]]; then
+                USER_FOUND="yes"
+            fi
+        fi
+        if [ ! $USER_FOUND ]; then
+            echo "$line" >> $NEW_CONFIG_FILE
+        else
+            if [[ "$line" == '</user>' ]]; then
+                USER_FOUND=
+            fi
+        fi
+    done
+    mv $NEW_CONFIG_FILE $CONFIG_FILE
+}
+
+if [ ! $MY_USERNAME ]; then
+    show_help
+fi
+
+if [ ! -f $CONFIG_FILE ]; then
+    echo "SIP configuration file not found"
+    exit 1
+fi
+
+# the user must already exist on the system
+if [ ! -d /home/$MY_USERNAME ]; then
+    echo "User $MY_USERNAME not found"
+    exit 2
+fi
+
+sip_user_exists
+
+if [[ $USER_EXISTS != "yes" ]]; then
+    echo 'User not found within SIP configuration file'
+    exit 3
+fi
+
+remove_sip_user
+
+service sipwitch restart
+
+echo "SIP user $MY_USERNAME removed"
 exit 0
