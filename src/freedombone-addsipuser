@@ -29,4 +29,129 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+MY_USERNAME=
+EXTENSION=
+PASSWORD=
+CONFIG_FILE=/etc/sipwitch.conf
+USER_EXISTS="no"
+
+function show_help {
+    echo ''
+    echo 'freedombone-addsipuser -u [username] -e [extension] -p [password]'
+    echo ''
+    exit 0
+}
+
+function sip_user_exists {
+    for line in $ (cat $CONFIG_FILE)
+    do
+        if [[ "$line" == "<user id=\"$MY_USERNAME\">" ]]; then
+            USER_EXISTS="yes"
+            return
+        fi
+    done
+}
+
+function update_sip_user {
+    USER_FOUND=
+    NEW_CONFIG_FILE="${CONFIG_FILE}.new"
+    if [ -f $NEW_CONFIG_FILE ]; then
+        rm -f $NEW_CONFIG_FILE
+    fi
+    touch $NEW_CONFIG_FILE
+    for line in $ (cat $CONFIG_FILE)
+    do
+        if [ ! $USER_FOUND ]; then
+            if [[ "$line" == "<user id=\"$MY_USERNAME\">" ]]; then
+                USER_FOUND="yes"
+            fi
+        else
+            if [[ "$line" == "<extension>"* ]]; then
+                line="<extension>$EXTENSION</extension>"
+            fi
+            if [[ "$line" == "<secret>"* ]]; then
+                line="<secret>$PASSWORD</secret>"
+            fi              
+            if [[ "$line" == "<display>"* ]]; then
+                line="<display>$MY_USERNAME $EXTENSION</display>"
+                USER_FOUND=
+            fi              
+        fi
+        echo "$line" >> $NEW_CONFIG_FILE
+    done
+    mv $NEW_CONFIG_FILE $CONFIG_FILE
+}
+
+function add_sip_user {
+    NEW_CONFIG_FILE="${CONFIG_FILE}.new"
+    if [ -f $NEW_CONFIG_FILE ]; then
+        rm -f $NEW_CONFIG_FILE
+    fi
+    touch $NEW_CONFIG_FILE
+    for line in $ (cat $CONFIG_FILE)
+    do
+        if [[ "$line" == '</provision>' ]]; then
+            echo "<user id=\"$MY_USERNAME\">" >> $NEW_CONFIG_FILE
+            echo "<extension>$EXTENSION</extension>" >> $NEW_CONFIG_FILE
+            echo "<secret>$PASSWORD</secret>" >> $NEW_CONFIG_FILE
+            echo "<display>$MY_USERNAME $EXTENSION</display>" >> $NEW_CONFIG_FILE
+            echo '</user>' >> $NEW_CONFIG_FILE
+        fi
+        echo "$line" >> $NEW_CONFIG_FILE
+    done
+    mv $NEW_CONFIG_FILE $CONFIG_FILE
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    -u|--user)
+    shift
+    MY_USERNAME="$1"
+    ;;
+    -e|--extension)
+    shift
+    EXTENSION="$1"
+    ;;
+    -p|--password)
+    shift
+    PASSWORD="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+if ! [[ $MY_USERNAME && $EXTENSION && $PASSWORD ]]; then
+    show_help
+fi
+
+if [ ! -f $CONFIG_FILE ]; then
+    echo "SIP configuration file not found"
+    exit 1
+fi
+
+# the user must already exist on the system
+if [ ! -d /home/$MY_USERNAME ]; then
+    echo "User $MY_USERNAME not found"
+    exit 2
+fi
+
+sip_user_exists
+
+if [[ USER_EXISTS == "yes" ]]; then
+    update_sip_user
+else
+    add_sip_user
+fi
+
+service sipwitch restart
+
 exit 0

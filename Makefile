@@ -41,6 +41,7 @@ install:
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
 	install -m 755 src/${APP}-logging ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-addsipuser ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-keydrive.1.gz ${DESTDIR}${PREFIX}/share/man/man1
@@ -95,6 +96,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}-mesh.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-controlpanel.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-logging.1.gz
+	rm -f ${PREFIX}/share/man/man1/${APP}-addsipuser.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}
 	rm -f ${PREFIX}/bin/zeronetavahi
@@ -125,6 +127,7 @@ uninstall:
 	rm -f ${PREFIX}/bin/meshweb
 	rm -f ${PREFIX}/bin/${APP}-controlpanel
 	rm -f ${PREFIX}/bin/${APP}-logging
+	rm -f ${PREFIX}/bin/${APP}-addsipuser
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}
