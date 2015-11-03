@@ -31,6 +31,7 @@
 COMPLETION_FILE=$HOME/freedombone-completed.txt
 SELECTED_USERNAME=
 SIP_CONFIG_FILE=/etc/sipwitch.conf
+ADMIN_USER=
 
 function any_key {
     echo ' '
@@ -143,7 +144,6 @@ function configure_remote_backups {
                --msgbox "No Administrator user found. Check $COMPLETION_FILE" 6 40
         return
     fi
-    ADMIN_USER=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
     if [ ${#ADMIN} -lt 2 ]; then
         dialog --title "Administrator user" \
                --msgbox "Username not found" 6 40
@@ -438,7 +438,35 @@ function restore_data {
 }
 
 function restore_data_remote {
-    any_key
+    if [ ! $ADMIN_USER ]; then
+        dialog --title "Restore data from remote server" \
+               --msgbox "Unknown admin user" 6 40
+        return
+    fi
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title "Restore from remote server" \
+           --backtitle "Freedombone Control Panel" \
+           --inputbox "Enter the domain name of the server from which you wish to restore" 8 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            friend_server_domain_name=$(<$data)
+
+            if [ ${#friend_server_domain_name} -lt 2 ]; then
+                return
+            fi
+
+            if [[ $friend_server_domain_name != *"."* ]]; then
+                dialog --title "Remote server domain name" \
+                       --msgbox "Invalid domain name" 6 40
+                return
+            fi
+
+            restorefromfriend $friend_server_domain_name
+            any_key
+            ;;
+    esac        
 }
 
 function logging_on_off {
@@ -648,6 +676,7 @@ if [ ! -f $COMPLETION_FILE ]; then
     exit 1
 fi
 
+ADMIN_USER=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
 menu_top_level
 clear
 cat /etc/motd
