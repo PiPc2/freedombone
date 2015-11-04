@@ -376,6 +376,7 @@ function regenerate_dh_keys {
 }
 
 function renew_startssl {
+  renew_domain=
   data=$(tempfile 2>/dev/null)
   trap "rm -f $data" 0 1 2 5 15
   dialog --title "Renew a StartSSL certificate" \
@@ -385,11 +386,74 @@ function renew_startssl {
   case $sel in
       0)
           renew_domain=$(<$data)
-          if [[ $renew_domain == *"."* ]]; then
-              freedombone-renew-cert -h $renew_domain -p startssl
-          fi
           ;;
   esac
+
+  if [ ! $renew_domain ]; then
+	  return
+  fi
+
+  if [[ $renew_domain == "http"* ]]; then
+      dialog --title "Renew a StartSSL certificate" \
+             --msgbox "Don't include the https://" 6 40
+	  return
+  fi
+
+  if [ ! -f /etc/ssl/certs/${renew_domain}.dhparam ]; then
+      dialog --title "Renew a StartSSL certificate" \
+             --msgbox "An existing certificate for $renew_domain was not found" 6 40
+	  return
+  fi
+  
+  if [[ $renew_domain != *"."* ]]; then
+      dialog --title "Renew a StartSSL certificate" \
+             --msgbox "Invalid domain name: $renew_domain" 6 40
+	  return	  
+  fi
+
+  freedombone-renew-cert -h $renew_domain -p startssl
+
+  exit 0
+}
+
+function renew_letsencrypt {
+  renew_domain=
+  data=$(tempfile 2>/dev/null)
+  trap "rm -f $data" 0 1 2 5 15
+  dialog --title "Renew a Let's Encrypt certificate" \
+         --backtitle "Freedombone Security Settings" \
+         --inputbox "Enter the domain name" 8 60 2>$data
+  sel=$?
+  case $sel in
+      0)
+          renew_domain=$(<$data)
+          ;;
+  esac
+
+  if [ ! $renew_domain ]; then
+	  return
+  fi
+
+  if [[ $renew_domain == "http"* ]]; then
+      dialog --title "Renew a Let's Encrypt certificate" \
+             --msgbox "Don't include the https://" 6 40
+	  return
+  fi
+
+  if [ ! -f /etc/ssl/certs/${renew_domain}.dhparam ]; then
+      dialog --title "Renew a Let's Encrypt certificate" \
+             --msgbox "An existing certificate for $renew_domain was not found" 6 40
+	  return
+  fi
+  
+  if [[ $renew_domain != *"."* ]]; then
+      dialog --title "Renew a Let's Encrypt certificate" \
+             --msgbox "Invalid domain name: $renew_domain" 6 40
+	  return	  
+  fi
+
+  freedombone-renew-cert -h $renew_domain -p letsencrypt
+
   exit 0
 }
 
@@ -401,6 +465,7 @@ function housekeeping {
   options=(1 "Regenerate ssh host keys" off
            2 "Regenerate Diffie-Hellman keys" off
            3 "Renew a StartSSL certificate" off)
+           4 "Renew Let's Encrypt certificate" off)
   choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
   clear
   for choice in $choices
@@ -414,6 +479,9 @@ function housekeeping {
         ;;
       3)
         renew_startssl
+        ;;
+      4)
+        renew_letsencrypt
         ;;
     esac
   done
