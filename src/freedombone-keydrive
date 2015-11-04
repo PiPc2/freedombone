@@ -35,10 +35,11 @@ KEY_FRAGMENTS=3
 FRAGMENTS_DIR=$USB_MOUNT/.gnupg_fragments
 MY_USERNAME=$USER
 MASTER_DRIVE="no"
+FORMAT="no"
 
 function show_help {
     echo ''
-    echo 'freedombone-keydrive -u [username] -d [device, eg. sdb] --master [yes/no] -n [no of fragments]'
+    echo 'freedombone-keydrive -u [username] -d [device, eg. sdb] --master [yes/no] -n [no of fragments] --format [yes/no]'
     echo ''
     exit 0
 }
@@ -66,6 +67,10 @@ case $key in
     -n|--fragments)
     shift
     KEY_FRAGMENTS=$1
+    ;;
+    -f|--format)
+    shift
+    FORMAT="yes"
     ;;
     *)
     # unknown option
@@ -97,6 +102,29 @@ if [ -f /dev/mapper/encrypted_usb ]; then
   rm -rf /dev/mapper/encrypted_usb
 fi
 cryptsetup luksClose encrypted_usb
+
+# optionally format the drive
+if [[ $FORMAT == "yes" ]]; then
+  echo "Formatting ${USB_DRIVE::-1} as LUKS"
+  cryptsetup -y -v luksFormat ${USB_DRIVE::-1}
+  if [ ! "$?" = "0" ]; then
+      exit 36823
+  fi
+  cryptsetup luksOpen ${USB_DRIVE::-1} encrypted_usb
+  if [ ! "$?" = "0" ]; then
+      exit 37232
+  fi
+  mkfs.ext4 /dev/mapper/encrypted_usb
+  if [ ! "$?" = "0" ]; then
+      exit 73218
+  fi
+  cryptsetup luksClose encrypted_usb
+  if [ -f /dev/mapper/encrypted_usb ]; then
+      rm -rf /dev/mapper/encrypted_usb
+  fi
+  echo 'Format completed'
+fi
+
 cryptsetup luksOpen $USB_DRIVE encrypted_usb
 if [ "$?" = "0" ]; then
   USB_DRIVE=/dev/mapper/encrypted_usb
