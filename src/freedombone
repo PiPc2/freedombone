@@ -2606,6 +2606,12 @@ function create_backup_script {
       echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
   fi
 
+  echo 'if [ -d /etc/letsencrypt ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    echo "Backing up Lets Encrypt settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '    backup_directory_to_usb /etc/letsencrypt letsencrypt' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
+  
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
       echo 'backup_database gnusocial' >> /usr/bin/$BACKUP_SCRIPT_NAME
@@ -3208,6 +3214,16 @@ function create_restore_script {
       echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
       echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
   fi
+
+  RESTORE_SUBDIR='home/'
+  if [[ $BACKUP_TYPE != 'obnam' ]]; then
+      RESTORE_SUBDIR='usb/backup/letsencrypt/'
+  fi
+  echo 'if [ -d $USB_MOUNT/backup/letsencrypt ]; then' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    echo "Restoring Lets Encrypt settings"' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '    restore_directory_from_usb / letsencrypt' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
   RESTORE_SUBDIR='home/'
   if [[ $BACKUP_TYPE != 'obnam' ]]; then
@@ -4090,6 +4106,12 @@ function backup_to_friends_servers {
   backup_database_to_friend
   echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
 
+  echo 'if [ -d /etc/letsencrypt ]; then' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    echo "Backing up Lets Encrypt settings"' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '    backup_directory_to_friend /etc/letsencrypt letsencrypt' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  echo '' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
+  
   if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
       BACKUP_INCLUDES_DATABASES="yes"
       echo 'backup_database_to_friend gnusocial' >> /usr/bin/$BACKUP_TO_FRIENDS_SCRIPT_NAME
@@ -4765,6 +4787,16 @@ function restore_from_friend {
   echo -n '  echo "$DATABASE_PASSWORD" > ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "$DATABASE_PASSWORD_FILE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "  chmod 600 $DATABASE_PASSWORD_FILE" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+
+  RESTORE_SUBDIR='home/'
+  if [[ $BACKUP_TYPE != 'obnam' ]]; then
+      RESTORE_SUBDIR='remoterestore/backup/letsencrypt/'
+  fi
+  echo 'if [ -d $SERVER_DIRECTORY/backup/letsencrypt ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    echo "Restoring Lets Encrypt settings"' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '    restore_directory_from_friend / letsencrypt' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
@@ -7918,6 +7950,44 @@ function install_web_server {
   make install
   nginx_dissite default
   echo 'install_web_server' >> $COMPLETION_FILE
+}
+
+function install_letsencrypt {
+  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+      return
+  fi
+  if grep -Fxq "install_letsencrypt" $COMPLETION_FILE; then
+      return
+  fi
+  #apt-get -y install python-pip git
+  #pip install -U setuptools
+  #pip install --upgrade cffi
+  cd $INSTALL_DIR
+
+  # This is experimental developer preview and I hope at some stage
+  # there will be a debian package for it.
+  
+  # obtain the repo
+  if [ ! -d $INSTALL_DIR/letsencrypt ]; then
+      git clone https://github.com/letsencrypt/letsencrypt
+      if [ ! -d $INSTALL_DIR/letsencrypt ]; then
+          exit 76283
+      fi
+  else
+      cd $INSTALL_DIR/letsencrypt
+      git stash
+      git pull
+  fi
+
+  cd $INSTALL_DIR/letsencrypt
+  # TODO this requires user interaction - is there a non-interactive mode?
+  ./letsencrypt-auto --agree-dev-preview --server https://acme-v01.api.letsencrypt.org/directory certonly
+  if [ ! "$?" = "0" ]; then
+      echo 'Failed to install letsencrypt'
+      exit 63216      
+  fi
+  
+  echo 'install_letsencrypt' >> $COMPLETION_FILE
 }
 
 function configure_php {
@@ -11116,6 +11186,7 @@ encrypt_all_email
 import_email
 script_for_attaching_usb_drive
 install_web_server
+#install_letsencrypt
 configure_firewall_for_web_server
 install_owncloud
 install_owncloud_music_app
