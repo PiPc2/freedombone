@@ -35,6 +35,7 @@ GPG_KEYSERVER='hkp://keys.gnupg.net'
 SSH_PORT=2222
 COMPLETION_FILE=$HOME/freedombone-completed.txt
 SIP_EXTENSION=
+FULLBLOG_DOMAIN_NAME=
 
 if [ ! $MY_USERNAME ]; then
     echo 'No username was given'
@@ -193,6 +194,9 @@ if grep -q "Blog domain" $COMPLETION_FILE; then
     FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
     if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users ]; then
         echo 'Blog users directory not found'
+        if grep -q "install_xmpp" $COMPLETION_FILE; then
+            freedombone-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
+        fi
         userdel -r $MY_USERNAME
         exit 9
     fi
@@ -209,6 +213,14 @@ if grep -q "install_sip" $COMPLETION_FILE; then
     freedombone-addsipuser -u $MY_USERNAME -e $SIP_EXTENSION -p "$NEW_USER_PASSWORD"
     if [ ! "$?" = "0" ]; then
         echo 'SIP user could not be added. Ensure that extension numbers are in order and do no exceed 299'
+        if grep -q "install_xmpp" $COMPLETION_FILE; then
+            freedombone-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
+        fi
+        if grep -q "Blog domain" $COMPLETION_FILE; then
+            if [ -f /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini ]; then
+                rm /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+            fi
+        fi
         userdel -r $MY_USERNAME
         exit 10
     fi
@@ -219,8 +231,19 @@ if grep -q "install_owncloud" $COMPLETION_FILE; then
     occ user:add --password-from-env --display-name="$MY_USERNAME" --group="users" $MY_USERNAME
     if [ ! "$?" = "0" ]; then
         echo 'Owncloud user could not be added'
-        freedombone-rmsipuser $MY_USERNAME
+        if grep -q "install_xmpp" $COMPLETION_FILE; then
+            freedombone-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
+        fi
+        if grep -q "Blog domain" $COMPLETION_FILE; then
+            if [ -f /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini ]; then
+                rm /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+            fi
+        fi
+        if grep -q "install_sip" $COMPLETION_FILE; then
+            freedombone-rmsipuser $MY_USERNAME
+        fi
         userdel -r $MY_USERNAME
+        export OC_PASS=""
         exit 11
     fi
     export OC_PASS=""
