@@ -73,7 +73,7 @@ The interactive server configuration setup is recommended for most users. On the
 
     ssh username@freedombone_IP_address
     su
-    sudo apt-get update
+    apt-get update
     apt-get install git dialog
     git clone https://github.com/bashrc/freedombone
     cd freedombone
