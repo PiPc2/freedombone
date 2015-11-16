@@ -154,6 +154,7 @@ HUBZILLA_REPO="https://github.com/redmatrix/hubzilla.git"
 HUBZILLA_ADDONS_REPO="https://github.com/redmatrix/hubzilla-addons.git"
 HUBZILLA_ADMIN_PASSWORD=
 RESTORE_HUBZILLA_SCRIPT_NAME="restorehubzilla"
+HUBZILLA_COMMIT='1874346c460c29a087bb81833c0b760a91e35970'
 
 # Domain name for git hosting installation
 GIT_DOMAIN_NAME=
@@ -787,6 +788,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
+          HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "GPG_KEYSERVER" $CONFIGURATION_FILE; then
           GPG_KEYSERVER=$(grep "GPG_KEYSERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -10047,13 +10051,31 @@ quit" > $INSTALL_DIR/batch.sql
 }
 
 function install_hubzilla {
-  if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
-      return
-  fi
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
   if [ ! $HUBZILLA_DOMAIN_NAME ]; then
+      return
+  fi
+
+  # update to the next commit
+  if [ -d /var/www/$HUBZILLA_DOMAIN_NAME/htdocs ]; then
+      if grep -q "Hubzilla commit" $COMPLETION_FILE; then
+          CURRENT_HUBZILLA_COMMIT=$(grep "Hubzilla commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_HUBZILLA_COMMIT" != "$HUBZILLA_COMMIT" ]]; then
+              cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
+              git stash
+              git checkout master             
+              git pull
+              git checkout $HUBZILLA_COMMIT
+              git branch -b $HUBZILLA_COMMIT
+              sed -i "s/Hubzilla commit.*/Hubzilla commit:$HUBZILLA_COMMIT/g" $COMPLETION_FILE
+              chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
+          fi
+      fi
+  fi
+  
+  if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
       return
   fi
 
@@ -10074,7 +10096,14 @@ function install_hubzilla {
   if [ ! -f /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/index.php ]; then
       cd $INSTALL_DIR
       git clone $HUBZILLA_REPO hubzilla
-
+      git checkout $HUBZILLA_COMMIT
+      git branch -b $HUBZILLA_COMMIT
+      if ! grep -q "Hubzilla commit" $COMPLETION_FILE; then
+          echo "Hubzilla commit:$HUBZILLA_COMMIT" >> $COMPLETION_FILE
+      else
+          sed -i "s/Hubzilla commit.*/Hubzilla commit:$HUBZILLA_COMMIT/g" $COMPLETION_FILE
+      fi
+      
       rm -rf /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
       mv hubzilla /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
       chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
@@ -10585,18 +10614,18 @@ function create_upgrade_script {
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y update' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y upgrade' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if grep -Fxq \"install_hubzilla\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  # Hubzilla' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/addon" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo "#if grep -Fxq \"install_hubzilla\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#  # Hubzilla' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo "#  cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo "#  cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/addon" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo "#  chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '#fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if grep -Fxq \"install_gnu_social\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  # GNU Social' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
