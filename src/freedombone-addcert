@@ -29,6 +29,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 HOSTNAME=
+LETSENCRYPT_HOSTNAME=
 COUNTRY_CODE="US"
 AREA="Free Speech Zone"
 LOCATION="Freedomville"
@@ -37,6 +38,8 @@ UNIT="Freedombone Unit"
 EXTENSIONS=""
 NODH=
 DH_KEYLENGTH=2048
+INSTALL_DIR=/root/build
+LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
 function show_help {
     echo ''
@@ -45,16 +48,18 @@ function show_help {
     echo ''
     echo 'Creates a self-signed certificate for the given hostname'
     echo ''
-    echo '     --help                  Show help'
-    echo '  -h --hostname [name]       Hostname'
-    echo '  -c --country [code]        Optional country code (eg. US, GB, etc)'
-    echo '  -a --area [description]    Optional area description'
-    echo '  -l --location [locn]       Optional location name'
-    echo '  -o --organisation [name]   Optional organisation name'
-    echo '  -u --unit [name]           Optional unit name'
-    echo '     --dhkey [bits]          DH key length in bits'
-    echo '     --nodh ""               Do not calculate DH params'
-    echo '     --ca ""                 Certificate authority cert'
+    echo '     --help                   Show help'
+    echo '  -h --hostname [name]        Hostname'
+    echo '  -e --letsencrypt [hostname] Hostname to use with Lets Encrypt'
+    echo '  -s --server [url]           Lets Encrypt server URL'
+    echo '  -c --country [code]         Optional country code (eg. US, GB, etc)'
+    echo '  -a --area [description]     Optional area description'
+    echo '  -l --location [locn]        Optional location name'
+    echo '  -o --organisation [name]    Optional organisation name'
+    echo '  -u --unit [name]            Optional unit name'
+    echo '     --dhkey [bits]           DH key length in bits'
+    echo '     --nodh ""                Do not calculate DH params'
+    echo '     --ca ""                  Certificate authority cert'
     echo ''
     exit 0
 }
@@ -70,6 +75,14 @@ case $key in
     -h|--hostname)
     shift
     HOSTNAME="$1"
+    ;;
+    -e|--letsencrypt)
+    shift
+    LETSENCRYPT_HOSTNAME="$1"
+    ;;
+    -s|--server)
+    shift
+    LETSENCRYPT_SERVER="$1"
     ;;
     -c|--country)
     shift
@@ -112,8 +125,10 @@ shift
 done
 
 if [ ! $HOSTNAME ]; then
-    echo 'No hostname specified'
-    exit 5748
+	if [ ! $LETSENCRYPT_HOSTNAME ]; then
+        echo 'No hostname specified'
+        exit 5748
+	fi
 fi
 
 if ! which openssl > /dev/null ;then
@@ -121,34 +136,94 @@ if ! which openssl > /dev/null ;then
     exit 5689
 fi
 
-CERTFILE=$HOSTNAME
-if [[ $ORGANISATION == "Freedombone-CA" ]]; then
-    CERTFILE="ca-$HOSTNAME"
+if [ ! -d /etc/ssl/mycerts ]; then
+    mkdir /etc/ssl/mycerts
 fi
 
-openssl req -x509 $EXTENSIONS -nodes -days 3650 -sha256 \
+if [ $LETSENCRYPT_HOSTNAME ]; then
+    CERTFILE=$LETSENCRYPT_HOSTNAME
+
+	if [ ! -d $INSTALL_DIR ]; then
+		mkdir -p $INSTALL_DIR
+	fi
+	cd $INSTALL_DIR
+
+	# obtain the repo
+	if [ ! -d $INSTALL_DIR/letsencrypt ]; then
+		git clone https://github.com/letsencrypt/letsencrypt
+		if [ ! -d $INSTALL_DIR/letsencrypt ]; then
+			exit 76283
+		fi
+	else
+		cd $INSTALL_DIR/letsencrypt
+		git stash
+		git pull
+	fi
+
+	cd $INSTALL_DIR/letsencrypt
+	# TODO this requires user interaction - is there a non-interactive mode?
+	./letsencrypt-auto certonly --server $LETSENCRYPT_SERVER --standalone -d $LETSENCRYPT_HOSTNAME
+	if [ ! "$?" = "0" ]; then
+		echo "Failed to install letsencrypt for domain $LETSENCRYPT_HOSTNAME"
+		exit 63216
+	fi
+
+	# replace some legacy filenames
+	if [ -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.bundle.crt ]; then
+		mv /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.bundle.crt /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem
+	fi
+	if [ -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.crt ]; then
+		mv /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.crt /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem
+	fi
+	sed -i "s|ssl_certificate /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.bundle.crt|ssl_certificate /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem|g" /etc/nginx/sites-available/$LETSENCRYPT_HOSTNAME
+	sed -i "s|ssl_certificate /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.crt|ssl_certificate /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem|g" /etc/nginx/sites-available/$LETSENCRYPT_HOSTNAME
+  
+	# link the private key
+	if [ -f /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key ]; then
+		if [ ! -f /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key.old ]; then
+			mv /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key.old
+		fi
+	fi
+	ln -s /etc/letsencrypt/live/${LETSENCRYPT_HOSTNAME}/privkey.pem /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key
+
+	# link the public key
+	if [ -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem ]; then
+		if [ ! -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem.old ]; then
+			mv /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem.old
+		fi
+	fi
+	ln -s /etc/letsencrypt/live/${LETSENCRYPT_HOSTNAME}/fullchain.pem /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem
+
+    cp /etc/letsencrypt/live/${LETSENCRYPT_HOSTNAME}/fullchain.pem /etc/ssl/mycerts/${LETSENCRYPT_HOSTNAME}.pem
+else
+    CERTFILE=$HOSTNAME
+    if [[ $ORGANISATION == "Freedombone-CA" ]]; then
+        CERTFILE="ca-$HOSTNAME"
+    fi
+
+    openssl req -x509 $EXTENSIONS -nodes -days 3650 -sha256 \
         -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME" \
         -newkey rsa:4096 -keyout /etc/ssl/private/$CERTFILE.key \
         -out /etc/ssl/certs/$CERTFILE.crt
-if [ ! $NODH ]; then
-    openssl dhparam -check -text -5 $DH_KEYLENGTH -out /etc/ssl/certs/$CERTFILE.dhparam
+    chmod 400 /etc/ssl/private/$CERTFILE.key
+    chmod 640 /etc/ssl/certs/$CERTFILE.crt
+    cp /etc/ssl/certs/$CERTFILE.crt /etc/ssl/mycerts
 fi
-chmod 400 /etc/ssl/private/$CERTFILE.key
-chmod 640 /etc/ssl/certs/$CERTFILE.crt
-chmod 640 /etc/ssl/certs/$CERTFILE.dhparam
+
+# generate DH params
+if [ ! $NODH ]; then
+	if [ ! -f /etc/ssl/certs/$CERTFILE.dhparam ]; then
+		openssl dhparam -check -text -5 $DH_KEYLENGTH -out /etc/ssl/certs/$CERTFILE.dhparam
+		chmod 640 /etc/ssl/certs/$CERTFILE.dhparam
+	fi
+fi
 
 if [ -f /etc/init.d/nginx ]; then
-  /etc/init.d/nginx reload
+    /etc/init.d/nginx reload
 fi
-
-# add the public certificate to a separate directory
-# so that we can redistribute it easily
-if [ ! -d /etc/ssl/mycerts ]; then
-  mkdir /etc/ssl/mycerts
-fi
-cp /etc/ssl/certs/$CERTFILE.crt /etc/ssl/mycerts
 
 # Create a bundle of your certificates
-cat /etc/ssl/mycerts/*.crt > /etc/ssl/freedombone-bundle.crt
-tar -czvf /etc/ssl/freedombone-certs.tar.gz /etc/ssl/mycerts/*.crt
+cat /etc/ssl/mycerts/*.crt /etc/ssl/mycerts/*.pem > /etc/ssl/freedombone-bundle.crt
+tar -czvf /etc/ssl/freedombone-certs.tar.gz /etc/ssl/mycerts/*.crt /etc/ssl/mycerts/*.pem
+
 exit 0

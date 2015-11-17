@@ -429,6 +429,9 @@ DH_KEYLENGTH=2048
 # repo for atheros AR9271 wifi driver
 ATHEROS_WIFI_REPO='https://github.com/qca/open-ath9k-htc-firmware.git'
 
+LETSENCRYPT_ENABLED="no"
+LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
+
 function show_help {
   echo ''
   echo 'freedombone -c [configuration file]'
@@ -788,6 +791,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      if grep -q "LETSENCRYPT_SERVER" $CONFIGURATION_FILE; then
+          LETSENCRYPT_SERVER=$(grep "LETSENCRYPT_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1185,13 +1191,24 @@ function check_certificates {
   if [ ! $1 ]; then
       return
   fi
-  if [ ! -f /etc/ssl/private/$1.key ]; then
-      echo "Private certificate for $CHECK_HOSTNAME was not created"
-      exit 63959
-  fi
-  if [ ! -f /etc/ssl/certs/$1.crt ]; then
-      echo "Public certificate for $CHECK_HOSTNAME was not created"
-      exit 7679
+  if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+      if [ ! -f /etc/ssl/private/$1.key ]; then
+          echo "Private certificate for $CHECK_HOSTNAME was not created"
+          exit 63959
+      fi
+      if [ ! -f /etc/ssl/certs/$1.crt ]; then
+          echo "Public certificate for $CHECK_HOSTNAME was not created"
+          exit 7679
+      fi
+  else
+      if [ ! -f /etc/letsencrypt/live/${1}/privkey.pem ]; then
+          echo "Private certificate for $CHECK_HOSTNAME was not created"
+          exit 6282
+      fi
+      if [ ! -f /etc/letsencrypt/live/${1}/fullchain.pem ]; then
+          echo "Public certificate for $CHECK_HOSTNAME was not created"
+          exit 5328
+      fi
   fi
   if [ ! -f /etc/ssl/certs/$1.dhparam ]; then
       echo "Diffie–Hellman parameters for $CHECK_HOSTNAME were not created"
@@ -3072,9 +3089,14 @@ function restore_database {
   echo '            rm -rf $USB_MOUNT' >> $script_name
   echo '            exit 683' >> $script_name
   echo '          fi' >> $script_name
-  echo '          # Ensure that the bundled SSL cert is being used' >> $script_name
-  echo '          if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then' >> $script_name
-  echo '            sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}' >> $script_name
+  echo '          if [ -d /etc/letsencrypt/live/${2} ]; then' >> $script_name
+  echo '            ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key' >> $script_name
+  echo '            ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem' >> $script_name
+  echo '          else' >> $script_name
+  echo '            # Ensure that the bundled SSL cert is being used' >> $script_name
+  echo '            if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then' >> $script_name
+  echo '              sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}' >> $script_name
+  echo '            fi' >> $script_name
   echo '          fi' >> $script_name
   echo '        fi' >> $script_name
   echo '      fi' >> $script_name
@@ -3698,6 +3720,10 @@ function create_restore_script {
   echo "  if [ -f /etc/ssl/certs/$WIKI_DOMAIN_NAME.bundle.crt ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo "    sed -i 's|$WIKI_DOMAIN_NAME.crt|$WIKI_DOMAIN_NAME.bundle.crt|g' /etc/nginx/sites-available/$WIKI_DOMAIN_NAME" >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "  if [ -d /etc/letsencrypt/live/${WIKI_DOMAIN_NAME} ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${WIKI_DOMAIN_NAME}.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${WIKI_DOMAIN_NAME}.pem" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -3739,7 +3765,10 @@ function create_restore_script {
   echo '      fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '  done' >> /usr/bin/$RESTORE_SCRIPT_NAME
-
+  echo "  if [ -d /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME} ]; then" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${FULLBLOG_DOMAIN_NAME}.key" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.pem" >> /usr/bin/$RESTORE_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_SCRIPT_NAME  
   echo 'fi' >> /usr/bin/$RESTORE_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_SCRIPT_NAME
 
@@ -4822,9 +4851,14 @@ function restore_database_from_friend {
   echo '          if [ ! "$?" = "0" ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '            exit 683' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '          fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '          # Ensure that the bundled SSL cert is being used' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '          if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
-  echo '            sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '          if [ -d /etc/letsencrypt/live/${2} ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '              ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '              ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '          else' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME  
+  echo '              # Ensure that the bundled SSL cert is being used' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '              if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '                  sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '              fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '          fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '        fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '      fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
@@ -5402,6 +5436,10 @@ function restore_from_friend {
   echo "  if [ -f /etc/ssl/certs/$WIKI_DOMAIN_NAME.bundle.crt ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo "    sed -i 's|$WIKI_DOMAIN_NAME.crt|$WIKI_DOMAIN_NAME.bundle.crt|g' /etc/nginx/sites-available/$WIKI_DOMAIN_NAME" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  if [ -d /etc/letsencrypt/live/${WIKI_DOMAIN_NAME} ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${WIKI_DOMAIN_NAME}.key" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${WIKI_DOMAIN_NAME}.pem" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
@@ -5440,6 +5478,10 @@ function restore_from_friend {
   echo '/$USERNAME/blog/uncategorized/post ' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '    fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '  done' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "  if [ -d /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME} ]; then" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${FULLBLOG_DOMAIN_NAME}.key" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo "      ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.pem" >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
+  echo '  fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo 'fi' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
   echo '' >> /usr/bin/$RESTORE_FROM_FRIEND_SCRIPT_NAME
 
@@ -7128,7 +7170,11 @@ function configure_imap_client_certs {
   fi
   # make a CA cert
   if [ ! -f /etc/ssl/private/ca-$DEFAULT_DOMAIN_NAME.key ]; then
-      freedombone-addcert -h $DEFAULT_DOMAIN_NAME --ca "" --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $DEFAULT_DOMAIN_NAME --ca "" --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $DEFAULT_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
   fi
   # CA configuration
   echo '[ ca ]' > /etc/ssl/dovecot-ca.cnf
@@ -8142,44 +8188,6 @@ function install_web_server {
   echo 'install_web_server' >> $COMPLETION_FILE
 }
 
-function install_letsencrypt {
-  if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
-      return
-  fi
-  if grep -Fxq "install_letsencrypt" $COMPLETION_FILE; then
-      return
-  fi
-  #apt-get -y install python-pip git
-  #pip install -U setuptools
-  #pip install --upgrade cffi
-  cd $INSTALL_DIR
-
-  # This is experimental developer preview and I hope at some stage
-  # there will be a debian package for it.
-
-  # obtain the repo
-  if [ ! -d $INSTALL_DIR/letsencrypt ]; then
-      git clone https://github.com/letsencrypt/letsencrypt
-      if [ ! -d $INSTALL_DIR/letsencrypt ]; then
-          exit 76283
-      fi
-  else
-      cd $INSTALL_DIR/letsencrypt
-      git stash
-      git pull
-  fi
-
-  cd $INSTALL_DIR/letsencrypt
-  # TODO this requires user interaction - is there a non-interactive mode?
-  ./letsencrypt-auto --agree-dev-preview --server https://acme-v01.api.letsencrypt.org/directory certonly
-  if [ ! "$?" = "0" ]; then
-      echo 'Failed to install letsencrypt'
-      exit 63216
-  fi
-
-  echo 'install_letsencrypt' >> $COMPLETION_FILE
-}
-
 function configure_php {
   sed -i "s/memory_limit = 128M/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php5/fpm/php.ini
   sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini
@@ -8591,7 +8599,11 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $OWNCLOUD_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $OWNCLOUD_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $OWNCLOUD_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
       check_certificates $OWNCLOUD_DOMAIN_NAME
   fi
 
@@ -8840,7 +8852,11 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$GIT_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $GIT_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $GIT_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $GIT_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
       check_certificates $GIT_DOMAIN_NAME
   fi
 
@@ -9298,7 +9314,11 @@ function install_wiki {
       rm -rf /var/www/$WIKI_DOMAIN_NAME/htdocs
   fi
   if [ ! -f /etc/ssl/certs/$WIKI_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $WIKI_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $WIKI_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $WIKI_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
       check_certificates $WIKI_DOMAIN_NAME
   fi
 
@@ -9582,7 +9602,11 @@ function install_blog {
   chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
 
   if [ ! -f /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $FULLBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $FULLBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $FULLBLOG_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
       check_certificates $FULLBLOG_DOMAIN_NAME
   fi
 
@@ -9948,7 +9972,11 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$MICROBLOG_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $MICROBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $MICROBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $MICROBLOG_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
       check_certificates $MICROBLOG_DOMAIN_NAME
   fi
 
@@ -10244,7 +10272,11 @@ quit" > $INSTALL_DIR/batch.sql
   configure_php
 
   if [ ! -f /etc/ssl/certs/$HUBZILLA_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $HUBZILLA_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $HUBZILLA_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $HUBZILLA_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
       check_certificates $HUBZILLA_DOMAIN_NAME
   fi
 
@@ -10569,7 +10601,11 @@ function install_mediagoblin {
   echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
 
   if [ ! -f /etc/ssl/certs/$MEDIAGOBLIN_DOMAIN_NAME.dhparam ]; then
-      freedombone-addcert -h $MEDIAGOBLIN_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+          freedombone-addcert -h $MEDIAGOBLIN_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+      else
+          freedombone-addcert -e $MEDIAGOBLIN_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
+      fi
       check_certificates $MEDIAGOBLIN_DOMAIN_NAME
   fi
 
@@ -11401,7 +11437,6 @@ encrypt_all_email
 import_email
 script_for_attaching_usb_drive
 install_web_server
-#install_letsencrypt
 configure_firewall_for_web_server
 install_owncloud
 install_owncloud_music_app
