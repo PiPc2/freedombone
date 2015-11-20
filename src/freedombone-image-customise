@@ -18,6 +18,22 @@
 set -e
 set -x
 
+# The number of arguments
+NO_OF_ARGS=$#
+
+MY_USERNAME=$USER
+MY_PASSWORD='freedombone'
+
+# IP address of the router (gateway)
+ROUTER_IP_ADDRESS="192.168.1.254"
+
+# The fixed IP address of the Beaglebone Black on your local network
+BOX_IP_ADDRESS="192.168.1.55"
+
+# DNS
+NAMESERVER1='213.73.91.35'
+NAMESERVER2='85.214.20.141'
+
 enable_eatmydata_override() {
     chroot $rootdir apt-get install --no-install-recommends -y eatmydata
     if [ -x $rootdir/usr/bin/eatmydata ] && \
@@ -78,9 +94,9 @@ export LC_ALL=C LANGUAGE=C LANG=C
 # are not created yet.
 export TMP=/tmp/ TMPDIR=/tmp/
 
-username=freedom
+username=$MY_USERNAME
 echo "warning: creating initial user $username with well known password!"
-password=bone
+password=$MY_PASSWORD
 chroot $rootdir adduser --gecos $username --disabled-password $username
 echo $username:$password | chroot $rootdir /usr/sbin/chpasswd
 chroot $rootdir adduser $username sudo
@@ -112,7 +128,7 @@ if [ -n "$CUSTOM_SETUP" ]; then
     chroot "$rootdir" gdebi -n /tmp/"$(basename $CUSTOM_SETUP)"
 fi
 
-chroot "$rootdir" apt-get install -y git dialog
+chroot "$rootdir" apt-get install -y git dialog build-essential
 chroot "$rootdir" git clone https://github.com/bashrc/freedombone /root/freedombone
 chroot "$rootdir" cd /root/freedombone && make install
 
@@ -127,18 +143,76 @@ chroot $rootdir /usr/lib/freedombone/setup 2>&1 | \
 # Remove SSH keys from the image
 rm $rootdir/etc/ssh/ssh_host_* || true
 
+echo "# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# The primary network interface
+auto eth0
+iface eth0 inet static
+    address $BOX_IP_ADDRESS
+    netmask 255.255.255.0
+    gateway $ROUTER_IP_ADDRESS
+    dns-nameservers $NAMESERVER1 $NAMESERVER2
+# Example to keep MAC address between reboots
+#hwaddress ether B5:A2:BE:3F:1A:FE
+
+# The secondary network interface
+#auto eth1
+#iface eth1 inet dhcp
+
+# WiFi Example
+#auto wlan0
+#iface wlan0 inet dhcp
+#    wpa-ssid \"essid\"
+#    wpa-psk  \"password\"
+
+# Ethernet/RNDIS gadget (g_ether)
+# ... or on host side, usbnet and random hwaddr
+# Note on some boards, usb0 is automaticly setup with an init script
+#iface usb0 inet static
+#    address 192.168.7.2
+#    netmask 255.255.255.0
+#    network 192.168.7.0
+#    gateway 192.168.7.1" > $rootdir/etc/network/interfaces
+
+hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
+a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+b=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+e=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" $rootdir/etc/network/interfaces
+
+sed -i "s/nameserver.*/nameserver $NAMESERVER1/g" $rootdir/etc/resolv.conf
+sed -i "/nameserver $NAMESERVER1/a\nameserver $NAMESERVER2" $rootdir/etc/resolv.conf
+
+# change the motd to show further install instructions
+echo "
+To complete the installation run the following:
+
+    su
+    freedombone menuconfig
+
+" > $rootdir/etc/init.d/motd
+
+
 # copy u-boot to beginning of image
 case "$MACHINE" in
     beaglebone)
-    chroot $rootdir apt-get -y install rng-tools
-    sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' $rootdir/etc/default/rng-tools
+        chroot $rootdir apt-get -y install rng-tools
+        sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' $rootdir/etc/default/rng-tools
 
-	dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/MLO of="$image" \
-	   count=1 seek=1 conv=notrunc bs=128k
-	dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/u-boot.img of="$image" \
-	   count=2 seek=1 conv=notrunc bs=384k
-	;;
+        dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/MLO of="$image" \
+           count=1 seek=1 conv=notrunc bs=128k
+        dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/u-boot.img of="$image" \
+           count=2 seek=1 conv=notrunc bs=384k
+        ;;
     cubieboard2)
+        chroot $rootdir apt-get -y install haveged
         dd if=$rootdir/usr/lib/u-boot/Cubieboard2/u-boot-sunxi-with-spl.bin of="$image" \
            seek=8 conv=notrunc bs=1k
         ;;

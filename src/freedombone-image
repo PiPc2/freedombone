@@ -28,20 +28,87 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-IMAGE_TYPE=$1
+IMAGE_TYPE='beaglebone'
 CURR_DIR=$(pwd)
 BUILD_DIR=~/.tmp_freedombone_build
+VMDEBOOTSTRAP_REPO=git://git.liw.fi/vmdebootstrap
+VMDEBOOTSTRAP_VERSION=0.8
+MAKEFILE=freedombone-image-makefile
 
+USERNAME=$(echo $USER)
+PASSWORD='freedombone'
+
+# IP address of the router (gateway)
+ROUTER_IP_ADDRESS="192.168.1.254"
+
+# The fixed IP address of the Beaglebone Black (or other SBC) on your local network
+BOX_IP_ADDRESS="192.168.1.55"
+
+# DNS
+NAMESERVER1='213.73.91.35'
+NAMESERVER2='85.214.20.141'
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    -h|--help)
+    show_help
+    ;;
+    -t|--target|--board)
+    shift
+    IMAGE_TYPE="$1"
+    ;;
+    -u|--user|--username)
+    shift
+    USERNAME="$1"
+    ;;
+    -p|--password)
+    shift
+    PASSWORD="$1"
+    ;;
+    # Box static IP address on the LAN
+    --ip)
+    shift
+    BOX_IP_ADDRESS="$1"
+    ;;
+    # Router IP address on the LAN
+    --iprouter)
+    shift
+    ROUTER_IP_ADDRESS="$1"
+    ;;
+    # nameserver 1
+    --ns1|--nameserver1)
+    shift
+    NAMESERVER1="$1"
+    ;;
+    # nameserver 2
+    --ns2|--nameserver2)
+    shift
+    NAMESERVER2="$1"
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+
+
+rm $CURR_DIR/*.img.bz2
 rm $CURR_DIR/*.img
+rm $CURR_DIR/*.sig
 
 if [ -d $BUILD_DIR ]; then
-	rm -rf $BUILD_DIR
+    rm -rf $BUILD_DIR
 fi
 mkdir -p $BUILD_DIR
-if [ -f /usr/local/bin/freedombone-image-makefile ]; then
-	cp /usr/local/bin/freedombone-image-makefile $BUILD_DIR/Makefile
+if [ -f /usr/local/bin/$MAKEFILE ]; then
+    cp /usr/local/bin/$MAKEFILE $BUILD_DIR/Makefile
 else
-	cp /usr/bin/freedombone-image-makefile $BUILD_DIR/Makefile
+    cp /usr/bin/$MAKEFILE $BUILD_DIR/Makefile
 fi
 
 cp -r /etc/freedombone/* $BUILD_DIR
@@ -52,18 +119,25 @@ mkdir vendor
 if [ -d vendor/vmdebootstrap ] ; then
     (cd vendor/vmdebootstrap; git checkout .; git pull)
 else
-    git clone git://git.liw.fi/vmdebootstrap vendor/vmdebootstrap
+    git clone $VMDEBOOTSTRAP_REPO vendor/vmdebootstrap
 fi
 cd vendor/vmdebootstrap
-git checkout tags/vmdebootstrap-0.8
-git checkout -b tags/vmdebootstrap-0.8
+git checkout tags/vmdebootstrap-${VMDEBOOTSTRAP_VERSION}
+git checkout -b tags/vmdebootstrap-${VMDEBOOTSTRAP_VERSION}
 for f in ../../vendor-patches/vmdebootstrap/* ; do
     echo applying $(basename $f)
     patch -p1 < $f
 done
 
 cd $BUILD_DIR
-make $IMAGE_TYPE
+make $IMAGE_TYPE \
+    USERNAME="$USERNAME" \
+    PASSWORD="$PASSWORD" \
+    ROUTER_IP_ADDRESS="$ROUTER_IP_ADDRESS" \
+    BOX_IP_ADDRESS="$BOX_IP_ADDRESS" \
+    NAMESERVER1="$NAMESERVER1" \
+    NAMESERVER2="$NAMESERVER2"
+
 mv build/*.bz2 $CURR_DIR
 mv build/*.img $CURR_DIR
 mv build/*.sig $CURR_DIR
