@@ -1,0 +1,158 @@
+#!/bin/sh
+#
+# Based on bin/freedombox-customize from freedom-maker
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -e
+set -x
+
+enable_eatmydata_override() {
+    chroot $rootdir apt-get install --no-install-recommends -y eatmydata
+    if [ -x $rootdir/usr/bin/eatmydata ] && \
+        [ ! -f $rootdir/etc/apt/apt.conf.d/95debian-edu-install-dpkg-eatmydata ]; then
+        echo "info: Adding apt config to call dpkg via eatmydata"
+        printf "#!/bin/sh\nexec eatmydata dpkg \"\$@\"\n" \
+            > $rootdir/var/tmp/dpkg-eatmydata
+        chmod 755 $rootdir/var/tmp/dpkg-eatmydata
+        cat > $rootdir/etc/apt/apt.conf.d/95debian-edu-install-dpkg-eatmydata <<EOF
+Dir::Bin::dpkg "/var/tmp/dpkg-eatmydata";
+EOF
+    else
+        echo "error: unable to find /usr/bin/eatmydata after installing the eatmydata package"
+    fi
+}
+
+disable_eatmydata_override() {
+    for override in \
+        /etc/apt/apt.conf.d/95debian-edu-install-dpkg-eatmydata \
+        /var/tmp/dpkg-eatmydata ; do
+        echo "info: Removing apt config to call dpkg via eatmydata"
+        if [ -f $rootdir$override ] ; then
+            rm -f $rootdir$override
+        else
+            echo "warning: missing $rootdir$override"
+        fi
+    done
+    sync # Flush file buffers before continuing
+}
+
+set_apt_sources() {
+    NEW_MIRROR="$1"
+    COMPONENTS="main"
+
+    cat <<EOF > etc/apt/sources.list
+deb $NEW_MIRROR $SUITE $COMPONENTS
+deb-src $NEW_MIRROR $SUITE $COMPONENTS
+
+#deb http://security.debian.org/ $SUITE/updates main
+#deb-src http://security.debian.org/ $SUITE/updates main
+EOF
+}
+
+# Set to true/false to control if eatmydata is used during build
+use_eatmydata=true
+
+rootdir="$1"
+fmdir="$(pwd)"
+image="$fmdir"/"$2"
+cd "$rootdir"
+
+echo info: building $MACHINE for $ARCHITECTURE
+
+export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true
+export LC_ALL=C LANGUAGE=C LANG=C
+
+# Override libpam-tmpdir setting during build, as the directories
+# are not created yet.
+export TMP=/tmp/ TMPDIR=/tmp/
+
+username=freedom
+echo "warning: creating initial user $username with well known password!"
+password=bone
+chroot $rootdir adduser --gecos $username --disabled-password $username
+echo $username:$password | chroot $rootdir /usr/sbin/chpasswd
+chroot $rootdir adduser $username sudo
+
+case "$MACHINE" in
+    virtualbox)
+        # hide irrelevant console keyboard messages.
+        echo "echo \"4 4 1 7\" > /proc/sys/kernel/printk" \
+            >> /etc/init.d/rc.local
+        ;;
+esac
+
+set_apt_sources $BUILD_MIRROR
+chroot $rootdir apt-get update
+
+cat > $rootdir/usr/sbin/policy-rc.d <<EOF
+#!/bin/sh
+exit 101
+EOF
+chmod a+rx $rootdir/usr/sbin/policy-rc.d
+
+if $use_eatmydata ; then
+    enable_eatmydata_override
+fi
+
+if [ -n "$CUSTOM_SETUP" ]; then
+    cp "$CUSTOM_SETUP" "$rootdir"/tmp
+    chroot "$rootdir" apt-get install -y gdebi-core
+    chroot "$rootdir" gdebi -n /tmp/"$(basename $CUSTOM_SETUP)"
+fi
+
+chroot "$rootdir" apt-get install -y git dialog
+chroot "$rootdir" git clone https://github.com/bashrc/freedombone /root/freedombone
+chroot "$rootdir" cd /root/freedombone && make install
+
+chroot $rootdir freedombone-image-hardware-setup 2>&1 | \
+    tee $rootdir/var/log/freedombone-image-hardware-setup.log
+
+rm $rootdir/usr/sbin/policy-rc.d
+
+chroot $rootdir /usr/lib/freedombone/setup 2>&1 | \
+    tee $rootdir/var/log/freedombone-setup.log
+
+# Remove SSH keys from the image
+rm $rootdir/etc/ssh/ssh_host_* || true
+
+# copy u-boot to beginning of image
+case "$MACHINE" in
+    beaglebone)
+    chroot $rootdir apt-get -y install rng-tools
+    sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' $rootdir/etc/default/rng-tools
+
+	dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/MLO of="$image" \
+	   count=1 seek=1 conv=notrunc bs=128k
+	dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/u-boot.img of="$image" \
+	   count=2 seek=1 conv=notrunc bs=384k
+	;;
+    cubieboard2)
+        dd if=$rootdir/usr/lib/u-boot/Cubieboard2/u-boot-sunxi-with-spl.bin of="$image" \
+           seek=8 conv=notrunc bs=1k
+        ;;
+esac
+
+if $use_eatmydata ; then
+    disable_eatmydata_override
+fi
+
+set_apt_sources $MIRROR
+chroot $rootdir apt-get update
+
+cd /
+echo "info: killing leftover processes in chroot"
+# 2014-11-04 this killed /usr/lib/erlang/erts-6.2/bin/epmd, see
+# <URL: https://www.ejabberd.im/epmd?q=epmd > to learn more.
+fuser -mvk $rootdir/. || true

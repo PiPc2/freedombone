@@ -10,6 +10,8 @@ source:
 	gzip -f9n ../${APP}_${VERSION}.orig.tar
 install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
+	mkdir -p ${DESTDIR}/etc/freedombone
+	cp -r image_build/* ${DESTDIR}/etc/freedombone
 	install -m 755 src/${APP} ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/zeronetavahi ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-keydrive ${DESTDIR}${PREFIX}/bin
@@ -45,6 +47,7 @@ install:
 	install -m 755 src/${APP}-rmsipuser ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-sipfreeext ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-format ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/${APP}-image* ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-keydrive.1.gz ${DESTDIR}${PREFIX}/share/man/man1
@@ -75,6 +78,7 @@ install:
 	install -m 644 man/${APP}-addsipuser.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-rmsipuser.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-format.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	install -m 644 man/${APP}-image.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-keydrive.1.gz
@@ -105,6 +109,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/${APP}-addsipuser.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-rmsipuser.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}-format.1.gz
+	rm -f ${PREFIX}/share/man/man1/${APP}-image.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}
 	rm -f ${PREFIX}/bin/zeronetavahi
@@ -139,7 +144,9 @@ uninstall:
 	rm -f ${PREFIX}/bin/${APP}-rmsipuser
 	rm -f ${PREFIX}/bin/${APP}-sipfreeext
 	rm -f ${PREFIX}/bin/${APP}-format
+	rm -f ${PREFIX}/bin/${APP}-image*
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}
 	rm -f ../${APP}*.deb ../${APP}*.changes ../${APP}*.asc ../${APP}*.dsc
+	rm -rf /etc/freedombone

@@ -1,0 +1,129 @@
+#!/bin/sh
+#
+# Based upon bin/mk-freedombox-image from freedom-maker
+# With non-free stuff removed
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -e # Exit on first error
+
+#set -x # Enable debugging
+
+IMAGE=$1
+export ARCHITECTURE
+export MACHINE
+export SOURCE
+export SUITE
+
+# Locate vmdebootstrap program fetched in Makefile
+basedir=`pwd`
+vendor_dir="${basedir}/vendor"
+vmdebootstrap_dir="${vendor_dir}/vmdebootstrap"
+
+if [ -z "$MIRROR" ] || [ -z "$SUITE" ] ; then
+    echo error: Missing MIRROR and SUITE settings inherited from Makefile.
+    exit 1
+fi
+
+# Packages to install in all Freedombone environments
+base_pkgs="apt base-files ifupdown initramfs-tools \
+logrotate module-init-tools netbase rsyslog udev debian-archive-keyring"
+
+# Packages needed on the beaglebone
+beaglebone_pkgs="linux-image-armmp u-boot-tools u-boot"
+
+# Packages needed for self-hosted development
+dev_pkgs="build-essential devscripts make man-db emacs org-mode git mercurial"
+
+# Packages needed for XFCE desktop environment
+xfce_pkgs="task-xfce-desktop iceweasel ca-certificates"
+
+echo Building $MACHINE Freedombone for $ARCHITECTURE.
+
+case "$MACHINE" in
+    beaglebone)
+	extra_pkgs="$beaglebone_pkgs"
+	extra_opts="\
+ --variant minbase \
+ --bootoffset=2mib \
+ --bootsize 128M \
+ --boottype ext2 \
+ --no-kernel \
+ --no-extlinux \
+ --foreign /usr/bin/qemu-arm-static \
+ --roottype btrfs \
+"
+	;;
+    virtualbox)
+	extra_opts="\
+ --grub \
+ --roottype btrfs \
+"	;;
+    all)
+	extra_opts="\
+ --grub \
+ --roottype btrfs \
+"	;;
+esac
+
+# allow for lots of extra fun customization options.
+for customization in $CUSTOMIZATIONS
+do
+    case "$customization" in
+        development)
+            extra_pkgs="$extra_pkgs $dev_pkgs"
+            ;;
+	xfce)
+	    extra_pkgs="$extra_pkgs $xfce_pkgs"
+	    ;;
+    esac
+done
+
+for p in $base_pkgs $extra_pkgs; do
+    pkgopts="$pkgopts --package $p"
+done
+
+# Make sure file is owned by current user, not root
+touch $(dirname $IMAGE)/freedombone.log
+
+if [ -x vendor/vmdebootstrap/vmdebootstrap ] ; then
+    VMDEBOOTSTRAP=vendor/vmdebootstrap/vmdebootstrap
+else
+    VMDEBOOTSTRAP=vmdebootstrap
+fi
+
+echo "starting $VMDEBOOTSTRAP"
+# Run vmdebootstrap script to create image
+sudo -H \
+    SUITE="$SUITE" \
+    MIRROR="$MIRROR" \
+    BUILD_MIRROR="$BUILD_MIRROR"\
+    MACHINE="$MACHINE" \
+    ARCHITECTURE="$ARCHITECTURE" \
+    SOURCE="$SOURCE" \
+    CUSTOM_SETUP="$CUSTOM_SETUP" \
+    $VMDEBOOTSTRAP \
+    --log $(dirname $IMAGE)/freedombone.log \
+    --log-level debug \
+    --size $IMAGE_SIZE \
+    --image $IMAGE.img \
+    --hostname freedombone \
+    --verbose \
+    --mirror $BUILD_MIRROR \
+    --customize "freedombone-image-customise" \
+    --lock-root-password \
+    --arch $ARCHITECTURE \
+    --distribution $SUITE \
+    $extra_opts \
+    $pkgopts
