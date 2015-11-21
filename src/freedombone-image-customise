@@ -90,6 +90,77 @@ deb-src $NEW_MIRROR $SUITE $COMPONENTS
 EOF
 }
 
+configure_networking {
+    echo "# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# The primary network interface
+auto eth0
+iface eth0 inet static
+    address $BOX_IP_ADDRESS
+    netmask 255.255.255.0
+    gateway $ROUTER_IP_ADDRESS
+    dns-nameservers $NAMESERVER1 $NAMESERVER2
+# Example to keep MAC address between reboots
+#hwaddress ether B5:A2:BE:3F:1A:FE
+
+# The secondary network interface
+#auto eth1
+#iface eth1 inet dhcp
+
+# WiFi Example
+#auto wlan0
+#iface wlan0 inet dhcp
+#    wpa-ssid \"essid\"
+#    wpa-psk  \"password\"
+
+# Ethernet/RNDIS gadget (g_ether)
+# ... or on host side, usbnet and random hwaddr
+# Note on some boards, usb0 is automaticly setup with an init script
+#iface usb0 inet static
+#    address 192.168.7.2
+#    netmask 255.255.255.0
+#    network 192.168.7.0
+#    gateway 192.168.7.1" > $rootdir/etc/network/interfaces
+
+    hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
+    a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    b=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    e=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" \
+        $rootdir/etc/network/interfaces
+
+    sed -i "s/nameserver.*/nameserver $NAMESERVER1/g" $rootdir/etc/resolv.conf
+    sed -i "/nameserver $NAMESERVER1/a\nameserver $NAMESERVER2" $rootdir/etc/resolv.conf
+
+    # change the motd to show further install instructions
+    echo '
+To complete the installation run the following:
+
+    sudo su
+    freedombone menuconfig
+
+' > $rootdir/etc/init.d/motd
+}
+
+continue_installation {
+    # If a configuration file exists then run with it
+    # otherwise the interactive installer can be used
+    # This is equivalent to installing freedombox-setup on freedombox
+    if [ $CONFIG_FILENAME ]; then
+        if [ ${#CONFIG_FILENAME} -gt 2 ]; then
+            cp $CONFIG_FILENAME $rootdir/root/$PROJECT_NAME.cfg
+            chroot $rootdir $PROJECT_NAME -c /root/$PROJECT_NAME.cfg
+        fi
+    fi
+}
+
 # Set to true/false to control if eatmydata is used during build
 use_eatmydata=true
 
@@ -156,63 +227,6 @@ chroot $rootdir /usr/lib/freedombone/setup 2>&1 | \
 # Remove SSH keys from the image
 rm $rootdir/etc/ssh/ssh_host_* || true
 
-echo "# This file describes the network interfaces available on your system
-# and how to activate them. For more information, see interfaces(5).
-
-# The loopback network interface
-auto lo
-iface lo inet loopback
-
-# The primary network interface
-auto eth0
-iface eth0 inet static
-    address $BOX_IP_ADDRESS
-    netmask 255.255.255.0
-    gateway $ROUTER_IP_ADDRESS
-    dns-nameservers $NAMESERVER1 $NAMESERVER2
-# Example to keep MAC address between reboots
-#hwaddress ether B5:A2:BE:3F:1A:FE
-
-# The secondary network interface
-#auto eth1
-#iface eth1 inet dhcp
-
-# WiFi Example
-#auto wlan0
-#iface wlan0 inet dhcp
-#    wpa-ssid \"essid\"
-#    wpa-psk  \"password\"
-
-# Ethernet/RNDIS gadget (g_ether)
-# ... or on host side, usbnet and random hwaddr
-# Note on some boards, usb0 is automaticly setup with an init script
-#iface usb0 inet static
-#    address 192.168.7.2
-#    netmask 255.255.255.0
-#    network 192.168.7.0
-#    gateway 192.168.7.1" > $rootdir/etc/network/interfaces
-
-hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
-a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-b=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-e=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" $rootdir/etc/network/interfaces
-
-sed -i "s/nameserver.*/nameserver $NAMESERVER1/g" $rootdir/etc/resolv.conf
-sed -i "/nameserver $NAMESERVER1/a\nameserver $NAMESERVER2" $rootdir/etc/resolv.conf
-
-# change the motd to show further install instructions
-echo "
-To complete the installation run the following:
-
-    sudo su
-    freedombone menuconfig
-
-" > $rootdir/etc/init.d/motd
-
-
 # copy u-boot to beginning of image
 case "$MACHINE" in
     beaglebone)
@@ -238,15 +252,8 @@ fi
 set_apt_sources $MIRROR
 chroot $rootdir apt-get update
 
-# If a configuration file exists then run with it
-# otherwise the interactive installer can be used
-# This is equivalent to installing freedombox-setup on freedombox
-if [ $CONFIG_FILENAME ]; then
-    if [ ${#CONFIG_FILENAME} -gt 2 ]; then
-        cp $CONFIG_FILENAME $rootdir/root/$PROJECT_NAME.cfg
-        chroot $rootdir $PROJECT_NAME -c /root/$PROJECT_NAME.cfg
-    fi
-fi
+configure_networking
+continue_installation
 
 cd /
 echo "info: killing leftover processes in chroot"
