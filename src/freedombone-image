@@ -37,7 +37,7 @@ VMDEBOOTSTRAP_VERSION=0.8
 MAKEFILE=${PROJECT_NAME}-image-makefile
 
 USERNAME=$(echo $USER)
-PASSWORD="${PROJECT_NAME}"
+PASSWORD=
 
 # IP address of the router (gateway)
 ROUTER_IP_ADDRESS="192.168.1.254"
@@ -52,6 +52,8 @@ NAMESERVER2='85.214.20.141'
 # An optional freedombone configuration file
 CONFIG_FILENAME=
 
+DEFAULT_DOMAIN_NAME="${PROJECT_NAME}.local"
+
 while [[ $# > 1 ]]
 do
 key="$1"
@@ -63,6 +65,11 @@ case $key in
     -c|--config)
     shift
     CONFIG_FILENAME="$1"
+    if [ ! -f $CONFIG_FILENAME ]; then
+        echo "Config file $CONFIG_FILENAME not found"
+        exit 3
+    fi
+    DEFAULT_DOMAIN_NAME=$(cat $CONFIG_FILENAME | grep 'DEFAULT_DOMAIN_NAME' | awk -F '=' '{print $2}')
     ;;
     -t|--target|--board)
     shift
@@ -103,7 +110,10 @@ esac
 shift
 done
 
-
+if [ ! $PASSWORD ]; then
+    # generate a random password
+    PASSWORD="$(openssl rand -base64 10 | cut -c1-8)"
+fi
 
 rm $CURR_DIR/*.img.bz2
 rm $CURR_DIR/*.img
@@ -145,15 +155,15 @@ make $IMAGE_TYPE \
     BOX_IP_ADDRESS="$BOX_IP_ADDRESS" \
     NAMESERVER1="$NAMESERVER1" \
     NAMESERVER2="$NAMESERVER2" \
-	PROJECT_NAME="$PROJECT_NAME" \
-	CONFIG_FILENAME="$CONFIG_FILENAME"
+    PROJECT_NAME="$PROJECT_NAME" \
+    CONFIG_FILENAME="$CONFIG_FILENAME"
 
 shopt -s nullglob
 imgfiles=(build/${PROJECT_NAME}*.img)
 if [ ${#imgfiles[@]} -eq 0 ]; then
-	echo 'Image was not created'
-	rm -rf $BUILD_DIR
-	exit 1
+    echo 'Image was not created'
+    rm -rf $BUILD_DIR
+    exit 1
 fi
 
 mv build/${PROJECT_NAME}*.bz2 $CURR_DIR
@@ -162,9 +172,20 @@ mv build/${PROJECT_NAME}*.sig $CURR_DIR
 rm -rf $BUILD_DIR
 
 clear
-echo '
-Image was created
-'
+echo "
+Image was created.
+
+You will be able to log into it with:
+
+    ssh $USERNAME@$DEFAULT_DOMAIN_NAME -p 2222
+
+    Password: $PASSWORD
+"
 ls -lh ${PROJECT_NAME}*.img ${PROJECT_NAME}*.sig ${PROJECT_NAME}*.bz2
+
+# record the default login credentials for later use
+echo "Username: $USERNAME
+Password: $PASSWORD" > ${PROJECT_NAME}_login_credentials.txt
+chmod 600 ${PROJECT_NAME}_login_credentials.txt
 
 exit 0
