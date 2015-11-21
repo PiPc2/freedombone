@@ -43,7 +43,7 @@ MICROSD_DRIVE=
 ROUTER_IP_ADDRESS="192.168.1.254"
 
 # The fixed IP address of the Beaglebone Black on your local network
-BBB_FIXED_IP_ADDRESS="192.168.1.55"
+BOX_IP_ADDRESS="192.168.1.55"
 
 # DNS
 NAMESERVER1='213.73.91.35'
@@ -66,10 +66,65 @@ CURR_DIR=$(pwd)
 
 function show_help {
     echo ''
-    echo 'freedombone-prep -d [microSD device] --ip [BBB LAN IP address] --iprouter [Router LAN IP address] --mount [mount directory]'
+    echo 'freedombone-prep -i [image filename] -d [microSD device] --ip [BBB LAN IP address] --iprouter [Router LAN IP address] --mount [mount directory]'
     echo ''
     echo 'See the manpage for more details'
     echo ''
+}
+
+function configure_networking {
+    rootdir=$1
+	temp_interfaces=/tmp/freedombone_interfaces
+    echo "# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# The primary network interface
+auto eth0
+iface eth0 inet static
+    address $BOX_IP_ADDRESS
+    netmask 255.255.255.0
+    gateway $ROUTER_IP_ADDRESS
+    dns-nameservers $NAMESERVER1 $NAMESERVER2
+# Example to keep MAC address between reboots
+#hwaddress ether B5:A2:BE:3F:1A:FE
+
+# The secondary network interface
+#auto eth1
+#iface eth1 inet dhcp
+
+# WiFi Example
+#auto wlan0
+#iface wlan0 inet dhcp
+#    wpa-ssid \"essid\"
+#    wpa-psk  \"password\"
+
+# Ethernet/RNDIS gadget (g_ether)
+# ... or on host side, usbnet and random hwaddr
+# Note on some boards, usb0 is automaticly setup with an init script
+#iface usb0 inet static
+#    address 192.168.7.2
+#    netmask 255.255.255.0
+#    network 192.168.7.0
+#    gateway 192.168.7.1" > $temp_interfaces
+
+    hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
+    a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    b=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    e=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
+    sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" \
+        $temp_interfaces
+
+	$SUDO cp $temp_interfaces $rootdir/etc/network/interfaces
+	rm $temp_interfaces
+
+    $SUDO sed -i "s/nameserver.*/nameserver $NAMESERVER1/g" $rootdir/etc/resolv.conf
+    $SUDO sed -i "/nameserver $NAMESERVER1/a\nameserver $NAMESERVER2" $rootdir/etc/resolv.conf
 }
 
 # if no arguments are given
@@ -123,7 +178,7 @@ case $key in
     # BBB static IP address on the LAN
     --ip)
     shift
-    BBB_FIXED_IP_ADDRESS="$1"
+    BOX_IP_ADDRESS="$1"
     ;;
     # Router IP address on the LAN
     --iprouter)
@@ -260,23 +315,7 @@ if [ ! -d $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/home ]; then
     exit 65688
 fi
 
-$SUDO sed -i 's/iface eth0 inet dhcp/iface eth0 inet static/g' $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/network/interfaces
-$SUDO sed -i "/iface eth0 inet static/a\    dns-nameservers $NAMESERVER1 $NAMESERVER2" $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/network/interfaces
-$SUDO sed -i "/iface eth0 inet static/a\    gateway $ROUTER_IP_ADDRESS" $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/network/interfaces
-$SUDO sed -i '/iface eth0 inet static/a\    netmask 255.255.255.0' $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/network/interfaces
-$SUDO sed -i "/iface eth0 inet static/a\    address $BBB_FIXED_IP_ADDRESS" $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/network/interfaces
-$SUDO sed -i '/iface usb0 inet static/,/    gateway 192.168.7.1/ s/^/#/' $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/network/interfaces
-
-hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
-a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-b=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-e=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-$SUDO sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/network/interfaces
-
-$SUDO sed -i "s/nameserver.*/nameserver $NAMESERVER1/g" $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/resolv.conf
-$SUDO sed -i "/nameserver $NAMESERVER1/a\nameserver $NAMESERVER2" $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/etc/resolv.conf
+configure_networking $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR
 
 # copy the commands to the card
 $SUDO cp -f $(which freedombone)* $MICROSD_MOUNT_POINT/$ROOTFS$ROOTFS_SUBDIR/usr/local/bin/
@@ -302,7 +341,7 @@ echo '' >> /tmp/freedombone_motd
 echo 'Enter the command "exit" a couple of times to get back to your main system' >> /tmp/freedombone_motd
 echo 'then log back in as the user you just created with:' >> /tmp/freedombone_motd
 echo '' >> /tmp/freedombone_motd
-echo "    ssh [username]@$BBB_FIXED_IP_ADDRESS" >> /tmp/freedombone_motd
+echo "    ssh [username]@$BOX_IP_ADDRESS" >> /tmp/freedombone_motd
 echo '' >> /tmp/freedombone_motd
 echo 'and use the "su" command to become the root user again.' >> /tmp/freedombone_motd
 echo '' >> /tmp/freedombone_motd
@@ -323,7 +362,7 @@ echo ''
 echo 'The microSD card can now be removed and inserted into the Beaglebone Black.'
 echo 'Once the Beaglebone has booted then you can log in with:'
 echo ''
-echo "    ssh root@$BBB_FIXED_IP_ADDRESS"
+echo "    ssh root@$BOX_IP_ADDRESS"
 echo ''
 echo 'The root password should be changed with the command "passwd".'
 cat /tmp/freedombone_motd
