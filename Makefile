@@ -24,8 +24,8 @@ uninstall:
 	rm -f ${PREFIX}/bin/zeronetavahi
 	rm -f ${PREFIX}/bin/mesh
 	rm -f ${PREFIX}/bin/meshweb
+	rm -rf /etc/freedombone
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}
 	rm -f ../${APP}*.deb ../${APP}*.changes ../${APP}*.asc ../${APP}*.dsc
-	rm -rf /etc/freedombone
