@@ -12,139 +12,18 @@ install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
 	mkdir -p ${DESTDIR}/etc/freedombone
 	cp -r image_build/* ${DESTDIR}/etc/freedombone
-	install -m 755 src/${APP} ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/zeronetavahi ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-keydrive ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-splitkey ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-recoverkey ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-prep ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-client ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-remote ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-config ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-sec ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-addcert ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-adduser ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-clientcert ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-addlist ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-addemail ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-renew-cert ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-rmlist ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-rmemail ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-rmuser ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-ignore ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-unignore ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-addxmpp ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-rmxmpp ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-xmpp-pass ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-mesh ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-mesh ${DESTDIR}${PREFIX}/bin/mesh
-	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin
+	install -m 755 src/* ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
-	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
-	install -m 755 src/${APP}-logging ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-addsipuser ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-rmsipuser ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-sipfreeext ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-format ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-image* ${DESTDIR}${PREFIX}/bin
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-keydrive.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-splitkey.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-recoverkey.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-prep.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-client.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-remote.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-config.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-sec.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-addcert.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-adduser.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-clientcert.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-addlist.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-addemail.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-renew-cert.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-rmlist.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-rmemail.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-rmuser.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-ignore.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-unignore.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-addxmpp.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-rmxmpp.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-xmpp-pass.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-mesh.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-controlpanel.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-logging.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-addsipuser.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-rmsipuser.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-format.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-image.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	install -m 644 man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 uninstall:
-	rm -f ${PREFIX}/share/man/man1/${APP}.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-keydrive.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-splitkey.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-recoverkey.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-prep.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-client.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-remote.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-config.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-sec.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-clientcert.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-addcert.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-adduser.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-addlist.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-addemail.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-renew-cert.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-rmlist.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-rmemail.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-rmuser.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-ignore.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-unignore.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-addxmpp.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-rmxmpp.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-xmpp-pass.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-mesh.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-controlpanel.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-logging.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-addsipuser.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-rmsipuser.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-format.1.gz
-	rm -f ${PREFIX}/share/man/man1/${APP}-image.1.gz
+	rm -f ${PREFIX}/share/man/man1/${APP}*.1.gz
 	rm -rf ${PREFIX}/share/${APP}
-	rm -f ${PREFIX}/bin/${APP}
+	rm -f ${PREFIX}/bin/${APP}*
 	rm -f ${PREFIX}/bin/zeronetavahi
-	rm -f ${PREFIX}/bin/${APP}-keydrive
-	rm -f ${PREFIX}/bin/${APP}-splitkey
-	rm -f ${PREFIX}/bin/${APP}-recoverkey
-	rm -f ${PREFIX}/bin/${APP}-prep
-	rm -f ${PREFIX}/bin/${APP}-client
-	rm -f ${PREFIX}/bin/${APP}-remote
-	rm -f ${PREFIX}/bin/${APP}-config
-	rm -f ${PREFIX}/bin/${APP}-sec
-	rm -f ${PREFIX}/bin/${APP}-addcert
-	rm -f ${PREFIX}/bin/${APP}-adduser
-	rm -f ${PREFIX}/bin/${APP}-clientcert
-	rm -f ${PREFIX}/bin/${APP}-addlist
-	rm -f ${PREFIX}/bin/${APP}-addemail
-	rm -f ${PREFIX}/bin/${APP}-renew-cert
-	rm -f ${PREFIX}/bin/${APP}-rmlist
-	rm -f ${PREFIX}/bin/${APP}-rmuser
-	rm -f ${PREFIX}/bin/${APP}-ignore
-	rm -f ${PREFIX}/bin/${APP}-unignore
-	rm -f ${PREFIX}/bin/${APP}-addxmpp
-	rm -f ${PREFIX}/bin/${APP}-rmxmpp
-	rm -f ${PREFIX}/bin/${APP}-xmpp-pass
-	rm -f ${PREFIX}/bin/${APP}-mesh
 	rm -f ${PREFIX}/bin/mesh
-	rm -f ${PREFIX}/bin/${APP}-meshweb
 	rm -f ${PREFIX}/bin/meshweb
-	rm -f ${PREFIX}/bin/${APP}-controlpanel
-	rm -f ${PREFIX}/bin/${APP}-logging
-	rm -f ${PREFIX}/bin/${APP}-addsipuser
-	rm -f ${PREFIX}/bin/${APP}-rmsipuser
-	rm -f ${PREFIX}/bin/${APP}-sipfreeext
-	rm -f ${PREFIX}/bin/${APP}-format
-	rm -f ${PREFIX}/bin/${APP}-image*
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
 	rm -fr deb.* debian/${APP}
