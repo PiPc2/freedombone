@@ -200,9 +200,9 @@ export TMP=/tmp/ TMPDIR=/tmp/
 username=$MY_USERNAME
 echo "warning: creating initial user $username with well known password!"
 password=$MY_PASSWORD
-chroot $rootdir adduser --gecos $username --disabled-password $username
+chroot "$rootdir" adduser --gecos $username --disabled-password $username
 echo $username:$password | chroot $rootdir /usr/sbin/chpasswd
-chroot $rootdir adduser $username sudo
+chroot "$rootdir" adduser $username sudo
 
 case "$MACHINE" in
     virtualbox)
@@ -213,7 +213,7 @@ case "$MACHINE" in
 esac
 
 set_apt_sources $BUILD_MIRROR
-chroot $rootdir apt-get update
+chroot "$rootdir" apt-get update
 
 cat > $rootdir/usr/sbin/policy-rc.d <<EOF
 #!/bin/sh
@@ -232,33 +232,39 @@ if [ -n "$CUSTOM_SETUP" ]; then
 fi
 
 chroot "$rootdir" apt-get install -y git dialog build-essential openssh-server
-chroot "$rootdir" git clone https://github.com/bashrc/freedombone /root/freedombone
-chroot "$rootdir" cd /root/freedombone && make install
+chroot "$rootdir" /bin/bash -x <<EOF
+git clone https://github.com/bashrc/freedombone /root/freedombone
+cd /root/freedombone
+make install
+EOF
 
-chroot $rootdir freedombone-image-hardware-setup 2>&1 | \
+chroot "$rootdir" freedombone-image-hardware-setup 2>&1 | \
     tee $rootdir/var/log/freedombone-image-hardware-setup.log
 
 rm $rootdir/usr/sbin/policy-rc.d
 
-chroot $rootdir /usr/lib/freedombone/setup 2>&1 | \
+chroot "$rootdir" /usr/lib/freedombone/setup 2>&1 | \
     tee $rootdir/var/log/freedombone-setup.log
 
 # Remove SSH keys from the image
 rm $rootdir/etc/ssh/ssh_host_* || true
 
+if [[ "$MACHINE" != "beaglebone" ]]; then
+    chroot $rootdir apt-get -y install haveged
+else
+    chroot $rootdir apt-get -y install rng-tools
+    sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' $rootdir/etc/default/rng-tools
+fi
+
 # copy u-boot to beginning of image
 case "$MACHINE" in
     beaglebone)
-        chroot $rootdir apt-get -y install rng-tools
-        sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' $rootdir/etc/default/rng-tools
-
         dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/MLO of="$image" \
            count=1 seek=1 conv=notrunc bs=128k
         dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/u-boot.img of="$image" \
            count=2 seek=1 conv=notrunc bs=384k
         ;;
     cubieboard2)
-        chroot $rootdir apt-get -y install haveged
         dd if=$rootdir/usr/lib/u-boot/Cubieboard2/u-boot-sunxi-with-spl.bin of="$image" \
            seek=8 conv=notrunc bs=1k
         ;;
@@ -269,7 +275,7 @@ if $use_eatmydata ; then
 fi
 
 set_apt_sources $MIRROR
-chroot $rootdir apt-get update
+chroot "$rootdir" apt-get update
 
 configure_ssh
 configure_networking
