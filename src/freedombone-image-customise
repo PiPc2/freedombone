@@ -97,7 +97,7 @@ EOF
 }
 
 configure_networking() {
-	if [[ $GENERIC_IMAGE == "no" ]]; then
+    if [[ $GENERIC_IMAGE == "no" ]]; then
         echo "# This file describes the network interfaces available on your system
 # and how to activate them. For more information, see interfaces(5).
 
@@ -140,9 +140,9 @@ iface eth0 inet static
         c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
         d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
         e=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-        sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" \ 
+        sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" \
             $rootdir/etc/network/interfaces
-	fi
+    fi
 
     sed -i "s/nameserver.*/nameserver $NAMESERVER1/g" $rootdir/etc/resolv.conf
     sed -i "/nameserver $NAMESERVER1/a\nameserver $NAMESERVER2" $rootdir/etc/resolv.conf
@@ -195,8 +195,9 @@ create_generic_image() {
     # The presence of this file indicates that the initial
     # setup has not yet been completed
     touch $rootdir/home/$MY_USERNAME/.initial_setup
+    chown $MY_USERNAME:$MY_USERNAME $rootdir/home/$MY_USERNAME/.initial_setup
     touch $rootdir/root/.initial_setup
-   
+
     cat >> $rootdir/home/$MY_USERNAME/.bashrc <<EOF
 # initial setup of the system
 if [ -f ~/.initial_setup ]; then
@@ -215,33 +216,43 @@ if [ -f ~/.initial_setup ]; then
     echo ''
 EOF
 
-echo '    NEW_USER_PASSWORD="$(openssl rand -base64 12 | cut -c1-10)"' >> $rootdir/home/$MY_USERNAME/.bashrc
-echo '    echo "${NEW_USER_PASSWORD}" > ~/login.txt' >> $rootdir/home/$MY_USERNAME/.bashrc
-echo '    echo "    $NEW_USER_PASSWORD"' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo '    if [ -f ~/login.txt ]; then' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo '        NEW_USER_PASSWORD=$(cat ~/login.txt)' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo '    else' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo '        NEW_USER_PASSWORD="$(openssl rand -base64 12 | cut -c1-10)"' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo '    fi' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo '    echo -n "${NEW_USER_PASSWORD}" > ~/login.txt' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo '    echo "    $NEW_USER_PASSWORD"' >> $rootdir/home/$MY_USERNAME/.bashrc
 
     cat >> $rootdir/home/$MY_USERNAME/.bashrc <<EOF
     echo ''
     echo 'Copy it into a password manager or write it down somewhere.'
     echo ''
     read -n1 -r -p "Press any key to continue..." key
-    rm ~/.initial_setup
-    sudo su
+EOF
+    echo "    echo '$MY_PASSWORD' | sudo su" >> $rootdir/home/$MY_USERNAME/.bashrc
+    cat >> $rootdir/home/$MY_USERNAME/.bashrc <<EOF
 fi
 EOF
 
     cat >> $rootdir/root/.bashrc <<EOF
 # initial setup of the system
 if [ -f ~/.initial_setup ]; then
+    freedombone menuconfig
+    if [ "$?" = "0" ]; then
 EOF
-    echo -n "    echo \"${MY_USERNAME}:" >> $rootdir/root/.bashrc
+    # change the password for the admin user
+    echo -n "        echo \"${MY_USERNAME}:" >> $rootdir/root/.bashrc
     echo -n '$(cat /home/'  >> $rootdir/root/.bashrc
     echo "${MY_USERNAME}/login.txt)\"|chpasswd" >> $rootdir/root/.bashrc
+
+    # Remove the initial setup files
+    echo "        rm /root/.initial_setup" >> $rootdir/root/.bashrc
+    echo "        rm /home/${MY_USERNAME}/.initial_setup" >> $rootdir/root/.bashrc
+    echo "        shred -zu /home/${MY_USERNAME}/login.txt" >> $rootdir/root/.bashrc
     cat >> $rootdir/root/.bashrc <<EOF
-    freedombone menuconfig
-    rm ~/.initial_setup
-EOF
-    echo "    shred -zu /home/${MY_USERNAME}/login.txt" >> $rootdir/root/.bashrc
-    cat >> $rootdir/root/.bashrc <<EOF
+    fi
+    exit
 fi
 EOF
 }
