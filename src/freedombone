@@ -437,6 +437,9 @@ IPFS_GO_REPO="github.com/ipfs/go-ipfs/cmd/ipfs"
 IPFS_COMMIT='20b06a4cbce8884f5b194da6e98cb11f2c77f166'
 IPFS_PORT=4001
 
+GPGIT_REPO="https://github.com/mikecardwell/gpgit"
+GPGIT_COMMIT='583dc76119f19420f8a33f606744faa7c8922738'
+
 # Default diffie-hellman key length in bits
 DH_KEYLENGTH=2048
 
@@ -822,6 +825,12 @@ function read_configuration {
       fi
       if grep -q "TOXIC_COMMIT" $CONFIGURATION_FILE; then
           TOXIC_COMMIT=$(grep "TOXIC_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GPGIT_REPO" $CONFIGURATION_FILE; then
+          GPGIT_REPO=$(grep "GPGIT_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GPGIT_COMMIT" $CONFIGURATION_FILE; then
+          GPGIT_COMMIT=$(grep "GPGIT_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7581,17 +7590,46 @@ function encrypt_incoming_email {
   if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
+
+  # update to the next commit
+  if [ -f /usr/bin/gpgit.pl ]; then
+      if grep -q "gpgit commit" $COMPLETION_FILE; then
+          CURRENT_GPGIT_COMMIT=$(grep "gpgit commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_GPGIT_COMMIT" != "$GPGIT_COMMIT" ]]; then
+              cd $INSTALL_DIR/gpgit
+              git stash
+              git checkout master
+              git pull
+              git checkout $GPGIT_COMMIT
+              git branch -b $GPGIT_COMMIT
+              sed -i "s/gpgit commit.*/gpgit commit:$GPGIT_COMMIT/g" $COMPLETION_FILE
+              cp gpgit.pl /usr/bin/gpgit.pl
+          fi
+      else
+          echo "gpgit commit:$GPGIT_COMMIT" >> $COMPLETION_FILE
+      fi
+  fi
+
   if grep -Fxq "encrypt_incoming_email" $COMPLETION_FILE; then
       return
   fi
+
   if [[ $GPG_ENCRYPT_STORED_EMAIL != "yes" ]]; then
       return
   fi
+
   if [ ! -f /usr/bin/gpgit.pl ]; then
       apt-get -y install git libmail-gnupg-perl
       cd $INSTALL_DIR
-      git clone https://github.com/mikecardwell/gpgit
-      cd gpgit
+      git clone $GPGIT_REPO
+      cd $INSTALL_DIR/gpgit
+      git checkout $GPGIT_COMMIT
+      git branch -b $GPGIT_COMMIT
+      if ! grep -q "gpgit commit" $COMPLETION_FILE; then
+          echo "gpgit commit:$GPGIT_COMMIT" >> $COMPLETION_FILE
+      else
+          sed -i "s/gpgit commit.*/gpgit commit:$GPGIT_COMMIT/g" $COMPLETION_FILE
+      fi
       cp gpgit.pl /usr/bin
   fi
 
@@ -10984,14 +11022,6 @@ function create_upgrade_script {
   echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "fi" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '# update email encryption script' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if [ -d $INSTALL_DIR/gpgit ]; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd $INSTALL_DIR/gpgit" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  cp gpgit.pl /usr/bin' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "echo '
 
