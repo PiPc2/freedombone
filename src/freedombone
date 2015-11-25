@@ -182,6 +182,8 @@ WIKI_CODE=
 # Domain name for your blog
 FULLBLOG_DOMAIN_NAME=
 FULLBLOG_CODE=
+FULLBLOG_REPO="https://github.com/danpros/htmly"
+FULLBLOG_COMMIT='5f271a2370cc1bfde15f2a0d5ed6928cc74b0efa'
 MY_BLOG_TITLE="My Blog"
 MY_BLOG_SUBTITLE="Another Freedombone Blog"
 
@@ -796,6 +798,12 @@ function read_configuration {
   if [ -f $CONFIGURATION_FILE ]; then
       if grep -q "LETSENCRYPT_SERVER" $CONFIGURATION_FILE; then
           LETSENCRYPT_SERVER=$(grep "LETSENCRYPT_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "FULLBLOG_REPO" $CONFIGURATION_FILE; then
+          FULLBLOG_REPO=$(grep "FULLBLOG_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "FULLBLOG_COMMIT" $CONFIGURATION_FILE; then
+          FULLBLOG_COMMIT=$(grep "FULLBLOG_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -9697,12 +9705,30 @@ function install_blog {
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
-  if grep -Fxq "install_blog" $COMPLETION_FILE; then
-      return
-  fi
   if [ ! $FULLBLOG_DOMAIN_NAME ]; then
       echo 'The blog domain name was not specified'
       exit 5062
+  fi
+
+  # update to the next commit
+  if [ -d /var/www/$FULLBLOG_DOMAIN_NAME/htdocs ]; then
+      if grep -q "Blog commit" $COMPLETION_FILE; then
+          CURRENT_FULLBLOG_COMMIT=$(grep "Blog commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_FULLBLOG_COMMIT" != "$FULLBLOG_COMMIT" ]]; then
+              cd /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
+              git stash
+              git checkout master
+              git pull
+              git checkout $FULLBLOG_COMMIT
+              git branch -b $FULLBLOG_COMMIT
+              sed -i "s/Blog commit.*/Blog commit:$FULLBLOG_COMMIT/g" $COMPLETION_FILE
+              chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
+          fi
+      fi
+  fi
+
+  if grep -Fxq "install_blog" $COMPLETION_FILE; then
+      return
   fi
 
   if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME ]; then
@@ -9710,7 +9736,17 @@ function install_blog {
   fi
 
   cd /var/www/$FULLBLOG_DOMAIN_NAME
-  git clone https://github.com/danpros/htmly htdocs
+  git clone $FULLBLOG_REPO htdocs
+  cd htdocs
+  git checkout $FULLBLOG_COMMIT
+  git branch -b $FULLBLOG_COMMIT
+  if ! grep -q "Blog commit" $COMPLETION_FILE; then
+      echo "Blog commit:$FULLBLOG_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/Blog commit.*/Blog commit:$FULLBLOG_COMMIT/g" $COMPLETION_FILE
+  fi
+  cd /var/www/$FULLBLOG_DOMAIN_NAME
+
   chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
 
   if [ ! -f /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam ]; then
@@ -10803,15 +10839,6 @@ function create_upgrade_script {
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y update' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y upgrade' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if grep -Fxq \"install_blog\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  # Blog' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if grep -Fxq \"install_owncloud_music_app\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  # Owncloud music app' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
