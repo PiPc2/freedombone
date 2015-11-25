@@ -151,6 +151,7 @@ MICROBLOG_DOMAIN_NAME=
 MICROBLOG_CODE=
 MICROBLOG_REPO="git://gitorious.org/social/mainline.git"
 MICROBLOG_ADMIN_PASSWORD=
+GNUSOCIAL_COMMIT='5b847eff120264c3e9571e8a939e6b3a30e68032'
 
 # Domain name for hubzilla installation
 HUBZILLA_DOMAIN_NAME=
@@ -798,6 +799,9 @@ function read_configuration {
       fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE; then
+          GNUSOCIAL_COMMIT=$(grep "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "GPG_KEYSERVER" $CONFIGURATION_FILE; then
           GPG_KEYSERVER=$(grep "GPG_KEYSERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -8552,7 +8556,7 @@ function install_owncloud {
   if [ ! $OWNCLOUD_ADMIN_PASSWORD ]; then
       if [ -f $IMAGE_PASSWORD_FILE ]; then
           OWNCLOUD_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-      else    
+      else
           OWNCLOUD_ADMIN_PASSWORD="$(openssl rand -base64 32)"
       fi
   fi
@@ -9942,9 +9946,6 @@ function install_blog {
 }
 
 function install_gnu_social {
-  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
-      return
-  fi
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
@@ -9952,6 +9953,28 @@ function install_gnu_social {
       echo 'No domain name was given for the microblog'
       exit 7359
   fi
+
+  # update to the next commit
+  if [ -d /var/www/$HUBZILLA_DOMAIN_NAME/htdocs ]; then
+      if grep -q "GNU Social commit" $COMPLETION_FILE; then
+          CURRENT_GNUSOCIAL_COMMIT=$(grep "GNU Social commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_GNUSOCIAL_COMMIT" != "$GNUSOCIAL_COMMIT" ]]; then
+              cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+              git stash
+              git checkout master
+              git pull
+              git checkout $GNUSOCIAL_COMMIT
+              git branch -b $GNUSOCIAL_COMMIT
+              sed -i "s/GNU Social commit.*/GNU Social commit:$HUBZILLA_COMMIT/g" $COMPLETION_FILE
+              chown -R www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+          fi
+      fi
+  fi
+
+  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
+      return
+  fi
+
 
   install_mariadb
   get_mariadb_password
@@ -9969,6 +9992,16 @@ function install_gnu_social {
   cd $INSTALL_DIR
   git clone $MICROBLOG_REPO gnusocial
 
+  cd gnusocial
+  git checkout $GNUSOCIAL_COMMIT
+  git branch -b $GNUSOCIAL_COMMIT
+  if ! grep -q "GNU Social commit" $COMPLETION_FILE; then
+      echo "GNU Social commit:$GNUSOCIAL_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/GNU Social commit.*/GNU Social commit:$GNUSOCIAL_COMMIT/g" $COMPLETION_FILE
+  fi
+
+  cd $INSTALL_DIR
   rm -rf /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
   mv gnusocial /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
   chmod a+w /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
@@ -10770,27 +10803,6 @@ function create_upgrade_script {
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y update' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'apt-get -y upgrade' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "#if grep -Fxq \"install_hubzilla\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#  # Hubzilla' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "#  cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "#  cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/addon" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "#  chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '#fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if grep -Fxq \"install_gnu_social\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  # GNU Social' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  chown -R www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if grep -Fxq \"install_blog\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  # Blog' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
