@@ -393,6 +393,8 @@ CJDNS_PUBLIC_KEY=
 CJDNS_IPV6=
 CJDNS_PASSWORD=
 CJDNS_PORT=
+CJDNS_REPO="https://github.com/cjdelisle/cjdns.git"
+CJDNS_COMMIT='13189fde111d0500427a7a0ce06a970753527bca'
 
 # B.A.T.M.A.N settings
 ENABLE_BATMAN="no"
@@ -970,6 +972,9 @@ function read_configuration {
       if grep -q "ENABLE_CJDNS" $CONFIGURATION_FILE; then
           ENABLE_CJDNS=$(grep "ENABLE_CJDNS" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
+      if grep -q "CJDNS_COMMIT" $CONFIGURATION_FILE; then
+          CJDNS_COMMIT=$(grep "CJDNS_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
       if grep -q "CJDNS_IPV6" $CONFIGURATION_FILE; then
           CJDNS_IPV6=$(grep "CJDNS_IPV6" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -1403,12 +1408,31 @@ function enable_ipv6 {
 }
 
 function mesh_cjdns {
-  if grep -Fxq "mesh_cjdns" $COMPLETION_FILE; then
-      return
-  fi
   if [[ $ENABLE_CJDNS != "yes" ]]; then
       return
   fi
+
+  # update to the next commit
+  if [ -d /etc/cjdns ]; then
+      if grep -q "cjdns commit" $COMPLETION_FILE; then
+          CURRENT_CJDNS_COMMIT=$(grep "cjdns commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_CJDNS_COMMIT" != "$CJDNS_COMMIT" ]]; then
+              cd /etc/cjdns
+              git stash
+              git checkout master
+              git pull
+              git checkout $CJDNS_COMMIT
+              git branch -b $CJDNS_COMMIT
+              sed -i "s/cjdns commit.*/cjdns commit:$CJDNS_COMMIT/g" $COMPLETION_FILE
+              ./do
+          fi
+      fi
+  fi
+
+  if grep -Fxq "mesh_cjdns" $COMPLETION_FILE; then
+      return
+  fi
+
   apt-get -y install nodejs git build-essential nmap
 
   # if a README exists then obtain the cjdns parameters
@@ -1425,8 +1449,17 @@ function mesh_cjdns {
   fi
 
   if [ ! -d /etc/cjdns ]; then
-      git clone https://github.com/cjdelisle/cjdns.git /etc/cjdns
+      git clone $CJDNS_REPO /etc/cjdns
       cd /etc/cjdns
+
+      git checkout $CJDNS_COMMIT
+      git branch -b $CJDNS_COMMIT
+      if ! grep -q "cjdns commit" $COMPLETION_FILE; then
+          echo "cjdns commit:$CJDNS_COMMIT" >> $COMPLETION_FILE
+      else
+          sed -i "s/cjdns commit.*/cjdns commit:$CJDNS_COMMIT/g" $COMPLETION_FILE
+      fi
+
       ./do
       if [ ! "$?" = "0" ]; then
           exit 7439
@@ -10865,10 +10898,10 @@ function create_upgrade_script {
   if grep -Fxq "create_upgrade_script" $COMPLETION_FILE; then
       return
   fi
+
+  apt-get -y install unattended-upgrades
+
   echo '#!/bin/bash' > /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'apt-get -y update' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'apt-get -y upgrade' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if grep -Fxq \"install_owncloud_music_app\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  # Owncloud music app' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
@@ -10877,14 +10910,6 @@ function create_upgrade_script {
   echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "fi" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if grep -Fxq \"mesh_cjdns\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  # cjdns' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd /etc/cjdns" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if grep -Fxq \"install_ipfs\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  # ipfs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
