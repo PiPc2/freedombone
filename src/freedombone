@@ -167,6 +167,7 @@ GIT_DOMAIN_NAME=
 GIT_CODE=
 GIT_DOMAIN_REPO="https://github.com/gogits/gogs.git"
 GIT_ADMIN_PASSWORD=
+GOGS_COMMIT='2f28a0310b0f391dd74bb3a2ab0ae06379a4fb1a'
 
 # Domain name for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
@@ -804,6 +805,9 @@ function read_configuration {
       fi
       if grep -q "FULLBLOG_COMMIT" $CONFIGURATION_FILE; then
           FULLBLOG_COMMIT=$(grep "FULLBLOG_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "GOGS_COMMIT" $CONFIGURATION_FILE; then
+          GOGS_COMMIT=$(grep "GOGS_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -8774,12 +8778,31 @@ function install_gogs {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
-  if grep -Fxq "install_gogs" $COMPLETION_FILE; then
-      return
-  fi
   if [ ! $GIT_DOMAIN_NAME ]; then
       return
   fi
+
+  # update to the next commit
+  if [ -d /var/www/$GIT_DOMAIN_NAME/htdocs ]; then
+      if grep -q "Gogs commit" $COMPLETION_FILE; then
+          CURRENT_GOGS_COMMIT=$(grep "Gogs commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_GOGS_COMMIT" != "$GOGS_COMMIT" ]]; then
+              cd /var/www/$GIT_DOMAIN_NAME/htdocs
+              git stash
+              git checkout master
+              git pull
+              git checkout $GOGS_COMMIT
+              git branch -b $GOGS_COMMIT
+              sed -i "s/Gogs commit.*/Gogs commit:$GOGS_COMMIT/g" $COMPLETION_FILE
+              chown -R www-data:www-data /var/www/$GIT_DOMAIN_NAME/htdocs
+          fi
+      fi
+  fi
+
+  if grep -Fxq "install_gogs" $COMPLETION_FILE; then
+      return
+  fi
+
   # http://gogs.io/docs/installation/install_from_source.md
 
   # add a gogs user account
@@ -8808,6 +8831,13 @@ function install_gogs {
   cd $GOPATH/src/github.com/gogits
   git clone $GIT_DOMAIN_REPO
   cd gogs
+  git checkout $GOGS_COMMIT
+  git branch -b $GOGS_COMMIT
+  if ! grep -q "Gogs commit" $COMPLETION_FILE; then
+      echo "Gogs commit:$GOGS_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/Gogs commit.*/Gogs commit:$GOGS_COMMIT/g" $COMPLETION_FILE
+  fi
 
   # install
   go get -u ./...
@@ -10854,22 +10884,6 @@ function create_upgrade_script {
   echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if grep -Fxq \"install_gogs\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  # gogs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/$MY_USERNAME" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  cd /home/git/go/src/github.com/gogits/gogs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  chown -R git:git /home/git' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  chmod 600 /home/git/go/src/github.com/gogits/gogs/custom/conf/app.ini' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  export GOPATH=/home/git/go' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  go get -u ./...' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  go build' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  systemctl restart gogs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  systemctl daemon-reload' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if grep -Fxq \"install_ipfs\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
