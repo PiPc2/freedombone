@@ -432,6 +432,9 @@ TRACKER_PORT=6969
 ZERONET_DEFAULT_BLOG_TAGLINE="Blogging on the Mesh"
 ZERONET_DEFAULT_FORUM_TAGLINE="A decentralized discussion group"
 
+# https://github.com/ipfs/go-ipfs
+IPFS_GO_REPO="github.com/ipfs/go-ipfs/cmd/ipfs"
+IPFS_COMMIT='20b06a4cbce8884f5b194da6e98cb11f2c77f166'
 IPFS_PORT=4001
 
 # Default diffie-hellman key length in bits
@@ -822,6 +825,9 @@ function read_configuration {
       fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "IPFS_COMMIT" $CONFIGURATION_FILE; then
+          IPFS_COMMIT=$(grep "IPFS_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE; then
           GNUSOCIAL_COMMIT=$(grep "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -10979,15 +10985,6 @@ function create_upgrade_script {
   echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "fi" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if grep -Fxq \"install_ipfs\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  # ipfs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  chown -R git:git /home/git' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  export GOPATH=/home/git/go' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  go get -u github.com/ipfs/go-ipfs/cmd/ipfs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  systemctl restart ipfs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  systemctl daemon-reload' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '# update email encryption script' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "if [ -d $INSTALL_DIR/gpgit ]; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "  cd $INSTALL_DIR/gpgit" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
@@ -11315,9 +11312,30 @@ function install_ipfs {
   if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
       return
   fi
+
+  # update to the next commit
+  if [ -d /home/git/go/src/github.com/ipfs/go-ipfs ]; then
+      if grep -q "ipfs commit" $COMPLETION_FILE; then
+          CURRENT_IPFS_COMMIT=$(grep "ipfs commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_IPFS_COMMIT" != "$IPFS_COMMIT" ]]; then
+              cd /home/git/go/src/github.com/ipfs/go-ipfs
+              git stash
+              git checkout master
+              git pull
+              git checkout $IPFS_COMMIT
+              git branch -b $IPFS_COMMIT
+              sed -i "s/ipfs commit.*/ipfs commit:$IPFS_COMMIT/g" $COMPLETION_FILE
+              chown -R git:git /home/git
+              systemctl restart ipfs
+              systemctl daemon-reload
+          fi
+      fi
+  fi
+
   if grep -Fxq "install_ipfs" $COMPLETION_FILE; then
       return
   fi
+
   apt-get -y install golang libpam0g-dev fuse
 
   if [ ! -d /home/git ]; then
@@ -11349,9 +11367,18 @@ function install_ipfs {
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
   fi
 
-  go get -u github.com/ipfs/go-ipfs/cmd/ipfs
+  go get -u $IPFS_GO_REPO
   if [ ! "$?" = "0" ]; then
       exit 8242
+  fi
+
+  cd /home/git/go/src/github.com/ipfs/go-ipfs
+  git checkout $IPFS_COMMIT
+  git branch -b $IPFS_COMMIT
+  if ! grep -q "ipfs commit" $COMPLETION_FILE; then
+      echo "ipfs commit:$IPFS_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/ipfs commit.*/ipfs commit:$IPFS_COMMIT/g" $COMPLETION_FILE
   fi
 
   # initialise
