@@ -410,6 +410,7 @@ ENABLE_SOCIAL_KEY_MANAGEMENT="no"
 
 TOX_PORT=33445
 TOX_REPO='git://github.com/irungentoo/toxcore.git'
+TOX_COMMIT='73b2144edcfd1ca617e9054479b66ab0c0361a14'
 TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
 # These are some default nodes, but you can replace them with trusted nodes
 # as you prefer. See https://wiki.tox.im/Nodes
@@ -418,6 +419,8 @@ TOX_NODE=
 #  '192.254.75.102,2607:5600:284::2,33445,951C88B7E75C867418ACDB5D273821372BB5BD652740BCDF623A4FA293E75D2F,Tox RELENG,US'
 #  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
 #)
+TOXIC_REPO="https://github.com/Tox/toxic"
+TOXIC_COMMIT='88270827a96b2082e254677f35585ed24581a42c'
 
 #ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
 ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
@@ -810,6 +813,12 @@ function read_configuration {
       fi
       if grep -q "GOGS_COMMIT" $CONFIGURATION_FILE; then
           GOGS_COMMIT=$(grep "GOGS_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "TOX_COMMIT" $CONFIGURATION_FILE; then
+          TOX_COMMIT=$(grep "TOX_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "TOXIC_COMMIT" $CONFIGURATION_FILE; then
+          TOXIC_COMMIT=$(grep "TOXIC_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -9084,6 +9093,28 @@ function install_tox_node {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
       return
   fi
+
+  # update to the next commit
+  if [ -d $INSTALL_DIR/toxcore ]; then
+      if grep -q "toxcore commit" $COMPLETION_FILE; then
+          CURRENT_TOX_COMMIT=$(grep "toxcore commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_TOX_COMMIT" != "$TOX_COMMIT" ]]; then
+              cd $INSTALL_DIR/toxcore
+              git stash
+              git checkout master
+              git pull
+              git checkout $TOX_COMMIT
+              git branch -b $TOX_COMMIT
+              sed -i "s/toxcore commit.*/toxcore commit:$TOX_COMMIT/g" $COMPLETION_FILE
+              autoreconf -i
+              ./configure --enable-daemon
+              make
+              make install
+              systemctl restart tox-bootstrapd.service
+          fi
+      fi
+  fi
+
   if grep -Fxq "install_tox_node" $COMPLETION_FILE; then
       return
   fi
@@ -9097,6 +9128,15 @@ function install_tox_node {
   cd $INSTALL_DIR
   git clone $TOX_REPO
   cd $INSTALL_DIR/toxcore
+
+  git checkout $TOX_COMMIT
+  git branch -b $TOX_COMMIT
+  if ! grep -q "toxcore commit" $COMPLETION_FILE; then
+      echo "toxcore commit:$TOX_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/toxcore commit.*/toxcore commit:$TOX_COMMIT/g" $COMPLETION_FILE
+  fi
+
   autoreconf -i
   ./configure --enable-daemon
   if [ ! "$?" = "0" ]; then
@@ -9212,14 +9252,42 @@ function install_tox_client {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
       return
   fi
+
+  # update to the next commit
+  if [ -d $INSTALL_DIR/toxic ]; then
+      if grep -q "Toxic commit" $COMPLETION_FILE; then
+          CURRENT_TOXIC_COMMIT=$(grep "Toxic commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_TOXIC_COMMIT" != "$TOXIC_COMMIT" ]]; then
+              cd $INSTALL_DIR/toxic
+              git stash
+              git checkout master
+              git pull
+              git checkout $TOXIC_COMMIT
+              git branch -b $TOXIC_COMMIT
+              sed -i "s/Toxic commit.*/Toxic commit:$TOXIC_COMMIT/g" $COMPLETION_FILE
+              make
+              make install
+          fi
+      fi
+  fi
+
   if grep -Fxq "install_tox_client" $COMPLETION_FILE; then
       return
   fi
+
   apt-get -y install libncursesw5-dev libconfig-dev libqrencode-dev libcurl4-openssl-dev
 
   cd $INSTALL_DIR
-  git clone https://github.com/Tox/toxic
+  git clone $TOXIC_REPO
   cd $INSTALL_DIR/toxic
+  git checkout $TOXIC_COMMIT
+  git branch -b $TOXIC_COMMIT
+  if ! grep -q "Toxic commit" $COMPLETION_FILE; then
+      echo "Toxic commit:$TOXIC_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/Toxic commit.*/Toxic commit:$TOXIC_COMMIT/g" $COMPLETION_FILE
+  fi
+
   make
   if [ ! -f $INSTALL_DIR/toxic/build/toxic ]; then
       exit 74872
@@ -10918,23 +10986,6 @@ function create_upgrade_script {
   echo '  go get -u github.com/ipfs/go-ipfs/cmd/ipfs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  systemctl restart ipfs' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '  systemctl daemon-reload' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '# update tox node' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if [ -d $INSTALL_DIR/toxcore ]; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd $INSTALL_DIR/toxcore" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  autoreconf -i' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  ./configure --enable-daemon' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  make' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  make install' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  systemctl restart tox-bootstrapd.service' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd $INSTALL_DIR/toxic" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  make' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  make install' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '# update email encryption script' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
