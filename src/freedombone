@@ -33,6 +33,9 @@ NO_OF_ARGS=$#
 # Web site
 FREEDOMBONE_WEBSITE="http://freedombone.uk.to"
 
+# Repo
+FREEDOMBONE_REPO="https://github.com/bashrc/freedombone"
+
 # Contact details
 FREEDOMBONE_BITMESSAGE="BM-2cWuhmBvVdfrHhLoZTdspCkKeiTorUesSL"
 
@@ -173,6 +176,8 @@ GOGS_COMMIT='2f28a0310b0f391dd74bb3a2ab0ae06379a4fb1a'
 OWNCLOUD_DOMAIN_NAME=
 OWNCLOUD_CODE=
 OWNCLOUD_ADMIN_PASSWORD=
+OWNCLOUD_MUSIC_APP_REPO="https://github.com/owncloud/music"
+OWNCLOUD_MUSIC_APP_COMMIT='7f79afb4ae9a6ecd8f530d87106f960306c0a15a'
 
 # Domain name for your wiki
 WIKI_DOMAIN_NAME=
@@ -808,6 +813,9 @@ function read_configuration {
   fi
 
   if [ -f $CONFIGURATION_FILE ]; then
+      # Ensure that a copy of the config exists for upgrade purposes
+      cp $CONFIGURATION_FILE /root/freedombone.cfg
+
       if grep -q "LETSENCRYPT_SERVER" $CONFIGURATION_FILE; then
           LETSENCRYPT_SERVER=$(grep "LETSENCRYPT_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
@@ -831,6 +839,9 @@ function read_configuration {
       fi
       if grep -q "GPGIT_COMMIT" $CONFIGURATION_FILE; then
           GPGIT_COMMIT=$(grep "GPGIT_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "OWNCLOUD_MUSIC_APP_COMMIT" $CONFIGURATION_FILE; then
+          OWNCLOUD_MUSIC_APP_COMMIT=$(grep "OWNCLOUD_MUSIC_APP_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "HUBZILLA_COMMIT" $CONFIGURATION_FILE; then
           HUBZILLA_COMMIT=$(grep "HUBZILLA_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -8537,16 +8548,44 @@ function install_owncloud_music_app {
   if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
-  if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
-      return
-  fi
+
   if ! grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       echo 'Tried to install the Owncloud music app, but Owncloud installation was not found'
       exit 9823
   fi
 
+  # update to the next commit
+  if [ -d /usr/share/owncloud/apps/music ]; then
+      if grep -q "Owncloud music app commit" $COMPLETION_FILE; then
+          CURRENT_OWNCLOUD_MUSIC_APP_COMMIT=$(grep "Owncloud music app commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$OWNCLOUD_MUSIC_APP_COMMIT" != "$OWNCLOUD_MUSIC_APP_COMMIT" ]]; then
+              cd /usr/share/owncloud/apps/music
+              git stash
+              git checkout master
+              git pull
+              git checkout $OWNCLOUD_MUSIC_APP_COMMIT
+              git branch -b $OWNCLOUD_MUSIC_APP_COMMIT
+              sed -i "s/Owncloud music app commit.*/Owncloud music app commit:$OWNCLOUD_MUSIC_APP_COMMIT/g" $COMPLETION_FILE
+          fi
+      else
+          echo "Owncloud music app commit:$OWNCLOUD_MUSIC_APP_COMMIT" >> $COMPLETION_FILE
+      fi
+  fi
+
+  if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
+      return
+  fi
+
   cd /usr/share/owncloud/apps
-  git clone https://github.com/owncloud/music music
+  git clone $OWNCLOUD_MUSIC_APP_REPO Music
+  cd music
+  git checkout $OWNCLOUD_MUSIC_APP_COMMIT
+  git branch -b $OWNCLOUD_MUSIC_APP_COMMIT
+  if ! grep -q "Owncloud music app commit" $COMPLETION_FILE; then
+      echo "Owncloud music app commit:$OWNCLOUD_MUSIC_APP_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/Owncloud music app commit.*/Owncloud music app commit:$OWNCLOUD_MUSIC_APP_COMMIT/g" $COMPLETION_FILE
+  fi
 
   if grep -q "Music player in Owncloud" /home/$MY_USERNAME/README; then
       echo '' >> /home/$MY_USERNAME/README
@@ -11027,13 +11066,17 @@ function create_upgrade_script {
 
   echo '#!/bin/bash' > /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "if grep -Fxq \"install_owncloud_music_app\" $COMPLETION_FILE; then" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  # Owncloud music app' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "  cd /usr/share/owncloud/apps/music" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git stash drop' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo '  git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
-  echo "fi" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo 'if [ ! -d /root/freedombone]; then' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo "    git clone $FREEDOMBONE_REPO /root/freedombone" >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo 'if [ -f /root/freedombone.cfg ]; then' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '    cd /root/freedombone' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '    git stash' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '    git pull' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '    make install' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo '    freedombone -c /root/freedombone.cfg' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+  echo 'fi' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo '' >> /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   echo "echo '
 
