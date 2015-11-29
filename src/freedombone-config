@@ -33,6 +33,9 @@ NO_OF_ARGS=$#
 
 PROJECT_NAME='freedombone'
 
+# username created by default within a debian image
+DEFAULT_IMAGE_USERNAME='fbone'
+
 export TEXTDOMAIN=${PROJECT_NAME}-config
 export TEXTDOMAINDIR="/usr/share/locale"
 
@@ -647,20 +650,56 @@ function interactive_configuration {
         fi
     fi
 
-    if [[ $SYSTEM_TYPE == "$VARIANT_MESH" && $DEFAULT_DOMAIN_NAME && -d /home/$DEFAULT_DOMAIN_NAME ]]; then
-        MY_USERNAME=$DEFAULT_DOMAIN_NAME
+    if [ -d /home/$DEFAULT_IMAGE_USERNAME ]; then
+        # when installing from an image which comes with a known default user account
+        selected_username=
+        while [ ! $selected_username ]
+        do
+            if [ ! $selected_username ]; then
+                selected_username=$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')
+            fi
+            data=$(tempfile 2>/dev/null)
+            trap "rm -f $data" 0 1 2 5 15
+            dialog --backtitle $"Freedombone Configuration" \
+                   --title $"Username" \
+                   --inputbox $"Set your username for the system\n\nYour username should not contain any spaces" 12 60 "$selected_username" 2> $data
+            sel=$?
+            case $sel in
+                0) possible_username=$(cat $data)
+                   selected_username=
+                   if [[ $possible_username != *' '* && $possible_username != *'/'* && $possible_username != *'\'* && $possible_username != *'*'* ]]; then
+                       if [ $possible_username ]; then
+                           if [ ${#possible_username} -gt 1 ]; then
+                               if [[ $possible_username != $DEFAULT_IMAGE_USERNAME ]]; then
+                                   MY_USERNAME=$(cat $data)
+                                   usermod -l $MY_USERNAME $DEFAULT_IMAGE_USERNAME
+                                   usermod -d /home/$MY_USERNAME -m $MY_USERNAME
+                                   break
+                               fi
+                           fi
+                       fi
+                   fi
+                   ;;
+                1) exit 1;;
+                255) exit 1;;
+            esac
+        done
     else
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --title $"Select the user account to install as" \
-               --backtitle $"Freedombone Configuration" \
-               --dselect "/home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')" 14 40 2> $data
-        sel=$?
-        case $sel in
-            0) MY_USERNAME=$(cat $data | awk -F '/' '{print $3}');;
-            1) exit 1;;
-            255) exit 1;;
-        esac
+        if [[ $SYSTEM_TYPE == "$VARIANT_MESH" && $DEFAULT_DOMAIN_NAME && -d /home/$DEFAULT_DOMAIN_NAME ]]; then
+            MY_USERNAME=$DEFAULT_DOMAIN_NAME
+        else
+            data=$(tempfile 2>/dev/null)
+            trap "rm -f $data" 0 1 2 5 15
+            dialog --title $"Select the user account to install as" \
+                   --backtitle $"Freedombone Configuration" \
+                   --dselect "/home/$(grep 'MY_USERNAME' temp.cfg | awk -F '=' '{print $2}')" 14 40 2> $data
+            sel=$?
+            case $sel in
+                0) MY_USERNAME=$(cat $data | awk -F '/' '{print $3}');;
+                1) exit 1;;
+                255) exit 1;;
+            esac
+        fi
     fi
 
     if [ ! $MY_USERNAME ]; then
