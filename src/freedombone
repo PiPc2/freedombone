@@ -91,6 +91,9 @@ DDNS_USERNAME=
 DDNS_PASSWORD=
 CURRENT_DDNS_DOMAIN=
 
+INADYN_REPO="https://github.com/troglobit/inadyn"
+INADYN_COMMIT='880a0e34cb6874ec62bf2ce9755a30577c00aee7'
+
 # Minimum number of characters in a password
 MINIMUM_PASSWORD_LENGTH=10
 
@@ -862,6 +865,12 @@ function read_configuration {
       fi
       if grep -q "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE; then
           GNUSOCIAL_COMMIT=$(grep "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "INADYN_REPO" $CONFIGURATION_FILE; then
+          INADYN_REPO=$(grep "INADYN_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "INADYN_COMMIT" $CONFIGURATION_FILE; then
+          INADYN_COMMIT=$(grep "INADYN_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "GPG_KEYSERVER" $CONFIGURATION_FILE; then
           GPG_KEYSERVER=$(grep "GPG_KEYSERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -10248,7 +10257,7 @@ function install_gnu_social {
               git pull
               git checkout $GNUSOCIAL_COMMIT
               git branch -b $GNUSOCIAL_COMMIT
-              sed -i "s/GNU Social commit.*/GNU Social commit:$HUBZILLA_COMMIT/g" $COMPLETION_FILE
+              sed -i "s/GNU Social commit.*/GNU Social commit:$GNUSOCIAL_COMMIT/g" $COMPLETION_FILE
               chown -R www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
           fi
       else
@@ -11346,6 +11355,29 @@ function install_dynamicdns {
   if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
+
+  # update to the next commit
+  if [ -d $INSTALL_DIR/inadyn ]; then
+      if grep -q "inadyn commit" $COMPLETION_FILE; then
+          CURRENT_INADYN_COMMIT=$(grep "inadyn commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_INADYN_COMMIT" != "$INADYN_COMMIT" ]]; then
+              cd $INSTALL_DIR/inadyn
+              git stash
+              git checkout master
+              git pull
+              git checkout $INADYN_COMMIT
+              git branch -b $INADYN_COMMIT
+              sed -i "s/inadyn commit.*/inadyn commit:$INADYN_COMMIT/g" $COMPLETION_FILE
+              ./configure
+              USE_OPENSSL=1 make
+              make install
+              systemctl restart inadyn
+          fi
+      else
+          echo "inadyn commit:$INADYN_COMMIT" >> $COMPLETION_FILE
+      fi
+  fi
+
   if grep -Fxq "install_dynamicdns" $COMPLETION_FILE; then
       return
   fi
@@ -11355,13 +11387,21 @@ function install_dynamicdns {
   # being leaked
 
   apt-get -y install build-essential curl libgnutls28-dev automake1.11
-  git clone https://github.com/bashrc/inadyn $INSTALL_DIR/inadyn
+  git clone $INADYN_REPO $INSTALL_DIR/inadyn
   if [ ! -d $INSTALL_DIR/inadyn ]; then
       echo 'inadyn repo not cloned'
       echo -n | openssl s_client -showcerts -connect github.com:443 -CApath /etc/ssl/certs
       exit 6785
   fi
   cd $INSTALL_DIR/inadyn
+  git checkout $INADYN_COMMIT
+  git branch -b $INADYN_COMMIT
+  if ! grep -q "inadyn commit" $COMPLETION_FILE; then
+      echo "inadyn commit:$INADYN_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/inadyn commit.*/inadyn commit:$INADYN_COMMIT/g" $COMPLETION_FILE
+  fi
+
   ./configure
   if [ ! "$?" = "0" ]; then
       exit 74890
@@ -11399,7 +11439,7 @@ function install_dynamicdns {
   echo '[Install]' >> /etc/systemd/system/inadyn.service
   echo 'WantedBy=multi-user.target' >> /etc/systemd/system/inadyn.service
   systemctl enable inadyn
-  systemctl restart inadyn
+  systemctl start inadyn
   systemctl daemon-reload
 
   echo 'install_dynamicdns' >> $COMPLETION_FILE
