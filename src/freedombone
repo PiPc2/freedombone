@@ -91,6 +91,9 @@ DDNS_USERNAME=
 DDNS_PASSWORD=
 CURRENT_DDNS_DOMAIN=
 
+TLSDATE_REPO="https://github.com/ioerror/tlsdate.git"
+TLSDATE_COMMIT='ae396da167a9e43ce10c2db0956fb2e2b0d400ea'
+
 INADYN_REPO="https://github.com/bashrc/inadyn"
 INADYN_COMMIT='fadbe17f520d337dfb8d69ee4bf1fcaa23fce0d6'
 
@@ -863,6 +866,12 @@ function read_configuration {
       fi
       if grep -q "IPFS_COMMIT" $CONFIGURATION_FILE; then
           IPFS_COMMIT=$(grep "IPFS_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "TLSDATE_REPO" $CONFIGURATION_FILE; then
+          TLSDATE_REPO=$(grep "TLSDATE_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "TLSDATE_COMMIT" $CONFIGURATION_FILE; then
+          TLSDATE_COMMIT=$(grep "TLSDATE_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE; then
           GNUSOCIAL_COMMIT=$(grep "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -6462,11 +6471,36 @@ function set_your_domain_name {
 }
 
 function time_synchronisation {
-  if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
-      return
-  fi
   # mesh peers typically don't sync over the internet
   if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+      return
+  fi
+
+  # update to the next commit
+  if [ -d $INSTALL_DIR/tlsdate ]; then
+      if grep -q "tlsdate commit" $COMPLETION_FILE; then
+          CURRENT_TLSDATE_COMMIT=$(grep "tlsdate commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_TLSDATE_COMMIT" != "$TLSDATE_COMMIT" ]]; then
+              cd $INSTALL_DIR/tlsdate
+              git stash
+              git checkout master
+              git pull
+              git checkout $TLSDATE_COMMIT
+              git checkout -b $TLSDATE_COMMIT
+              sed -i "s/tlsdate commit.*/tlsdate commit:$TLSDATE_COMMIT/g" $COMPLETION_FILE
+              ./autogen.sh
+              ./configure
+              make
+              make install
+              cp /usr/local/bin/tlsdate* /usr/bin
+              cp /usr/local/sbin/tlsdate* /usr/bin
+          fi
+      else
+          echo "tlsdate commit:$TLSDATE_COMMIT" >> $COMPLETION_FILE
+      fi
+  fi
+
+  if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
       return
   fi
   #apt-get -y install tlsdate
@@ -6479,8 +6513,16 @@ function time_synchronisation {
       mkdir $INSTALL_DIR
   fi
   cd $INSTALL_DIR
-  git clone https://github.com/ioerror/tlsdate.git
+  git clone $TLSDATE_REPO
   cd $INSTALL_DIR/tlsdate
+  git checkout $TLSDATE_COMMIT
+  git checkout -b $TLSDATE_COMMIT
+  if ! grep -q "tlsdate commit" $COMPLETION_FILE; then
+      echo "tlsdate commit:$TLSDATE_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/tlsdate commit.*/tlsdate commit:$TLSDATE_COMMIT/g" $COMPLETION_FILE
+  fi
+
   ./autogen.sh
   ./configure
   make
