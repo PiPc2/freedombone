@@ -441,6 +441,7 @@ TOXIC_COMMIT='88270827a96b2082e254677f35585ed24581a42c'
 
 #ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
 ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
+ZERONET_COMMIT='675bd462556c541d65e2d95f91f899146a373aad'
 ZERONET_BLOG_REPO='https://github.com/HelloZeroNet/ZeroBlog'
 ZERONET_FORUM_REPO='https://github.com/HelloZeroNet/ZeroTalk'
 ZERONET_URL=http://127.0.0.1:43110
@@ -865,6 +866,9 @@ function read_configuration {
       fi
       if grep -q "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE; then
           GNUSOCIAL_COMMIT=$(grep "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "ZERONET_COMMIT" $CONFIGURATION_FILE; then
+          ZERONET_COMMIT=$(grep "ZERONET_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "INADYN_REPO" $CONFIGURATION_FILE; then
           INADYN_REPO=$(grep "INADYN_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -1997,10 +2001,30 @@ function install_zeronet_forum {
 }
 
 function install_zeronet {
-  if grep -Fxq "install_zeronet" $COMPLETION_FILE; then
+  if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
       return
   fi
-  if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
+
+  # update to the next commit
+  if [ -d /opt/zeronet ]; then
+      if grep -q "ZeroNet commit" $COMPLETION_FILE; then
+          CURRENT_ZERONET_COMMIT=$(grep "ZeroNet commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_ZERONET_COMMIT" != "$ZERONET_COMMIT" ]]; then
+              cd /opt/zeronet
+              git stash
+              git checkout master
+              git pull
+              git checkout $ZERONET_COMMIT
+              git branch -b $ZERONET_COMMIT
+              sed -i "s/ZeroNet commit.*/ZeroNet commit:$ZERONET_COMMIT/g" $COMPLETION_FILE
+              systemctl restart zeronet.service
+          fi
+      else
+          echo "ZeroNet commit:$ZERONET_COMMIT" >> $COMPLETION_FILE
+      fi
+  fi
+
+  if grep -Fxq "install_zeronet" $COMPLETION_FILE; then
       return
   fi
 
@@ -2013,8 +2037,16 @@ function install_zeronet {
   if [ ! -d /opt/zeronet ]; then
       exit 56823
   fi
+  cd /opt/zeronet
+  git checkout $ZERONET_COMMIT
+  git branch -b $ZERONET_COMMIT
+  if ! grep -q "ZeroNet commit" $COMPLETION_FILE; then
+      echo "ZeroNet commit:$ZERONET_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/ZeroNet commit.*/ZeroNet commit:$ZERONET_COMMIT/g" $COMPLETION_FILE
+  fi
   sudo chown -R zeronet:zeronet /opt/zeronet
-  #cd /opt/zeronet
+
   #git checkout bashrc/bootstrap-file
   # Hack to ensure that the file access port is opened
   # This is because zeronet normally relies on an internet site
@@ -10247,7 +10279,7 @@ function install_gnu_social {
   fi
 
   # update to the next commit
-  if [ -d /var/www/$HUBZILLA_DOMAIN_NAME/htdocs ]; then
+  if [ -d /var/www/$MICROBLOG_DOMAIN_NAME/htdocs ]; then
       if grep -q "GNU Social commit" $COMPLETION_FILE; then
           CURRENT_GNUSOCIAL_COMMIT=$(grep "GNU Social commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
           if [[ "$CURRENT_GNUSOCIAL_COMMIT" != "$GNUSOCIAL_COMMIT" ]]; then
@@ -11368,7 +11400,7 @@ function install_dynamicdns {
               git checkout $INADYN_COMMIT
               git branch -b $INADYN_COMMIT
               sed -i "s/inadyn commit.*/inadyn commit:$INADYN_COMMIT/g" $COMPLETION_FILE
-			  ./configure
+              ./configure
               USE_OPENSSL=1 make
               make install
               systemctl restart inadyn
