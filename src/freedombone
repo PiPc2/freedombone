@@ -7413,6 +7413,25 @@ function create_gpg_subkey {
   echo 'create_gpg_subkey' >> $COMPLETION_FILE
 }
 
+function gpg_key_exists {
+  key_owner_username=$1
+  key_search_text=$2
+  if [[ $key_owner_username != "root" ]]; then
+      KEY_EXISTS=$(su -c "gpg --list-keys \"${key_search_text}\"" - $key_owner_username)
+  else
+      KEY_EXISTS=$(gpg --list-keys "${key_search_text}")
+  fi
+  if [ ! $KEY_EXISTS ]; then
+      echo "no"
+      return
+  fi
+  if [ $KEY_EXISTS == *"error"* ]; then
+      echo "no"
+      return
+  fi
+  echo "yes"
+}
+
 function configure_gpg {
   if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
@@ -7422,52 +7441,62 @@ function configure_gpg {
   fi
   apt-get -y install gnupg
 
+  gpg_dir=/home/$MY_USERNAME/.gnupg
+
   # if gpg keys directory was previously imported from usb
-  if [[ $GPG_KEYS_IMPORTED == "yes" && -d /home/$MY_USERNAME/.gnupg ]]; then
-      sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
+  if [[ $GPG_KEYS_IMPORTED == "yes" && -d $gpg_dir ]]; then
+      echo 'GPG keys were imported'
+      sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" $gpg_dir/gpg.conf
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
-      chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
-      chmod 700 /home/$MY_USERNAME/.gnupg
-      chmod 600 /home/$MY_USERNAME/.gnupg/*
+      chown -R $MY_USERNAME:$MY_USERNAME $gpg_dir
+      chmod 700 $gpg_dir
+      chmod 600 $gpg_dir/*
       echo 'configure_gpg' >> $COMPLETION_FILE
       return
   fi
 
-  if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
-      mkdir /home/$MY_USERNAME/.gnupg
-      echo "keyserver $GPG_KEYSERVER" >> /home/$MY_USERNAME/.gnupg/gpg.conf
-      echo 'keyserver-options auto-key-retrieve' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+  if [ ! -d $gpg_dir ]; then
+      mkdir $gpg_dir
+      echo "keyserver $GPG_KEYSERVER" >> $gpg_dir/gpg.conf
+      echo 'keyserver-options auto-key-retrieve' >> $gpg_dir/gpg.conf
   fi
 
-  sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" /home/$MY_USERNAME/.gnupg/gpg.conf
+  sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" $gpg_dir/gpg.conf
 
-  if ! grep -q "# default preferences" /home/$MY_USERNAME/.gnupg/gpg.conf; then
-      echo '' >> /home/$MY_USERNAME/.gnupg/gpg.conf
-      echo '# default preferences' >> /home/$MY_USERNAME/.gnupg/gpg.conf
-      echo 'personal-digest-preferences SHA256' >> /home/$MY_USERNAME/.gnupg/gpg.conf
-      echo 'cert-digest-algo SHA256' >> /home/$MY_USERNAME/.gnupg/gpg.conf
-      echo 'default-preference-list SHA512 SHA384 SHA256 SHA224 AES256 AES192 AES CAST5 ZLIB BZIP2 ZIP Uncompressed' >> /home/$MY_USERNAME/.gnupg/gpg.conf
+  if ! grep -q "# default preferences" $gpg_dir/gpg.conf; then
+      echo '' >> $gpg_dir/gpg.conf
+      echo '# default preferences' >> $gpg_dir/gpg.conf
+      echo 'personal-digest-preferences SHA256' >> $gpg_dir/gpg.conf
+      echo 'cert-digest-algo SHA256' >> $gpg_dir/gpg.conf
+      echo 'default-preference-list SHA512 SHA384 SHA256 SHA224 AES256 AES192 AES CAST5 ZLIB BZIP2 ZIP Uncompressed' >> $gpg_dir/gpg.conf
   fi
 
-  chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
-  chmod 700 /home/$MY_USERNAME/.gnupg
-  chmod 600 /home/$MY_USERNAME/.gnupg/*
+  chown -R $MY_USERNAME:$MY_USERNAME $gpg_dir
+  chmod 700 $gpg_dir
+  chmod 600 $gpg_dir/*
 
   if [[ $MY_GPG_PUBLIC_KEY && $MY_GPG_PRIVATE_KEY ]]; then
-      echo "Public key:  $MY_GPG_PUBLIC_KEY"
-      echo "Private key: $MY_GPG_PRIVATE_KEY"
+      echo $'Importing GPG keys from file'
+      echo $"Public key:  $MY_GPG_PUBLIC_KEY"
+      echo $"Private key: $MY_GPG_PRIVATE_KEY"
 
       # use your existing GPG keys which were exported
       if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
-          echo "GPG public key file $MY_GPG_PUBLIC_KEY was not found"
-          exit 5
+          echo $"GPG public key file $MY_GPG_PUBLIC_KEY was not found"
+          exit 2483
       fi
       if [ ! -f $MY_GPG_PRIVATE_KEY ]; then
-          echo "GPG private key file $MY_GPG_PRIVATE_KEY was not found"
-          exit 6
+          echo $"GPG private key file $MY_GPG_PRIVATE_KEY was not found"
+          exit 5383
       fi
       su -c "gpg --import $MY_GPG_PUBLIC_KEY" - $MY_USERNAME
       su -c "gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY" - $MY_USERNAME
+      KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
+      if [[ $KEY_EXISTS == "no" ]]; then
+          echo $"The GPG key for $MY_EMAIL_ADDRESS could not be imported"
+          exit 13821
+      fi
+
       # for security ensure that the private key file doesn't linger around
       shred -zu $MY_GPG_PRIVATE_KEY
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
@@ -7481,7 +7510,13 @@ function configure_gpg {
       echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+      echo $'Generating a new GPG key'
       su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+      KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
+      if [[ $KEY_EXISTS == "no" ]]; then
+          echo $"A GPG key for $MY_EMAIL_ADDRESS could not be created"
+          exit 6362
+      fi
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
       MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
@@ -7533,19 +7568,14 @@ function configure_backup_key {
   fi
   apt-get -y install gnupg
 
-  BACKUP_KEY_EXISTS=$(gpg --list-keys "$MY_NAME (backup key)")
-  if [ $BACKUP_KEY_EXISTS ]; then
-      if [ $BACKUP_KEY_EXISTS != *"error"* ]; then
-          return
-      fi
+  BACKUP_KEY_EXISTS=$(gpg_key_exists "root" "$MY_NAME (backup key)")
+  if [[ $BACKUP_KEY_EXISTS == "yes" ]]; then
+      return
   fi
 
   # Generate a GPG key for backups
-  BACKUP_KEY_EXISTS=$(su -c "gpg --list-keys \"$MY_NAME (backup key)\"" - $MY_USERNAME)
-  if [ ! $BACKUP_KEY_EXISTS ]; then
-      BACKUP_KEY_EXISTS='error'
-  fi
-  if [ $BACKUP_KEY_EXISTS == *"error"* ]; then
+  BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
+  if [[ $BACKUP_KEY_EXISTS == "no" ]]; then
       echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
@@ -7555,10 +7585,12 @@ function configure_backup_key {
       echo "Name-Comment: backup key" >> /home/$MY_USERNAME/gpg-genkey.conf
       echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
       chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+      echo 'Backup key does not exist. Creating it.'
       su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
-      BACKUP_KEY_EXISTS=$(su -c "gpg --list-keys \"$MY_NAME (backup key)\"" - $MY_USERNAME)
-      if [ ! "$?" = "0" ]; then
+      echo 'Checking that the Backup key was created'
+      BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
+      if [[ $BACKUP_KEY_EXISTS == "no" ]]; then
           echo 'Backup key could not be created'
           exit 43382
       fi
