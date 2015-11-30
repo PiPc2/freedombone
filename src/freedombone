@@ -7432,6 +7432,18 @@ function gpg_key_exists {
   echo "yes"
 }
 
+function gpg_pubkey_from_email {
+  key_owner_username=$1
+  key_email_address=$2
+  key_id=
+  if [[ $key_owner_username != "root" ]]; then
+      key_id=$(su -c "gpg --list-keys $key_email_address | grep 'pub '" - $key_owner_username | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+  else
+      key_id=$(gpg --list-keys $key_email_address | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+  fi
+  echo $key_id
+}
+
 function configure_gpg {
   if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
@@ -7445,9 +7457,12 @@ function configure_gpg {
 
   # if gpg keys directory was previously imported from usb
   if [[ $GPG_KEYS_IMPORTED == "yes" && -d $gpg_dir ]]; then
-      echo 'GPG keys were imported'
+      echo $'GPG keys were imported'
       sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" $gpg_dir/gpg.conf
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
+      if [ ${#MY_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
+          echo $'GPG public key ID could not be obtained'
+      fi
       chown -R $MY_USERNAME:$MY_USERNAME $gpg_dir
       chmod 700 $gpg_dir
       chmod 600 $gpg_dir/*
@@ -7499,7 +7514,10 @@ function configure_gpg {
 
       # for security ensure that the private key file doesn't linger around
       shred -zu $MY_GPG_PRIVATE_KEY
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
+      if [ ${#MY_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
+          echo $'GPG public key ID could not be obtained'
+      fi
   else
       # Generate a GPG key
       echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
@@ -7518,7 +7536,10 @@ function configure_gpg {
           exit 6362
       fi
       shred -zu /home/$MY_USERNAME/gpg-genkey.conf
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
+      if [ ${#MY_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
+          echo $'GPG public key ID could not be obtained'
+      fi
       MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
       su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
 
@@ -7707,8 +7728,11 @@ function encrypt_outgoing_email {
 
   # obtain your public key ID
   if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
-      MY_GPG_PUBLIC_KEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+      MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
       if [ ! $MY_GPG_PUBLIC_KEY_ID ]; then
+          return
+      fi
+      if [ ${#MY_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
           return
       fi
   fi
