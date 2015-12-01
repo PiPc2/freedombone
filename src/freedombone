@@ -94,6 +94,9 @@ DDNS_USERNAME=
 DDNS_PASSWORD=
 CURRENT_DDNS_DOMAIN=
 
+CLEANUP_MAILDIR_REPO="https://github.com/bashrc/cleanup-maildir"
+CLEANUP_MAILDIR_COMMIT='33241d2e3861f901ba17f5c77ada007e1ec06a86'
+
 INADYN_REPO="https://github.com/bashrc/inadyn"
 INADYN_COMMIT='fadbe17f520d337dfb8d69ee4bf1fcaa23fce0d6'
 
@@ -887,6 +890,12 @@ function read_configuration {
       fi
       if grep -q "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE; then
           GNUSOCIAL_COMMIT=$(grep "GNUSOCIAL_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "CLEANUP_MAILDIR_COMMIT" $CONFIGURATION_FILE; then
+          CLEANUP_MAILDIR_COMMIT=$(grep "CLEANUP_MAILDIR_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+      fi
+      if grep -q "CLEANUP_MAILDIR_REPO" $CONFIGURATION_FILE; then
+          CLEANUP_MAILDIR_REPO=$(grep "CLEANUP_MAILDIR_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
       fi
       if grep -q "ZERONET_COMMIT" $CONFIGURATION_FILE; then
           ZERONET_COMMIT=$(grep "ZERONET_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -8056,6 +8065,25 @@ function email_archiving {
   if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
       return
   fi
+
+  # update to the next commit
+  if [ -d $INSTALL_DIR/cleanup-maildir ]; then
+      if grep -q "cleanup-maildir commit" $COMPLETION_FILE; then
+          CURRENT_CLEANUP_MAILDIR_COMMIT=$(grep "cleanup-maildir commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+          if [[ "$CURRENT_CLEANUP_MAILDIR_COMMIT" != "$CLEANUP_MAILDIR_COMMIT" ]]; then
+              cd $INSTALL_DIR/cleanup-maildir
+              git stash
+              git checkout master
+              git pull
+              git checkout $CLEANUP_MAILDIR_COMMIT
+              git checkout -b $CLEANUP_MAILDIR_COMMIT
+              sed -i "s/cleanup-maildir commit.*/cleanup-maildir commit:$CLEANUP_MAILDIR_COMMIT/g" $COMPLETION_FILE
+          fi
+      else
+          echo "cleanup-maildir commit:$GNUSOCIAL_COMMIT" >> $COMPLETION_FILE
+      fi
+  fi
+
   if grep -Fxq "email_archiving" $COMPLETION_FILE; then
       return
   fi
@@ -8064,7 +8092,15 @@ function email_archiving {
       mkdir $INSTALL_DIR
   fi
   cd $INSTALL_DIR
-  git clone https://github.com/bashrc/cleanup-maildir
+  git clone $CLEANUP_MAILDIR_REPO
+  git checkout $CLEANUP_MAILDIR_COMMIT
+  git checkout -b $CLEANUP_MAILDIR_COMMIT
+  if ! grep -q "cleanup-maildir commit" $COMPLETION_FILE; then
+      echo "cleanup-maildir commit:$CLEANUP_MAILDIR_COMMIT" >> $COMPLETION_FILE
+  else
+      sed -i "s/cleanup-maildir commit.*/cleanup-maildir commit:$CLEANUP_MAILDIR_COMMIT/g" $COMPLETION_FILE
+  fi
+
   cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
   echo '#!/bin/bash' > /etc/cron.daily/archivemail
   echo 'for d in /home/*/ ; do' >> /etc/cron.daily/archivemail
@@ -11130,9 +11166,9 @@ function install_mediagoblin {
 
 function create_upgrade_script {
   if [ -f /usr/local/bin/${PROJECT_NAME}-upgrade ]; then
-	  cp /usr/local/bin/${PROJECT_NAME}-upgrade /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      cp /usr/local/bin/${PROJECT_NAME}-upgrade /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   else
-	  cp /usr/bin/${PROJECT_NAME}-upgrade /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
+      cp /usr/bin/${PROJECT_NAME}-upgrade /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
   fi
 
   if grep -Fxq "create_upgrade_script" $COMPLETION_FILE; then
