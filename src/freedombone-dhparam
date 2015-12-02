@@ -1,0 +1,117 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Creates or re-calculates Diffie-Hellman parameters
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-dhparam
+export TEXTDOMAINDIR="/usr/share/locale"
+
+HOSTNAME=
+KEYLENGTH=2048
+RECALCULATE="no"
+
+function show_help {
+    echo ''
+    echo $"${PROJECT_NAME}-dhparam -h [hostname] -l [length in bits] --recalc [yes|no]"
+    echo ''
+    exit 0
+}
+
+function calc_dh {
+    openssl dhparam -check -text -dsaparam $KEYLENGTH -out ${1}
+    if [ ! "$?" = "0" ]; then
+        exit 3674
+    fi
+    chmod 640 ${1}
+}
+
+function regenerate_dh_keys {
+    for file in /etc/ssl/mycerts/*
+    do
+        if [[ -f $file ]]; then
+            filename=/etc/ssl/certs/$(echo $file | awk -F '/etc/ssl/mycerts/' '{print $2}' | awk -F '.crt' '{print $1}').dhparam
+            if [ -f $filename ]; then
+                calc_dh $filename
+                echo $"Recalculated DH params for $filename"
+            fi
+        fi
+    done
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    --help)
+    show_help
+    ;;
+    -h|--hostname)
+    shift
+    HOSTNAME="$1"
+    ;;
+    -l|--dhkey)
+    shift
+    KEYLENGTH=${1}
+    ;;
+    --recalc)
+    shift
+    RECALCULATE=${1}
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+if [[ $RECALCULATE == "yes" || $RECALCULATE == "y" ]]; then
+    regenerate_dh_keys
+    exit 0
+fi
+
+if [ ! $HOSTNAME ]; then
+    echo $'No hostname specified'
+    exit 5728
+fi
+
+if ! which openssl > /dev/null ;then
+    echo $"$0: openssl is not installed, exiting" 1>&2
+    exit 5689
+fi
+
+if [ ! -d /etc/ssl/mycerts ]; then
+    mkdir -p /etc/ssl/mycerts
+fi
+
+calc_dh /etc/ssl/certs/$HOSTNAME.dhparam
+
+systemctl reload nginx
+exit 0
