@@ -35,28 +35,50 @@ language=( fr de es )
 
 COMMAND_FILES=src/${PROJECT_NAME}*
 
+function install_i18next-conv {
+    if [ ! -f /usr/bin/i18next-conv ]; then
+        sudo apt-get install -y curl npm
+        curl -sL https://deb.nodesource.com/setup_0.12 | sudo bash -
+        sudo apt-get install -y nodejs
+        sudo npm install i18next-conv -g
+    fi
+}
+
 function create_translation_files {
-	if [ ! -d /tmp/${PROJECT_NAME} ]; then
-		mkdir -p /tmp/${PROJECT_NAME}
-	fi
+    if [ ! -d /tmp/${PROJECT_NAME} ]; then
+        mkdir -p /tmp/${PROJECT_NAME}
+    fi
 
     for f in $COMMAND_FILES
     do
         COMMAND_NAME=$(echo $f | awk -F '/' '{print $2}')
         bash --dump-po-strings src/${COMMAND_NAME} | xgettext -L PO -o /tmp/${PROJECT_NAME}/${COMMAND_NAME}.pot -
-		if [ -f /tmp/${PROJECT_NAME}/${COMMAND_NAME}.pot ]; then
-			for lang in "${language[@]}"
-			do
-				if [ ! -d locale/${lang} ]; then
-					mkdir -p locale/${lang}
-				fi
-				if [ ! -f locale/${lang}/${COMMAND_NAME}.po ]; then
-				    echo "Creating ${lang} Translation file for ${COMMAND_NAME}..."
-				    msginit -l ${lang} -i /tmp/${PROJECT_NAME}/${COMMAND_NAME}.pot -o locale/${lang}/${COMMAND_NAME}.po
-				fi
-			done
-			rm /tmp/${PROJECT_NAME}/${COMMAND_NAME}.pot
-		fi
+        if [ -f /tmp/${PROJECT_NAME}/${COMMAND_NAME}.pot ]; then
+            for lang in "${language[@]}"
+            do
+                if [ ! -d locale/${lang} ]; then
+                    mkdir -p locale/${lang}
+                fi
+
+                if [ ! -f locale/${lang}/${COMMAND_NAME}.json ]; then
+                    # create po file
+                    echo "Creating ${lang} Translation file for ${COMMAND_NAME}..."
+                    msginit -l ${lang} -i /tmp/${PROJECT_NAME}/${COMMAND_NAME}.pot -o locale/${lang}/${COMMAND_NAME}.po
+
+                    # convert po to json
+                    if [ -f /usr/bin/i18next-conv ]; then
+                        if [ -f locale/${lang}/${COMMAND_NAME}.po ]; then
+                            if [ ! -f locale/${lang}/${COMMAND_NAME}.json ]; then
+                                i18next-conv -l ${lang} -s locale/${lang}/${COMMAND_NAME}.po -t locale/${lang}/${COMMAND_NAME}.json
+                            fi
+                        fi
+                    fi
+
+                    rm locale/${lang}/${COMMAND_NAME}.po
+                fi
+            done
+            rm /tmp/${PROJECT_NAME}/${COMMAND_NAME}.pot
+        fi
     done
 }
 
@@ -66,8 +88,11 @@ function install_translations {
         COMMAND_NAME=$(echo $f | awk -F '/' '{print $2}')
         for lang in "${language[@]}"
         do
-            if [ -f locale/${lang}/${COMMAND_NAME}.mo ]; then
-                cp locale/${lang}/${COMMAND_NAME}.mo /usr/share/locale/${lang}/${COMMAND_NAME}.mo
+            # convert json to mo
+            if [ -f /usr/bin/i18next-conv ]; then
+                if [ -f locale/${lang}/${COMMAND_NAME}.json ]; then
+                    i18next-conv -l ${lang} -s locale/${lang}/${COMMAND_NAME}.json -t /usr/share/locale/${lang}/${COMMAND_NAME}.mo
+                fi
             fi
         done
     done
@@ -87,11 +112,13 @@ function uninstall_translations {
 }
 
 if [[ $1 == "make" ]]; then
+    install_i18next-conv
     create_translation_files
     exit 0
 fi
 
 if [[ $1 == "install" ]]; then
+    install_i18next-conv
     install_translations
     exit 0
 fi
