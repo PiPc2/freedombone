@@ -126,7 +126,7 @@ The default login will be username 'fbone' and password 'freedombone'. Take a no
 
 Social Key Management (aka "The Unforgettable Key")
 ===================================================
-If you are using the interactive installer then you will be aked if you wish to import GPG keys. If you don't already possess GPG keys then just select "Ok" and they will be generated during the install. If you do already have GPG keys then there are a few possibilities
+During the install procedure you will be asked if you wish to import GPG keys. If you don't already possess GPG keys then just select "Ok" and they will be generated during the install. If you do already have GPG keys then there are a few possibilities
 
 **You have the gnupg keyring on an encrypted USB drive**
 
