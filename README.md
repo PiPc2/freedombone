@@ -16,89 +16,132 @@ Freedombone has an emphasis on security and privacy, and when installed on a Bea
 
 Freedombone is, and shall remain, 100% free software. Non-free repositories are removed automatically upon installation.
 
-Preparation for the Beaglebone Black
-====================================
-This section is specific to the Beaglebone Black hardware. If you're not using that hardware then just skip to the next section.
+Building an image for an SBC or Virtual Machine
+===============================================
+You don't have to trust images downloaded from random internet locations signed with untrusted keys. You can build one from scratch yourself, and this is the recommended procedure for maximum security. For guidance on how to build images see the manpage for the **freedombone-image** command.
 
-To get started you will need:
+Install the freedombone commands onto your laptop/desktop:
 
- - A Beaglebone Black
- - A MicroSD card
- - Ethernet cable
- - Optionally a 5V 2A power supply for the Beaglebone Black
- - Access to the internet via a router with ethernet sockets
- - USB thumb drive (for backups or storing media)
- - One or more domains available via a dynamic DNS provider, such as https://freedns.afraid.org
- - A purchased domain name and SSL certificate (only needed for Hubzilla)
- - A laptop or desktop machine with the ability to write to a microSD card (might need an adaptor)
-
-You will also need to know, or find out, the IP address of your internet router and have a suitable static IP address for the Beaglebone on your local network. The router should allow you to forward ports to the Beaglebone (often this is under firewall or "advanced" settings).
-
-You can either install from a debian package or manually as follows:
-
-    sudo apt-get update
-    sudo apt-get install git dialog build-essential
+    sudo apt-get install git build-essential dialog
     git clone https://github.com/bashrc/freedombone
     cd freedombone
     sudo make install
 
-Plug the microSD card into your laptop/desktop and then run the *freedombone-prep* command. For example:
+Then install packages needed for building images:
 
-    freedombone-prep -d /dev/sdX --ip freedombone_IP_address --iprouter router_IP_address
+    sudo apt-get -y install python-docutils mktorrent vmdebootstrap
+    sudo apt-get -y install dosfstools btrfs-tools extlinux python-distro-info mbr
+    sudo apt-get -y install qemu-user-static binfmt-support u-boot-tools qemu
 
-where /dev/sdX is the device name for the microSD card. Often it's /dev/sdb or /dev/sdc, depending upon how many drives there are on your system. The script will download the Debian installer and update the microSD card. It can take a while, so be patient.
+A typical use case to build an 8GB image for a Beaglebone Black is as follows. You can change the size depending upon the capacity of your microSD card.
 
-When the initial setup is done follow the instructions on screen to run the main freedombone command.
+    freedombone-image -t beaglebone -s 8G
+
+If you prefer an advanced installation with all of the options available then use:
+
+    freedombone-image -t beaglebone -s 8G --minimal no
+
+To build a 64bit Virtualbox image:
+
+    freedombone-image -t virtualbox-amd64 -s 8G
+
+To build a 64bit Qemu image:
+
+    freedombone-image -t qemu-x86_64 -s 8G
+
+Other supported boards are cubieboard2, cubietruck and olinuxino-lime2.
 
 Checklist
 =========
-Before running the freedombone command you will need a few things.
+Before installing Freedombone you will need a few things.
 
   * Have some domains, or subdomains, registered with a dynamic DNS service
-  * System with a new installation of Debian Jessie
-  * Ethernet connection to an internet router
-  * It is possible to forward ports from the internet router to the system
-  * If you want to set up a social network or microblog then you will need SSL certificates corresponding to those domains
-  * Have ssh access to the system
+  * System with a new installation of Debian Jessie or a downloaded/prepared disk image
+  * Ethernet connection between the system and your internet router
+  * That it is possible to forward ports from the internet router to the system, typically via firewall settings
+  * Have ssh access to the system, typically via fbone@freedombone.local on port 2222
 
-GPG Keys
-========
-If you have existing GPG keys then copy the .gnupg directory onto the system.
+Installation
+============
+There are three install options: Laptop/Desktop/Netbook, SBC and Virtual Machine.
 
-    scp -r ~/.gnupg username@freedombone_IP_address:/home/username
+**On a Laptop, Netbook or Desktop machine**
 
-Interactive Setup
-=================
-The interactive server configuration setup is recommended for most users. On the system where freedombone is to be installed create a configuration file.
+If you have an existing system, such as an old laptop or netbook which you can leave running as a server, then install a new version of Debian Jessie onto it. During the Debian install you won't need the print server or the desktop environment, and unchecking those will reduce the attack surface. Once Debian enter the following commands:
 
-    ssh username@freedombone_IP_address
     su
     apt-get update
-    apt-get install git dialog
+    apt-get -y install git dialog build-essential
     git clone https://github.com/bashrc/freedombone
     cd freedombone
     make install
-
-Now the easiest way to install the system is via the interactive setup.
-
     freedombone menuconfig
 
-You can select which variant you wish to install and then enter the details as requested.
+**On a single board computer (SBC)**
 
-Other types of setup
-====================
-See the manpage for details on other kinds of non-interactive setup.
+Currently the following boards are supported:
 
-    man freedombone
+    Beaglebone Black
+    Cubieboard 2
+    Cubietruck (Cubieboard 3)
+    olinuxino Lime2
 
-Post-Setup
-==========
-Setup of the server and installation of all the relevant packages is not quick, and depends upon which variant you choose and your internet bandwidth. Allow about three hours for a full installation on the Beaglebone Black. On the Beaglebone installation is in two parts, since a reboot is needed to enable the hardware random number generator and zram.
+If there is no existing image available then you can build one from scratch. See the section above on how to do that. If an existing image is available then you can download it and check the signature with:
 
-When done you can ssh into the Freedombone with:
+    gpg --verify filename.img.asc
 
-    ssh username@domain -p 2222
+And the hash with:
 
+    sha256sum filename.img
+
+If the image is compressed then decompress it with:
+
+    tar -xjvf filename.tar.bz2
+
+Then copy it to a microSD card. Depending on your system you may need an adaptor to be able to do that.
+
+    sudo dd bs=1M if=filename.img of=/dev/sdX conv=fdatasync
+
+Where **sdX** is the microSD drive. You can check which drive is the microSD drive using:
+
+    ls /dev/sd*
+
+With the drive removed and inserted. Copying to the microSD will take a while, so go and do something less boring instead. When it's complete remove it from your system and insert it into the SBC. Connect an ethernet cable between the SBC and your internet router, then connect the power cable. On the Beaglebone Black you will see some flashing LEDs, but on other SBCs there may not be any visual indication that anything is booting.
+
+With the board connected and running you can ssh into the system with:
+
+    ssh fbone@freedombone.local -p 2222
+
+Using the password 'freedombone'. Take a note of the new login password and then you can proceed through the installation.
+
+**As a Virtual Machine**
+
+Virtualbox and Qemu are supported. You can run a 64 bit Qemu image with:
+
+    qemu-system-x86_64 filename.img
+
+If you are using Virtualbox then add a new VM and select the Freedombone **vdi** image.
+
+The default login will be username 'fbone' and password 'freedombone'. Take a note of the new login password then you can proceed through the installation.
+
+Social Key Management (aka "The Unforgettable Key")
+===================================================
+If you are using the interactive installer then you will be aked if you wish to import GPG keys. If you don't already possess GPG keys then just select "Ok" and they will be generated during the install. If you do already have GPG keys then there are a few possibilities
+
+**You have the gnupg keyring on an encrypted USB drive**
+
+If you previously made a master keydrive containing the full keyring (the .gnupg directory). This is the most straightforward case, but not as secure as splitting the key into fragments.
+
+**You have a number of key fragments on USB drives retrieved from friends**
+
+If you previously made some USB drives containing key fragments then retrieve them from your friends and plug them in one after the other. After the last drive has been read then remove it and just select "Ok". The system will then try to reconstruct the key. For this to work you will need to have previously made three or more **Keydrives**.
+
+**You can specify some ssh login details for friends servers containing key fragments**
+
+Enter three or more sets of login details and the installer will try to retrieve key fragments and then assemble them into the full key. This only works if you previously were using remote backups and had social key management enabled.
+
+Final Setup
+===========
 Any manual post-installation setup instructions or passwords can be found in /home/username/README. You should remove any passwords from that file and store them within a password manager such as KeepassX.
 
 On your internet router, typically under firewall settings, open the following ports and forward them to your server.
@@ -121,17 +164,42 @@ On your internet router, typically under firewall settings, open the following p
     | Email   |        465 |
     | Email   |        993 |
     | VoIP    |      64738 |
-    | VoIP    |       5060 |
     | Tox     |      33445 |
     | IPFS    |       4001 |
 
-On Client Machines
-==================
-You can configure laptops or desktop machines which connect to the Freedombone server in the following way. This alters encryption settings to improve overall security.
+Keydrives
+=========
+After installing for the first time it's a good idea to create some keydrives. These will store your gpg key so that if all else fails you will still be able to restore from backup. There are two ways to do this:
 
-    sudo apt-get update
-    sudo apt-get install git dialog
-    git clone https://github.com/bashrc/freedombone
-    cd freedombone
-    sudo make install
-    freedombone-client
+**Master Keydrive**
+
+This is the traditional security model in which you carry your full keyring on an encrypted USB drive. To make a master keydrive first format a USB drive as a LUKS encrypted drive. In Ubuntu this can be done from the *Disk Utility* application. Then plug it into the Freedombone system, then from your local machine run:
+
+    ssh myusername@mydomainname -p 2222
+    sudo control
+
+Select *Backup and Restore* then *Backup GPG key to USB (master keydrive)*.
+
+**Fragment keydrives**
+
+This breaks your GPG key into a number of fragments and randomly selects one to add to the USB drive. First format a USB drive as a LUKS encrypted drive. In Ubuntu this can be done from the *Disk Utility* application. Plug it into the Freedombone system then from your local machine run the following commands:
+
+    ssh myusername@mydomainname -p 2222
+    sudo control
+
+Select *Backup and Restore* then *Backup GPG key to USB (fragment keydrive)*.
+
+Fragments are randomly assigned and so you will need at least three or four keydrives to have enough fragments to reconstruct your original key in a worst case scenario. You can store fragments for different Freedombone systems on the same encrypted USB drive, so you can help to ensure that your friends can also recover their systems. This might be called *"the web of backups"* or *"the web of encryption"*. Since you can only write a single key fragment from your Freedombone system to a given USB drive each friend doesn't have enough information to decrypt your backups or steal your identity, even if they turn evil. This is based on the assumption that it may be difficult to get three or more friends to conspire against you all at once.
+
+Passwords
+=========
+Passwords for server applications are randomly generated and can be found within **/home/username/README** after the system has fully installed. You should move those passwords into a password manager, such as KeepassX.
+
+Administering the system
+========================
+To administer the system after installation log in via ssh, become the root user and then launch the control panel.
+
+    ssh fbone@freedombone.local -p 2222
+    sudo control
+
+From there you will be able to perform various tasks, such as backups, adding and removing users and so on. You can also do this via commands, which are typically installed as /usr/local/bin/freedombone* and the corresponding manpages.
