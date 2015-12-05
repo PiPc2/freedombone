@@ -58,6 +58,7 @@ CURRENT_DIR=$(pwd)
 REGENERATE_SSH_HOST_KEYS="no"
 REGENERATE_DH_KEYS="no"
 DH_KEYLENGTH=2048
+LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
 function get_protocols_from_website {
   if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
@@ -365,7 +366,7 @@ function regenerate_dh_keys {
           3) DH_KEYLENGTH=4096;;
       esac
 
-	  ${PROJECT_NAME}-dhparam --recalc yes -l ${DH_KEYLENGTH}
+      ${PROJECT_NAME}-dhparam --recalc yes -l ${DH_KEYLENGTH}
   fi
 }
 
@@ -384,25 +385,25 @@ function renew_startssl {
   esac
 
   if [ ! $renew_domain ]; then
-	  return
+      return
   fi
 
   if [[ $renew_domain == "http"* ]]; then
       dialog --title $"Renew a StartSSL certificate" \
              --msgbox $"Don't include the https://" 6 40
-	  return
+      return
   fi
 
   if [ ! -f /etc/ssl/certs/${renew_domain}.dhparam ]; then
       dialog --title $"Renew a StartSSL certificate" \
              --msgbox $"An existing certificate for $renew_domain was not found" 6 40
-	  return
+      return
   fi
 
   if [[ $renew_domain != *"."* ]]; then
       dialog --title $"Renew a StartSSL certificate" \
              --msgbox $"Invalid domain name: $renew_domain" 6 40
-	  return
+      return
   fi
 
   ${PROJECT_NAME}-renew-cert -h $renew_domain -p startssl
@@ -425,28 +426,69 @@ function renew_letsencrypt {
   esac
 
   if [ ! $renew_domain ]; then
-	  return
+      return
   fi
 
   if [[ $renew_domain == "http"* ]]; then
       dialog --title $"Renew a Let's Encrypt certificate" \
              --msgbox $"Don't include the https://" 6 40
-	  return
+      return
   fi
 
   if [ ! -f /etc/ssl/certs/${renew_domain}.dhparam ]; then
       dialog --title $"Renew a Let's Encrypt certificate" \
              --msgbox $"An existing certificate for $renew_domain was not found" 6 40
-	  return
+      return
   fi
 
   if [[ $renew_domain != *"."* ]]; then
       dialog --title $"Renew a Let's Encrypt certificate" \
              --msgbox $"Invalid domain name: $renew_domain" 6 40
-	  return
+      return
   fi
 
   ${PROJECT_NAME}-renew-cert -h $renew_domain -p 'letsencrypt'
+
+  exit 0
+}
+
+function create_letsencrypt {
+  new_domain=
+  data=$(tempfile 2>/dev/null)
+  trap "rm -f $data" 0 1 2 5 15
+  dialog --title $"Create a new Let's Encrypt certificate" \
+         --backtitle $"Freedombone Security Settings" \
+         --inputbox $"Enter the domain name" 8 60 2>$data
+  sel=$?
+  case $sel in
+      0)
+          new_domain=$(<$data)
+          ;;
+  esac
+
+  if [ ! $new_domain ]; then
+      return
+  fi
+
+  if [[ $new_domain == "http"* ]]; then
+      dialog --title $"Create a new Let's Encrypt certificate" \
+             --msgbox $"Don't include the https://" 6 40
+      return
+  fi
+
+  if [[ $new_domain != *"."* ]]; then
+      dialog --title $"Create a new Let's Encrypt certificate" \
+             --msgbox $"Invalid domain name: $new_domain" 6 40
+      return
+  fi
+
+  if [ ! -d /var/www/${new_domain} ]; then
+      dialog --title $"Create a new Let's Encrypt certificate" \
+             --msgbox $'Domain not found within /var/www' 6 40
+      return
+  fi
+
+  ${PROJECT_NAME}-addcert -e $new_domain -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
 
   exit 0
 }
@@ -455,11 +497,12 @@ function housekeeping {
   cmd=(dialog --separate-output \
               --backtitle "Freedombone Security Configuration" \
               --title "Housekeeping options" \
-              --checklist "If you don't need to do any of these things then just press Enter:" 12 76 16)
+              --checklist "If you don't need to do any of these things then just press Enter:" 13 76 16)
   options=(1 "Regenerate ssh host keys" off
            2 "Regenerate Diffie-Hellman keys" off
            3 "Renew a StartSSL certificate" off
-           4 "Renew Let's Encrypt certificate" off)
+           4 "Create a new Let's Encrypt certificate" off
+           5 "Renew Let's Encrypt certificate" off)
   choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
   clear
   for choice in $choices
@@ -475,6 +518,9 @@ function housekeeping {
         renew_startssl
         ;;
       4)
+        create_letsencrypt
+        ;;
+      5)
         renew_letsencrypt
         ;;
     esac
