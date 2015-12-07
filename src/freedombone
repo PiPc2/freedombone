@@ -6595,8 +6595,22 @@ function time_synchronisation {
       return
   fi
 
+  # remove any previous version of tlsdate compiled from source
+  reinstall_tlsdate="no"
+  if [ -d $INSTALL_DIR/tlsdate ]; then
+      if [ -f /usr/bin/tlsdate ]; then
+          echo 'Removing previous tlsdate install'
+          rm -rf $INSTALL_DIR/tlsdate
+          rm -f /usr/bin/tlsdate
+          reinstall_tlsdate="yes"
+          echo 'Reinstalling tlsdate'
+      fi
+  fi
+
   if grep -Fxq "time_synchronisation" $COMPLETION_FILE; then
-      return
+      if [[ $reinstall_tlsdate == "no" ]]; then
+          return
+      fi
   fi
 
   apt-get -y install tlsdate
@@ -6607,7 +6621,15 @@ function time_synchronisation {
   echo "TIMESOURCE2='${TLS_TIME_SOURCE2}'" >> /usr/bin/updatedate
   echo 'LOGFILE=/var/log/tlsdate.log' >> /usr/bin/updatedate
   echo 'TIMEOUT=5' >> /usr/bin/updatedate
-  echo "EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/updatedate
+  echo 'if grep -q "Admin user" $COMPLETION_FILE; then' >> /usr/bin/updatedate
+  echo -n '    ADMIN_USER=$(cat $COMPLETION_FILE | grep "Admin user" | ' >> /usr/bin/updatedate
+  echo -n "awk -F ':' '{print " >> /usr/bin/updatedate
+  echo -n '$2' >> /usr/bin/updatedate
+  echo "}')" >> /usr/bin/updatedate
+  echo '    EMAIL=$ADMIN_USER@$HOSTNAME' >> /usr/bin/updatedate
+  echo 'else' >> /usr/bin/updatedate
+  echo "    EMAIL=$MY_EMAIL_ADDRESS" >> /usr/bin/updatedate
+  echo 'fi' >> /usr/bin/updatedate
   echo '# File which contains the previous date as a number' >> /usr/bin/updatedate
   echo 'BEFORE_DATE_FILE=/var/log/tlsdateprevious.txt' >> /usr/bin/updatedate
   echo '# File which contains the previous date as a string' >> /usr/bin/updatedate
@@ -6676,6 +6698,10 @@ function time_synchronisation {
   chmod +x /usr/bin/updatedate
   echo '*/15           * *   *   *   root /usr/bin/updatedate' >> /etc/crontab
   service cron restart
+
+  if [[ $reinstall_tlsdate != "no" ]]; then
+      echo 'tlsdate was reinstalled'
+  fi
 
   echo 'time_synchronisation' >> $COMPLETION_FILE
 }
