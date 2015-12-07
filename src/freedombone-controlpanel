@@ -38,6 +38,7 @@ SELECTED_USERNAME=
 SIP_CONFIG_FILE=/etc/sipwitch.conf
 ADMIN_USER=
 UPGRADE_SCRIPT_NAME="${PROJECT_NAME}-upgrade"
+UPDATE_DATE_SCRIPT=/usr/bin/updatedate
 
 function any_key {
     echo ' '
@@ -707,6 +708,31 @@ function change_system_name {
     esac
 }
 
+function set_tls_time_source {
+    TLS_DATE_SOURCE=$(cat $UPDATE_DATE_SCRIPT | grep 'TIMESOURCE=' | awk -F '=' '{print $2}')
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Set the TLS date/time source" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Enter a domain name to use as a TLS time source.\n\nFactors to consider when choosing a source are whether you wish that site to know that your system is 'alive' and also what might happen if an adversary were to try to mess with the date/time from that domain (i.e. how much blowback would there be)." 14 60 "$TLS_DATE_SOURCE" 2>$data
+    sel=$?
+    case $sel in
+        0) NEW_TLS_DATE_SOURCE=$(<$data)
+           if [[ $NEW_TLS_DATE_SOURCE == *"."* && $NEW_TLS_DATE_SOURCE != *'/'* ]]; then
+               if [[ $NEW_TLS_DATE_SOURCE != "http"* ]]; then
+                   sed -i "s|TIMESOURCE=.*|TIMESOURCE=${NEW_TLS_DATE_SOURCE}|g" $UPDATE_DATE_SCRIPT
+               else
+                   dialog --title $"Invalid domain name" \
+                          --msgbox $"Don't include the 'https'" 6 70
+               fi
+           else
+               dialog --title $"Invalid domain name" \
+                      --msgbox $"That doesn't look like a domain name" 6 70
+           fi
+           ;;
+    esac
+}
+
 function menu_backup_restore {
     while true
     do
@@ -859,7 +885,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 21 70 14 \
+               --radiolist $"Choose an operation:" 22 70 15 \
                1 $"Backup and Restore" off \
                2 $"Show SIP Phone Extensions" off \
                3 $"Reset Tripwire" off \
@@ -870,10 +896,11 @@ function menu_top_level {
                8 $"Hubzilla" off \
                9 $"Media menu" off \
                10 $"Change the name of this system" off \
-               11 $"Check for updates" off \
-               12 $"Power off the system" off \
-               13 $"Restart the system" off \
-               14 $"Exit" on 2> $data
+               11 $"Set the TLS date/time source" off \
+               12 $"Check for updates" off \
+               13 $"Power off the system" off \
+               14 $"Restart the system" off \
+               15 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -890,10 +917,11 @@ function menu_top_level {
             8) menu_hubzilla;;
             9) menu_media;;
             10) change_system_name;;
-            11) check_for_updates;;
-            12) shut_down_system;;
-            13) restart_system;;
-            14) break;;
+            11) set_tls_time_source;;
+            12) check_for_updates;;
+            13) shut_down_system;;
+            14) restart_system;;
+            15) break;;
         esac
     done
 }
