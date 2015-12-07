@@ -733,6 +733,99 @@ function set_tls_time_source {
     esac
 }
 
+function set_static_IP {
+    STATIC_IP='192.168.1.60'
+    STATIC_GATEWAY='192.168.1.1'
+    NEW_STATIC_IP=
+    NEW_STATIC_GATEWAY=
+    if grep -q 'iface eth0 inet static' /etc/network/interfaces; then
+        STATIC_IP=$(cat /etc/network/interfaces | grep "address " | awk -F ' ' '{print $2}' | head -n 1)
+        STATIC_GATEWAY=$(cat /etc/network/interfaces | grep "gateway " | awk -F ' ' '{print $2}' | head -n 1)
+    fi
+
+    # get the IP for the box
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Set a static local IP address" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"In order to forward incoming internet traffic to this system most internet routers need to know a static local IP address to send the data to.\n\n
+Enter a static local IP address for this system.\n\nIt will typically be 192.168.1.x" 15 60 "$STATIC_IP" 2>$data
+    sel=$?
+    case $sel in
+        0) NEW_STATIC_IP=$(<$data)
+           if [[ "$NEW_STATIC_IP" != *"."* ]]; then
+               return
+           fi
+           if grep -q 'iface eth0 inet static' /etc/network/interfaces; then
+               if [[ "$NEW_STATIC_IP" != "$STATIC_IP" ]]; then
+                   sed -i "s|${STATIC_IP}|${NEW_STATIC_IP}|g" /etc/network/interfaces
+               fi
+           fi
+           ;;
+    esac
+
+    # get the gateway
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Set the IP address of your internet router/modem" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Set the local IP address for your internet router or ADSL modem.\n\nIt will typically be 192.168.1.1, 192.168.1.254, or similar" 12 60 "$STATIC_GATEWAY" 2>$data
+    sel=$?
+    case $sel in
+        0) NEW_STATIC_GATEWAY=$(<$data)
+           if [[ "$NEW_STATIC_GATEWAY" != *"."* ]]; then
+               return
+           fi
+           if grep -q 'iface eth0 inet static' /etc/network/interfaces; then
+               if [[ "$NEW_STATIC_GATEWAY" != "$STATIC_GATEWAY" ]]; then
+                   sed -i "s|${STATIC_GATEWAY}|${NEW_STATIC_GATEWAY}|g" /etc/network/interfaces
+               fi
+               return
+           fi
+           ;;
+    esac
+
+    if ! grep -q 'iface eth0 inet static' /etc/network/interfaces; then
+        if [ "$NEW_STATIC_GATEWAY" && "$NEW_STATIC_IP" ]; then
+            echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
+            echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
+            echo '' >> /etc/network/interfaces
+            echo '# The loopback network interface' >> /etc/network/interfaces
+            echo 'auto lo' >> /etc/network/interfaces
+            echo 'iface lo inet loopback' >> /etc/network/interfaces
+            echo '' >> /etc/network/interfaces
+            echo '# The primary network interface' >> /etc/network/interfaces
+            echo 'auto eth0' >> /etc/network/interfaces
+            echo 'iface eth0 inet static' >> /etc/network/interfaces
+            echo "    address ${NEW_STATIC_IP}" >> /etc/network/interfaces
+            echo '    netmask 255.255.255.0' >> /etc/network/interfaces
+            echo "    gateway ${NEW_STATIC_GATEWAY}" >> /etc/network/interfaces
+            echo "    dns-nameservers 213.73.91.35 85.214.20.141" >> /etc/network/interfaces
+            echo '# Example to keep MAC address between reboots' >> /etc/network/interfaces
+            echo '#hwaddress ether DE:AD:BE:EF:CA:FE' >> /etc/network/interfaces
+            echo '' >> /etc/network/interfaces
+            echo '# The secondary network interface' >> /etc/network/interfaces
+            echo '#auto eth1' >> /etc/network/interfaces
+            echo '#iface eth1 inet dhcp' >> /etc/network/interfaces
+            echo '' >> /etc/network/interfaces
+            echo '# WiFi Example' >> /etc/network/interfaces
+            echo "#auto $WIFI_INTERFACE" >> /etc/network/interfaces
+            echo "#iface $WIFI_INTERFACE inet dhcp" >> /etc/network/interfaces
+            echo '#    wpa-ssid "essid"' >> /etc/network/interfaces
+            echo '#    wpa-psk  "password"' >> /etc/network/interfaces
+            echo '' >> /etc/network/interfaces
+            echo '# Ethernet/RNDIS gadget (g_ether)' >> /etc/network/interfaces
+            echo '# ... or on host side, usbnet and random hwaddr' >> /etc/network/interfaces
+            echo '# Note on some boards, usb0 is automaticly setup with an init script' >> /etc/network/interfaces
+            echo '#iface usb0 inet static' >> /etc/network/interfaces
+            echo '#    address 192.168.7.2' >> /etc/network/interfaces
+            echo '#    netmask 255.255.255.0' >> /etc/network/interfaces
+            echo '#    network 192.168.7.0' >> /etc/network/interfaces
+            echo '#    gateway 192.168.7.1' >> /etc/network/interfaces
+        fi
+    fi
+}
+
 function menu_backup_restore {
     while true
     do
@@ -885,7 +978,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 22 70 15 \
+               --radiolist $"Choose an operation:" 23 70 16 \
                1 $"Backup and Restore" off \
                2 $"Show SIP Phone Extensions" off \
                3 $"Reset Tripwire" off \
@@ -897,10 +990,11 @@ function menu_top_level {
                9 $"Media menu" off \
                10 $"Change the name of this system" off \
                11 $"Set the TLS date/time source" off \
-               12 $"Check for updates" off \
-               13 $"Power off the system" off \
-               14 $"Restart the system" off \
-               15 $"Exit" on 2> $data
+               12 $"Set a static local IP address" off \
+               13 $"Check for updates" off \
+               14 $"Power off the system" off \
+               15 $"Restart the system" off \
+               16 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -918,10 +1012,11 @@ function menu_top_level {
             9) menu_media;;
             10) change_system_name;;
             11) set_tls_time_source;;
-            12) check_for_updates;;
-            13) shut_down_system;;
-            14) restart_system;;
-            15) break;;
+            12) set_static_IP;;
+            13) check_for_updates;;
+            14) shut_down_system;;
+            15) restart_system;;
+            16) break;;
         esac
     done
 }
