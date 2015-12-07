@@ -7,6 +7,8 @@ all:
 	bash -c "./translate make"
 debug:
 	bash -c "./translate make"
+translations:
+	bash -c "./translate translations"
 source:
 	tar -cvf ../${APP}_${VERSION}.orig.tar ../${APP}-${VERSION} --exclude-vcs
 	gzip -f9n ../${APP}_${VERSION}.orig.tar
