@@ -19,6 +19,7 @@ install:
 	install -m 755 src/* ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
+	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	bash -c "./translate install"
@@ -28,6 +29,7 @@ uninstall:
 	rm -f ${PREFIX}/bin/${APP}*
 	rm -f ${PREFIX}/bin/zeronetavahi
 	rm -f ${PREFIX}/bin/mesh
+	rm -f ${PREFIX}/bin/backup
 	rm -f ${PREFIX}/bin/meshweb
 	rm -rf /etc/freedombone
 	bash -c "./translate uninstall"

@@ -2808,503 +2808,6 @@ function backup_database {
   echo '}' >> /usr/bin/$BACKUP_SCRIPT_NAME
 }
 
-function create_backup_script {
-  if grep -Fxq "create_backup_script" $COMPLETION_FILE; then
-      return
-  fi
-  apt-get -y install rsyncrypto cryptsetup libgfshare-bin obnam
-
-  get_mariadb_password
-  get_mariadb_gnusocial_admin_password
-  get_mariadb_hubzilla_admin_password
-  get_mariadb_owncloud_admin_password
-  get_mariadb_git_admin_password
-
-  echo '#!/bin/bash' > /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "COMPLETION_FILE=$COMPLETION_FILE" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "USB_DRIVE=$USB_DRIVE" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ $1 ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USB_DRIVE=/dev/${1}1' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "USB_MOUNT=$USB_MOUNT" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n "awk -F ':' '{print " >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '$2' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "}')" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'MY_USERNAME=$ADMIN_USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ $2 ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  MY_USERNAME=$2' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'MY_NAME=$(getent passwd $MY_USERNAME | cut -d: -f5 | cut -d, -f1)' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! -b $USB_DRIVE ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Please attach a USB drive"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  exit 1' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'umount -f $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! -d $USB_MOUNT ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  mkdir $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ -f /dev/mapper/encrypted_usb ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  rm -rf /dev/mapper/encrypted_usb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'cryptsetup luksClose encrypted_usb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'cryptsetup luksOpen $USB_DRIVE encrypted_usb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USB_DRIVE=/dev/mapper/encrypted_usb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'mount $USB_DRIVE ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '$USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "There was a problem mounting the USB drive to $USB_MOUNT"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  rm -rf $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  exit 6392' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! -d $USB_MOUNT/backup ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  mkdir $USB_MOUNT/backup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! -d $USB_MOUNT/backup ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "There was a problem making the directory $USB_MOUNT/backup."' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  umount $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  rm -rf $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  exit 27' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo -n 'used_percent=$(df -k $USB_MOUNT | tail -n 1 | ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n "awk -F ' ' '{print " >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '$5' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n "}' | " >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n "awk -F '%' '{print " >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '$1' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "}')" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ $used_percent -gt 95 ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Less than 5% of space remaining on backup drive"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  umount $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  rm -rf $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  exit 6492' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# MariaDB password' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n 'DATABASE_PASSWORD=$(cat ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  backup_database
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  backup_directory_to_usb
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  if [[ $BACKUP_TYPE != 'obnam' ]]; then
-      echo "if [ ! -f $BACKUP_CERTIFICATE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '    echo "Creating backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "    freedombone-addcert -h backup --dhkey $DH_KEYLENGTH" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "if [ ! -f $BACKUP_CERTIFICATE.gpg ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  echo "GPG encrypt the backup key"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "  gpg -c $BACKUP_CERTIFICATE" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo -n "cp $BACKUP_CERTIFICATE.gpg " >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '$USB_MOUNT/backup/key.gpg' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-
-  echo 'if [ -d /etc/letsencrypt ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    echo "Backing up Lets Encrypt settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    backup_directory_to_usb /etc/letsencrypt letsencrypt' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
-      BACKUP_INCLUDES_DATABASES="yes"
-      echo 'backup_database gnusocial' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /root/tempgnusocialdata gnusocialdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Backing up GNU social installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "backup_directory_to_usb /var/www/$MICROBLOG_DOMAIN_NAME/htdocs gnusocial" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-  if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
-      BACKUP_INCLUDES_DATABASES="yes"
-      echo 'backup_database hubzilla' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /root/temphubzilladata hubzilladata' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Backing up Hubzilla installation"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "backup_directory_to_usb /var/www/$HUBZILLA_DOMAIN_NAME/htdocs hubzilla" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-  if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
-      BACKUP_INCLUDES_DATABASES="yes"
-      echo 'if [ ! -d $USB_MOUNT/backup/owncloud2 ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/owncloud2' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_database owncloud' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /root/tempownclouddata ownclouddata' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Obtaining Owncloud data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /var/lib/owncloud owncloud' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /etc/owncloud owncloud2' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-  if grep -Fxq "install_gogs" $COMPLETION_FILE; then
-      BACKUP_INCLUDES_DATABASES="yes"
-      echo 'if [ ! -d $USB_MOUNT/backup/gogsrepos ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/gogsrepos' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'if [ ! -d $USB_MOUNT/backup/gogsssh ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/gogsssh' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_database gogs' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /root/tempgogsdata gogsdata' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Obtaining Gogs settings backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /home/git/go/src/github.com/gogits/gogs/custom gogs' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Obtaining Gogs repos backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/$MY_USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /home/git/gogs-repositories gogsrepos' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Obtaining Gogs authorized_keys backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /home/git/.ssh gogsssh' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-  if grep -Fxq "install_wiki" $COMPLETION_FILE; then
-      echo 'if [ ! -d $USB_MOUNT/backup/wiki ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/wiki' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'if [ ! -d $USB_MOUNT/backup/wiki2 ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/wiki2' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Obtaining wiki data backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /var/lib/dokuwiki wiki' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /etc/dokuwiki wiki2' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-  if grep -Fxq "install_blog" $COMPLETION_FILE; then
-      echo 'if [ ! -d $USB_MOUNT/backup/blog ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/blog' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Obtaining blog backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "backup_directory_to_usb /var/www/$FULLBLOG_DOMAIN_NAME/htdocs blog" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-  if grep -Fxq "mesh_cjdns" $COMPLETION_FILE; then
-      echo 'if [ ! -d $USB_MOUNT/backup/cjdns ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/cjdns' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "Obtaining cjdns backup"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /etc/cjdns cjdns' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '# Backup certificates' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d /etc/ssl ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up certificates"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/ssl ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/ssl' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  backup_directory_to_usb /etc/ssl ssl' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup projects' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -d /home/$USERNAME/projects ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up projects for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/projects/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/projects/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/projects projects/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup personal settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -d /home/$USERNAME/personal ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up personal settings for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/personal/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/personal/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/personal personal/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup the public mailing list' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d $PUBLIC_MAILING_LIST_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up the public mailing list"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/mailinglist ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/mailinglist' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  backup_directory_to_usb $PUBLIC_MAILING_LIST_DIRECTORY mailinglist" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup xmpp settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d $XMPP_DIRECTORY ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up the XMPP settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/xmpp ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/xmpp' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "  backup_directory_to_usb $XMPP_DIRECTORY xmpp" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup gpg keys' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -d /home/$USERNAME/.gnupg ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up gpg keys for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/gnupg/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/gnupg/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/.gnupg gnupg/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup ssh keys' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -d /home/$USERNAME/.ssh ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up ssh keys for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/ssh/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/ssh/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/.ssh ssh/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup user configs' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -d /home/$USERNAME/.config ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up config files for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/config/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/config/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/.config config/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup web sites' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d /etc/nginx ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up web settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/web ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/web' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  backup_directory_to_usb /etc/nginx/sites-available web' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup README file' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ -f /home/$MY_USERNAME/README ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up README"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/readme ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/readme' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d /home/$MY_USERNAME/tempbackup ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  cp -f /home/$MY_USERNAME/README /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  backup_directory_to_usb /home/$MY_USERNAME/tempbackup readme' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup IPFS' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ -d /home/$MY_USERNAME/.ipfs ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up IPFS"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/ipfs ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/ipfs' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  backup_directory_to_usb /home/$MY_USERNAME/.ipfs ipfs' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup Mutt settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -f /home/$USERNAME/.muttrc ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up Mutt settings for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d /home/$USERNAME/tempbackup ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p /home/$USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      cp /home/$USERNAME/.muttrc /home/$USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ -f /etc/Muttrc ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        cp /etc/Muttrc /home/$USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/mutt/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/mutt/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/tempbackup mutt/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup procmail settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -f /home/$USERNAME/.procmailrc ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up procmail settings for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d /home/$USERNAME/tempbackup ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p /home/$USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      cp /home/$USERNAME/.procmailrc /home/$USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/procmail/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/procmail/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/tempbackup procmail/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup spamassassin settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -d /home/$USERNAME/.spamassassin ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up spamassassin settings for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/spamassassin/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/spamassassin/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /home/$USERNAME/.spamassassin spamassassin/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup email' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'for d in /home/*/ ; do' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [[ $USERNAME != "git" ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    if [ -d /home/$USERNAME/Maildir ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Creating an email archive for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d /root/tempbackupemail/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p /root/tempbackupemail/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      tar -czvf /root/tempbackupemail/$USERNAME/maildir.tar.gz /home/$USERNAME/Maildir' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      echo "Backing up emails for $USERNAME"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      if [ ! -d $USB_MOUNT/backup/mail/$USERNAME ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '        mkdir -p $USB_MOUNT/backup/mail/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      backup_directory_to_usb /root/tempbackupemail/$USERNAME mail/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '      rm -rf /root/tempbackupemail/$USERNAME' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'done' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup DLNA cache' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d /var/cache/minidlna ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up DLNA cache"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/dlna ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/dlna' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  backup_directory_to_usb /var/cache/minidlna dlna' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo '# Backup VoIP settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -f /etc/$VOIP_CONFIG_FILE ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up VoIP settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d /home/$MY_USERNAME/tempbackup ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p /home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n "  cp -f /etc/$VOIP_CONFIG_FILE " >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '/home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n "  cp -f /var/lib/mumble-server/$VOIP_DATABASE " >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '/home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo -n '  cp -f /etc/sipwitch.conf ' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '/home/$MY_USERNAME/tempbackup' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/voip ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/voip' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  backup_directory_to_usb /home/$MY_USERNAME/tempbackup voip' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  if [[ $BACKUP_INCLUDES_DATABASES == "yes" ]]; then
-      echo '# Mysql settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'if [ ! -d $USB_MOUNT/backup/mariadb ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  mkdir -p $USB_MOUNT/backup/mariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'if [ ! -d /root/tempmariadb ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '    mkdir /root/tempmariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'mysqldump --password=$DATABASE_PASSWORD mysql user > /root/tempmariadb/mysql.sql' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo "if [ ! -s /root/tempmariadb/mysql.sql ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  echo "Unable to backup mysql settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  rm -rf /root/tempmariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  umount $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  rm -rf $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '  exit 653' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'echo "$DATABASE_PASSWORD" > /root/tempmariadb/db' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'chmod 400 /root/tempmariadb/db' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo 'backup_directory_to_usb /root/tempmariadb mariadb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-      echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  fi
-
-  echo '# Backup Tox node settings' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo "if [ -d /var/lib/tox-bootstrapd ]; then" >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Backing up Tox node settings"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ ! -d $USB_MOUNT/backup/tox ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    mkdir -p $USB_MOUNT/backup/tox' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  cp /etc/tox-bootstrapd.conf /var/lib/tox-bootstrapd' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  if [ -d /var/lib/tox-bootstrapd/Maildir ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '    rm -rf /var/lib/tox-bootstrapd/Maildir' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  backup_directory_to_usb /var/lib/tox-bootstrapd tox' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo 'sync' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'umount $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ ! "$?" = "0" ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Unable to unmount the drive. This means that the backup did not work"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  rm -rf $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  exit 46994' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'rm -rf $USB_MOUNT' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo 'if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  echo "Unmount encrypted USB"' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  cryptsetup luksClose encrypted_usb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'if [ -f /dev/mapper/encrypted_usb ]; then' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo '  rm -rf /dev/mapper/encrypted_usb' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'fi' >> /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo 'echo "Backup to USB drive is complete. You can now unplug it."' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  echo 'exit 0' >> /usr/bin/$BACKUP_SCRIPT_NAME
-  chmod 400 /usr/bin/$BACKUP_SCRIPT_NAME
-  chmod +x /usr/bin/$BACKUP_SCRIPT_NAME
-
-  echo 'create_backup_script' >> $COMPLETION_FILE
-}
-
 function restore_directory_from_usb {
   script_name=$1
   echo 'function restore_directory_from_usb {' >> $script_name
@@ -6208,6 +5711,7 @@ function initial_setup {
   apt-get -y remove --purge apache*
   apt-get -y dist-upgrade
   apt-get -y install ca-certificates emacs24 cpulimit
+  apt-get -y install rsyncrypto cryptsetup libgfshare-bin obnam
 
   echo 'initial_setup' >> $COMPLETION_FILE
 }
@@ -8484,7 +7988,6 @@ function import_email {
 '
   if grep -Fxq "import_email" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
-          create_backup_script
           create_restore_script
           backup_to_friends_servers
           intrusion_detection
@@ -8513,7 +8016,6 @@ function import_email {
   fi
   echo 'import_email' >> $COMPLETION_FILE
   if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
-      create_backup_script
       create_restore_script
       backup_to_friends_servers
       intrusion_detection
@@ -8943,7 +8445,6 @@ function install_owncloud {
   if grep -Fxq "install_owncloud" $COMPLETION_FILE; then
       if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
           install_owncloud_music_app
-          create_backup_script
           create_restore_script
           backup_to_friends_servers
           intrusion_detection
@@ -9179,7 +8680,6 @@ quit" > $INSTALL_DIR/batch.sql
 
   if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
       install_owncloud_music_app
-      create_backup_script
       create_restore_script
       backup_to_friends_servers
       intrusion_detection
@@ -10781,6 +10281,7 @@ quit" > $INSTALL_DIR/batch.sql
       chmod 600 /home/$MY_USERNAME/README
   fi
 
+  echo "GNU Social domain:$MICROBLOG_DOMAIN_NAME" >> $COMPLETION_FILE
   echo 'install_gnu_social' >> $COMPLETION_FILE
 }
 
@@ -12139,7 +11640,6 @@ configure_firewall_for_dlna
 install_mediagoblin
 #install_ipfs
 repair_databases_script
-create_backup_script
 create_restore_script
 create_restore_hubzilla_script
 backup_to_friends_servers
