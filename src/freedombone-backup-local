@@ -34,72 +34,89 @@ COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 export TEXTDOMAIN=${PROJECT_NAME}-backup-local
 export TEXTDOMAINDIR="/usr/share/locale"
 
+# directories to be backed up (source,dest)
+backup_dirs=(
+    "/etc/letsencrypt,            letsencrypt"
+    "/var/lib/dokuwiki,           wiki"
+    "/etc/dokuwiki,               wiki2"
+    "/etc/ssl,                    ssl"
+    "/var/spool/mlmmj,            mailinglist"
+    "/var/lib/prosody,            xmpp"
+    "/etc/nginx/sites-available,  web"
+    "/home/$ADMIN_USERNAME/.ipfs, ipfs"
+    "/var/cache/minidlna,         dlna"
+)
+
 USB_DRIVE=/dev/sdb1
-if [ $1 ]; then
-    USB_DRIVE=/dev/${1}1
-fi
 USB_MOUNT=/mnt/usb
 
-# get the admin user
-ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-if [ $2 ]; then
-    ADMIN_USERNAME=$2
-fi
-ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
+ADMIN_USERNAME=
+ADMIN_NAME=
 
-# check that the backup destination is available
-if [ ! -b $USB_DRIVE ]; then
-    echo $"Please attach a USB drive"
-    exit 1
-fi
-
-# unmount if already mounted
-umount -f $USB_MOUNT
-if [ ! -d $USB_MOUNT ]; then
-    mkdir $USB_MOUNT
-fi
-if [ -f /dev/mapper/encrypted_usb ]; then
-    rm -rf /dev/mapper/encrypted_usb
-fi
-cryptsetup luksClose encrypted_usb
-
-# mount the encrypted backup drive
-cryptsetup luksOpen $USB_DRIVE encrypted_usb
-if [ "$?" = "0" ]; then
-    USB_DRIVE=/dev/mapper/encrypted_usb
-fi
-mount $USB_DRIVE $USB_MOUNT
-if [ ! "$?" = "0" ]; then
-    echo $"There was a problem mounting the USB drive to $USB_MOUNT"
-    rm -rf $USB_MOUNT
-    exit 2
-fi
-
-# make a backup directory on the drive
-if [ ! -d $USB_MOUNT/backup ]; then
-    mkdir $USB_MOUNT/backup
-fi
-if [ ! -d $USB_MOUNT/backup ]; then
-    echo $"There was a problem making the directory $USB_MOUNT/backup."
-    umount $USB_MOUNT
-    rm -rf $USB_MOUNT
-    exit 3
-fi
-
-# Check space remaining on the usb drive
-used_percent=$(df -k $USB_MOUNT | tail -n 1 | awk -F ' ' '{print $5}' | awk -F '%' '{print $1}')
-if [ $used_percent -gt 95 ]; then
-    echo $"Less than 5% of space remaining on backup drive"
-    umount $USB_MOUNT
-    rm -rf $USB_MOUNT
-    exit 4
-fi
-
-# MariaDB password
 DATABASE_PASSWORD=''
 if [ -f /root/dbpass ]; then
     DATABASE_PASSWORD=$(cat /root/dbpass)
 fi
+
+function mount_drive {
+    if [ $1 ]; then
+        USB_DRIVE=/dev/${1}1
+    fi
+
+    # get the admin user
+    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    if [ $2 ]; then
+        ADMIN_USERNAME=$2
+    fi
+    ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
+
+    # check that the backup destination is available
+    if [ ! -b $USB_DRIVE ]; then
+        echo $"Please attach a USB drive"
+        exit 1
+    fi
+
+    # unmount if already mounted
+    umount -f $USB_MOUNT
+    if [ ! -d $USB_MOUNT ]; then
+        mkdir $USB_MOUNT
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
+    cryptsetup luksClose encrypted_usb
+
+    # mount the encrypted backup drive
+    cryptsetup luksOpen $USB_DRIVE encrypted_usb
+    if [ "$?" = "0" ]; then
+        USB_DRIVE=/dev/mapper/encrypted_usb
+    fi
+    mount $USB_DRIVE $USB_MOUNT
+    if [ ! "$?" = "0" ]; then
+        echo $"There was a problem mounting the USB drive to $USB_MOUNT"
+        rm -rf $USB_MOUNT
+        exit 2
+    fi
+}
+
+function unmount_drive {
+    sync
+    umount $USB_MOUNT
+    if [ ! "$?" = "0" ]; then
+        echo $"Unable to unmount the drive. This means that the backup did not work"
+        rm -rf $USB_MOUNT
+        exit 9
+    fi
+    rm -rf $USB_MOUNT
+    if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
+        echo $"Unmount encrypted USB"
+        cryptsetup luksClose encrypted_usb
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
+    echo $"Backup to USB drive is complete. You can now unplug it."
+}
 
 function backup_database {
     if [ ${#DATABASE_PASSWORD} -lt 2 ]; then
@@ -159,83 +176,121 @@ function backup_directory_to_usb {
     fi
 }
 
-# Backup user files
-for d in /home/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-    if [[ $USERNAME != "git" ]]; then
-
-        # Backup any gpg keys
-        if [ -d /home/$USERNAME/.gnupg ]; then
-            echo $"Backing up gpg keys for $USERNAME"
-            backup_directory_to_usb /home/$USERNAME/.gnupg gnupg/$USERNAME
-        fi
-
-        # Backup any personal settings
-        if [ -d /home/$USERNAME/personal ]; then
-            echo $"Backing up personal settings for $USERNAME"
-            backup_directory_to_usb /home/$USERNAME/personal personal/$USERNAME
-        fi
-
-        # Backup ssh keys
-        if [ -d /home/$USERNAME/.ssh ]; then
-            echo $"Backing up ssh keys for $USERNAME"
-            backup_directory_to_usb /home/$USERNAME/.ssh ssh/$USERNAME
-        fi
-
-        # Backup user configs
-        if [ -d /home/$USERNAME/.config ]; then
-            echo $"Backing up config files for $USERNAME"
-            backup_directory_to_usb /home/$USERNAME/.config config/$USERNAME
-        fi
-
-        # Backup mutt
-        if [ -f /home/$USERNAME/.muttrc ]; then
-            echo $"Backing up Mutt settings for $USERNAME"
-            if [ ! -d /home/$USERNAME/tempbackup ]; then
-                mkdir -p /home/$USERNAME/tempbackup
-            fi
-            cp /home/$USERNAME/.muttrc /home/$USERNAME/tempbackup
-            if [ -f /etc/Muttrc ]; then
-                cp /etc/Muttrc /home/$USERNAME/tempbackup
-            fi
-            backup_directory_to_usb /home/$USERNAME/tempbackup mutt/$USERNAME
-        fi
-
-        # Backup email
-        if [ -d /home/$USERNAME/Maildir ]; then
-            echo $"Creating an email archive for $USERNAME"
-            if [ ! -d /root/tempbackupemail/$USERNAME ]; then
-                mkdir -p /root/tempbackupemail/$USERNAME
-            fi
-            tar -czvf /root/tempbackupemail/$USERNAME/maildir.tar.gz /home/$USERNAME/Maildir
-            echo $"Backing up emails for $USERNAME"
-            backup_directory_to_usb /root/tempbackupemail/$USERNAME mail/$USERNAME
-        fi
-
-        # Backup spamassassin
-        if [ -d /home/$USERNAME/.spamassassin ]; then
-            echo $"Backing up spamassassin settings for $USERNAME"
-            backup_directory_to_usb /home/$USERNAME/.spamassassin spamassassin/$USERNAME
-        fi
-
-        # Backup procmail
-        if [ -f /home/$USERNAME/.procmailrc ]; then
-            echo $"Backing up procmail settings for $USERNAME"
-            if [ ! -d /home/$USERNAME/tempbackup ]; then
-                mkdir -p /home/$USERNAME/tempbackup
-            fi
-            cp /home/$USERNAME/.procmailrc /home/$USERNAME/tempbackup
-            backup_directory_to_usb /home/$USERNAME/tempbackup procmail/$USERNAME
-        fi
-
+function make_backup_directory {
+    # make a backup directory on the drive
+    if [ ! -d $USB_MOUNT/backup ]; then
+        mkdir $USB_MOUNT/backup
     fi
-done
+    if [ ! -d $USB_MOUNT/backup ]; then
+        echo $"There was a problem making the directory $USB_MOUNT/backup."
+        umount $USB_MOUNT
+        rm -rf $USB_MOUNT
+        exit 3
+    fi
+}
 
-# Backup Let's Encrypt
-if [ -d /etc/letsencrypt ]; then
-    echo $"Backing up Lets Encrypt settings"
-    backup_directory_to_usb /etc/letsencrypt letsencrypt
-fi
+function check_storage_space_remaining {
+    # Check space remaining on the usb drive
+    used_percent=$(df -k $USB_MOUNT | tail -n 1 | awk -F ' ' '{print $5}' | awk -F '%' '{print $1}')
+    if [ $used_percent -gt 95 ]; then
+        echo $"Less than 5% of space remaining on backup drive"
+        umount $USB_MOUNT
+        rm -rf $USB_MOUNT
+        exit 4
+    fi
+}
+
+function backup_users {
+    # Backup user files
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" ]]; then
+
+            # Backup any gpg keys
+            if [ -d /home/$USERNAME/.gnupg ]; then
+                echo $"Backing up gpg keys for $USERNAME"
+                backup_directory_to_usb /home/$USERNAME/.gnupg gnupg/$USERNAME
+            fi
+
+            # Backup any personal settings
+            if [ -d /home/$USERNAME/personal ]; then
+                echo $"Backing up personal settings for $USERNAME"
+                backup_directory_to_usb /home/$USERNAME/personal personal/$USERNAME
+            fi
+
+            # Backup ssh keys
+            if [ -d /home/$USERNAME/.ssh ]; then
+                echo $"Backing up ssh keys for $USERNAME"
+                backup_directory_to_usb /home/$USERNAME/.ssh ssh/$USERNAME
+            fi
+
+            # Backup user configs
+            if [ -d /home/$USERNAME/.config ]; then
+                echo $"Backing up config files for $USERNAME"
+                backup_directory_to_usb /home/$USERNAME/.config config/$USERNAME
+            fi
+
+            # Backup mutt
+            if [ -f /home/$USERNAME/.muttrc ]; then
+                echo $"Backing up Mutt settings for $USERNAME"
+                if [ ! -d /home/$USERNAME/tempbackup ]; then
+                    mkdir -p /home/$USERNAME/tempbackup
+                fi
+                cp /home/$USERNAME/.muttrc /home/$USERNAME/tempbackup
+                if [ -f /etc/Muttrc ]; then
+                    cp /etc/Muttrc /home/$USERNAME/tempbackup
+                fi
+                backup_directory_to_usb /home/$USERNAME/tempbackup mutt/$USERNAME
+            fi
+
+            # Backup email
+            if [ -d /home/$USERNAME/Maildir ]; then
+                echo $"Creating an email archive for $USERNAME"
+                if [ ! -d /root/tempbackupemail/$USERNAME ]; then
+                    mkdir -p /root/tempbackupemail/$USERNAME
+                fi
+                tar -czvf /root/tempbackupemail/$USERNAME/maildir.tar.gz /home/$USERNAME/Maildir
+                echo $"Backing up emails for $USERNAME"
+                backup_directory_to_usb /root/tempbackupemail/$USERNAME mail/$USERNAME
+            fi
+
+            # Backup spamassassin
+            if [ -d /home/$USERNAME/.spamassassin ]; then
+                echo $"Backing up spamassassin settings for $USERNAME"
+                backup_directory_to_usb /home/$USERNAME/.spamassassin spamassassin/$USERNAME
+            fi
+
+            # Backup procmail
+            if [ -f /home/$USERNAME/.procmailrc ]; then
+                echo $"Backing up procmail settings for $USERNAME"
+                if [ ! -d /home/$USERNAME/tempbackup ]; then
+                    mkdir -p /home/$USERNAME/tempbackup
+                fi
+                cp /home/$USERNAME/.procmailrc /home/$USERNAME/tempbackup
+                backup_directory_to_usb /home/$USERNAME/tempbackup procmail/$USERNAME
+            fi
+
+        fi
+    done
+}
+
+function backup_directories {
+    for dr in "${backup_dirs[@]}"
+    do
+        source_directory=$(echo $dr | awk -F ',' '{print $1}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        if [ -d $source_directory ]; then
+            dest_directory=$(echo $dr | awk -F ',' '{print $2}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            echo $"Backing up $source_directory to $dest_directory"
+            backup_directory_to_usb $source_directory $dest_directory
+        fi
+    done
+}
+
+mount_drive $1 $2
+make_backup_directory
+check_storage_space_remaining
+backup_users
+backup_directories
 
 # backup gnusocial
 if grep -q "GNU Social domain" $COMPLETION_FILE; then
@@ -290,13 +345,6 @@ if [ -d /home/git/go/src/github.com/gogits ]; then
     backup_directory_to_usb /home/git/.ssh gogsssh
 fi
 
-# Backup wiki
-if [ -d /etc/dokuwiki ]; then
-    echo $"Obtaining wiki data backup"
-    backup_directory_to_usb /var/lib/dokuwiki wiki
-    backup_directory_to_usb /etc/dokuwiki wiki2
-fi
-
 # Backup blog
 if grep -q "Blog domain" $COMPLETION_FILE; then
     FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
@@ -310,30 +358,6 @@ if grep -q "Blog domain" $COMPLETION_FILE; then
     fi
 fi
 
-# Backup certificates
-if [ -d /etc/ssl ]; then
-    echo $"Backing up certificates"
-    backup_directory_to_usb /etc/ssl ssl
-fi
-
-# Backup the public mailing list
-if [ -d /var/spool/mlmmj ]; then
-    echo $"Backing up the public mailing list"
-    backup_directory_to_usb /var/spool/mlmmj mailinglist
-fi
-
-# Backup xmpp settings
-if [ -d /var/lib/prosody ]; then
-    echo $"Backing up the XMPP settings"
-    backup_directory_to_usb /var/lib/prosody xmpp
-fi
-
-# Backup web sites
-if [ -d /etc/nginx ]; then
-    echo $"Backing up web settings"
-    backup_directory_to_usb /etc/nginx/sites-available web
-fi
-
 # Backup admin user README file
 if [ -f /home/$ADMIN_USERNAME/README ]; then
     echo $"Backing up README"
@@ -342,18 +366,6 @@ if [ -f /home/$ADMIN_USERNAME/README ]; then
     fi
     cp -f /home/$ADMIN_USERNAME/README /home/$ADMIN_USERNAME/tempbackup
     backup_directory_to_usb /home/$ADMIN_USERNAME/tempbackup readme
-fi
-
-# Backup IPFS
-if [ -d /home/$ADMIN_USERNAME/.ipfs ]; then
-    echo $"Backing up IPFS"
-    backup_directory_to_usb /home/$ADMIN_USERNAME/.ipfs ipfs
-fi
-
-# Backup DLNA cache
-if [ -d /var/cache/minidlna ]; then
-    echo $"Backing up DLNA cache"
-    backup_directory_to_usb /var/cache/minidlna dlna
 fi
 
 # Backup VoIP settings
@@ -396,20 +408,6 @@ if [ -d /var/lib/tox-bootstrapd ]; then
     backup_directory_to_usb /var/lib/tox-bootstrapd tox
 fi
 
-sync
-umount $USB_MOUNT
-if [ ! "$?" = "0" ]; then
-    echo $"Unable to unmount the drive. This means that the backup did not work"
-    rm -rf $USB_MOUNT
-    exit 9
-fi
-rm -rf $USB_MOUNT
-if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
-    echo $"Unmount encrypted USB"
-    cryptsetup luksClose encrypted_usb
-fi
-if [ -f /dev/mapper/encrypted_usb ]; then
-    rm -rf /dev/mapper/encrypted_usb
-fi
-echo $"Backup to USB drive is complete. You can now unplug it."
+unmount_drive
+
 exit 0
