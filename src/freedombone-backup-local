@@ -45,6 +45,19 @@ if [ -f /root/dbpass ]; then
     DATABASE_PASSWORD=$(cat /root/dbpass)
 fi
 
+MICROBLOG_DOMAIN_NAME='microblog'
+if grep -q "GNU Social domain" $COMPLETION_FILE; then
+    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
+fi
+HUBZILLA_DOMAIN_NAME='hubzilla'
+if grep -q "Hubzilla domain" $COMPLETION_FILE; then
+    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
+fi
+FULLBLOG_DOMAIN_NAME='blog'
+if grep -q "Blog domain" $COMPLETION_FILE; then
+    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+fi
+
 function mount_drive {
     if [ $1 ]; then
         USB_DRIVE=/dev/${1}1
@@ -263,22 +276,47 @@ function backup_users {
 function backup_directories {
     # directories to be backed up (source,dest)
     backup_dirs=(
-        "/etc/letsencrypt,            letsencrypt"
-        "/var/lib/dokuwiki,           wiki"
-        "/etc/dokuwiki,               wiki2"
-        "/etc/ssl,                    ssl"
-        "/var/spool/mlmmj,            mailinglist"
-        "/var/lib/prosody,            xmpp"
-        "/etc/nginx/sites-available,  web"
-        "/home/$ADMIN_USERNAME/.ipfs, ipfs"
-        "/var/cache/minidlna,         dlna"
+        "none,                               none,       /etc/letsencrypt,                                letsencrypt"
+        "none,                               none,       /var/lib/dokuwiki,                               wiki"
+        "none,                               none,       /etc/dokuwiki,                                   wiki2"
+        "none,                               none,       /etc/ssl,                                        ssl"
+        "none,                               none,       /var/spool/mlmmj,                                mailinglist"
+        "none,                               none,       /var/lib/prosody,                                xmpp"
+        "none,                               none,       /etc/nginx/sites-available,                      web"
+        "none,                               none,       /home/$ADMIN_USERNAME/.ipfs,                     ipfs"
+        "none,                               none,       /var/cache/minidlna,                             dlna"
+        "/etc/owncloud,                      owncloud,   /root/tempownclouddata,                          ownclouddata"
+        "none,                               none,       /var/lib/owncloud,                               owncloud"
+        "none,                               none,       /etc/owncloud,                                   owncloud2"
+        "/home/git/go/src/github.com/gogits, gogs,       /root/tempgogsdata,                              gogsdata"
+        "none,                               none,       /home/git/go/src/github.com/gogits/gogs/custom,  gogs"
+        "none,                               none,       /home/git/gogs-repositories,                     gogsrepos"
+        "none,                               none,       /home/git/.ssh,                                  gogsssh"
+        "none,                               none,       /var/lib/tox-bootstrapd,                         tox"
+        "/var/www/${MICROBLOG_DOMAIN_NAME},  gnusocial,  /root/tempgnusocialdata,                         gnusocialdata"
+        "none,                               none,       /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs,        gnusocial"
+        "/var/www/${HUBZILLA_DOMAIN_NAME},   hubzilla,   /root/temphubzilladata,                          hubzilladata"
+        "none,                               none,       /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs,         hubzilla"
+        "none,                               none,       /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs,         blog"
     )
 
     for dr in "${backup_dirs[@]}"
     do
-        source_directory=$(echo $dr | awk -F ',' '{print $1}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        # if this directory exists then backup the given database
+        required_directory=$(echo $dr | awk -F ',' '{print $1}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        if [[ $required_directory != "none" ]]; then
+            if [ -d $required_directory ]; then
+                database_name=$(echo $dr | awk -F ',' '{print $2}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+                if [[ $database_name != "none" ]]; then
+                    backup_database $database_name
+                fi
+            fi
+        fi
+
+        # if this directory exists then back it up to the given destination
+        source_directory=$(echo $dr | awk -F ',' '{print $3}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
         if [ -d $source_directory ]; then
-            dest_directory=$(echo $dr | awk -F ',' '{print $2}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            dest_directory=$(echo $dr | awk -F ',' '{print $4}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             echo $"Backing up $source_directory to $dest_directory"
             backup_directory_to_usb $source_directory $dest_directory
         fi
@@ -289,73 +327,18 @@ mount_drive $1 $2
 make_backup_directory
 check_storage_space_remaining
 backup_users
-backup_directories
 
-# backup gnusocial
-if grep -q "GNU Social domain" $COMPLETION_FILE; then
-    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
-    if [ -d /var/www/${MICROBLOG_DOMAIN_NAME} ]; then
-        backup_database gnusocial
-        backup_directory_to_usb /root/tempgnusocialdata gnusocialdata
-        echo $"Backing up GNU social installation"
-        backup_directory_to_usb /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs gnusocial
-    else
-        echo $"GNU Social domain specified but not found in /var/www/${MICROBLOG_DOMAIN_NAME}"
-        exit 6327
-    fi
-fi
-
-# backup hubzilla
-if grep -q "Hubzilla domain" $COMPLETION_FILE; then
-    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
-    if [ -d /var/www/${HUBZILLA_DOMAIN_NAME} ]; then
-        backup_database hubzilla
-        backup_directory_to_usb /root/temphubzilladata hubzilladata
-        echo $"Backing up Hubzilla installation"
-        backup_directory_to_usb /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs hubzilla
-    else
-        echo $"Hubzilla domain specified but not found in /var/www/${HUBZILLA_DOMAIN_NAME}"
-        exit 2578
-    fi
-fi
-
-# backup owncloud
-if [ -d /etc/owncloud ]; then
-    if [ ! -d $USB_MOUNT/backup/owncloud2 ]; then
-        mkdir -p $USB_MOUNT/backup/owncloud2
-    fi
-    backup_database owncloud
-    backup_directory_to_usb /root/tempownclouddata ownclouddata
-    echo $"Obtaining Owncloud data backup"
-    backup_directory_to_usb /var/lib/owncloud owncloud
-    backup_directory_to_usb /etc/owncloud owncloud2
-fi
-
-# backup gogs
 if [ -d /home/git/go/src/github.com/gogits ]; then
-    backup_database gogs
-    backup_directory_to_usb /root/tempgogsdata gogsdata
-    echo $"Obtaining Gogs settings backup"
-    backup_directory_to_usb /home/git/go/src/github.com/gogits/gogs/custom gogs
-    echo $"Obtaining Gogs repos backup"
     mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/$ADMIN_USERNAME
-    backup_directory_to_usb /home/git/gogs-repositories gogsrepos
-    echo $"Obtaining Gogs authorized_keys backup"
-    backup_directory_to_usb /home/git/.ssh gogsssh
+fi
+if [ -d /var/lib/tox-bootstrapd ]; then
+    cp /etc/tox-bootstrapd.conf /var/lib/tox-bootstrapd
+    if [ -d /var/lib/tox-bootstrapd/Maildir ]; then
+        rm -rf /var/lib/tox-bootstrapd/Maildir
+    fi
 fi
 
-# Backup blog
-if grep -q "Blog domain" $COMPLETION_FILE; then
-    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
-    if [ -d /var/www/${FULLBLOG_DOMAIN_NAME} ]; then
-        echo $"Obtaining blog backup"
-        backup_directory_to_usb /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs blog
-    else
-        echo $"Blog domain specified but not found in /var/www/${FULLBLOG_DOMAIN_NAME}"
-        exit 2578
-    fi
-    fi
-fi
+backup_directories
 
 # Backup admin user README file
 if [ -f /home/$ADMIN_USERNAME/README ]; then
@@ -395,16 +378,6 @@ if [ ${#DATABASE_PASSWORD} -gt 1 ]; then
     echo "$DATABASE_PASSWORD" > /root/tempmariadb/db
     chmod 400 /root/tempmariadb/db
     backup_directory_to_usb /root/tempmariadb mariadb
-fi
-
-# Backup Tox node settings
-if [ -d /var/lib/tox-bootstrapd ]; then
-    echo $"Backing up Tox node settings"
-    cp /etc/tox-bootstrapd.conf /var/lib/tox-bootstrapd
-    if [ -d /var/lib/tox-bootstrapd/Maildir ]; then
-        rm -rf /var/lib/tox-bootstrapd/Maildir
-    fi
-    backup_directory_to_usb /var/lib/tox-bootstrapd tox
 fi
 
 unmount_drive
