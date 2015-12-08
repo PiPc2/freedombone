@@ -22,6 +22,7 @@ install:
 	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
 	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
 	install -m 755 src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
+	install -m 755 src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restorefromfriend
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	bash -c "./translate install"
@@ -34,6 +35,7 @@ uninstall:
 	rm -f ${PREFIX}/bin/backup
 	rm -f ${PREFIX}/bin/backup2friends
 	rm -f ${PREFIX}/bin/restore
+	rm -f ${PREFIX}/bin/restorefromfriend
 	rm -f ${PREFIX}/bin/meshweb
 	rm -rf /etc/freedombone
 	bash -c "./translate uninstall"
