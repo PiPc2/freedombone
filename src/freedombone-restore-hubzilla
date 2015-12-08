@@ -1,0 +1,191 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Backup to local storage - typically a USB drive
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
+export TEXTDOMAIN=${PROJECT_NAME}-restore-hubzilla
+export TEXTDOMAINDIR="/usr/share/locale"
+
+USB_DRIVE=/dev/sdb1
+if [ $1 ]; then
+	USB_DRIVE=/dev/${1}1
+fi
+USB_MOUNT=/mnt/usb
+
+# Get the admin username
+ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+if [ $2 ]; then
+	ADMIN_USERNAME=$2
+fi
+
+if [ ! -b $USB_DRIVE ]; then
+	echo $"Please attach a USB drive"
+	exit 1
+fi
+
+if [ ! -d $USB_MOUNT ]; then
+	mkdir $USB_MOUNT
+	if [ -f /dev/mapper/encrypted_usb ]; then
+		rm -rf /dev/mapper/encrypted_usb
+	fi
+	cryptsetup luksClose encrypted_usb
+	cryptsetup luksOpen $USB_DRIVE encrypted_usb
+	if [ "$?" = "0" ]; then
+		USB_DRIVE=/dev/mapper/encrypted_usb
+	fi
+	mount $USB_DRIVE $USB_MOUNT
+fi
+if [ ! -d $USB_MOUNT/backup ]; then
+	echo $"No backup directory found on the USB drive."
+	umount $USB_MOUNT
+	rm -rf $USB_MOUNT
+	exit 2
+fi
+
+echo $"Checking that admin user exists"
+if [ ! -d /home/$ADMIN_USERNAME ]; then
+	echo $"Username $ADMIN_USERNAME not found. Reinstall ${PROJECT_NAME} with this username."
+	umount $USB_MOUNT
+	rm -rf $USB_MOUNT
+	exit 295
+fi
+
+echo $"Copying GPG keys to root"
+cp -r /home/$ADMIN_USERNAME/.gnupg /root
+
+# MariaDB password
+DATABASE_PASSWORD=$(cat /root/dbpass)
+
+function restore_directory_from_usb {
+	BACKUP_CERTIFICATE=/etc/ssl/private/backup.key
+	if [ ! -d ${1} ]; then
+		mkdir ${1}
+	fi
+	obnam restore -r $USB_MOUNT/backup/${2} --to ${1}
+}
+
+function restore_database {
+	RESTORE_SUBDIR="root"
+
+	if [ -d $USB_MOUNT/backup/${1} ]; then
+		echo $"Restoring ${1} database"
+		restore_directory_from_usb "/root/temp${1}data" "${1}data"
+		if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
+			echo $"Unable to restore ${1} database"
+			rm -rf /root/temp${1}data
+			umount $USB_MOUNT
+			rm -rf $USB_MOUNT
+			exit 503
+		fi
+		mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+		if [ ! "$?" = "0" ]; then
+			echo "$mysqlsuccess"
+			umount $USB_MOUNT
+			rm -rf $USB_MOUNT
+			exit 964
+		fi
+		shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
+		rm -rf /root/temp${1}data
+		echo $"Restoring ${1} installation"
+		if [ ! -d /root/temp${1} ]; then
+			mkdir /root/temp${1}
+		fi
+		restore_directory_from_usb "/root/temp${1}" "${1}"
+		RESTORE_SUBDIR="var"
+		if [ ${2} ]; then
+			if [ -d /var/www/${2}/htdocs ]; then
+				if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
+					rm -rf /var/www/${2}/htdocs
+					mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
+					if [ ! "$?" = "0" ]; then
+						umount $USB_MOUNT
+						rm -rf $USB_MOUNT
+						exit 683
+					fi
+					if [ -d /etc/letsencrypt/live/${2} ]; then
+						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+					else
+						# Ensure that the bundled SSL cert is being used
+						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+						fi
+					fi
+				fi
+			fi
+		fi
+	fi
+}
+
+# Restoring hubzilla
+if grep -q "Hubzilla domain" $COMPLETION_FILE; then
+    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
+	restore_database hubzilla ${HUBZILLA_DOMAIN_NAME}
+	if [ -d $USB_MOUNT/backup/hubzilla ]; then
+		if [ ! -d /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3 ]; then
+			mkdir -p /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+		fi
+		chmod 777 /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+		chown -R www-data:www-data /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/*
+		if [ -d /root/temphubzilla ]; then
+			rm -rf /root/temphubzilla
+		fi
+	fi
+fi
+
+sync
+
+# Unmount the USB drive
+umount $USB_MOUNT
+rm -rf $USB_MOUNT
+
+# Restart the web server
+systemctl restart nginx
+systemctl restart php5-fpm
+
+echo $"Setting permissions"
+for d in /home/*/ ; do
+	USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+	if [[ $USERNAME != "git" ]]; then
+		chown -R $USERNAME:$USERNAME /home/$USERNAME
+	fi
+done
+
+if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
+	echo $"Unmount encrypted USB"
+	cryptsetup luksClose encrypted_usb
+fi
+if [ -f /dev/mapper/encrypted_usb ]; then
+	rm -rf /dev/mapper/encrypted_usb
+fi
+
+echo $"Hubzilla Restore from USB drive is complete. You can now remove it."
+exit 0
