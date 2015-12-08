@@ -1,0 +1,489 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Backup to remote servers - the web of backups
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
+export TEXTDOMAIN=${PROJECT_NAME}-backup-local
+export TEXTDOMAINDIR="/usr/share/locale"
+
+# Temporary location for data to be backed up to other servers
+SERVER_DIRECTORY=/root/remotebackup
+
+ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
+ADMIN_EMAIL_ADDRESS=${ADMIN_USERNAME}@${HOSTNAME}
+if [ ! -f /etc/ssl/private/backup.key ]; then
+    echo $"Creating backup key"
+    freedombone-addcert -h backup --dhkey 2048
+fi
+
+if [ ! -f /home/${ADMIN_USERNAME}/backup.list ]; then
+    exit 1
+fi
+
+# MariaDB password
+DATABASE_PASSWORD=''
+if [ -f /root/dbpass ]; then
+    DATABASE_PASSWORD=$(cat /root/dbpass)
+fi
+
+# local directory where the backup will be made
+if [ ! -d $SERVER_DIRECTORY ]; then
+    mkdir $SERVER_DIRECTORY
+fi
+
+if [ ! -d $SERVER_DIRECTORY/backup ]; then
+    mkdir -p $SERVER_DIRECTORY/backup
+fi
+
+function backup_directory_to_friend {
+    BACKUP_KEY_EXISTS=$(gpg --list-keys "$ADMIN_NAME (backup key)")
+    if [ ! "$?" = "0" ]; then
+        echo $"Backup key could not be found"
+        exit 43382
+    fi
+    ADMIN_BACKUP_KEY_ID=$(gpg --list-keys "$ADMIN_NAME (backup key)" | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+    obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with $ADMIN_BACKUP_KEY_ID ${1}
+    obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with $ADMIN_BACKUP_KEY_ID ${1}
+    obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with $ADMIN_BACKUP_KEY_ID
+    if [ ! "$?" = "0" ]; then
+        if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+            shred -zu /root/temp${2}/*
+            rm -rf /root/temp${2}
+        fi
+        # Send a warning email
+        echo "Unable to backup ${2}" | mail -s "${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+        exit 853
+    fi
+    if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+        shred -zu /root/temp${2}/*
+        rm -rf /root/temp${2}
+    fi
+}
+
+function backup_database_to_friend {
+    if [ ${#DATABASE_PASSWORD} -lt 2 ]; then
+        echo $"No MariaDB password was given"
+        exit 5783
+    fi
+    if [ ! -d $SERVER_DIRECTORY/backup/${1} ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/${1}
+    fi
+    if [ ! -d $SERVER_DIRECTORY/backup/${1}data ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/${1}data
+    fi
+    if [ ! -d /root/temp${1}data ]; then
+        mkdir -p /root/temp${1}data
+    fi
+    echo "Obtaining ${1} database backup"
+    mysqldump --password=$DATABASE_PASSWORD ${1} > /root/temp${1}data/${1}.sql
+    if [ ! -s /root/temp${1}data/${1}.sql ]; then
+        echo $"${1} database could not be saved"
+        shred -zu /root/temp${1}data/*
+        rm -rf /root/temp${1}data
+        # Send a warning email
+        echo $"Unable to export ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+        exit 5738
+    fi
+}
+
+# Backup user files
+for d in /home/*/ ; do
+    USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+    if [[ $USERNAME != "git" ]]; then
+
+        # personal settings
+        if [ -d /home/$USERNAME/personal ]; then
+            echo $"Backing up personal settings for $USERNAME"
+            if [ ! -d $SERVER_DIRECTORY/backup/personal/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/personal/$USERNAME
+            fi
+            backup_directory_to_friend /home/$USERNAME/personal personal/$USERNAME
+        fi
+
+        # gpg keys
+        if [ -d /home/$USERNAME/.gnupg ]; then
+            echo $"Backing up gpg keys for $USERNAME"
+            if [ ! -d $SERVER_DIRECTORY/backup/gnupg/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/gnupg/$USERNAME
+            fi
+            backup_directory_to_friend /home/$USERNAME/.gnupg gnupg/$USERNAME
+        fi
+
+        # ssh keys
+        if [ -d /home/$USERNAME/.ssh ]; then
+            echo $"Backing up ssh keys for $USERNAME"
+            if [ ! -d $SERVER_DIRECTORY/backup/ssh/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/ssh/$USERNAME
+            fi
+            backup_directory_to_friend /home/$USERNAME/.ssh ssh/$USERNAME
+        fi
+
+        # config files
+        if [ -d /home/$USERNAME/.config ]; then
+            echo $"Backing up config files for $USERNAME"
+            if [ ! -d $SERVER_DIRECTORY/backup/config/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/config/$USERNAME
+            fi
+            backup_directory_to_friend /home/$USERNAME/.config config/$USERNAME
+        fi
+
+        # mutt settings
+        if [ -f /home/$USERNAME/.muttrc ]; then
+            echo $"Backing up Mutt settings for $USERNAME"
+            if [ ! -d /home/$USERNAME/tempbackup ]; then
+                mkdir -p /home/$USERNAME/tempbackup
+            fi
+            cp /home/$USERNAME/.muttrc /home/$USERNAME/tempbackup
+            if [ -f /etc/Muttrc ]; then
+                cp /etc/Muttrc /home/$USERNAME/tempbackup
+            fi
+            if [ ! -d $SERVER_DIRECTORY/backup/mutt/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/mutt/$USERNAME
+            fi
+            backup_directory_to_friend /home/$USERNAME/tempbackup mutt/$USERNAME
+        fi
+
+        # procmail settings
+        if [ -f /home/$USERNAME/.procmailrc ]; then
+            echo $"Backing up procmail settings for $USERNAME"
+            if [ ! -d /home/$USERNAME/tempbackup ]; then
+                mkdir -p /home/$USERNAME/tempbackup
+            fi
+            cp /home/$USERNAME/.procmailrc /home/$USERNAME/tempbackup
+            if [ ! -d $SERVER_DIRECTORY/backup/procmail/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/procmail/$USERNAME
+            fi
+            backup_directory_to_friend /home/$USERNAME/tempbackup procmail/$USERNAME
+        fi
+
+        # spamassassin settings
+        if [ -d /home/$USERNAME/.spamassassin ]; then
+            echo $"Backing up spamassassin settings for $USERNAME"
+            if [ ! -d $SERVER_DIRECTORY/backup/spamassassin/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/spamassassin/$USERNAME
+            fi
+            backup_directory_to_friend /home/$USERNAME/.spamassassin spamassassin/$USERNAME
+        fi
+
+        # email
+        if [ -d /home/$USERNAME/Maildir ]; then
+            echo $"Creating an email archive"
+            if [ ! -d /root/backupemail/$USERNAME ]; then
+                mkdir -p /root/backupemail/$USERNAME
+            fi
+            tar -czvf /root/backupemail/$USERNAME/maildir.tar.gz /home/$USERNAME/Maildir
+            echo $"Backing up emails for $USERNAME"
+            if [ ! -d $SERVER_DIRECTORY/backup/mail/$USERNAME ]; then
+                mkdir -p $SERVER_DIRECTORY/backup/mail/$USERNAME
+            fi
+            backup_directory_to_friend /root/backupemail/$USERNAME mail/$USERNAME
+        fi
+    fi
+done
+
+# Backup Let's Encrypt
+if [ -d /etc/letsencrypt ]; then
+    echo $"Backing up Lets Encrypt settings"
+    backup_directory_to_friend /etc/letsencrypt letsencrypt
+fi
+
+# Backup gnusocial
+if grep -q "GNU Social domain" $COMPLETION_FILE; then
+    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
+    if [ -d /var/www/${MICROBLOG_DOMAIN_NAME} ]; then
+        backup_database_to_friend gnusocial
+        backup_directory_to_friend /root/tempgnusocialdata gnusocialdata
+        echo $"Backing up GNU social installation"
+        backup_directory_to_friend /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs gnusocial
+    else
+        echo $"GNU Social domain specified but not found in /var/www/${MICROBLOG_DOMAIN_NAME}"
+        exit 6327
+    fi
+fi
+
+# backup hubzilla
+if grep -q "Hubzilla domain" $COMPLETION_FILE; then
+    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
+    if [ -d /var/www/${HUBZILLA_DOMAIN_NAME} ]; then
+        backup_database_to_friend hubzilla
+        backup_directory_to_friend /root/temphubzilladata hubzilladata
+        echo "Backing up Hubzilla installation"
+        backup_directory_to_friend /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs hubzilla
+    else
+        echo $"Hubzilla domain specified but not found in /var/www/${HUBZILLA_DOMAIN_NAME}"
+        exit 2578
+    fi
+fi
+
+# backup owncloud
+if [ -d /etc/owncloud ]; then
+    if [ ! -d $SERVER_DIRECTORY/backup/owncloud2 ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/owncloud2
+    fi
+    backup_database_to_friend owncloud
+    backup_directory_to_friend /root/tempownclouddata ownclouddata
+    echo $"Backing up Owncloud data"
+    backup_directory_to_friend /var/lib/owncloud owncloud
+    backup_directory_to_friend /etc/owncloud owncloud2
+fi
+
+# backup gogs
+if [ -d /home/git/go/src/github.com/gogits ]; then
+    if [ ! -d $SERVER_DIRECTORY/backup/gogsrepos ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/gogsrepos
+    fi
+    if [ ! -d $SERVER_DIRECTORY/backup/gogsssh ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/gogsssh
+    fi
+    backup_database_to_friend gogs
+    backup_directory_to_friend /root/tempgogsdata gogsdata
+    echo $"Obtaining Gogs settings backup"
+    backup_directory_to_friend /home/git/go/src/github.com/gogits/gogs/custom gogs
+    echo $"Obtaining Gogs repos backup"
+    mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/bob
+    backup_directory_to_friend /home/git/gogs-repositories gogsrepos
+    echo $"Obtaining Gogs authorized_keys backup"
+    backup_directory_to_friend /home/git/.ssh gogsssh
+fi
+
+if [ -d /etc/dokuwiki ]; then
+    if [ ! -d $SERVER_DIRECTORY/backup/wiki ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/wiki
+    fi
+    if [ ! -d $SERVER_DIRECTORY/backup/wiki2 ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/wiki2
+    fi
+    echo $"Backing up wiki"
+    backup_directory_to_friend /var/lib/dokuwiki wiki
+    backup_directory_to_friend /etc/dokuwiki wiki2
+fi
+
+# Backup blog
+if grep -q "Blog domain" $COMPLETION_FILE; then
+    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+    if [ -d /var/www/${FULLBLOG_DOMAIN_NAME} ]; then
+        if [ ! -d $SERVER_DIRECTORY/backup/blog ]; then
+            mkdir -p $SERVER_DIRECTORY/backup/blog
+        fi
+        echo $"Backing up blog"
+        backup_directory_to_friend /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs blog
+    else
+        echo $"Blog domain specified but not found in /var/www/${FULLBLOG_DOMAIN_NAME}"
+        exit 2578
+    fi
+fi
+
+# Backup certificates
+if [ -d /etc/ssl ]; then
+    echo $"Backing up certificates"
+    if [ ! -d $SERVER_DIRECTORY/backup/ssl ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/ssl
+    fi
+    backup_directory_to_friend /etc/ssl ssl
+fi
+
+# Backup the public mailing list
+if [ -d /var/spool/mlmmj ]; then
+    echo $"Backing up the public mailing list"
+    if [ ! -d $SERVER_DIRECTORY/backup/mailinglist ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/mailinglist
+    fi
+    backup_directory_to_friend /var/spool/mlmmj mailinglist
+fi
+
+# Backup xmpp settings
+if [ -d /var/lib/prosody ]; then
+    echo $"Backing up the XMPP settings"
+    if [ ! -d $SERVER_DIRECTORY/backup/xmpp ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/xmpp
+    fi
+    backup_directory_to_friend /var/lib/prosody xmpp
+fi
+
+# Backup web sites
+if [ -d /etc/nginx ]; then
+    echo $"Backing up web settings"
+    if [ ! -d $SERVER_DIRECTORY/backup/web ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/web
+    fi
+    backup_directory_to_friend /etc/nginx/sites-available web
+fi
+
+# Backup admin user README file
+if [ -f /home/$ADMIN_USERNAME/README ]; then
+    echo $"Backing up README"
+    if [ ! -d $SERVER_DIRECTORY/backup/readme ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/readme
+    fi
+    if [ ! -d /home/$ADMIN_USERNAME/tempbackup ]; then
+        mkdir -p /home/$ADMIN_USERNAME/tempbackup
+    fi
+    cp -f /home/$ADMIN_USERNAME/README /home/$ADMIN_USERNAME/tempbackup
+    backup_directory_to_friend /home/$ADMIN_USERNAME/tempbackup readme
+fi
+
+# Backup IPFS
+if [ -d /home/$ADMIN_USERNAME/.ipfs ]; then
+    echo $"Backing up IPFS"
+    if [ ! -d $SERVER_DIRECTORY/backup/ipfs ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/ipfs
+    fi
+    backup_directory_to_friend /home/$ADMIN_USERNAME/.ipfs ipfs
+fi
+
+# Backup DLNA cache
+if [ -d /var/cache/minidlna ]; then
+    echo $"Backing up DLNA cache"
+    if [ ! -d $SERVER_DIRECTORY/backup/dlna ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/dlna
+    fi
+    backup_directory_to_friend /var/cache/minidlna dlna
+fi
+
+# Backup VoIP settings
+if [ -f /etc/mumble-server.ini ]; then
+    echo $"Backing up VoIP settings"
+    if [ ! -d /root/tempvoipbackup ]; then
+        mkdir -p /root/tempvoipbackup
+    fi
+    cp -f /etc/mumble-server.ini /root/tempvoipbackup
+    cp -f /var/lib/mumble-server/mumble-server.sqlite /root/tempvoipbackup
+    cp -f /etc/sipwitch.conf /root/tempvoipbackup
+    if [ ! -d $SERVER_DIRECTORY/backup/voip ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/voip
+    fi
+    backup_directory_to_friend /root/tempvoipbackup voip
+fi
+
+# Backup Tox node settings
+if [ -d /var/lib/tox-bootstrapd ]; then
+    echo "Backing up Tox node settings"
+    if [ ! -d $SERVER_DIRECTORY/backup/tox ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/tox
+    fi
+    if [ -d /var/lib/tox-bootstrapd/Maildir ]; then
+        rm -rf /var/lib/tox-bootstrapd/Maildir
+    fi
+    cp /etc/tox-bootstrapd.conf /var/lib/tox-bootstrapd
+    backup_directory_to_friend /var/lib/tox-bootstrapd tox
+fi
+
+# MariaDB settings
+if [ ${#DATABASE_PASSWORD} -gt 1 ]; then
+    if [ ! -d $SERVER_DIRECTORY/backup/mariadb ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/mariadb
+    fi
+    if [ ! -d /root/tempmariadb ]; then
+        mkdir /root/tempmariadb
+    fi
+    mysqldump --password=$DATABASE_PASSWORD mysql user > /root/tempmariadb/mysql.sql
+    if [ ! -s /root/tempmariadb/mysql.sql ]; then
+        echo $"Unable to backup MariaDB settings"
+        rm -rf /root/tempmariadb
+        # Send a warning email
+        echo $"Unable to export database settings" | mail -s "${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+        exit 653
+    fi
+    echo "$DATABASE_PASSWORD" > /root/tempmariadb/db
+    chmod 400 /root/tempmariadb/db
+    backup_directory_to_friend /root/tempmariadb mariadb
+fi
+
+# For each remote server
+while read remote_server
+do
+    # Get the server and its password
+    # Format is:
+    #   username@domain:/home/username <port number> <ssh password>
+    REMOTE_SERVER=$(echo "${remote_server}" | awk -F ' ' '{print $1}')
+    if [ $REMOTE_SERVER ]; then
+        REMOTE_DOMAIN=$(echo "${remote_server}" | awk -F ':' '{print $1}' | awk -F '@' '{print $2}')
+        REMOTE_SSH_PORT=$(echo "${remote_server}" | awk -F ' ' '{print $2}')
+        REMOTE_PASSWORD=$(echo "${remote_server}" | awk -F ' ' '{print $3}')
+        NOW=$(date +"%Y-%m-%d %H:%M:%S")
+
+        echo "$NOW Starting backup to $REMOTE_SERVER" >> /var/log/remotebackups.log
+
+        # Social key management
+		for d in /home/*/ ; do
+			USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+			if [[ $USERNAME != "git" ]]; then
+				if [ -d /home/$USERNAME/.gnupg_fragments ]; then
+					if [ $REMOTE_DOMAIN ]; then
+						cd /home/$USERNAME/.gnupg_fragments
+						no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
+						if (( no_of_shares > 0 )); then
+							# Pick a share index based on the domain name
+							# This ensures that the same share is always given to the same domain
+							sharenumstr=$(md5sum <<< "$REMOTE_DOMAIN")
+							share_index=$(echo $((0x${sharenumstr%% *} % ${no_of_shares})) | tr -d -)
+
+							# get the share filename
+							share_files=(/home/$USERNAME/.gnupg_fragments/keyshare.asc.*)
+							share_filename=${share_files[share_index]}
+
+							# create a temp directory containing the share
+							mkdir -p /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME
+							cp $share_filename /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME/
+
+							# copy the fragments directory to the remote server
+							/usr/bin/sshpass -p $REMOTE_PASSWORD scp -r -P $REMOTE_SSH_PORT /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME $REMOTE_SERVER
+							if [ ! "$?" = "0" ]; then
+								# Send a warning email
+								echo "Key share to $REMOTE_SERVER failed" | mail -s "${PROJECT_NAME} social key management" $MY_EMAIL_ADDRESS
+							fi
+
+							# remove the temp file/directory
+							shred -zu /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME/*
+							rm -rf /home/$USERNAME/tempkey
+
+							# Send a confirmation email
+							echo "Key shared to $REMOTE_SERVER" | mail -s "${PROJECT_NAME} social key management" $MY_EMAIL_ADDRESS
+						fi
+					fi
+				fi
+			fi
+		done
+
+        rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" $SERVER_DIRECTORY/backup $REMOTE_SERVER
+        if [ ! "$?" = "0" ]; then
+            echo "$NOW Backup to $REMOTE_SERVER failed" >> /var/log/remotebackups.log
+            # Send a warning email
+            echo "Backup to $REMOTE_SERVER failed" | mail -s "${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+        else
+            echo "$NOW Backed up to $REMOTE_SERVER" >> /var/log/remotebackups.log
+        fi
+    fi
+
+done < /home/${ADMIN_USERNAME}/backup.list
+
+exit 0
