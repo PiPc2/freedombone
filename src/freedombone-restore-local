@@ -35,9 +35,6 @@ export TEXTDOMAIN=${PROJECT_NAME}-restore-local
 export TEXTDOMAINDIR="/usr/share/locale"
 
 USB_DRIVE=/dev/sdb1
-if [ $1 ]; then
-    USB_DRIVE=/dev/${1}1
-fi
 USB_MOUNT=/mnt/usb
 
 # get default USB from config file
@@ -48,52 +45,110 @@ if [ -f $CONFIG_FILE ]; then
     fi
 fi
 
-# Get the admin username
-ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-if [ $2 ]; then
-    ADMIN_USERNAME=$2
-fi
+ADMIN_USERNAME=
+ADMIN_NAME=
 
-if [ ! -b $USB_DRIVE ]; then
-    echo $"Please attach a USB drive"
-    exit 1
-fi
+# MariaDB password
+DATABASE_PASSWORD=$(cat /root/dbpass)
 
-if [ ! -d $USB_MOUNT ]; then
-    mkdir $USB_MOUNT
+MICROBLOG_DOMAIN_NAME=
+HUBZILLA_DOMAIN_NAME=
+OWNCLOUD_DOMAIN_NAME=
+GIT_DOMAIN_NAME=
+WIKI_DOMAIN_NAME=
+FULLBLOG_DOMAIN_NAME=
+
+function mount_drive {
+    if [ $1 ]; then
+        USB_DRIVE=/dev/${1}1
+    fi
+
+    # get the admin user
+    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    if [ $2 ]; then
+        ADMIN_USERNAME=$2
+    fi
+    ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
+
+    # check that the backup destination is available
+    if [ ! -b $USB_DRIVE ]; then
+        echo $"Please attach a USB drive"
+        exit 1
+    fi
+
+    # unmount if already mounted
+    umount -f $USB_MOUNT
+    if [ ! -d $USB_MOUNT ]; then
+        mkdir $USB_MOUNT
+    fi
     if [ -f /dev/mapper/encrypted_usb ]; then
         rm -rf /dev/mapper/encrypted_usb
     fi
     cryptsetup luksClose encrypted_usb
+
+    # mount the encrypted backup drive
     cryptsetup luksOpen $USB_DRIVE encrypted_usb
     if [ "$?" = "0" ]; then
         USB_DRIVE=/dev/mapper/encrypted_usb
     fi
     mount $USB_DRIVE $USB_MOUNT
-fi
-if [ ! -d $USB_MOUNT/backup ]; then
-    echo $"No backup directory found on the USB drive."
+    if [ ! "$?" = "0" ]; then
+        echo $"There was a problem mounting the USB drive to $USB_MOUNT"
+        rm -rf $USB_MOUNT
+        exit 2
+    fi
+}
+
+function unmount_drive {
+    sync
     umount $USB_MOUNT
+    if [ ! "$?" = "0" ]; then
+        echo $"Unable to unmount the drive. This means that the backup did not work"
+        rm -rf $USB_MOUNT
+        exit 9
+    fi
     rm -rf $USB_MOUNT
-    exit 2
-fi
 
-echo $"Checking that admin user exists"
-if [ ! -d /home/$ADMIN_USERNAME ]; then
-    echo $"Username $ADMIN_USERNAME not found. Reinstall ${PROJECT_NAME} with this username."
-    umount $USB_MOUNT
-    rm -rf $USB_MOUNT
-    exit 295
-fi
+    echo $"Setting permissions"
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" ]]; then
+            chown -R $USERNAME:$USERNAME /home/$USERNAME
+        fi
+    done
 
-echo $"Copying GPG keys to root"
-cp -r /home/$ADMIN_USERNAME/.gnupg /root
+    if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
+        echo $"Unmount encrypted USB"
+        cryptsetup luksClose encrypted_usb
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
+}
 
-# MariaDB password
-DATABASE_PASSWORD=$(cat /root/dbpass)
+function check_backup_exists {
+    if [ ! -d $USB_MOUNT/backup ]; then
+        echo $"No backup directory found on the USB drive."
+        unmount_drive
+        exit 2
+    fi
+}
+
+function check_admin_user {
+    echo $"Checking that admin user exists"
+    if [ ! -d /home/$ADMIN_USERNAME ]; then
+        echo $"Username $ADMIN_USERNAME not found. Reinstall ${PROJECT_NAME} with this username."
+        unmount_drive
+        exit 295
+    fi
+}
+
+function copy_gpg_keys {
+    echo $"Copying GPG keys from admin user to root"
+    cp -r /home/$ADMIN_USERNAME/.gnupg /root
+}
 
 function restore_directory_from_usb {
-    BACKUP_CERTIFICATE=/etc/ssl/private/backup.key
     if [ ! -d ${1} ]; then
         mkdir ${1}
     fi
@@ -109,15 +164,13 @@ function restore_database {
         if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
             echo $"Unable to restore ${1} database"
             rm -rf /root/temp${1}data
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            unmount_drive
             exit 503
         fi
         mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
         if [ ! "$?" = "0" ]; then
             echo "$mysqlsuccess"
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            unmount_drive
             exit 964
         fi
         shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
@@ -134,8 +187,7 @@ function restore_database {
                     rm -rf /var/www/${2}/htdocs
                     mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
                     if [ ! "$?" = "0" ]; then
-                        umount $USB_MOUNT
-                        rm -rf $USB_MOUNT
+                        unmount_drive
                         exit 683
                     fi
                     if [ -d /etc/letsencrypt/live/${2} ]; then
@@ -152,6 +204,65 @@ function restore_database {
         fi
     fi
 }
+
+function update_domains {
+    if grep -q "GNU Social domain" $COMPLETION_FILE; then
+        MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
+    fi
+    if grep -q "Hubzilla domain" $COMPLETION_FILE; then
+        HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
+    fi
+    if grep -q "Owncloud domain" $COMPLETION_FILE; then
+        OWNCLOUD_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Owncloud domain" | awk -F ':' '{print $2}')
+    fi
+    if grep -q "Gogs domain" $COMPLETION_FILE; then
+        GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
+    fi
+    if [ -d $USB_MOUNT/backup/wiki ]; then
+        WIKI_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Wiki domain" | awk -F ':' '{print $2}')
+    fi
+    if [ -d $USB_MOUNT/backup/blog ]; then
+        FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+    fi
+}
+
+function restore_configuration {
+    # this restores *.cfg and COMPLETION_FILE
+    if [ -d $USB_MOUNT/backup/config ]; then
+        echo $"Restoring configuration files"
+        restore_directory_from_usb /root/tempconfig config
+        cp -f /root/tempconfig/root/${PROJECT_NAME}.cfg /homeroot/${PROJECT_NAME}.cfg
+        if [ ! "$?" = "0" ]; then
+            unmount_drive
+            rm -rf /root/tempconfig
+            exit 5294
+        fi
+        cp -f /root/tempconfig/root/${PROJECT_NAME}-completed.txt /root/${PROJECT_NAME}-completed.txt
+        if [ ! "$?" = "0" ]; then
+            unmount_drive
+            rm -rf /root/tempconfig
+            exit 6382
+        fi
+        rm -rf /root/tempconfig
+    fi
+}
+
+function same_admin_user {
+    PREV_ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    if [[ "$PREV_ADMIN_USERNAME" != "$ADMIN_USERNAME" ]]; then
+        echo $"The admin username has changed from $PREV_ADMIN_USERNAME to $ADMIN_USERNAME. To restore you will first need to install a new ${PROJECT_NAME} system with an initial admin user named $PREV_ADMIN_USERNAME"
+        unmount_drive
+        exit 73265
+    fi
+}
+
+mount_drive $1 $2
+check_backup_exists
+check_admin_user
+copy_gpg_keys
+restore_configuration
+same_admin_user
+update_domains
 
 # Make a backup of the original README file
 # incase old passwords need to be used
@@ -179,8 +290,7 @@ if [ -d $USB_MOUNT/backup/mariadb ]; then
         fi
         if [ ! "$?" = "0" ]; then
             echo "$mysqlsuccess"
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            unmount_drive
             exit 962
         fi
         echo $"Restarting database"
@@ -217,9 +327,8 @@ if [ -d $USB_MOUNT/backup/mutt ]; then
                 cp -f /root/tempmutt/home/$USERNAME/tempbackup/Muttrc /etc/Muttrc
             fi
             if [ ! "$?" = "0" ]; then
-                umount $USB_MOUNT
-                rm -rf $USB_MOUNT
                 rm -rf /root/tempmutt
+                unmount_drive
                 exit 276
             fi
             rm -rf /root/tempmutt
@@ -238,17 +347,15 @@ if [ -d $USB_MOUNT/backup/gnupg ]; then
             restore_directory_from_usb /root/tempgnupg gnupg/$USERNAME
             cp -r /root/tempgnupg/home/$USERNAME/.gnupg /home/$USERNAME/
             if [ ! "$?" = "0" ]; then
-                umount $USB_MOUNT
-                rm -rf $USB_MOUNT
                 rm -rf /root/tempgnupg
+                unmount_drive
                 exit 276
             fi
             rm -rf /root/tempgnupg
             if [[ "$USERNAME" == "$ADMIN_USERNAME" ]]; then
                 cp -r /home/$USERNAME/.gnupg /root
                 if [ ! "$?" = "0" ]; then
-                    umount $USB_MOUNT
-                    rm -rf $USB_MOUNT
+                    unmount_drive
                     exit 283
                 fi
             fi
@@ -267,9 +374,8 @@ if [ -d $USB_MOUNT/backup/procmail ]; then
             restore_directory_from_usb /root/tempprocmail procmail/$USERNAME
             cp -f /root/tempprocmail/home/$USERNAME/tempbackup/.procmailrc /home/$USERNAME/
             if [ ! "$?" = "0" ]; then
-                umount $USB_MOUNT
-                rm -rf $USB_MOUNT
                 rm -rf /root/tempprocmail
+                unmount_drive
                 exit 276
             fi
             rm -rf /root/tempprocmail
@@ -289,9 +395,8 @@ if [ -d $USB_MOUNT/backup/spamassassin ]; then
                 restore_directory_from_usb /root/tempspamassassin spamassassin/$USERNAME
                 cp -rf /root/tempspamassassin/home/$USERNAME/.spamassassin /home/$USERNAME/
                 if [ ! "$?" = "0" ]; then
-                    umount $USB_MOUNT
-                    rm -rf $USB_MOUNT
                     rm -rf /root/tempspamassassin
+                    unmount_drive
                     exit 276
                 fi
                 rm -rf /root/tempspamassassin
@@ -305,9 +410,8 @@ if [ -d $USB_MOUNT/backup/readme ]; then
     restore_directory_from_usb /root/tempreadme readme
     cp -f /root/tempreadme/home/$ADMIN_USERNAME/tempbackup/README /home/$ADMIN_USERNAME/
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
         rm -rf /root/tempreadme
+        unmount_drive
         exit 276
     fi
     rm -rf /root/tempreadme
@@ -318,9 +422,8 @@ if [ -d $USB_MOUNT/backup/ipfs ]; then
     restore_directory_from_usb /root/tempipfs ipfs
     cp -rf /root/tempipfs/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
         rm -rf /root/tempipfs
+        unmount_drive
         exit 276
     fi
     rm -rf /root/tempipfs
@@ -337,9 +440,8 @@ if [ -d $USB_MOUNT/backup/ssh ]; then
             restore_directory_from_usb /root/tempssh ssh/$USERNAME
             cp -r /root/tempssh/home/$USERNAME/.ssh /home/$USERNAME/
             if [ ! "$?" = "0" ]; then
-                umount $USB_MOUNT
-                rm -rf $USB_MOUNT
                 rm -rf /root/tempssh
+                unmount_drive
                 exit 664
             fi
             rm -rf /root/tempssh
@@ -358,9 +460,8 @@ if [ -d $USB_MOUNT/backup/config ]; then
             restore_directory_from_usb /root/tempconfig config/$USERNAME
             cp -r /root/tempconfig/home/$USERNAME/.config /home/$USERNAME/
             if [ ! "$?" = "0" ]; then
-                umount $USB_MOUNT
-                rm -rf $USB_MOUNT
                 rm -rf /root/tempconfig
+                unmount_drive
                 exit 664
             fi
             rm -rf /root/tempconfig
@@ -374,8 +475,7 @@ if [ -d $USB_MOUNT/backup/ssl ]; then
     restore_directory_from_usb /root/tempssl ssl
     cp -r /root/tempssl/etc/ssl/* /etc/ssl
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 276
     fi
     rm -rf /root/tempssl
@@ -395,8 +495,7 @@ if [ -d $USB_MOUNT/backup/projects ]; then
             fi
             mv /root/tempprojects/home/$USERNAME/projects /home/$USERNAME
             if [ ! "$?" = "0" ]; then
-                umount $USB_MOUNT
-                rm -rf $USB_MOUNT
+                unmount_drive
                 exit 166
             fi
             rm -rf /root/tempprojects
@@ -419,8 +518,7 @@ if [ -d $USB_MOUNT/backup/personal ]; then
                 fi
                 mv /root/temppersonal/home/$USERNAME/personal /home/$USERNAME
                 if [ ! "$?" = "0" ]; then
-                    umount $USB_MOUNT
-                    rm -rf $USB_MOUNT
+                    unmount_drive
                     exit 184
                 fi
                 rm -rf /root/temppersonal
@@ -434,8 +532,7 @@ if [ -d /var/spool/mlmmj ]; then
     restore_directory_from_usb /root/tempmailinglist mailinglist
     cp -r /root/tempmailinglist/root/spool/mlmmj/* /var/spool/mlmmj
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 526
     fi
     rm -rf /root/tempmailinglist
@@ -446,8 +543,7 @@ if [ -d /var/lib/prosody ]; then
     restore_directory_from_usb /root/tempxmpp xmpp
     cp -r /root/tempxmpp/var/lib/prosody/* /var/lib/prosody
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 725
     fi
     rm -rf /root/tempxmpp
@@ -456,8 +552,7 @@ if [ -d /var/lib/prosody ]; then
 fi
 
 # Restoring GNU Social
-if grep -q "GNU Social domain" $COMPLETION_FILE; then
-    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
+if [ $MICROBLOG_DOMAIN_NAME ]; then
     restore_database gnusocial ${MICROBLOG_DOMAIN_NAME}
     if [ -d /root/tempgnusocial ]; then
         rm -rf /root/tempgnusocial
@@ -465,8 +560,7 @@ if grep -q "GNU Social domain" $COMPLETION_FILE; then
 fi
 
 # Restoring hubzilla
-if grep -q "Hubzilla domain" $COMPLETION_FILE; then
-    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
+if [ $HUBZILLA_DOMAIN_NAME ]; then
     restore_database hubzilla ${HUBZILLA_DOMAIN_NAME}
     if [ -d $USB_MOUNT/backup/hubzilla ]; then
         if [ ! -d /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3 ]; then
@@ -480,15 +574,13 @@ if grep -q "Hubzilla domain" $COMPLETION_FILE; then
     fi
 fi
 
-if grep -q "Owncloud domain" $COMPLETION_FILE; then
-    OWNCLOUD_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Owncloud domain" | awk -F ':' '{print $2}')
+if [ $OWNCLOUD_DOMAIN_NAME ]; then
     restore_database owncloud $OWNCLOUD_DOMAIN_NAME
     if [ -d $USB_MOUNT/backup/owncloud2 ]; then
         restore_directory_from_usb /root/tempowncloud2 owncloud2
         cp -r /root/tempowncloud2/etc/owncloud/* /etc/owncloud/
         if [ ! "$?" = "0" ]; then
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            unmount_drive
             exit 982
         fi
         rm -rf /root/tempowncloud
@@ -506,8 +598,7 @@ if grep -q "Owncloud domain" $COMPLETION_FILE; then
     fi
 fi
 
-if grep -q "Gogs domain" $COMPLETION_FILE; then
-    GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
+if [ $GIT_DOMAIN_NAME ]; then
     restore_database gogs ${GIT_DOMAIN_NAME}
     if [ -d $USB_MOUNT/backup/gogs ]; then
         echo $"Restoring Gogs settings"
@@ -516,16 +607,14 @@ if grep -q "Gogs domain" $COMPLETION_FILE; then
         fi
         cp -r /root/tempgogs/home/git/go/src/github.com/gogits/gogs/custom/* /home/git/go/src/github.com/gogits/gogs/custom
         if [ ! "$?" = "0" ]; then
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            unmount_drive
             exit 981
         fi
         echo $"Restoring Gogs repos"
         restore_directory_from_usb /root/tempgogsrepos gogsrepos
         cp -r /root/tempgogsrepos/home/git/gogs-repositories/* /home/git/gogs-repositories/
         if [ ! "$?" = "0" ]; then
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            unmount_drive
             exit 67574
         fi
         echo $"Restoring Gogs authorized_keys"
@@ -535,8 +624,7 @@ if grep -q "Gogs domain" $COMPLETION_FILE; then
         fi
         cp -r /root/tempgogsssh/home/git/.ssh/* /home/git/.ssh/
         if [ ! "$?" = "0" ]; then
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            unmount_drive
             exit 8463
         fi
         rm -rf /root/tempgogs
@@ -546,21 +634,18 @@ if grep -q "Gogs domain" $COMPLETION_FILE; then
     fi
 fi
 
-if [ -d $USB_MOUNT/backup/wiki ]; then
-    WIKI_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Wiki domain" | awk -F ':' '{print $2}')
+if [ $WIKI_DOMAIN_NAME ]; then
     echo $"Restoring Wiki installation ${WIKI_DOMAIN_NAME}"
     restore_directory_from_usb /root/tempwiki wiki
     cp -r /root/tempwiki/var/lib/dokuwiki/* /var/lib/dokuwiki/
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 868
     fi
     restore_directory_from_usb /root/tempwiki2 wiki2
     cp -r /root/tempwiki2/etc/dokuwiki/* /etc/dokuwiki/
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 869
     fi
     rm -rf /root/tempwiki
@@ -576,22 +661,19 @@ if [ -d $USB_MOUNT/backup/wiki ]; then
     fi
 fi
 
-if [ -d $USB_MOUNT/backup/blog ]; then
-    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+if [ $FULLBLOG_DOMAIN_NAME ]; then
     echo $"Restoring blog installation"
     restore_directory_from_usb /root/tempblog blog
     rm -rf /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs
     cp -r /root/tempblog/var/www/${FULLBLOG_DOMAIN_NAME}/htdocs /var/www/${FULLBLOG_DOMAIN_NAME}/
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 593
     fi
     rm -rf /root/tempblog
     if [ ! -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content ]; then
         echo $"No content directory found after restoring blog"
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 287
     fi
     chown -R www-data:www-data /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs
@@ -619,8 +701,7 @@ if [ -d $USB_MOUNT/backup/cjdns ]; then
     rm -rf /etc/cjdns
     cp -r /root/tempcjdns/etc/cjdns /etc/
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 8472
     fi
     rm -rf /root/tempcjdns
@@ -640,8 +721,7 @@ if [ -d $USB_MOUNT/backup/mail ]; then
             fi
             tar -xzvf /root/tempmail/root/tempbackupemail/$USERNAME/maildir.tar.gz -C /
             if [ ! "$?" = "0" ]; then
-                umount $USB_MOUNT
-                rm -rf $USB_MOUNT
+                unmount_drive
                 exit 927
             fi
             rm -rf /root/tempmail
@@ -655,8 +735,8 @@ if [ -d /var/cache/minidlna ]; then
         restore_directory_from_usb /root/tempdlna dlna
         cp -r /root/tempdlna/var/cache/minidlna/* /var/cache/minidlna/
         if [ ! "$?" = "0" ]; then
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+            rm -rf /root/tempdlna
+            unmount_drive
             exit 982
         fi
         rm -rf /root/tempdlna
@@ -668,23 +748,20 @@ if [ -d $USB_MOUNT/backup/voip ]; then
     restore_directory_from_usb /root/tempvoip voip
     cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
         rm -rf /root/tempvoip
+        unmount_drive
         exit 3679
     fi
     cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/sipwitch.conf /etc/sipwitch.conf
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
         rm -rf /root/tempvoip
+        unmount_drive
         exit 3679
     fi
     cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.sqlite /var/lib/mumble-server/
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
         rm -rf /root/tempvoip
+        unmount_drive
         exit 276
     fi
     rm -rf /root/tempvoip
@@ -699,45 +776,20 @@ if [ -d $USB_MOUNT/backup/tox ]; then
     echo $"Restoring Tox node settings"
     restore_directory_from_usb / tox
     if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 6393
     fi
     cp /var/lib/tox-bootstrapd/tox-bootstrapd.conf /etc/tox-bootstrapd.conf
     systemctl restart tox-bootstrapd.service
     if [ ! "$?" = "0" ]; then
         systemctl status tox-bootstrapd.service
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
+        unmount_drive
         exit 59369
     fi
 fi
 
-sync
+unmount_drive
 
-# Unmount the USB drive
-umount $USB_MOUNT
-rm -rf $USB_MOUNT
+echo $"Restore from USB drive is complete. You can now unplug it."
 
-# Restart the web server
-systemctl restart nginx
-systemctl restart php5-fpm
-
-echo $"Setting permissions"
-for d in /home/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-    if [[ $USERNAME != "git" ]]; then
-        chown -R $USERNAME:$USERNAME /home/$USERNAME
-    fi
-done
-
-if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
-    echo $"Unmount encrypted USB"
-    cryptsetup luksClose encrypted_usb
-fi
-if [ -f /dev/mapper/encrypted_usb ]; then
-    rm -rf /dev/mapper/encrypted_usb
-fi
-
-echo $"Restore from USB drive is complete. You can now remove it."
 exit 0
