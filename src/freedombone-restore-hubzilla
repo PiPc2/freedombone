@@ -48,52 +48,95 @@ if [ -f $CONFIG_FILE ]; then
     fi
 fi
 
-# Get the admin username
-ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-if [ $2 ]; then
-    ADMIN_USERNAME=$2
-fi
+ADMIN_USERNAME=
+ADMIN_NAME=
 
-if [ ! -b $USB_DRIVE ]; then
-    echo $"Please attach a USB drive"
-    exit 1
-fi
+# MariaDB password
+DATABASE_PASSWORD=$(cat /root/dbpass)
 
-if [ ! -d $USB_MOUNT ]; then
-    mkdir $USB_MOUNT
+function mount_drive {
+    if [ $1 ]; then
+        USB_DRIVE=/dev/${1}1
+    fi
+
+    # get the admin user
+    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    if [ $2 ]; then
+        ADMIN_USERNAME=$2
+    fi
+    ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
+
+    # check that the backup destination is available
+    if [ ! -b $USB_DRIVE ]; then
+        echo $"Please attach a USB drive"
+        exit 1
+    fi
+
+    # unmount if already mounted
+    umount -f $USB_MOUNT
+    if [ ! -d $USB_MOUNT ]; then
+        mkdir $USB_MOUNT
+    fi
     if [ -f /dev/mapper/encrypted_usb ]; then
         rm -rf /dev/mapper/encrypted_usb
     fi
     cryptsetup luksClose encrypted_usb
+
+    # mount the encrypted backup drive
     cryptsetup luksOpen $USB_DRIVE encrypted_usb
     if [ "$?" = "0" ]; then
         USB_DRIVE=/dev/mapper/encrypted_usb
     fi
     mount $USB_DRIVE $USB_MOUNT
-fi
-if [ ! -d $USB_MOUNT/backup ]; then
-    echo $"No backup directory found on the USB drive."
+    if [ ! "$?" = "0" ]; then
+        echo $"There was a problem mounting the USB drive to $USB_MOUNT"
+        rm -rf $USB_MOUNT
+        exit 2
+    fi
+}
+
+function unmount_drive {
+    sync
     umount $USB_MOUNT
+    if [ ! "$?" = "0" ]; then
+        echo $"Unable to unmount the drive. This means that the backup did not work"
+        rm -rf $USB_MOUNT
+        exit 9
+    fi
     rm -rf $USB_MOUNT
-    exit 2
-fi
 
-echo $"Checking that admin user exists"
-if [ ! -d /home/$ADMIN_USERNAME ]; then
-    echo $"Username $ADMIN_USERNAME not found. Reinstall ${PROJECT_NAME} with this username."
-    umount $USB_MOUNT
-    rm -rf $USB_MOUNT
-    exit 295
-fi
+    if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
+        echo $"Unmount encrypted USB"
+        cryptsetup luksClose encrypted_usb
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
+}
 
-echo $"Copying GPG keys to root"
-cp -r /home/$ADMIN_USERNAME/.gnupg /root
+function check_backup_exists {
+    if [ ! -d $USB_MOUNT/backup ]; then
+        echo $"No backup directory found on the USB drive."
+        unmount_drive
+        exit 2
+    fi
+}
 
-# MariaDB password
-DATABASE_PASSWORD=$(cat /root/dbpass)
+function check_admin_user {
+    echo $"Checking that admin user exists"
+    if [ ! -d /home/$ADMIN_USERNAME ]; then
+        echo $"Username $ADMIN_USERNAME not found. Reinstall ${PROJECT_NAME} with this username."
+        unmount_drive
+        exit 295
+    fi
+}
+
+function copy_gpg_keys {
+    echo $"Copying GPG keys from admin user to root"
+    cp -r /home/$ADMIN_USERNAME/.gnupg /root
+}
 
 function restore_directory_from_usb {
-    BACKUP_CERTIFICATE=/etc/ssl/private/backup.key
     if [ ! -d ${1} ]; then
         mkdir ${1}
     fi
@@ -109,15 +152,13 @@ function restore_database {
         if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
             echo $"Unable to restore ${1} database"
             rm -rf /root/temp${1}data
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+			unmount_drive
             exit 503
         fi
         mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
         if [ ! "$?" = "0" ]; then
             echo "$mysqlsuccess"
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
+			unmount_drive
             exit 964
         fi
         shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
@@ -134,8 +175,7 @@ function restore_database {
                     rm -rf /var/www/${2}/htdocs
                     mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
                     if [ ! "$?" = "0" ]; then
-                        umount $USB_MOUNT
-                        rm -rf $USB_MOUNT
+						unmount_drive
                         exit 683
                     fi
                     if [ -d /etc/letsencrypt/live/${2} ]; then
@@ -153,6 +193,11 @@ function restore_database {
     fi
 }
 
+mount_drive $1 $2
+check_backup_exists
+check_admin_user
+copy_gpg_keys
+
 # Restoring hubzilla
 if grep -q "Hubzilla domain" $COMPLETION_FILE; then
     HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
@@ -169,31 +214,8 @@ if grep -q "Hubzilla domain" $COMPLETION_FILE; then
     fi
 fi
 
-sync
-
-# Unmount the USB drive
-umount $USB_MOUNT
-rm -rf $USB_MOUNT
-
-# Restart the web server
-systemctl restart nginx
-systemctl restart php5-fpm
-
-echo $"Setting permissions"
-for d in /home/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-    if [[ $USERNAME != "git" ]]; then
-        chown -R $USERNAME:$USERNAME /home/$USERNAME
-    fi
-done
-
-if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
-    echo $"Unmount encrypted USB"
-    cryptsetup luksClose encrypted_usb
-fi
-if [ -f /dev/mapper/encrypted_usb ]; then
-    rm -rf /dev/mapper/encrypted_usb
-fi
+unmount_drive
 
 echo $"Hubzilla Restore from USB drive is complete. You can now remove it."
+
 exit 0
