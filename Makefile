@@ -4,10 +4,10 @@ RELEASE=1
 PREFIX?=/usr/local
 
 all:
-	bash -c "./translate make"
 debug:
-	bash -c "./translate make"
 translations:
+	bash -c "./translate make"
+alltranslations:
 	bash -c "./translate translations"
 source:
 	tar -cvf ../${APP}_${VERSION}.orig.tar ../${APP}-${VERSION} --exclude-vcs
