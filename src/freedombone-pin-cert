@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Performs certificate pinning (HPKP) on a given domain name
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-pin-cert
+export TEXTDOMAINDIR="/usr/share/locale"
+
+DOMAIN_NAME=$1
+KEY_FILENAME=/etc/ssl/private/${DOMAIN_NAME}.key
+SITE_FILENAME=/etc/nginx/sites-available/${DOMAIN_NAME}
+
+if [ ! -f "$KEY_FILENAME" ]; then
+    echo $"No certificate found for $DOMAIN_NAME"
+    exit 1
+fi
+
+if [ ! -f "$SITE_FILENAME" ]; then
+    exit 0
+fi
+
+KEY_HASH=$(openssl rsa -in $KEY_FILENAME -outform der -pubout | openssl dgst -sha256 -binary | openssl enc -base64)
+
+PIN_HEADER="add_header Public-Key-Pins 'pin-sha256=\"${KEY_HASH}\"; max-age=5184000; includeSubDomains';"
+if ! grep -q "add_header Public-Key-Pins" $SITE_FILENAME; then
+    sed -i "/add_header Access-Control-Allow-Origin.*/a $PIN_HEADER" $SITE_FILENAME
+else
+    sed -i "s/add_header Public-Key-Pins.*/$PIN_HEADER/g" $SITE_FILENAME
+fi
+
+systemctl restart nginx
+
+exit 0
