@@ -43,24 +43,26 @@ ADMIN_EMAIL_ADDRESS=${ADMIN_USERNAME}@${HOSTNAME}
 # Temporary location for data to be backed up to other servers
 SERVER_DIRECTORY=/root/remoterestore
 
+BACKUP_LIST=/home/${ADMIN_USERNAME}/backup.list
+
 if [ ! $SERVER_NAME ]; then
     echo $'restorefromfriend [server]'
     exit 1
 fi
 
-if [ ! -f /home/${ADMIN_USERNAME}/backup.list ]; then
-    echo $"No friends list found at /home/${ADMIN_USERNAME}/backup.list"
+if [ ! -f $BACKUP_LIST ]; then
+    echo $"No friends list found at $BACKUP_LIST"
     exit 2
 fi
 
-if ! grep -q "$SERVER_NAME" /home/${ADMIN_USERNAME}/backup.list; then
+if ! grep -q "$SERVER_NAME" $BACKUP_LIST; then
     echo $"Server not found within the friends list"
     exit 3
 fi
 
-REMOTE_SERVER=$(grep -i "$SERVER_NAME" /home/${ADMIN_USERNAME}/backup.list | awk -F ' ' '{print $1}')
-REMOTE_SSH_PORT=$(grep -i "$SERVER_NAME" /home/${ADMIN_USERNAME}/backup.list | awk -F ' ' '{print $2}')
-REMOTE_PASSWORD=$(grep -i "$SERVER_NAME" /home/${ADMIN_USERNAME}/backup.list | awk -F ' ' '{print $3}')
+REMOTE_SERVER=$(grep -i "$SERVER_NAME" $BACKUP_LIST | awk -F ' ' '{print $1}')
+REMOTE_SSH_PORT=$(grep -i "$SERVER_NAME" $BACKUP_LIST | awk -F ' ' '{print $2}')
+REMOTE_PASSWORD=$(grep -i "$SERVER_NAME" $BACKUP_LIST | awk -F ' ' '{print $3}')
 
 NOW=$(date +"%Y-%m-%d %H:%M:%S")
 
@@ -135,524 +137,576 @@ function restore_database_from_friend {
     fi
 }
 
-# Social key management
-# Recover any key fragments and reconstruct the gpg key
-${PROJECT_NAME}-recoverkey -u ${ADMIN_USERNAME} -l /home/${ADMIN_USERNAME}/backup.list
-
-copy_gpg_keys
-
-# Restore configuration files
-if [ -d $SERVER_DIRECTORY/backup/config ]; then
-    echo $"Restoring configuration files"
-    restore_directory_from_friend /root/tempconfig config
-    cp -f /root/tempconfig/root/${PROJECT_NAME}.cfg $CONFIG_FILE
-    if [ ! "$?" = "0" ]; then
-        unmount_drive
-        rm -rf /root/tempconfig
-        exit 5372
-    fi
-    if [ -f $CONFIG_FILE ]; then
-        # install according to the config file
-        freedombone -c $CONFIG_FILE
-    fi
-    cp -f /root/tempconfig/root/${PROJECT_NAME}-completed.txt $COMPLETION_FILE
-    if [ ! "$?" = "0" ]; then
-        unmount_drive
-        rm -rf /root/tempconfig
-        exit 7252
-    fi
-    rm -rf /root/tempconfig
-fi
-
-# Restore MariaDB
-if [ -d $SERVER_DIRECTORY/backup/mariadb ]; then
-    echo $"Restoring MariaDB settings"
-    restore_directory_from_friend /root/tempmariadb mariadb
-    echo $"Get the MariaDB password from the backup"
-    if [ ! -f /root/tempmariadb/root/tempmariadb/db ]; then
-        echo $"MariaDB password file not found"
-        exit 495
-    fi
-    BACKUP_MARIADB_PASSWORD=$(cat /root/tempmariadb/root/tempmariadb/db)
-    if [[ "$BACKUP_MARIADB_PASSWORD" != "$DATABASE_PASSWORD" ]]; then
-        echo $"Restore the MariaDB user table"
-        mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" mysql -o < /root/tempmariadb/root/tempmariadb/mysql.sql)
+function restore_configuration {
+    if [ -d $SERVER_DIRECTORY/backup/config ]; then
+        echo $"Restoring configuration files"
+        restore_directory_from_friend /root/tempconfig config
+        cp -f /root/tempconfig/root/${PROJECT_NAME}.cfg $CONFIG_FILE
         if [ ! "$?" = "0" ]; then
-            echo $"Try again using the password obtained from backup"
-            mysqlsuccess=$(mysql -u root --password="$BACKUP_MARIADB_PASSWORD" mysql -o < /root/tempmariadb/root/tempmariadb/mysql.sql)
+            unmount_drive
+            rm -rf /root/tempconfig
+            exit 5372
         fi
+        if [ -f $CONFIG_FILE ]; then
+            # install according to the config file
+            freedombone -c $CONFIG_FILE
+        fi
+        cp -f /root/tempconfig/root/${PROJECT_NAME}-completed.txt $COMPLETION_FILE
         if [ ! "$?" = "0" ]; then
-            echo "$mysqlsuccess"
-            exit 962
+            unmount_drive
+            rm -rf /root/tempconfig
+            exit 7252
         fi
-        echo $"Restarting database"
-        service mysql restart
-        echo $"Change the MariaDB password to the backup version"
-        DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD
+        rm -rf /root/tempconfig
     fi
-    shred -zu /root/tempmariadb/root/tempmariadb/db
-    rm -rf /root/tempmariadb
+}
 
-    # Change database password file
-    echo "$DATABASE_PASSWORD" > /root/dbpass
-    chmod 600 /root/dbpass
-fi
-
-# restore Let's Encrypt
-if [ -d $SERVER_DIRECTORY/backup/letsencrypt ]; then
-    echo $"Restoring Lets Encrypt settings"
-    restore_directory_from_friend / letsencrypt
-fi
-
-# restore mutt settings
-for d in $SERVER_DIRECTORY/backup/mutt/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/mutt/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring Mutt settings for $USERNAME"
-            restore_directory_from_friend /root/tempmutt mutt/$USERNAME
-            if [ -f /root/tempmutt/home/$USERNAME/tempbackup/.muttrc ]; then
-                cp -f /root/tempmutt/home/$USERNAME/tempbackup/.muttrc /home/$USERNAME/.muttrc
-            fi
-            if [ -f /root/tempmutt/home/$USERNAME/tempbackup/Muttrc ]; then
-                cp -f /root/tempmutt/home/$USERNAME/tempbackup/Muttrc /etc/Muttrc
+function restore_mariadb {
+    if [ -d $SERVER_DIRECTORY/backup/mariadb ]; then
+        echo $"Restoring MariaDB settings"
+        restore_directory_from_friend /root/tempmariadb mariadb
+        echo $"Get the MariaDB password from the backup"
+        if [ ! -f /root/tempmariadb/root/tempmariadb/db ]; then
+            echo $"MariaDB password file not found"
+            exit 495
+        fi
+        BACKUP_MARIADB_PASSWORD=$(cat /root/tempmariadb/root/tempmariadb/db)
+        if [[ "$BACKUP_MARIADB_PASSWORD" != "$DATABASE_PASSWORD" ]]; then
+            echo $"Restore the MariaDB user table"
+            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" mysql -o < /root/tempmariadb/root/tempmariadb/mysql.sql)
+            if [ ! "$?" = "0" ]; then
+                echo $"Try again using the password obtained from backup"
+                mysqlsuccess=$(mysql -u root --password="$BACKUP_MARIADB_PASSWORD" mysql -o < /root/tempmariadb/root/tempmariadb/mysql.sql)
             fi
             if [ ! "$?" = "0" ]; then
-                rm -rf /root/tempmutt
-                exit 276
+                echo "$mysqlsuccess"
+                exit 962
             fi
-            rm -rf /root/tempmutt
+            echo $"Restarting database"
+            service mysql restart
+            echo $"Change the MariaDB password to the backup version"
+            DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD
         fi
-    fi
-done
+        shred -zu /root/tempmariadb/root/tempmariadb/db
+        rm -rf /root/tempmariadb
 
-# restore user gpg keys
-for d in $SERVER_DIRECTORY/backup/gnupg/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/gnupg/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring gnupg settings for $USERNAME"
-            restore_directory_from_friend /root/tempgnupg gnupg/$USERNAME
-            cp -r /root/tempgnupg/home/$USERNAME/.gnupg /home/$USERNAME/
-            if [ ! "$?" = "0" ]; then
-                rm -rf /root/tempgnupg
-                exit 276
-            fi
-            rm -rf /root/tempgnupg
-            if [[ "$USERNAME" == "$ADMIN_USERNAME" ]]; then
-                cp -r /home/$USERNAME/.gnupg /root
+        # Change database password file
+        echo "$DATABASE_PASSWORD" > /root/dbpass
+        chmod 600 /root/dbpass
+    fi
+}
+
+function restore_letsencrypt {
+    if [ -d $SERVER_DIRECTORY/backup/letsencrypt ]; then
+        echo $"Restoring Lets Encrypt settings"
+        restore_directory_from_friend / letsencrypt
+    fi
+}
+
+function restore_mutt_settings {
+    for d in $SERVER_DIRECTORY/backup/mutt/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+        if [[ $USERNAME != "git" ]]; then
+            if [ -d $SERVER_DIRECTORY/backup/mutt/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring Mutt settings for $USERNAME"
+                restore_directory_from_friend /root/tempmutt mutt/$USERNAME
+                if [ -f /root/tempmutt/home/$USERNAME/tempbackup/.muttrc ]; then
+                    cp -f /root/tempmutt/home/$USERNAME/tempbackup/.muttrc /home/$USERNAME/.muttrc
+                fi
+                if [ -f /root/tempmutt/home/$USERNAME/tempbackup/Muttrc ]; then
+                    cp -f /root/tempmutt/home/$USERNAME/tempbackup/Muttrc /etc/Muttrc
+                fi
                 if [ ! "$?" = "0" ]; then
-                    exit 283
+                    rm -rf /root/tempmutt
+                    exit 276
+                fi
+                rm -rf /root/tempmutt
+            fi
+        fi
+    done
+}
+
+function restore_gpg {
+    for d in $SERVER_DIRECTORY/backup/gnupg/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+        if [[ $USERNAME != "git" ]]; then
+            if [ -d $SERVER_DIRECTORY/backup/gnupg/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring gnupg settings for $USERNAME"
+                restore_directory_from_friend /root/tempgnupg gnupg/$USERNAME
+                cp -r /root/tempgnupg/home/$USERNAME/.gnupg /home/$USERNAME/
+                if [ ! "$?" = "0" ]; then
+                    rm -rf /root/tempgnupg
+                    exit 276
+                fi
+                rm -rf /root/tempgnupg
+                if [[ "$USERNAME" == "$ADMIN_USERNAME" ]]; then
+                    cp -r /home/$USERNAME/.gnupg /root
+                    if [ ! "$?" = "0" ]; then
+                        exit 283
+                    fi
                 fi
             fi
         fi
-    fi
-done
+    done
+}
 
-# restore user procmail
-for d in $SERVER_DIRECTORY/backup/procmail/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/procmail/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring procmail settings for $USERNAME"
-            restore_directory_from_friend /root/tempprocmail procmail/$USERNAME
-            cp -f /root/tempprocmail/home/$USERNAME/tempbackup/.procmailrc /home/$USERNAME/
-            if [ ! "$?" = "0" ]; then
+function restore_procmail {
+    for d in $SERVER_DIRECTORY/backup/procmail/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+        if [[ $USERNAME != "git" ]]; then
+            if [ -d $SERVER_DIRECTORY/backup/procmail/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring procmail settings for $USERNAME"
+                restore_directory_from_friend /root/tempprocmail procmail/$USERNAME
+                cp -f /root/tempprocmail/home/$USERNAME/tempbackup/.procmailrc /home/$USERNAME/
+                if [ ! "$?" = "0" ]; then
+                    rm -rf /root/tempprocmail
+                    exit 276
+                fi
                 rm -rf /root/tempprocmail
-                exit 276
             fi
-            rm -rf /root/tempprocmail
         fi
-    fi
-done
+    done
+}
 
-# Restore user spam settings
-for d in $SERVER_DIRECTORY/backup/spamassassin/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/spamassassin/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring spamassassin settings for $USERNAME"
-            restore_directory_from_friend /root/tempspamassassin spamassassin/$USERNAME
-            cp -rf /root/tempspamassassin/home/$USERNAME/.spamassassin /home/$USERNAME/
-            if [ ! "$?" = "0" ]; then
+function restore_spamassassin {
+    for d in $SERVER_DIRECTORY/backup/spamassassin/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+        if [[ $USERNAME != "git" ]]; then
+            if [ -d $SERVER_DIRECTORY/backup/spamassassin/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring spamassassin settings for $USERNAME"
+                restore_directory_from_friend /root/tempspamassassin spamassassin/$USERNAME
+                cp -rf /root/tempspamassassin/home/$USERNAME/.spamassassin /home/$USERNAME/
+                if [ ! "$?" = "0" ]; then
+                    rm -rf /root/tempspamassassin
+                    exit 276
+                fi
                 rm -rf /root/tempspamassassin
-                exit 276
             fi
-            rm -rf /root/tempspamassassin
         fi
-    fi
-done
+    done
+}
 
-# Restore admin user README
-if [ -d $SERVER_DIRECTORY/backup/readme ]; then
-    echo $"Restoring README"
-    restore_directory_from_friend /root/tempreadme readme
-    cp -f /root/tempreadme/home/$ADMIN_USERNAME/tempbackup/README /home/$ADMIN_USERNAME/
-    if [ ! "$?" = "0" ]; then
+function restore_admin_readme {
+    if [ -d $SERVER_DIRECTORY/backup/readme ]; then
+        echo $"Restoring README"
+        restore_directory_from_friend /root/tempreadme readme
+        cp -f /root/tempreadme/home/$ADMIN_USERNAME/tempbackup/README /home/$ADMIN_USERNAME/
+        if [ ! "$?" = "0" ]; then
+            rm -rf /root/tempreadme
+            exit 276
+        fi
         rm -rf /root/tempreadme
-        exit 276
     fi
-    rm -rf /root/tempreadme
-fi
+}
 
-# restore IPFS
-if [ -d $SERVER_DIRECTORY/backup/ipfs ]; then
-    echo $"Restoring IPFS"
-    restore_directory_from_friend /root/tempipfs ipfs
-    cp -rf /root/tempipfs/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
-    if [ ! "$?" = "0" ]; then
+function restore_ipfs {
+    if [ -d $SERVER_DIRECTORY/backup/ipfs ]; then
+        echo $"Restoring IPFS"
+        restore_directory_from_friend /root/tempipfs ipfs
+        cp -rf /root/tempipfs/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
+        if [ ! "$?" = "0" ]; then
+            rm -rf /root/tempipfs
+            exit 276
+        fi
         rm -rf /root/tempipfs
-        exit 276
     fi
-    rm -rf /root/tempipfs
-fi
+}
 
-# restore user ssh keys
-for d in $SERVER_DIRECTORY/backup/ssh/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/ssh/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring ssh keys for $USERNAME"
-            restore_directory_from_friend /root/tempssh ssh/$USERNAME
-            cp -r /root/tempssh/home/$USERNAME/.ssh /home/$USERNAME/
-            if [ ! "$?" = "0" ]; then
+function restore_ssh_keys {
+    for d in $SERVER_DIRECTORY/backup/ssh/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+        if [[ $USERNAME != "git" ]]; then
+            if [ -d $SERVER_DIRECTORY/backup/ssh/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring ssh keys for $USERNAME"
+                restore_directory_from_friend /root/tempssh ssh/$USERNAME
+                cp -r /root/tempssh/home/$USERNAME/.ssh /home/$USERNAME/
+                if [ ! "$?" = "0" ]; then
+                    rm -rf /root/tempssh
+                    exit 664
+                fi
                 rm -rf /root/tempssh
-                exit 664
             fi
-            rm -rf /root/tempssh
         fi
-    fi
-done
+    done
+}
 
-# restore user config files
-for d in $SERVER_DIRECTORY/backup/config/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/config/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring config files for $USERNAME"
-            restore_directory_from_friend /root/tempconfig config/$USERNAME
-            cp -r /root/tempconfig/home/$USERNAME/.config /home/$USERNAME/
-            if [ ! "$?" = "0" ]; then
+function restore_user_config {
+    for d in $SERVER_DIRECTORY/backup/config/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+        if [[ $USERNAME != "git" ]]; then
+            if [ -d $SERVER_DIRECTORY/backup/config/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring config files for $USERNAME"
+                restore_directory_from_friend /root/tempconfig config/$USERNAME
+                cp -r /root/tempconfig/home/$USERNAME/.config /home/$USERNAME/
+                if [ ! "$?" = "0" ]; then
+                    rm -rf /root/tempconfig
+                    exit 664
+                fi
                 rm -rf /root/tempconfig
-                exit 664
             fi
-            rm -rf /root/tempconfig
+        fi
+    done
+}
+
+function restore_certs {
+    if [ -d $SERVER_DIRECTORY/backup/ssl ]; then
+        echo $"Restoring certificates"
+        restore_directory_from_friend /root/tempssl ssl
+        cp -r /root/tempssl/etc/ssl/* /etc/ssl
+        if [ ! "$?" = "0" ]; then
+            exit 276
+        fi
+        rm -rf /root/tempssl
+    fi
+}
+
+function restore_personal_settings {
+    for d in $SERVER_DIRECTORY/backup/personal/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+        if [[ $USERNAME != "git" ]]; then
+            if [ -d $SERVER_DIRECTORY/backup/personal/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring personal settings for $USERNAME"
+                restore_directory_from_friend /root/temppersonal personal/$USERNAME
+                if [ -d /home/$USERNAME/personal ]; then
+                    rm -rf /home/$USERNAME/personal
+                fi
+                mv /root/temppersonal/home/$USERNAME/personal /home/$USERNAME
+                if [ ! "$?" = "0" ]; then
+                    exit 184
+                fi
+                rm -rf /root/temppersonal
+            fi
+        fi
+    done
+}
+
+function restore_mailing_list {
+    if [ -d /var/spool/mlmmj ]; then
+        echo $"Restoring public mailing list"
+        restore_directory_from_friend /root/tempmailinglist mailinglist
+        cp -r /root/tempmailinglist/root/spool/mlmmj/* /var/spool/mlmmj
+        if [ ! "$?" = "0" ]; then
+            exit 526
+        fi
+        rm -rf /root/tempmailinglist
+    fi
+}
+
+function restore_xmpp {
+    if [ -d /var/lib/prosody ]; then
+        echo $"Restoring XMPP settings"
+        restore_directory_from_friend /root/tempxmpp xmpp
+        cp -r /root/tempxmpp/var/lib/prosody/* /var/lib/prosody
+        if [ ! "$?" = "0" ]; then
+            exit 725
+        fi
+        rm -rf /root/tempxmpp
+        service prosody restart
+        chown -R prosody:prosody /var/lib/prosody/*
+    fi
+}
+
+function restore_gnu_social {
+    if grep -q "GNU Social domain" $COMPLETION_FILE; then
+        MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
+        restore_database_from_friend gnusocial ${MICROBLOG_DOMAIN_NAME}
+        if [ -d /root/tempgnusocial ]; then
+            rm -rf /root/tempgnusocial
         fi
     fi
-done
+}
 
-# restore certs
-if [ -d $SERVER_DIRECTORY/backup/ssl ]; then
-    echo $"Restoring certificates"
-    restore_directory_from_friend /root/tempssl ssl
-    cp -r /root/tempssl/etc/ssl/* /etc/ssl
-    if [ ! "$?" = "0" ]; then
-        exit 276
+function restore_hubzilla {
+    if grep -q "Hubzilla domain" $COMPLETION_FILE; then
+        HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
+        restore_database_from_friend hubzilla ${HUBZILLA_DOMAIN_NAME}
+        if [ -d $SERVER_DIRECTORY/backup/hubzilla ]; then
+            if [ ! -d /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3 ]; then
+                mkdir -p /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+            fi
+            chmod 777 /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+            chown -R www-data:www-data /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/*
+        fi
+        if [ -d /root/temphubzilla ]; then
+            rm -rf /root/temphubzilla
+        fi
     fi
-    rm -rf /root/tempssl
-fi
+}
 
-# restore personal settings
-for d in $SERVER_DIRECTORY/backup/personal/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/personal/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring personal settings for $USERNAME"
-            restore_directory_from_friend /root/temppersonal personal/$USERNAME
-            if [ -d /home/$USERNAME/personal ]; then
-                rm -rf /home/$USERNAME/personal
-            fi
-            mv /root/temppersonal/home/$USERNAME/personal /home/$USERNAME
+function restore_owncloud {
+    if grep -q "Owncloud domain" $COMPLETION_FILE; then
+        OWNCLOUD_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Owncloud domain" | awk -F ':' '{print $2}')
+        restore_database_from_friend owncloud $OWNCLOUD_DOMAIN_NAME
+        if [ -d $SERVER_DIRECTORY/backup/owncloud ]; then
+            echo $"Restoring Owncloud installation"
+            cp -r /root/tempowncloud/var/lib/owncloud/* /var/lib/owncloud/
             if [ ! "$?" = "0" ]; then
-                exit 184
+                exit 981
             fi
-            rm -rf /root/temppersonal
+            restore_directory_from_friend /root/tempowncloud2 owncloud2
+            cp -r /root/tempowncloud2/etc/owncloud/* /etc/owncloud/
+            if [ ! "$?" = "0" ]; then
+                exit 982
+            fi
+            rm -rf /root/tempowncloud
+            rm -rf /root/tempowncloud2
+            chown -R www-data:www-data /var/lib/owncloud/data
+            chown -R www-data:www-data /var/lib/owncloud/backup
+            chown -R www-data:www-data /var/lib/owncloud/assets
+            for d in /home/*/ ; do
+                USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+                if [[ $USERNAME != "git" ]]; then
+                    occ files:scan $USERNAME
+                fi
+            done
+            ln -s /usr/share/owncloud /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs
         fi
     fi
-done
+}
 
-# restore mailing list
-if [ -d /var/spool/mlmmj ]; then
-    echo $"Restoring public mailing list"
-    restore_directory_from_friend /root/tempmailinglist mailinglist
-    cp -r /root/tempmailinglist/root/spool/mlmmj/* /var/spool/mlmmj
-    if [ ! "$?" = "0" ]; then
-        exit 526
-    fi
-    rm -rf /root/tempmailinglist
-fi
-
-# restore XMPP
-if [ -d /var/lib/prosody ]; then
-    echo $"Restoring XMPP settings"
-    restore_directory_from_friend /root/tempxmpp xmpp
-    cp -r /root/tempxmpp/var/lib/prosody/* /var/lib/prosody
-    if [ ! "$?" = "0" ]; then
-        exit 725
-    fi
-    rm -rf /root/tempxmpp
-    service prosody restart
-    chown -R prosody:prosody /var/lib/prosody/*
-fi
-
-# restore gnu social
-if grep -q "GNU Social domain" $COMPLETION_FILE; then
-    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
-    restore_database_from_friend gnusocial ${MICROBLOG_DOMAIN_NAME}
-    if [ -d /root/tempgnusocial ]; then
-        rm -rf /root/tempgnusocial
-    fi
-fi
-
-# restore hubzilla
-if grep -q "Hubzilla domain" $COMPLETION_FILE; then
-    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
-    restore_database_from_friend hubzilla ${HUBZILLA_DOMAIN_NAME}
-    if [ -d $SERVER_DIRECTORY/backup/hubzilla ]; then
-        if [ ! -d /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3 ]; then
-            mkdir -p /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+function restore_gogs {
+    if grep -q "Gogs domain" $COMPLETION_FILE; then
+        GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
+        restore_database_from_friend gogs $GIT_DOMAIN_NAME
+        if [ -d $SERVER_DIRECTORY/backup/gogs ]; then
+            if [ ! -d /home/git/go/src/github.com/gogits/gogs/custom ]; then
+                mkdir -p /home/git/go/src/github.com/gogits/gogs/custom
+            fi
+            cp -r /root/tempgogs/home/git/go/src/github.com/gogits/gogs/custom/* /home/git/go/src/github.com/gogits/gogs/custom/
+            if [ ! "$?" = "0" ]; then
+                exit 5885
+            fi
+            echo $"Restoring Gogs repos"
+            restore_directory_from_friend /root/tempgogsrepos gogsrepos
+            cp -r /root/tempgogsrepos/home/git/gogs-repositories/* /home/git/gogs-repositories/
+            if [ ! "$?" = "0" ]; then
+                exit 7649
+            fi
+            echo $"Restoring Gogs authorized_keys"
+            restore_directory_from_friend /root/tempgogsssh gogsssh
+            if [ ! -d /home/git/.ssh ]; then
+                mkdir /home/git/.ssh
+            fi
+            cp -r /root/tempgogsssh/home/git/.ssh/* /home/git/.ssh/
+            if [ ! "$?" = "0" ]; then
+                exit 74239
+            fi
+            rm -rf /root/tempgogs
+            rm -rf /root/tempgogsrepos
+            rm -rf /root/tempgogsssh
+            chown -R git:git /home/git
         fi
-        chmod 777 /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
-        chown -R www-data:www-data /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/*
     fi
-    if [ -d /root/temphubzilla ]; then
-        rm -rf /root/temphubzilla
-    fi
-fi
+}
 
-# restore owncloud
-if grep -q "Owncloud domain" $COMPLETION_FILE; then
-    OWNCLOUD_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Owncloud domain" | awk -F ':' '{print $2}')
-    restore_database_from_friend owncloud $OWNCLOUD_DOMAIN_NAME
-    if [ -d $SERVER_DIRECTORY/backup/owncloud ]; then
-        echo $"Restoring Owncloud installation"
-        cp -r /root/tempowncloud/var/lib/owncloud/* /var/lib/owncloud/
+function restore_wiki {
+    if [ -d $SERVER_DIRECTORY/backup/wiki ]; then
+        WIKI_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Wiki domain" | awk -F ':' '{print $2}')
+        echo $"Restoring Wiki installation $WIKI_DOMAIN_NAME"
+        restore_directory_from_friend /root/tempwiki wiki
+        cp -r /root/tempwiki/var/lib/dokuwiki/* /var/lib/dokuwiki/
         if [ ! "$?" = "0" ]; then
-            exit 981
+            exit 868
         fi
-        restore_directory_from_friend /root/tempowncloud2 owncloud2
-        cp -r /root/tempowncloud2/etc/owncloud/* /etc/owncloud/
+        restore_directory_from_friend /root/tempwiki2 wiki2
+        cp -r /root/tempwiki2/etc/dokuwiki/* /etc/dokuwiki/
         if [ ! "$?" = "0" ]; then
-            exit 982
+            exit 869
         fi
-        rm -rf /root/tempowncloud
-        rm -rf /root/tempowncloud2
-        chown -R www-data:www-data /var/lib/owncloud/data
-        chown -R www-data:www-data /var/lib/owncloud/backup
-        chown -R www-data:www-data /var/lib/owncloud/assets
+        rm -rf /root/tempwiki
+        rm -rf /root/tempwiki2
+        chown -R www-data:www-data /var/lib/dokuwiki/*
+        # Ensure that the bundled SSL cert is being used
+        if [ -f /etc/ssl/certs/${WIKI_DOMAIN_NAME}.bundle.crt ]; then
+            sed -i "s|${WIKI_DOMAIN_NAME}.crt|${WIKI_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${WIKI_DOMAIN_NAME}
+        fi
+        if [ -d /etc/letsencrypt/live/${WIKI_DOMAIN_NAME} ]; then
+            ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${WIKI_DOMAIN_NAME}.key
+            ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${WIKI_DOMAIN_NAME}.pem
+        fi
+    fi
+}
+
+function restore_blog {
+    if [ -d $SERVER_DIRECTORY/backup/blog ]; then
+        FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+        echo $"Restoring blog installation $FULLBLOG_DOMAIN_NAME"
+        mkdir /root/tempblog
+        restore_directory_from_friend /root/tempblog blog
+        rm -rf /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs
+        cp -r /root/tempblog/var/www/${FULLBLOG_DOMAIN_NAME}/htdocs /var/www/${FULLBLOG_DOMAIN_NAME}/
+        if [ ! "$?" = "0" ]; then
+            exit 593
+        fi
+        rm -rf /root/tempblog
+        if [ ! -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content ]; then
+            echo $"No content directory found after restoring blog"
+            exit 287
+        fi
+        # Ensure that the bundled SSL cert is being used
+        if [ -f /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.bundle.crt ]; then
+            sed -i "s|${FULLBLOG_DOMAIN_NAME}.crt|${FULLBLOG_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${FULLBLOG_DOMAIN_NAME}
+        fi
         for d in /home/*/ ; do
             USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
             if [[ $USERNAME != "git" ]]; then
-                occ files:scan $USERNAME
-            fi
+                if [ -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/uncategorized/post ]; then
+                    mv /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/*.md /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/uncategorized/post
+                fi
         done
-        ln -s /usr/share/owncloud /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs
+        if [ -d /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME} ]; then
+            ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${FULLBLOG_DOMAIN_NAME}.key
+            ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.pem
+        fi
     fi
-fi
+}
 
-# restore gogs
-if grep -q "Gogs domain" $COMPLETION_FILE; then
-    GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
-    restore_database_from_friend gogs $GIT_DOMAIN_NAME
-    if [ -d $SERVER_DIRECTORY/backup/gogs ]; then
-        if [ ! -d /home/git/go/src/github.com/gogits/gogs/custom ]; then
-            mkdir -p /home/git/go/src/github.com/gogits/gogs/custom
-        fi
-        cp -r /root/tempgogs/home/git/go/src/github.com/gogits/gogs/custom/* /home/git/go/src/github.com/gogits/gogs/custom/
+function restore_cjdns {
+    if [ -d $SERVER_DIRECTORY/backup/cjdns ]; then
+        echo $"Restoring cjdns installation"
+        restore_directory_from_friend /root/tempcjdns cjdns
+        rm -rf /etc/cjdns
+        cp -r /root/tempcjdns/etc/cjdns /etc/
         if [ ! "$?" = "0" ]; then
-            exit 5885
+            exit 7438
         fi
-        echo $"Restoring Gogs repos"
-        restore_directory_from_friend /root/tempgogsrepos gogsrepos
-        cp -r /root/tempgogsrepos/home/git/gogs-repositories/* /home/git/gogs-repositories/
-        if [ ! "$?" = "0" ]; then
-            exit 7649
-        fi
-        echo $"Restoring Gogs authorized_keys"
-        restore_directory_from_friend /root/tempgogsssh gogsssh
-        if [ ! -d /home/git/.ssh ]; then
-            mkdir /home/git/.ssh
-        fi
-        cp -r /root/tempgogsssh/home/git/.ssh/* /home/git/.ssh/
-        if [ ! "$?" = "0" ]; then
-            exit 74239
-        fi
-        rm -rf /root/tempgogs
-        rm -rf /root/tempgogsrepos
-        rm -rf /root/tempgogsssh
-        chown -R git:git /home/git
+        rm -rf /root/tempcjdns
     fi
-fi
+}
 
-# restore wiki
-if [ -d $SERVER_DIRECTORY/backup/wiki ]; then
-    WIKI_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Wiki domain" | awk -F ':' '{print $2}')
-    echo $"Restoring Wiki installation $WIKI_DOMAIN_NAME"
-    restore_directory_from_friend /root/tempwiki wiki
-    cp -r /root/tempwiki/var/lib/dokuwiki/* /var/lib/dokuwiki/
-    if [ ! "$?" = "0" ]; then
-        exit 868
+function restore_voip {
+    if [ -d $SERVER_DIRECTORY/backup/voip ]; then
+        echo $"Restoring VoIP settings"
+        restore_directory_from_friend /root/tempvoip voip
+        cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
+        if [ ! "$?" = "0" ]; then
+            rm -rf /root/tempvoip
+            exit 7823
+        fi
+        cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/sipwitch.conf /etc/sipwitch.conf
+        if [ ! "$?" = "0" ]; then
+            rm -rf /root/tempvoip
+            exit 7823
+        fi
+        cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.sqlite /var/lib/mumble-server/
+        if [ ! "$?" = "0" ]; then
+            rm -rf /root/tempvoip
+            exit 276
+        fi
+        rm -rf /root/tempvoip
+        cp /etc/ssl/certs/mumble* /var/lib/mumble-server
+        cp /etc/ssl/private/mumble* /var/lib/mumble-server
+        chown -R mumble-server:mumble-server /var/lib/mumble-server
+        service sipwitch restart
+        service mumble-server restart
     fi
-    restore_directory_from_friend /root/tempwiki2 wiki2
-    cp -r /root/tempwiki2/etc/dokuwiki/* /etc/dokuwiki/
-    if [ ! "$?" = "0" ]; then
-        exit 869
-    fi
-    rm -rf /root/tempwiki
-    rm -rf /root/tempwiki2
-    chown -R www-data:www-data /var/lib/dokuwiki/*
-    # Ensure that the bundled SSL cert is being used
-    if [ -f /etc/ssl/certs/${WIKI_DOMAIN_NAME}.bundle.crt ]; then
-        sed -i "s|${WIKI_DOMAIN_NAME}.crt|${WIKI_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${WIKI_DOMAIN_NAME}
-    fi
-    if [ -d /etc/letsencrypt/live/${WIKI_DOMAIN_NAME} ]; then
-        ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${WIKI_DOMAIN_NAME}.key
-        ln -s /etc/letsencrypt/live/${WIKI_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${WIKI_DOMAIN_NAME}.pem
-    fi
-fi
+}
 
-# restore blog
-if [ -d $SERVER_DIRECTORY/backup/blog ]; then
-    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
-    echo $"Restoring blog installation $FULLBLOG_DOMAIN_NAME"
-    mkdir /root/tempblog
-    restore_directory_from_friend /root/tempblog blog
-    rm -rf /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs
-    cp -r /root/tempblog/var/www/${FULLBLOG_DOMAIN_NAME}/htdocs /var/www/${FULLBLOG_DOMAIN_NAME}/
-    if [ ! "$?" = "0" ]; then
-        exit 593
+function restore_tox {
+    if [ -d $SERVER_DIRECTORY/backup/tox ]; then
+        echo $"Restoring Tox node settings"
+        restore_directory_from_friend / tox
+        if [ ! "$?" = "0" ]; then
+            exit 93653
+        fi
+        cp /var/lib/tox-bootstrapd/tox-bootstrapd.conf /etc/tox-bootstrapd.conf
+        systemctl restart tox-bootstrapd.service
+        if [ ! "$?" = "0" ]; then
+            systemctl status tox-bootstrapd.service
+            exit 59369
+        fi
     fi
-    rm -rf /root/tempblog
-    if [ ! -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content ]; then
-        echo $"No content directory found after restoring blog"
-        exit 287
-    fi
-    # Ensure that the bundled SSL cert is being used
-    if [ -f /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.bundle.crt ]; then
-        sed -i "s|${FULLBLOG_DOMAIN_NAME}.crt|${FULLBLOG_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${FULLBLOG_DOMAIN_NAME}
-    fi
-    for d in /home/*/ ; do
-        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+}
+
+function restore_email {
+    for d in $SERVER_DIRECTORY/backup/mail/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $USERNAME != "git" ]]; then
-            if [ -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/uncategorized/post ]; then
-                mv /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/*.md /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/uncategorized/post
+            if [ -d $SERVER_DIRECTORY/backup/mail/$USERNAME ]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring emails for $USERNAME"
+                restore_directory_from_friend /root/tempmail mail/$USERNAME
+                if [ ! -d /home/$USERNAME/Maildir ]; then
+                    mkdir /home/$USERNAME/Maildir
+                fi
+                tar -xzvf /root/tempmail/root/tempbackupemail/$USERNAME/maildir.tar.gz -C /
+                if [ ! "$?" = "0" ]; then
+                    exit 927
+                fi
+                rm -rf /root/tempmail
             fi
+        fi
     done
-    if [ -d /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME} ]; then
-        ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${FULLBLOG_DOMAIN_NAME}.key
-        ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.pem
-    fi
-fi
+}
 
-# restore cjdns
-if [ -d $SERVER_DIRECTORY/backup/cjdns ]; then
-    echo $"Restoring cjdns installation"
-    restore_directory_from_friend /root/tempcjdns cjdns
-    rm -rf /etc/cjdns
-    cp -r /root/tempcjdns/etc/cjdns /etc/
-    if [ ! "$?" = "0" ]; then
-        exit 7438
-    fi
-    rm -rf /root/tempcjdns
-fi
-
-# restore voip
-if [ -d $SERVER_DIRECTORY/backup/voip ]; then
-    echo $"Restoring VoIP settings"
-    restore_directory_from_friend /root/tempvoip voip
-    cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
-    if [ ! "$?" = "0" ]; then
-        rm -rf /root/tempvoip
-        exit 7823
-    fi
-    cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/sipwitch.conf /etc/sipwitch.conf
-    if [ ! "$?" = "0" ]; then
-        rm -rf /root/tempvoip
-        exit 7823
-    fi
-    cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.sqlite /var/lib/mumble-server/
-    if [ ! "$?" = "0" ]; then
-        rm -rf /root/tempvoip
-        exit 276
-    fi
-    rm -rf /root/tempvoip
-    cp /etc/ssl/certs/mumble* /var/lib/mumble-server
-    cp /etc/ssl/private/mumble* /var/lib/mumble-server
-    chown -R mumble-server:mumble-server /var/lib/mumble-server
-    service sipwitch restart
-    service mumble-server restart
-fi
-
-# Restore tox
-if [ -d $SERVER_DIRECTORY/backup/tox ]; then
-    echo $"Restoring Tox node settings"
-    restore_directory_from_friend / tox
-    if [ ! "$?" = "0" ]; then
-        exit 93653
-    fi
-    cp /var/lib/tox-bootstrapd/tox-bootstrapd.conf /etc/tox-bootstrapd.conf
-    systemctl restart tox-bootstrapd.service
-    if [ ! "$?" = "0" ]; then
-        systemctl status tox-bootstrapd.service
-        exit 59369
-    fi
-fi
-
-# restore email
-for d in $SERVER_DIRECTORY/backup/mail/*/ ; do
-    USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
-    if [[ $USERNAME != "git" ]]; then
-        if [ -d $SERVER_DIRECTORY/backup/mail/$USERNAME ]; then
-            if [ ! -d /home/$USERNAME ]; then
-                ${PROJECT_NAME}-adduser $USERNAME
-            fi
-            echo $"Restoring emails for $USERNAME"
-            restore_directory_from_friend /root/tempmail mail/$USERNAME
-            if [ ! -d /home/$USERNAME/Maildir ]; then
-                mkdir /home/$USERNAME/Maildir
-            fi
-            tar -xzvf /root/tempmail/root/tempbackupemail/$USERNAME/maildir.tar.gz -C /
+function restore_dlna {
+    if [ -d /var/cache/minidlna ]; then
+        if [ -d $SERVER_DIRECTORY/backup/dlna ]; then
+            echo $"Restoring DLNA cache"
+            restore_directory_from_friend /root/tempdlna dlna
+            cp -r /root/tempdlna/var/cache/minidlna/* /var/cache/minidlna/
             if [ ! "$?" = "0" ]; then
-                exit 927
+                exit 982
             fi
-            rm -rf /root/tempmail
+            rm -rf /root/tempdlna
         fi
     fi
-done
+}
 
-# Restore DLNA
-if [ -d /var/cache/minidlna ]; then
-    if [ -d $SERVER_DIRECTORY/backup/dlna ]; then
-        echo $"Restoring DLNA cache"
-        restore_directory_from_friend /root/tempdlna dlna
-        cp -r /root/tempdlna/var/cache/minidlna/* /var/cache/minidlna/
-        if [ ! "$?" = "0" ]; then
-            exit 982
-        fi
-        rm -rf /root/tempdlna
-    fi
-fi
+# Social key management
+# Recover any key fragments and reconstruct the gpg key
+${PROJECT_NAME}-recoverkey -u ${ADMIN_USERNAME} -l $BACKUP_LIST
+
+copy_gpg_keys
+restore_configuration
+restore_mariadb
+restore_letsencrypt
+restore_mutt_settings
+restore_gpg
+restore_procmail
+restore_spamassassin
+restore_admin_readme
+restore_ipfs
+restore_ssh_keys
+restore_user_config
+restore_certs
+restore_personal_settings
+restore_mailing_list
+restore_xmpp
+restore_gnu_social
+restore_hubzilla
+restore_owncloud
+restore_gogs
+restore_wiki
+restore_blog
+restore_cjdns
+restore_voip
+restore_tox
+restore_email
+restore_dlna
 
 echo $"*** Remote restore was successful ***"
 
