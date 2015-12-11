@@ -379,6 +379,62 @@ function backup_mariadb {
     fi
 }
 
+# Returns the filename of a key share
+function get_key_share {
+    no_of_shares=$1
+    USERNAME="$2"
+    REMOTE_DOMAIN="$3"
+
+    # Get a share index based on the supplied domain name
+    # This ensures that the same share is always given to the same domain
+    sharenumstr=$(md5sum <<< "$REMOTE_DOMAIN")
+    share_index=$(echo $((0x${sharenumstr%% *} % ${no_of_shares})) | tr -d -)
+
+    # get the filename
+    share_files=(/home/$USERNAME/.gnupg_fragments/keyshare.asc.*)
+    share_filename=${share_files[share_index]}
+
+    echo "$share_filename"
+}
+
+function disperse_key_shares {
+    USERNAME=$1
+    REMOTE_DOMAIN=$2
+    REMOTE_SSH_PORT=$3
+    REMOTE_PASSWORD=$4
+    REMOTE_SERVER=$5
+
+    if [ -d /home/$USERNAME/.gnupg_fragments ]; then
+        if [ $REMOTE_DOMAIN ]; then
+            cd /home/$USERNAME/.gnupg_fragments
+            no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
+            if (( no_of_shares > 1 )); then
+                share_filename=$(get_key_share $no_of_shares "$USERNAME" "$REMOTE_DOMAIN")
+
+                # create a temp directory containing the share
+                temp_key_share_dir=/home/$USERNAME/tempkey
+                temp_key_share_fragments=$temp_key_share_dir/.gnupg_fragments_${USERNAME}
+                mkdir -p $temp_key_share_fragments
+                cp $share_filename $temp_key_share_fragments/
+
+                # copy the fragments directory to the remote server
+                /usr/bin/sshpass -p "$REMOTE_PASSWORD" scp -r -P $REMOTE_SSH_PORT $temp_key_share_fragments $REMOTE_SERVER
+                if [ ! "$?" = "0" ]; then
+                    # Send a warning email
+                    echo "Key share to $REMOTE_SERVER failed" | mail -s "${PROJECT_NAME} social key management" $MY_EMAIL_ADDRESS
+                fi
+
+                # remove the temp file/directory
+                shred -zu $temp_key_share_fragments/*
+                rm -rf $temp_key_share_dir
+
+                # Send a confirmation email
+                echo "Key shared to $REMOTE_SERVER" | mail -s "${PROJECT_NAME} social key management" $MY_EMAIL_ADDRESS
+            fi
+        fi
+    fi
+}
+
 backup_configuration
 backup_users
 backup_letsencrypt
@@ -418,44 +474,11 @@ do
         for d in /home/*/ ; do
             USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
             if [[ $USERNAME != "git" ]]; then
-                if [ -d /home/$USERNAME/.gnupg_fragments ]; then
-                    if [ $REMOTE_DOMAIN ]; then
-                        cd /home/$USERNAME/.gnupg_fragments
-                        no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
-                        if (( no_of_shares > 0 )); then
-                            # Pick a share index based on the domain name
-                            # This ensures that the same share is always given to the same domain
-                            sharenumstr=$(md5sum <<< "$REMOTE_DOMAIN")
-                            share_index=$(echo $((0x${sharenumstr%% *} % ${no_of_shares})) | tr -d -)
-
-                            # get the share filename
-                            share_files=(/home/$USERNAME/.gnupg_fragments/keyshare.asc.*)
-                            share_filename=${share_files[share_index]}
-
-                            # create a temp directory containing the share
-                            mkdir -p /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME
-                            cp $share_filename /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME/
-
-                            # copy the fragments directory to the remote server
-                            /usr/bin/sshpass -p $REMOTE_PASSWORD scp -r -P $REMOTE_SSH_PORT /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME $REMOTE_SERVER
-                            if [ ! "$?" = "0" ]; then
-                                # Send a warning email
-                                echo "Key share to $REMOTE_SERVER failed" | mail -s "${PROJECT_NAME} social key management" $MY_EMAIL_ADDRESS
-                            fi
-
-                            # remove the temp file/directory
-                            shred -zu /home/$USERNAME/tempkey/.gnupg_fragments_$USERNAME/*
-                            rm -rf /home/$USERNAME/tempkey
-
-                            # Send a confirmation email
-                            echo "Key shared to $REMOTE_SERVER" | mail -s "${PROJECT_NAME} social key management" $MY_EMAIL_ADDRESS
-                        fi
-                    fi
-                fi
+                disperse_key_shares $USERNAME $REMOTE_DOMAIN $REMOTE_SSH_PORT "$REMOTE_PASSWORD" $REMOTE_SERVER
             fi
         done
 
-        rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" $SERVER_DIRECTORY/backup $REMOTE_SERVER
+        rsync -ratlzv --rsh="/usr/bin/sshpass -p \"$REMOTE_PASSWORD\" ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" $SERVER_DIRECTORY/backup $REMOTE_SERVER
         if [ ! "$?" = "0" ]; then
             echo "$NOW Backup to $REMOTE_SERVER failed" >> /var/log/remotebackups.log
             # Send a warning email
