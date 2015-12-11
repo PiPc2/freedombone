@@ -16,6 +16,8 @@ PEERS_FILE=/tmp/meshwebstart
 ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet'
 ZERONET_BLOG_REPO='https://github.com/HelloZeroNet/ZeroBlog'
 ZERONET_FORUM_REPO='https://github.com/HelloZeroNet/ZeroTalk'
+ZERONET_MAIL_REPO='https://github.com/HelloZeroNet/ZeroMail'
+ZERONET_MAIL_COMMIT='955af09d643c72b02e4983d71eca5c0c93a6c131'
 ZERONET_URL=http://127.0.0.1:43110
 ZERONET_PORT=15441
 TRACKER_PORT=6969
@@ -24,6 +26,7 @@ ZERONET_DIR=/home/$MY_USERNAME/zeronet
 UPDATED="no"
 ZERONET_DEFAULT_BLOG_TAGLINE="Blogging on the Mesh"
 ZERONET_DEFAULT_FORUM_TAGLINE="A decentralized discussion group"
+ZERONET_DEFAULT_MAIL_TAGLINE="Mail for the Mesh"
 
 IPFS_PORT=4001
 
@@ -191,6 +194,101 @@ function install_zeronet_blog {
     echo $'Zeronet blog installed'
 }
 
+function install_zeronet_mail {
+  if [ ! -f /home/$MY_USERNAME/README ]; then
+      touch /home/$MY_USERNAME/README
+  fi
+
+  if grep -q "ZeroNet Mail address" /home/$MY_USERNAME/README; then
+      return
+  fi
+
+  if [ ! -d /etc/avahi ]; then
+      echo 'Avahi is not installed'
+      exit 736
+  fi
+
+  ZERONET_DEFAULT_MAIL_TITLE="${MY_USERNAME}'s Mail"
+
+  cd /opt/zeronet
+  python zeronet.py --batch siteCreate 2> /opt/zeronet/mail.txt
+  if [ ! -f /opt/zeronet/mail.txt ]; then
+      echo 'Unable to create mail'
+      exit 479
+  fi
+  mail_address=$(cat mail.txt | grep "Site address" | awk -F ':' '{print $2}')
+  mail_private_key=$(cat mail.txt | grep "Site private key" | awk -F ':' '{print $2}')
+  ZERONET_MAIL_ADDRESS=${mail_address//[[:blank:]]/}
+  ZERONET_MAIL_PRIVATE_KEY=${mail_private_key//[[:blank:]]/}
+
+  if [ ${#ZERONET_MAIL_ADDRESS} -lt 20 ]; then
+      echo $"Address:    $ZERONET_MAIL_ADDRESS"
+      echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY"
+      echo $'Unable to create zeronet mail address'
+      exit 7358
+  fi
+
+  if [ ${#ZERONET_MAIL_PRIVATE_KEY} -lt 20 ]; then
+      echo $"Address:    $ZERONET_MAIL_ADDRESS"
+      echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY"
+      echo $'Unable to create zeronet mail private key'
+      exit 1639
+  fi
+
+  if [ ! -d "/opt/zeronet/data/$ZERONET_MAIL_ADDRESS" ]; then
+      echo $"Unable to find site directory: /opt/zeronet/data/$ZERONET_MAIL_ADDRESS"
+      exit 7638
+  fi
+
+  git clone $ZERONET_MAIL_REPO ZeroMail
+  if [ ! -d /opt/zeronet/ZeroMail ]; then
+      echo 'ZeroMail repo could not be cloned'
+      exit 6739
+  fi
+  cd /opt/zeronet/ZeroMail
+  git checkout $ZERONET_MAIL_COMMIT -b $ZERONET_MAIL_COMMIT
+
+  echo $"ZeroNet Mail address:     $ZERONET_MAIL_ADDRESS"
+  echo $"ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY"
+  cp -r /opt/zeronet/ZeroMail/* /opt/zeronet/data/$ZERONET_MAIL_ADDRESS
+
+  if [ ! -d /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/data ]; then
+      mkdir /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/data
+  fi
+  cp /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/data-default/data.json /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/data
+  sed -i "s/MyZeroMail/$ZERONET_DEFAULT_MAIL_TITLE/g" /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
+  sed -i "s/My ZeroMail./$ZERONET_DEFAULT_MAIL_TAGLINE/g" /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
+  sed -i "s/ZeroMail Demo/$ZERONET_DEFAULT_MAIL_TITLE/g" /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
+  sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_MAIL_TAGLINE</h3>|g" /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
+  sed -i "s/Mailging platform Demo/Mailging platform/g" /opt/zeronet/data/$ZERONET_MAIL_ADDRESS/content.json
+  python zeronet.py siteSign $ZERONET_MAIL_ADDRESS $ZERONET_MAIL_PRIVATE_KEY
+
+  # Add an avahi service
+  echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-mail.service
+  echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-mail.service
+  echo '<service-group>' >> /tmp/zeronet-mail.service
+  echo '  <name replace-wildcards="yes">%h ZeroNet Mail</name>' >> /tmp/zeronet-mail.service
+  echo '  <service>' >> /tmp/zeronet-mail.service
+  echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-mail.service
+  echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-mail.service
+  echo "    <txt-record>$ZERONET_URL/$ZERONET_MAIL_ADDRESS</txt-record>" >> /tmp/zeronet-mail.service
+  echo '  </service>' >> /tmp/zeronet-mail.service
+  echo '</service-group>' >> /tmp/zeronet-mail.service
+  cp /tmp/zeronet-mail.service /etc/avahi/services/zeronet-mail.service
+
+  if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
+      mkdir -p /home/$MY_USERNAME/.config/zeronet
+      chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
+  fi
+  echo "$ZERONET_URL/$ZERONET_MAIL_ADDRESS" > /home/$MY_USERNAME/.config/zeronet/mymail
+
+  if ! grep -q "ZeroNet Mail address" /home/$MY_USERNAME/README; then
+      echo '' >> /home/$MY_USERNAME/README
+      echo "ZeroNet Mail address: $ZERONET_MAIL_ADDRESS" >> /home/$MY_USERNAME/README
+      echo "ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY" >> /home/$MY_USERNAME/README
+  fi
+}
+
 function install_zeronet_forum {
     if [ ! -f /home/$MY_USERNAME/README ]; then
         touch /home/$MY_USERNAME/README
@@ -350,6 +448,7 @@ if [[ $SERVER_INSTALLATION == "no" ]]; then
         install_web_server
         install_zeronet
         install_zeronet_blog
+        install_zeronet_mail
         install_zeronet_forum
         install_ipfs
         sudo batman start

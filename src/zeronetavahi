@@ -51,6 +51,7 @@ if [ ! -d $ZERONET_INSTALL ]; then
 fi
 
 BLOGS_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-blogs
+MAIL_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-mail
 FORUM_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-fora
 TOX_USERS_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-tox-users
 ZERONET_INDEX=/home/$MY_USERNAME/mesh.html
@@ -61,6 +62,7 @@ IPFS_PORT=4001
 function create_index {
     if [ -f $ZERONET_INDEX ]; then
         sed -i "s|.*My Blog.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myblog)\">My Blog</a></li>|g" $ZERONET_INDEX
+        sed -i "s|.*My Mail.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/mymail)\">My Mail</a></li>|g" $ZERONET_INDEX
         sed -i "s|.*My Forum.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myforum)\">My Forum</a></li>|g" $ZERONET_INDEX
         return
     fi
@@ -76,6 +78,7 @@ function create_index {
     echo '' >> $ZERONET_INDEX
     echo '<ol type="square">' >> $ZERONET_INDEX
     echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myblog)\">My Blog</a></li>" >> $ZERONET_INDEX
+    echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/mymail)\">My Mail</a></li>" >> $ZERONET_INDEX
     echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myforum)\">My Forum</a></li>" >> $ZERONET_INDEX
     echo "  <li><a href=\"http://localhost:5001/webui\">File Share</a></li>" >> $ZERONET_INDEX
     echo '</ol>' >> $ZERONET_INDEX
@@ -84,6 +87,7 @@ function create_index {
     echo '' >> $ZERONET_INDEX
     echo '<ol type="square">' >> $ZERONET_INDEX
     echo "  <li><a href=\"${BLOGS_FILE}.html\">Blogs</a></li>" >> $ZERONET_INDEX
+    echo "  <li><a href=\"${MAIL_FILE}.html\">Mail</a></li>" >> $ZERONET_INDEX
     echo "  <li><a href=\"${FORUM_FILE}.html\">Fora</a></li>" >> $ZERONET_INDEX
     echo "  <li><a href=\"${TOX_USERS_FILE}.html\">Tox Users</a></li>" >> $ZERONET_INDEX
     echo '</ol>' >> $ZERONET_INDEX
@@ -194,6 +198,45 @@ while IFS='' read -r line || [[ -n "$line" ]]; do
 done < "$TEMPFILE"
 echo '</ol>' >> $BLOGS_FILE.new
 
+
+# detect mail in the mesh
+if [ -f $MAIL_FILE.new ]; then
+    rm -f $MAIL_FILE.new
+fi
+
+cat $TEMPFILE_BASE | grep "ZeroNet Mail\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+state=0
+address=""
+peer=""
+echo '<ol type="square">' >> $MAIL_FILE.new
+while IFS='' read -r line || [[ -n "$line" ]]; do
+    if [ ${state} -eq "3" ]; then
+        if [[ $line == *"txt ="* ]]; then
+            mail_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            echo "  <li><a href=${mail_url}>${peer}</a></li>" >> $MAIL_FILE.new
+            state=0
+        fi
+    fi
+    if [ ${state} -eq "2" ]; then
+        if [[ $line == *"address ="* ]]; then
+            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=3
+        fi
+    fi
+    if [ ${state} -eq "1" ]; then
+        if [[ $line == *"hostname ="* ]]; then
+            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+            state=2
+        fi
+    fi
+    if [[ $line == *"ZeroNet Mail"* && $line == "= "* ]]; then
+        state=1
+    fi
+done < "$TEMPFILE"
+echo '</ol>' >> $MAIL_FILE.new
+
+
 # detect fora in the mesh
 if [ -f $FORUM_FILE.new ]; then
     rm -f $FORUM_FILE.new
@@ -297,9 +340,11 @@ fi
 
 # make some html headers and footers
 create_header $BLOGS_FILE "Blogs"
+create_header $MAIL_FILE "Mail"
 create_header $FORUM_FILE "Fora"
 create_header $TOX_USERS_FILE "Tox Users"
 create_footer $BLOGS_FILE
+create_footer $MAIL_FILE
 create_footer $FORUM_FILE
 create_footer $TOX_USERS_FILE
 
@@ -311,6 +356,13 @@ cat ${BLOGS_FILE}-header.html ${BLOGS_FILE}.new ${BLOGS_FILE}-footer.html > ${BL
 rm -f ${BLOGS_FILE}.new
 if [ -d $ZERONET_USER_HOME ]; then
     sudo chown zeronet:zeronet $BLOGS_FILE
+fi
+
+# create a web page showing the available mail contacts
+cat ${MAIL_FILE}-header.html ${MAIL_FILE}.new ${MAIL_FILE}-footer.html > ${MAIL_FILE}.html
+rm -f ${MAIL_FILE}.new
+if [ -d $ZERONET_USER_HOME ]; then
+    sudo chown zeronet:zeronet $MAIL_FILE
 fi
 
 # create a web page showing the available fora
