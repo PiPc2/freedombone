@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Checks and repairs a given database
+
+# License
+# =======
+#
+# Copyright (C) 2015 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+CONFIG_FILE=$HOME/${PROJECT_NAME}.cfg
+
+export TEXTDOMAIN=${PROJECT_NAME}-repair-databases
+export TEXTDOMAINDIR="/usr/share/locale"
+
+# The database to be repaired
+DATABASE=$1
+
+ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | -nawk -F ':' '{print $2}')
+ADMIN_EMAIL_ADDRESS=${ADMIN_USERNAME}@${HOSTNAME}
+
+# Frequency - daily/weekly
+BACKUP_TYPE='daily'
+
+MYSQL_ROOT_PASSWORD=$(cat /root/dbpass)
+TEMPFILE=/root/repairdatabase_$DATABASE
+
+umask 0077
+
+if [ $2 ]; then
+    BACKUP_TYPE=$2
+fi
+
+# check the database
+mysqlcheck -c -u root --password="$MYSQL_ROOT_PASSWORD" $DATABASE > $TEMPFILE
+
+# Attempt to repair the database if it contains errors
+if grep -q "Error" "$TEMPFILE"; then
+    mysqlcheck -u root --password="$MYSQL_ROOT_PASSWORD" --auto-repair $DATABASE
+else
+    # No errors were found, so exit
+    rm -f $TEMPFILE
+    exit 0
+fi
+rm -f $TEMPFILE
+
+# Check the database again
+mysqlcheck -c -u root --password="$MYSQL_ROOT_PASSWORD" $DATABASE > $TEMPFILE
+
+# If it still contains errors then restore from backup
+if grep -q "Error" "$TEMPFILE"; then
+    mysql -u root --password="$MYSQL_ROOT_PASSWORD" $DATABASE -o < /var/backups/${DATABASE}_${BACKUP_TYPE}.sql
+
+    # Send a warning email
+    echo $"$DATABASE database corruption could not be repaired. Restored from backup." | mail -s $"${PROJECT_NAME} database maintenance" $ADMIN_EMAIL_ADDRESS
+    rm -f $TEMPFILE
+
+    exit 1
+fi
+rm -f $TEMPFILE
+
+exit 0
