@@ -1506,6 +1506,40 @@ function get_cjdns_password {
   fi
 }
 
+# script to automatically renew any Let's Encrypt certificates
+function letsencrypt_renewals {
+  renewals_script=/etc/cron.monthly/letsencrypt
+  renewal_failure_msg=$'The certificate for $LETSENCRYPT_DOMAIN could not be renewed'
+  renewal_email_title=$'${PROJECT_NAME} Lets Encrypt certificate renewal'
+
+  echo '#!/bin/bash' > $renewals_script
+  echo '' >> $renewals_script
+  echo "PROJECT_NAME='freedombone'" >> $renewals_script
+  echo 'COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt' >> $renewals_script
+  echo '' >> $renewals_script
+  echo 'if [ -d /etc/letsencrypt ]; then' >> $renewals_script
+  echo -n '    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | ' >> $renewals_script
+  echo -n "awk -F ':' '{print " >> $renewals_script
+  echo -n '$2' >> $renewals_script
+  echo "}')" >> $renewals_script
+  echo '    ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME@$HOSTNAME' >> $renewals_script
+  echo '    for d in /etc/letsencrypt/live/*/ ; do' >> $renewals_script
+  echo -n '        LETSENCRYPT_DOMAIN=$(echo "$d" | ' >> $renewals_script
+  echo -n "awk -F '/' '{print " >> $renewals_script
+  echo -n '$5' >> $renewals_script
+  echo "}')" >> $renewals_script
+  echo '        if [ -f /etc/nginx/sites-available/$LETSENCRYPT_DOMAIN ]; then' >> $renewals_script
+  echo '            ${PROJECT_NAME}-renew-cert -h $LETSENCRYPT_DOMAIN -p letsencrypt' >> $renewals_script
+  echo '            if [ ! "$?" = "0" ]; then' >> $renewals_script
+  echo -n "                echo '$renewal_failure_msg' | mail -s '$renewal_email_title' " >> $renewals_script
+  echo '$ADMIN_EMAIL_ADDRESS' >> $renewals_script
+  echo '            fi' >> $renewals_script
+  echo '        fi' >> $renewals_script
+  echo '    done' >> $renewals_script
+  echo 'fi' >> $renewals_script
+  chmod +x renewals_script
+}
+
 function save_firewall_settings {
   iptables-save > /etc/firewall.conf
   ip6tables-save > /etc/firewall6.conf
@@ -8946,6 +8980,7 @@ check_hwrng
 search_for_attached_usb_drive
 regenerate_ssh_keys
 create_upgrade_script
+letsencrypt_renewals
 install_zeronet
 install_watchdog_script
 configure_avahi
