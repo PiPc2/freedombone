@@ -146,7 +146,9 @@ if [ ! -d /etc/ssl/mycerts ]; then
     mkdir /etc/ssl/mycerts
 fi
 
-if [ $LETSENCRYPT_HOSTNAME ]; then
+CERTFILE=$HOSTNAME
+
+function add_cert_letsencrypt {
     CERTFILE=$LETSENCRYPT_HOSTNAME
 
     if [ ! -d $INSTALL_DIR ]; then
@@ -170,7 +172,6 @@ if [ $LETSENCRYPT_HOSTNAME ]; then
     systemctl stop nginx
 
     cd ${INSTALL_DIR}/letsencrypt
-    # TODO this requires user interaction - is there a non-interactive mode?
     ./letsencrypt-auto certonly --server $LETSENCRYPT_SERVER --standalone -d $LETSENCRYPT_HOSTNAME
     if [ ! "$?" = "0" ]; then
         echo $"Failed to install letsencrypt for domain $LETSENCRYPT_HOSTNAME"
@@ -192,8 +193,8 @@ if [ $LETSENCRYPT_HOSTNAME ]; then
     if [ -f /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key ]; then
         if [ ! -f /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key.old ]; then
             mv /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key.old
-		else
-			rm -f /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key
+        else
+            rm -f /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key
         fi
     fi
     ln -s /etc/letsencrypt/live/${LETSENCRYPT_HOSTNAME}/privkey.pem /etc/ssl/private/${LETSENCRYPT_HOSTNAME}.key
@@ -202,8 +203,8 @@ if [ $LETSENCRYPT_HOSTNAME ]; then
     if [ -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem ]; then
         if [ ! -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem.old ]; then
             mv /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem.old
-		else
-			rm -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem
+        else
+            rm -f /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem
         fi
     fi
     ln -s /etc/letsencrypt/live/${LETSENCRYPT_HOSTNAME}/fullchain.pem /etc/ssl/certs/${LETSENCRYPT_HOSTNAME}.pem
@@ -217,8 +218,9 @@ if [ $LETSENCRYPT_HOSTNAME ]; then
         echo $"Certificate for $LETSENCRYPT_HOSTNAME could not be pinned"
         exit 62878
     fi
-else
-    CERTFILE=$HOSTNAME
+}
+
+function add_cert_selfsigned {
     if [[ $ORGANISATION == "Freedombone-CA" ]]; then
         CERTFILE="ca-$HOSTNAME"
     fi
@@ -236,21 +238,39 @@ else
         echo $"Certificate for $CERTFILE could not be pinned"
         exit 62879
     fi
-fi
+}
 
-# generate DH params
-if [ ! $NODH ]; then
-    if [ ! -f /etc/ssl/certs/${CERTFILE}.dhparam ]; then
-        ${PROJECT_NAME}-dhparam -h ${CERTFILE} --fast yes
+function generate_dh_params {
+    if [ ! $NODH ]; then
+        if [ ! -f /etc/ssl/certs/${CERTFILE}.dhparam ]; then
+            ${PROJECT_NAME}-dhparam -h ${CERTFILE} --fast yes
+        fi
     fi
-fi
+}
 
-if [ -f /etc/init.d/nginx ]; then
-    /etc/init.d/nginx reload
-fi
+function restart_web_server {
+    if [ -f /etc/init.d/nginx ]; then
+        /etc/init.d/nginx reload
+    fi
+}
 
-# Create a bundle of your certificates
-cat /etc/ssl/mycerts/*.crt /etc/ssl/mycerts/*.pem > /etc/ssl/${PROJECT_NAME}-bundle.crt
-tar -czvf /etc/ssl/${PROJECT_NAME}-certs.tar.gz /etc/ssl/mycerts/*.crt /etc/ssl/mycerts/*.pem
+function make_cert_bundle {
+    # Create a bundle of your certificates
+    cat /etc/ssl/mycerts/*.crt /etc/ssl/mycerts/*.pem > /etc/ssl/${PROJECT_NAME}-bundle.crt
+    tar -czvf /etc/ssl/${PROJECT_NAME}-certs.tar.gz /etc/ssl/mycerts/*.crt /etc/ssl/mycerts/*.pem
+}
+
+function create_cert {
+    if [ $LETSENCRYPT_HOSTNAME ]; then
+        add_cert_letsencrypt
+    else
+        add_cert_selfsigned
+    fi
+}
+
+create_cert
+generate_dh_params
+restart_web_server
+make_cert_bundle
 
 exit 0
