@@ -76,16 +76,26 @@ function backup_directory_to_friend {
     if [ ! -d $SERVER_DIRECTORY/backup/${2} ]; then
         mkdir -p $SERVER_DIRECTORY/backup/${2}
     fi
-    obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with $ADMIN_BACKUP_KEY_ID ${1}
-    obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with $ADMIN_BACKUP_KEY_ID ${1}
-    obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with $ADMIN_BACKUP_KEY_ID
+    obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+    obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+    obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
     if [ ! "$?" = "0" ]; then
         if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
             shred -zu /root/temp${2}/*
             rm -rf /root/temp${2}
         fi
         # Send a warning email
-        echo "Unable to backup ${2}" | mail -s "${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+        echo "Unable to verify ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
+        exit 953
+    fi
+    obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID}
+    if [ ! "$?" = "0" ]; then
+        if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+            shred -zu /root/temp${2}/*
+            rm -rf /root/temp${2}
+        fi
+        # Send a warning email
+        echo "Unable to backup ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
         exit 853
     fi
     if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
@@ -127,9 +137,9 @@ function backup_configuration {
     fi
     cp -f $CONFIG_FILE /root/tempbackupconfig
     cp -f $COMPLETION_FILE /root/tempbackupconfig
-	if [ -f $BACKUP_EXTRA_DIRECTORIES ]; then
-		cp -f $BACKUP_EXTRA_DIRECTORIES /root/tempbackupconfig
-	fi
+    if [ -f $BACKUP_EXTRA_DIRECTORIES ]; then
+        cp -f $BACKUP_EXTRA_DIRECTORIES /root/tempbackupconfig
+    fi
     backup_directory_to_friend /root/tempbackupconfig config
 }
 
@@ -486,7 +496,7 @@ function backup_extra_directories {
         if [ -d "$backup_dir" ]; then
             destination_dir=$(echo "$backup_line" | awk -F ',' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
             if [[ $(valid_backup_destination "$destination_dir") == "yes" ]]; then
-				backup_directory_to_friend "$backup_dir" "$destination_dir"
+                backup_directory_to_friend "$backup_dir" "$destination_dir"
             else
                 echo $"WARNING: The backup directory $destination_dir is already used."
                 echo $"Choose a different destination name for backing up $backup_dir"
