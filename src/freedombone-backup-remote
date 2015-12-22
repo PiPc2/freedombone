@@ -32,6 +32,7 @@ PROJECT_NAME='freedombone'
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 CONFIG_FILE=$HOME/${PROJECT_NAME}.cfg
 BACKUP_EXTRA_DIRECTORIES=/root/backup-extra-dirs.csv
+ENABLE_VERIFICATION="no"
 
 export TEXTDOMAIN=${PROJECT_NAME}-backup-remote
 export TEXTDOMAINDIR="/usr/share/locale"
@@ -72,6 +73,9 @@ SUSPENDED_SITE=
 
 function suspend_site {
     # suspends a given website
+    if [[ $ENABLE_VERIFICATION != "yes" ]]; then
+        return
+    fi
     SUSPENDED_SITE="$1"
     nginx_dissite $SUSPENDED_SITE
     service nginx reload
@@ -100,16 +104,18 @@ function backup_directory_to_friend {
     fi
     obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
     obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-    obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-    if [ ! "$?" = "0" ]; then
-        if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-            shred -zu /root/temp${2}/*
-            rm -rf /root/temp${2}
+    if [[ $ENABLE_VERIFICATION == "yes" ]]; then
+        obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+        if [ ! "$?" = "0" ]; then
+            if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+                shred -zu /root/temp${2}/*
+                rm -rf /root/temp${2}
+            fi
+            # Send a warning email
+            echo "Unable to verify ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
+            restart_site
+            exit 953
         fi
-        # Send a warning email
-        echo "Unable to verify ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
-        restart_site
-        exit 953
     fi
     obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID}
     if [ ! "$?" = "0" ]; then
