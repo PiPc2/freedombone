@@ -88,20 +88,16 @@ if [ "$SSH_PUBLIC_KEY" ]; then
     fi
 fi
 
-if [ ! -d /home/$MY_USERNAME/Maildir ]; then
-    echo $'Email directory was not created'
-    userdel -r $MY_USERNAME
-    exit 6
-fi
+if [ -d /home/$MY_USERNAME/Maildir ]; then
+    if grep -q "set from=" /home/$MY_USERNAME/.muttrc; then
+        sed -i "s|set from=.*|set from='$MY_USERNAME <$MY_USERNAME@$HOSTNAME>'|g" /home/$MY_USERNAME/.muttrc
+    else
+        echo "set from='$MY_USERNAME <$MY_USERNAME@$HOSTNAME>'" >> /home/$MY_USERNAME/.muttrc
+    fi
 
-if grep -q "set from=" /home/$MY_USERNAME/.muttrc; then
-    sed -i "s|set from=.*|set from='$MY_USERNAME <$MY_USERNAME@$HOSTNAME>'|g" /home/$MY_USERNAME/.muttrc
-else
-    echo "set from='$MY_USERNAME <$MY_USERNAME@$HOSTNAME>'" >> /home/$MY_USERNAME/.muttrc
+    USERN='$USER@'
+    sed -i "s|$USERN|$MY_USERNAME@|g" /home/$MY_USERNAME/.procmailrc
 fi
-
-USERN='$USER@'
-sed -i "s|$USERN|$MY_USERNAME@|g" /home/$MY_USERNAME/.procmailrc
 
 # generate a gpg key
 echo "Making a GPG key for $MY_USERNAME@$HOSTNAME"
@@ -139,19 +135,21 @@ if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
     exit 7
 fi
 
-# encrypt outgoing mail to the "sent" folder
-if ! grep -q "pgp_encrypt_only_command" /home/$MY_USERNAME/.muttrc; then
-    echo '' >> /home/$MY_USERNAME/.muttrc
-    echo $'# Encrypt items in the Sent folder' >> /home/$MY_USERNAME/.muttrc
-    echo "set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
-else
-    sed -i "s|set pgp_encrypt_only_command.*|set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
-fi
+if [ -f /home/$MY_USERNAME/.muttrc ]; then
+    # encrypt outgoing mail to the "sent" folder
+    if ! grep -q "pgp_encrypt_only_command" /home/$MY_USERNAME/.muttrc; then
+        echo '' >> /home/$MY_USERNAME/.muttrc
+        echo $'# Encrypt items in the Sent folder' >> /home/$MY_USERNAME/.muttrc
+        echo "set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
+    else
+        sed -i "s|set pgp_encrypt_only_command.*|set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
+    fi
 
-if ! grep -q "pgp_encrypt_sign_command" /home/$MY_USERNAME/.muttrc; then
-    echo "set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
-else
-    sed -i "s|set pgp_encrypt_sign_command.*|set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
+    if ! grep -q "pgp_encrypt_sign_command" /home/$MY_USERNAME/.muttrc; then
+        echo "set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
+    else
+        sed -i "s|set pgp_encrypt_sign_command.*|set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
+    fi
 fi
 
 if ! grep -q "Change your GPG password" /home/$MY_USERNAME/README; then
