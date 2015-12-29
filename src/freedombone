@@ -195,6 +195,7 @@ HUBZILLA_COMMIT='6613275cc2f4103a17cc2bfe513dc20573df5aab'
 # Domain name for git hosting installation
 GIT_DOMAIN_NAME=
 GIT_CODE=
+GIT_ONION_PORT=8090
 GIT_DOMAIN_REPO="https://github.com/gogits/gogs.git"
 GIT_ADMIN_PASSWORD=
 GOGS_COMMIT='efea642d6cf419c9587d44b95ff2bc04e89f7bfe'
@@ -6178,6 +6179,38 @@ quit" > $INSTALL_DIR/batch.sql
   echo '        access_log off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
   echo '    }' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
   echo '}' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo 'server {' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    listen 127.0.0.1:${GIT_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    root /var/www/$GIT_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    server_name $GIT_DOMAIN_NAME;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    access_log off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo "    error_log /var/log/nginx/${GIT_DOMAIN_NAME}_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    limit_conn conn_limit_per_ip 10;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    add_header Strict-Transport-Security max-age=0;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    location / {' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        proxy_pass http://localhost:3000;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    client_max_body_size 10G; # set max upload size' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    client_body_buffer_size 128k;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    location = /robots.txt {' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        allow all;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        log_not_found off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '        access_log off;' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '    }' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
+  echo '}' >> /etc/nginx/sites-available/$GIT_DOMAIN_NAME
 
   configure_php
 
@@ -6191,8 +6224,34 @@ quit" > $INSTALL_DIR/batch.sql
   fi
 
   nginx_ensite $GIT_DOMAIN_NAME
+
+  if [ ! -d /var/lib/tor ]; then
+      echo $'No Tor installation found. Gogs onion site cannot be configured.'
+      exit 83547
+  fi
+  if ! grep -q "hidden_service_gogs" /etc/tor/torrc; then
+      echo 'HiddenServiceDir /var/lib/tor/hidden_service_gogs/' >> /etc/tor/torrc
+      echo "HiddenServicePort 80 127.0.0.1:${GIT_ONION_PORT}" >> /etc/tor/torrc
+      echo $'Added onion site for Gogs'
+  fi
+
   service php5-fpm restart
   service nginx restart
+  systemctl restart tor
+
+  if [ ! -f /var/lib/tor/hidden_service_gogs/hostname ]; then
+      echo $'Gogs onion site hostname not found'
+      exit 53935
+  fi
+  GIT_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_gogs/hostname)
+
+  if ! grep -q "Gogs onion domain" /home/$MY_USERNAME/README; then
+      echo "Gogs onion domain: ${GIT_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+      echo '' >> /home/$MY_USERNAME/README
+      chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+      chmod 600 /home/$MY_USERNAME/README
+  fi
+  echo "Gogs onion domain:${GIT_ONION_HOSTNAME}" >> $COMPLETION_FILE
 
   # update the dynamic DNS
   CURRENT_DDNS_DOMAIN=$GIT_DOMAIN_NAME
