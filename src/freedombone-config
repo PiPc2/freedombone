@@ -123,6 +123,7 @@ function show_help {
     echo $'  -m --min              Minimum password length (characters)'
     echo $'  -w --www              Freedombone web site'
     echo $'  -b --bm               Freedombone support Bitmessage address'
+    echo $'  -o --onion [yes|no]   Whether to only create .onion sites'
     echo $'     --minimal [yes|no] For minimalistic "consumer grade" installs'
     echo ''
     exit 0
@@ -160,6 +161,10 @@ do
         --minimal)
             shift
             MINIMAL_INSTALL="$1"
+            ;;
+        -o|--onion)
+            shift
+            ONION_ONLY="$1"
             ;;
         *)
             # unknown option
@@ -1236,386 +1241,420 @@ function interactive_configuration {
     fi
 
     if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
-        WIKI_DETAILS_COMPLETE=
-        while [ ! $WIKI_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
+        if [[ $ONION_ONLY != "no" ]]; then
+            WIKI_TITLE='My Wiki'
+            WIKI_DOMAIN_NAME='wiki.onion'
+        else
+            WIKI_DETAILS_COMPLETE=
+            while [ ! $WIKI_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
 
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Wiki Configuration" \
-                       --form $"\nPlease enter your wiki details:" 11 55 4 \
-                       $"Title:" 1 1 "$(grep 'WIKI_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
-                       $"Domain:" 2 1 "$(grep 'WIKI_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
-                       $"Code:" 3 1 "$(grep 'WIKI_CODE' temp.cfg | awk -F '=' '{print $2}')" 3 16 25 40 \
-                       2> $data
-            else
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Wiki Configuration" \
-                       --form $"\nPlease enter your wiki details:" 11 55 3 \
-                       $"Title:" 1 1 "$(grep 'WIKI_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
-                       $"Domain:" 2 1 "$(grep 'WIKI_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
-                       2> $data
-            fi
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            WIKI_TITLE=$(cat $data | sed -n 1p)
-            WIKI_DOMAIN_NAME=$(cat $data | sed -n 2p)
-            if [ $WIKI_DOMAIN_NAME ]; then
-                TEST_DOMAIN_NAME=$WIKI_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $WIKI_DOMAIN_NAME ]]; then
-                    WIKI_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Wiki Configuration" \
+                           --form $"\nPlease enter your wiki details:" 11 55 4 \
+                           $"Title:" 1 1 "$(grep 'WIKI_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
+                           $"Domain:" 2 1 "$(grep 'WIKI_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
+                           $"Code:" 3 1 "$(grep 'WIKI_CODE' temp.cfg | awk -F '=' '{print $2}')" 3 16 25 40 \
+                           2> $data
                 else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        WIKI_CODE=$(cat $data | sed -n 3p)
-                        if [ ${#WIKI_CODE} -lt 30 ]; then
-                            WIKI_DOMAIN_NAME=
-                            dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Wiki Configuration" \
+                           --form $"\nPlease enter your wiki details:" 11 55 3 \
+                           $"Title:" 1 1 "$(grep 'WIKI_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
+                           $"Domain:" 2 1 "$(grep 'WIKI_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
+                           2> $data
+                fi
+                sel=$?
+                case $sel in
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+                WIKI_TITLE=$(cat $data | sed -n 1p)
+                WIKI_DOMAIN_NAME=$(cat $data | sed -n 2p)
+                if [ $WIKI_DOMAIN_NAME ]; then
+                    TEST_DOMAIN_NAME=$WIKI_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $WIKI_DOMAIN_NAME ]]; then
+                        WIKI_DOMAIN_NAME=
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                            WIKI_CODE=$(cat $data | sed -n 3p)
+                            if [ ${#WIKI_CODE} -lt 30 ]; then
+                                WIKI_DOMAIN_NAME=
+                                dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                            fi
                         fi
                     fi
                 fi
-            fi
-            if [ $WIKI_DOMAIN_NAME ]; then
-                WIKI_DETAILS_COMPLETE="yes"
-            fi
-        done
+                if [ $WIKI_DOMAIN_NAME ]; then
+                    WIKI_DETAILS_COMPLETE="yes"
+                fi
+            done
+        fi
         save_configuration_file
     fi
 
     if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
-        FULLBLOG_DETAILS_COMPLETE=
-        while [ ! $FULLBLOG_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Blog Configuration" \
-                       --form $"\nPlease enter your blog details:" 11 55 4 \
-                       $"Title:" 1 1 "$(grep 'MY_BLOG_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       $"Domain:" 2 1 "$(grep 'FULLBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
-                       $"Code:" 3 1 "$(grep 'FULLBLOG_CODE' temp.cfg | awk -F '=' '{print $2}')" 3 16 25 30 \
-                       2> $data
-            else
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Blog Configuration" \
-                       --form $"\nPlease enter your blog details:" 11 55 3 \
-                       $"Title:" 1 1 "$(grep 'MY_BLOG_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       $"Domain:" 2 1 "$(grep 'FULLBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
-                       2> $data
-            fi
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            MY_BLOG_TITLE=$(cat $data | sed -n 1p)
-            FULLBLOG_DOMAIN_NAME=$(cat $data | sed -n 2p)
-            if [ $FULLBLOG_DOMAIN_NAME ]; then
-                if [[ $FULLBLOG_DOMAIN_NAME == "$WIKI_DOMAIN_NAME" ]]; then
-                    FULLBLOG_DOMAIN_NAME=""
-                fi
-                TEST_DOMAIN_NAME=$FULLBLOG_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $FULLBLOG_DOMAIN_NAME ]]; then
-                    FULLBLOG_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+        if [[ $ONION_ONLY != "no" ]]; then
+            MY_BLOG_TITLE='My Blog'
+            FULLBLOG_DOMAIN_NAME='blog.onion'
+        else
+            FULLBLOG_DETAILS_COMPLETE=
+            while [ ! $FULLBLOG_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Blog Configuration" \
+                           --form $"\nPlease enter your blog details:" 11 55 4 \
+                           $"Title:" 1 1 "$(grep 'MY_BLOG_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           $"Domain:" 2 1 "$(grep 'FULLBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
+                           $"Code:" 3 1 "$(grep 'FULLBLOG_CODE' temp.cfg | awk -F '=' '{print $2}')" 3 16 25 30 \
+                           2> $data
                 else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        FULLBLOG_CODE=$(cat $data | sed -n 3p)
-                        if [ ${#FULLBLOG_CODE} -lt 30 ]; then
-                            FULLBLOG_DOMAIN_NAME=
-                            dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Blog Configuration" \
+                           --form $"\nPlease enter your blog details:" 11 55 3 \
+                           $"Title:" 1 1 "$(grep 'MY_BLOG_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           $"Domain:" 2 1 "$(grep 'FULLBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
+                           2> $data
+                fi
+                sel=$?
+                case $sel in
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+                MY_BLOG_TITLE=$(cat $data | sed -n 1p)
+                FULLBLOG_DOMAIN_NAME=$(cat $data | sed -n 2p)
+                if [ $FULLBLOG_DOMAIN_NAME ]; then
+                    if [[ $FULLBLOG_DOMAIN_NAME == "$WIKI_DOMAIN_NAME" ]]; then
+                        FULLBLOG_DOMAIN_NAME=""
+                    fi
+                    TEST_DOMAIN_NAME=$FULLBLOG_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $FULLBLOG_DOMAIN_NAME ]]; then
+                        FULLBLOG_DOMAIN_NAME=
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                            FULLBLOG_CODE=$(cat $data | sed -n 3p)
+                            if [ ${#FULLBLOG_CODE} -lt 30 ]; then
+                                FULLBLOG_DOMAIN_NAME=
+                                dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                            fi
                         fi
                     fi
                 fi
-            fi
-            if [ $FULLBLOG_DOMAIN_NAME ]; then
-                FULLBLOG_DETAILS_COMPLETE="yes"
-            fi
-        done
+                if [ $FULLBLOG_DOMAIN_NAME ]; then
+                    FULLBLOG_DETAILS_COMPLETE="yes"
+                fi
+            done
+        fi
         save_configuration_file
     fi
 
     if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
-        OWNCLOUD_DETAILS_COMPLETE=
-        while [ ! $OWNCLOUD_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Owncloud Configuration" \
-                       --form $"\nPlease enter your Owncloud details:" 11 55 3 \
-                       $"Domain:" 1 1 "$(grep 'OWNCLOUD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       $"Code:" 2 1 "$(grep 'OWNCLOUD_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
-                       2> $data
-            else
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Owncloud Configuration" \
-                       --form $"\nPlease enter your Owncloud details:" 11 55 3 \
-                       $"Domain:" 1 1 "$(grep 'OWNCLOUD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       2> $data
-            fi
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            OWNCLOUD_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $OWNCLOUD_DOMAIN_NAME ]; then
-                TEST_DOMAIN_NAME=$OWNCLOUD_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $OWNCLOUD_DOMAIN_NAME ]]; then
-                    OWNCLOUD_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+        if [[ $ONION_ONLY != "no" ]]; then
+            OWNCLOUD_DOMAIN_NAME='owncloud.onion'
+        else
+            OWNCLOUD_DETAILS_COMPLETE=
+            while [ ! $OWNCLOUD_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Owncloud Configuration" \
+                           --form $"\nPlease enter your Owncloud details:" 11 55 3 \
+                           $"Domain:" 1 1 "$(grep 'OWNCLOUD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           $"Code:" 2 1 "$(grep 'OWNCLOUD_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
+                           2> $data
                 else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        OWNCLOUD_CODE=$(cat $data | sed -n 2p)
-                        if [ ${#OWNCLOUD_CODE} -lt 30 ]; then
-                            OWNCLOUD_DOMAIN_NAME=
-                            dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Owncloud Configuration" \
+                           --form $"\nPlease enter your Owncloud details:" 11 55 3 \
+                           $"Domain:" 1 1 "$(grep 'OWNCLOUD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           2> $data
+                fi
+                sel=$?
+                case $sel in
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+                OWNCLOUD_DOMAIN_NAME=$(cat $data | sed -n 1p)
+                if [ $OWNCLOUD_DOMAIN_NAME ]; then
+                    TEST_DOMAIN_NAME=$OWNCLOUD_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $OWNCLOUD_DOMAIN_NAME ]]; then
+                        OWNCLOUD_DOMAIN_NAME=
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                            OWNCLOUD_CODE=$(cat $data | sed -n 2p)
+                            if [ ${#OWNCLOUD_CODE} -lt 30 ]; then
+                                OWNCLOUD_DOMAIN_NAME=
+                                dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                            fi
                         fi
                     fi
                 fi
-            fi
-            if [ $OWNCLOUD_DOMAIN_NAME ]; then
-                OWNCLOUD_DETAILS_COMPLETE="yes"
-            fi
-        done
+                if [ $OWNCLOUD_DOMAIN_NAME ]; then
+                    OWNCLOUD_DETAILS_COMPLETE="yes"
+                fi
+            done
+        fi
         save_configuration_file
     fi
 
     if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
-        HUBZILLA_DETAILS_COMPLETE=
-        while [ ! $HUBZILLA_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Hubzilla Configuration" \
-                       --form $"\nPlease enter your Hubzilla details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 55 3 \
-                       $"Domain:" 1 1 "$(grep 'HUBZILLA_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       $"Code:" 2 1 "$(grep 'HUBZILLA_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
-                       2> $data
-            else
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Hubzilla Configuration" \
-                       --form $"\nPlease enter your Hubzilla details\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 11 55 3 \
-                       $"Domain:" 1 1 "$(grep 'HUBZILLA_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       2> $data
-            fi
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            HUBZILLA_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $HUBZILLA_DOMAIN_NAME ]; then
-                TEST_DOMAIN_NAME=$HUBZILLA_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $HUBZILLA_DOMAIN_NAME ]]; then
-                    HUBZILLA_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+        if [[ $ONION_ONLY != "no" ]]; then
+            HUBZILLA_DOMAIN_NAME='hubzilla.onion'
+        else
+            HUBZILLA_DETAILS_COMPLETE=
+            while [ ! $HUBZILLA_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Hubzilla Configuration" \
+                           --form $"\nPlease enter your Hubzilla details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 55 3 \
+                           $"Domain:" 1 1 "$(grep 'HUBZILLA_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           $"Code:" 2 1 "$(grep 'HUBZILLA_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
+                           2> $data
                 else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        HUBZILLA_CODE=$(cat $data | sed -n 2p)
-                        if [ ${#HUBZILLA_CODE} -lt 30 ]; then
-                            HUBZILLA_DOMAIN_NAME=
-                            dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Hubzilla Configuration" \
+                           --form $"\nPlease enter your Hubzilla details\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 11 55 3 \
+                           $"Domain:" 1 1 "$(grep 'HUBZILLA_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           2> $data
+                fi
+                sel=$?
+                case $sel in
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+                HUBZILLA_DOMAIN_NAME=$(cat $data | sed -n 1p)
+                if [ $HUBZILLA_DOMAIN_NAME ]; then
+                    TEST_DOMAIN_NAME=$HUBZILLA_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $HUBZILLA_DOMAIN_NAME ]]; then
+                        HUBZILLA_DOMAIN_NAME=
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                            HUBZILLA_CODE=$(cat $data | sed -n 2p)
+                            if [ ${#HUBZILLA_CODE} -lt 30 ]; then
+                                HUBZILLA_DOMAIN_NAME=
+                                dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                            fi
                         fi
                     fi
                 fi
-            fi
-            if [ $HUBZILLA_DOMAIN_NAME ]; then
-                HUBZILLA_DETAILS_COMPLETE="yes"
-            fi
-        done
+                if [ $HUBZILLA_DOMAIN_NAME ]; then
+                    HUBZILLA_DETAILS_COMPLETE="yes"
+                fi
+            done
+        fi
         save_configuration_file
     fi
 
     if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
-        MICROBLOG_DETAILS_COMPLETE=
-        while [ ! $MICROBLOG_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Microblog Configuration" \
-                       --form $"\nPlease enter your Microblog details\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 11 55 3 \
-                       $"Domain:" 1 1 "$(grep 'MICROBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       $"Code:" 2 1 "$(grep 'MICROBLOG_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
-                       2> $data
-            else
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Microblog Configuration" \
-                       --form $"\nPlease enter your Microblog details\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 11 55 3 \
-                       $"Domain:" 1 1 "$(grep 'MICROBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       2> $data
-            fi
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            MICROBLOG_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $MICROBLOG_DOMAIN_NAME ]; then
-                if [[ $MICROBLOG_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
-                    MICROBLOG_DOMAIN_NAME=""
-                fi
-                TEST_DOMAIN_NAME=$MICROBLOG_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $MICROBLOG_DOMAIN_NAME ]]; then
-                    MICROBLOG_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+        if [[ $ONION_ONLY != "no" ]]; then
+            MICROBLOG_DOMAIN_NAME='microblog.onion'
+        else
+            MICROBLOG_DETAILS_COMPLETE=
+            while [ ! $MICROBLOG_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Microblog Configuration" \
+                           --form $"\nPlease enter your Microblog details\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 11 55 3 \
+                           $"Domain:" 1 1 "$(grep 'MICROBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           $"Code:" 2 1 "$(grep 'MICROBLOG_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
+                           2> $data
                 else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        MICROBLOG_CODE=$(cat $data | sed -n 2p)
-                        if [ ${#MICROBLOG_CODE} -lt 30 ]; then
-                            MICROBLOG_DOMAIN_NAME=
-                            dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Microblog Configuration" \
+                           --form $"\nPlease enter your Microblog details\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 11 55 3 \
+                           $"Domain:" 1 1 "$(grep 'MICROBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           2> $data
+                fi
+                sel=$?
+                case $sel in
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+                MICROBLOG_DOMAIN_NAME=$(cat $data | sed -n 1p)
+                if [ $MICROBLOG_DOMAIN_NAME ]; then
+                    if [[ $MICROBLOG_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
+                        MICROBLOG_DOMAIN_NAME=""
+                    fi
+                    TEST_DOMAIN_NAME=$MICROBLOG_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $MICROBLOG_DOMAIN_NAME ]]; then
+                        MICROBLOG_DOMAIN_NAME=
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                            MICROBLOG_CODE=$(cat $data | sed -n 2p)
+                            if [ ${#MICROBLOG_CODE} -lt 30 ]; then
+                                MICROBLOG_DOMAIN_NAME=
+                                dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                            fi
                         fi
                     fi
                 fi
-            fi
-            if [ $MICROBLOG_DOMAIN_NAME ]; then
-                MICROBLOG_DETAILS_COMPLETE="yes"
-            fi
-        done
+                if [ $MICROBLOG_DOMAIN_NAME ]; then
+                    MICROBLOG_DETAILS_COMPLETE="yes"
+                fi
+            done
+        fi
         save_configuration_file
     fi
 
     if [[ $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
-        DEVELOPER_DETAILS_COMPLETE=
-        while [ ! $DEVELOPER_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
+        if [[ $ONION_ONLY != "no" ]]; then
+            GIT_DOMAIN_NAME='git.onion'
+        else
+            DEVELOPER_DETAILS_COMPLETE=
+            while [ ! $DEVELOPER_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
 
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Developer Configuration" \
-                       --form $"\nPlease enter your Git hosting site details.\nIf You don't need developer tools then just select Ok" 11 55 3 \
-                       $"Domain:" 1 1 "$(grep 'GIT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
-                       $"Code:" 2 1 "$(grep 'GIT_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
-                       2> $data
-            else
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Developer Configuration" \
-                       --form $"\nPlease enter your Git hosting site details.\nIf You don't need developer tools then just select Ok" 11 55 2 \
-                       $"Domain:" 1 1 "$(grep 'GIT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
-                       2> $data
-            fi
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            GIT_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $GIT_DOMAIN_NAME ]; then
-                TEST_DOMAIN_NAME=$GIT_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $GIT_DOMAIN_NAME ]]; then
-                    GIT_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Developer Configuration" \
+                           --form $"\nPlease enter your Git hosting site details.\nIf You don't need developer tools then just select Ok" 11 55 3 \
+                           $"Domain:" 1 1 "$(grep 'GIT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
+                           $"Code:" 2 1 "$(grep 'GIT_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 40 \
+                           2> $data
                 else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        GIT_CODE=$(cat $data | sed -n 2p)
-                        if [ ${#GIT_CODE} -lt 30 ]; then
-                            GIT_DOMAIN_NAME=
-                            dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Developer Configuration" \
+                           --form $"\nPlease enter your Git hosting site details.\nIf You don't need developer tools then just select Ok" 11 55 2 \
+                           $"Domain:" 1 1 "$(grep 'GIT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 40 \
+                           2> $data
+                fi
+                sel=$?
+                case $sel in
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+                GIT_DOMAIN_NAME=$(cat $data | sed -n 1p)
+                if [ $GIT_DOMAIN_NAME ]; then
+                    TEST_DOMAIN_NAME=$GIT_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $GIT_DOMAIN_NAME ]]; then
+                        GIT_DOMAIN_NAME=
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                            GIT_CODE=$(cat $data | sed -n 2p)
+                            if [ ${#GIT_CODE} -lt 30 ]; then
+                                GIT_DOMAIN_NAME=
+                                dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                            fi
                         fi
                     fi
+                else
+                    DEVELOPER_DETAILS_COMPLETE="yes"
                 fi
-            else
-                DEVELOPER_DETAILS_COMPLETE="yes"
-            fi
-            if [ $GIT_DOMAIN_NAME ]; then
-                DEVELOPER_DETAILS_COMPLETE="yes"
-            fi
-        done
+                if [ $GIT_DOMAIN_NAME ]; then
+                    DEVELOPER_DETAILS_COMPLETE="yes"
+                fi
+            done
+        fi
         save_configuration_file
     fi
 
     if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
-        DEFAULT_DOMAIN_DETAILS_COMPLETE=
-        while [ ! $DEFAULT_DOMAIN_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Your main domain name" \
-                       --form $"\nWhich domain name should your email/XMPP/IRC/VoIP be associated with?" 11 55 3 \
-                       $"Domain:" 1 1 "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
-                       $"Code:" 2 1 "$(grep 'DEFAULT_DOMAIN_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
-                       2> $data
-                sel=$?
-                case $sel in
-                    1) exit 1;;
-                    255) exit 1;;
-                esac
-                DEFAULT_DOMAIN_NAME=$(cat $data | sed -n 1p)
-                DEFAULT_DOMAIN_CODE=$(cat $data | sed -n 2p)
+        if [[ $ONION_ONLY != "no" ]]; then
+            DEFAULT_DOMAIN_NAME="${PROJECT_NAME}.onion"
+        else
+            DEFAULT_DOMAIN_DETAILS_COMPLETE=
+            while [ ! $DEFAULT_DOMAIN_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Your main domain name" \
+                           --form $"\nWhich domain name should your email/XMPP/IRC/VoIP be associated with?" 11 55 3 \
+                           $"Domain:" 1 1 "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 25 30 \
+                           $"Code:" 2 1 "$(grep 'DEFAULT_DOMAIN_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 25 30 \
+                           2> $data
+                    sel=$?
+                    case $sel in
+                        1) exit 1;;
+                        255) exit 1;;
+                    esac
+                    DEFAULT_DOMAIN_NAME=$(cat $data | sed -n 1p)
+                    DEFAULT_DOMAIN_CODE=$(cat $data | sed -n 2p)
+                    if [ $DEFAULT_DOMAIN_NAME ]; then
+                        if [ ${#DEFAULT_DOMAIN_CODE} -lt 30 ]; then
+                            DEFAULT_DOMAIN_NAME=
+                            dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                        fi
+                    fi
+                else
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --inputbox $"Which domain name should your email/XMPP/IRC/VoIP be associated with?" 10 45 \
+                           "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
+                    sel=$?
+                    case $sel in
+                        0) DEFAULT_DOMAIN_NAME=$(cat $data);;
+                        1) exit 1;;
+                        255) exit 1;;
+                    esac
+                fi
                 if [ $DEFAULT_DOMAIN_NAME ]; then
-                    if [ ${#DEFAULT_DOMAIN_CODE} -lt 30 ]; then
+                    TEST_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $DEFAULT_DOMAIN_NAME ]]; then
                         DEFAULT_DOMAIN_NAME=
-                        dialog --title $"FreeDNS code" --msgbox "$FREEDNS_MESSAGE" 15 50
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        DEFAULT_DOMAIN_DETAILS_COMPLETE="yes"
                     fi
                 fi
-            else
+            done
+        fi
+        save_configuration_file
+
+        if [[ $ONION_ONLY != "no" ]]; then
+            EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
+        else
+            while [ ${#MY_EMAIL_ADDRESS} -lt 5 ]
+            do
+                EMAIL_ADDRESS=$(grep 'MY_EMAIL_ADDRESS' temp.cfg | awk -F '=' '{print $2}')
+                if [ ! $EMAIL_ADDRESS ]; then
+                    EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
+                fi
+                if [ ${#MY_EMAIL_ADDRESS} -lt 5 ]; then
+                    EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
+                fi
+
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
                 dialog --backtitle $"Freedombone Configuration" \
-                       --inputbox $"Which domain name should your email/XMPP/IRC/VoIP be associated with?" 10 45 \
-                       "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
+                       --inputbox $"Your email address" 10 30 "$EMAIL_ADDRESS" 2> $data
                 sel=$?
                 case $sel in
-                    0) DEFAULT_DOMAIN_NAME=$(cat $data);;
+                    0) MY_EMAIL_ADDRESS=$(cat $data);;
                     1) exit 1;;
                     255) exit 1;;
                 esac
-            fi
-            if [ $DEFAULT_DOMAIN_NAME ]; then
-                TEST_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $DEFAULT_DOMAIN_NAME ]]; then
-                    DEFAULT_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
-                else
-                    DEFAULT_DOMAIN_DETAILS_COMPLETE="yes"
-                fi
-            fi
-        done
-        save_configuration_file
-
-        while [ ${#MY_EMAIL_ADDRESS} -lt 5 ]
-        do
-            EMAIL_ADDRESS=$(grep 'MY_EMAIL_ADDRESS' temp.cfg | awk -F '=' '{print $2}')
-            if [ ! $EMAIL_ADDRESS ]; then
-                EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
-            fi
-            if [ ${#MY_EMAIL_ADDRESS} -lt 5 ]; then
-                EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
-            fi
-
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            dialog --backtitle $"Freedombone Configuration" \
-                   --inputbox $"Your email address" 10 30 "$EMAIL_ADDRESS" 2> $data
-            sel=$?
-            case $sel in
-                0) MY_EMAIL_ADDRESS=$(cat $data);;
-                1) exit 1;;
-                255) exit 1;;
-            esac
-        done
+            done
+        fi
         save_configuration_file
     fi
 
@@ -1767,6 +1806,9 @@ function read_configuration {
         fi
         if grep -q "WIFI_CHANNEL" $CONFIGURATION_FILE; then
             WIFI_CHANNEL=$(grep "WIFI_CHANNEL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "ONION_ONLY" $CONFIGURATION_FILE; then
+            ONION_ONLY=$(grep "ONION_ONLY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
     fi
 }
