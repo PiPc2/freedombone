@@ -281,6 +281,9 @@ MARIADB_PASSWORD=
 # Directory where XMPP settings are stored
 XMPP_DIRECTORY="/var/lib/prosody"
 
+# port used for xmpp as an onion service
+XMPP_ONION_PORT=8091
+
 # file containing a list of remote locations to backup to
 # Format: [username@friendsdomain//home/username] [ssh_password]
 # With the only space character being between the server and the password
@@ -6722,13 +6725,29 @@ function install_xmpp {
         return
     fi
     apt-get -y install lua-sec
-    apt-get -y install prosody
+    apt-get -y install prosody prosody-modules mercurial
 
     if [ ! -d /etc/prosody ]; then
         echo $"ERROR: prosody does not appear to have installed. $CHECK_MESSAGE"
         exit 52
     fi
 
+    # obtain the prosody modules
+    cd $INSTALL_DIR
+    hg clone https://hg.prosody.im/prosody-modules/ prosody-modules
+    if [ ! -d $INSTALL_DIR/prosody-modules/mod_onions ]; then
+        echo $'mod_onions prosody module could not be found'
+        exit 73254
+    fi
+
+    # install the onions module
+    cp $INSTALL_DIR/prosody-modules/mod_onions/mod_onions.lua /usr/lib/prosody/modules/mod_onions.lua
+    if [ ! -f /usr/lib/prosody/modules/mod_onions.lua ]; then
+        echo $'mod_onions.lua could not be copied to the prosody modules directory'
+        exit 63952
+    fi
+
+    # create a certificate
     if [ ! -f /etc/ssl/certs/xmpp.dhparam ]; then
         ${PROJECT_NAME}-addcert -h xmpp --dhkey $DH_KEYLENGTH
         check_certificates xmpp
@@ -6764,6 +6783,7 @@ function install_xmpp {
         echo '  "bosh"; -- Enable mod_bosh' >> /etc/prosody/conf.avail/xmpp.cfg.lua
         echo '  "tls"; -- Enable mod_tls' >> /etc/prosody/conf.avail/xmpp.cfg.lua
         echo '  "saslauth"; -- Enable mod_saslauth' >> /etc/prosody/conf.avail/xmpp.cfg.lua
+        echo '  "onions"; -- Enable chat via onion service' >> /etc/prosody/conf.avail/xmpp.cfg.lua
         echo '}' >> /etc/prosody/conf.avail/xmpp.cfg.lua
         echo '' >> /etc/prosody/conf.avail/xmpp.cfg.lua
         echo 'c2s_require_encryption = true' >> /etc/prosody/conf.avail/xmpp.cfg.lua
@@ -6803,8 +6823,27 @@ function install_xmpp {
     sed -i 's|certificate = "/etc/prosody/certs/example.com.crt"|certificate = "/etc/ssl/certs/xmpp.crt"|g' /etc/prosody/prosody.cfg.lua
     sed -i "s/example.com/$DEFAULT_DOMAIN_NAME/g" /etc/prosody/prosody.cfg.lua
 
-    service prosody restart
+    systemctl restart prosody
     touch /home/$MY_USERNAME/README
+
+    if [ ! -d /var/lib/tor ]; then
+        echo $'No Tor installation found. XMPP onion site cannot be configured.'
+        exit 877367
+    fi
+    if ! grep -q "hidden_service_xmpp" /etc/tor/torrc; then
+        echo 'HiddenServiceDir /var/lib/tor/hidden_service_xmpp/' >> /etc/tor/torrc
+        echo "HiddenServicePort 5222 127.0.0.1:${XMPP_ONION_PORT}" >> /etc/tor/torrc
+        echo $'Added onion site for XMPP chat'
+    fi
+
+    systemctl restart tor
+
+    if [ ! -f /var/lib/tor/hidden_service_owncloud/hostname ]; then
+        echo $'XMPP onion site hostname not found'
+        exit 65349
+    fi
+    XMPP_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_xmpp/hostname)
+    echo "XMPP onion domain:${XMPP_ONION_HOSTNAME}" >> $COMPLETION_FILE
 
     if ! grep -q "Your XMPP password is" /home/$MY_USERNAME/README; then
         if [ -f $IMAGE_PASSWORD_FILE ]; then
@@ -6817,6 +6856,7 @@ function install_xmpp {
         echo '' >> /home/$MY_USERNAME/README
         echo $'XMPP' >> /home/$MY_USERNAME/README
         echo '====' >> /home/$MY_USERNAME/README
+        echo $"XMPP onion domain: ${XMPP_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
         echo $"Your XMPP password is: $XMPP_PASSWORD" >> /home/$MY_USERNAME/README
         echo $'You can change it with: ' >> /home/$MY_USERNAME/README
         echo '' >> /home/$MY_USERNAME/README
