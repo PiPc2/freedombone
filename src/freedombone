@@ -102,6 +102,8 @@ DDNS_USERNAME=
 DDNS_PASSWORD=
 CURRENT_DDNS_DOMAIN=
 
+EXIM_ONION_REPO='https://github.com/petterreinholdtsen/exim4-smtorp'
+
 NGINX_ENSITE_REPO="https://github.com/perusio/nginx_ensite"
 NGINX_ENSITE_COMMIT='fa4d72ce1c0a490442c8474e9c8dc21ed52c93d0'
 
@@ -308,6 +310,9 @@ XMPP_ECC_CURVE='"secp384r1"'
 
 # the default email address
 MY_EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
+
+# port used for SMTP via an onion address
+EMAIL_ONION_PORT=8093
 
 # optionally specify your name to appear on the blog
 MY_NAME=$DEFAULT_DOMAIN_NAME
@@ -3679,10 +3684,8 @@ function configure_dns {
     echo 'configure_dns' >> $COMPLETION_FILE
 }
 
-function set_your_domain_name {
-    if grep -Fxq "set_your_domain_name" $COMPLETION_FILE; then
-        return
-    fi
+function set_hostname {
+    DEFAULT_DOMAIN_NAME="$1"
 
     echo "$DEFAULT_DOMAIN_NAME" > /etc/hostname
     hostname $DEFAULT_DOMAIN_NAME
@@ -3692,6 +3695,15 @@ function set_your_domain_name {
     else
         echo "127.0.1.1  $DEFAULT_DOMAIN_NAME" >> /etc/hosts
     fi
+}
+
+function set_your_domain_name {
+    if grep -Fxq "set_your_domain_name" $COMPLETION_FILE; then
+        return
+    fi
+
+	set_hostname $DEFAULT_DOMAIN_NAME
+
     echo 'set_your_domain_name' >> $COMPLETION_FILE
 }
 
@@ -4091,12 +4103,106 @@ function configure_email {
         return
     fi
     apt-get -y remove postfix
-    apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
+    apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail xinetd
 
     if [ ! -d /etc/exim4 ]; then
         echo $"ERROR: Exim does not appear to have installed. $CHECK_MESSAGE"
         exit 48
     fi
+
+    if [ ! -d /var/lib/tor ]; then
+        echo $'No Tor installation found. Email onion domain cannot be configured.'
+        exit 69356
+    fi
+    if ! grep -q "hidden_service_email" /etc/tor/torrc; then
+        echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/' >> /etc/tor/torrc
+        echo "HiddenServicePort 25 127.0.0.1:${EMAIL_ONION_PORT}" >> /etc/tor/torrc
+        echo $'Added onion domain for email'
+    fi
+
+    systemctl restart tor
+
+    if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
+        echo $'Email onion domain hostname not found'
+        exit 73928
+    fi
+    EMAIL_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_email/hostname)
+    if [[ $ONION_ONLY != "no" ]]; then
+		set_hostname ${EMAIL_ONION_HOSTNAME}
+        MY_EMAIL_ADDRESS=${MY_USERNAME}@${DEFAULT_DOMAIN_NAME}
+    fi
+    if ! grep -q "Email onion domain" $COMPLETION_FILE; then
+        echo "Email onion domain:${EMAIL_ONION_HOSTNAME}" >> $COMPLETION_FILE
+    else
+        sed -i "s|Email onion domain.*|Email onion domain:${EMAIL_ONION_HOSTNAME}|g" $COMPLETION_FILE
+    fi
+
+    echo '# tor stuff first' > /etc/exim4/conf.d/router/100_smtorp
+    echo '#' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '# if were submitting mail *from* a .tor/.onion address,' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '# make sure any header lines that may give us away is' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '# stripped out, and add a new, cryptic Message-ID.' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '# In address_data we store the name we should HELO as.' >> /etc/exim4/conf.d/router/100_smtorp
+    echo 'tor_to_any:' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        debug_print     = "R: manualroute from .onion to $local_part@$domain"' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        driver          = manualroute' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        domains         = ! +local_domains' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        condition       = ${if match {$sender_address_domain}{\N.*\.(onion|tor)$\N}}' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        address_data    = $sender_address_domain' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        transport       = remote_smtp_onion' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        self            = send' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        route_list      = * localhost' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        headers_remove  = Received:Message-ID:X-Mailer:User-Agent' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        headers_add     = Message-ID: <${lc:${sha1:$message_id}}@$sender_address_domain>' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '# this catches the case where were submitting mail' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '# from a regular email address where we dont need to' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '# rewrite any headers' >> /etc/exim4/conf.d/router/100_smtorp
+    echo 'any_to_tor:' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        debug_print     = "R: manualroute for $local_part@$domain"' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        driver          = manualroute' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        domains         = ! +local_domains' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        transport       = remote_smtp_onion' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        self            = send' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        route_list      = *.onion localhost ; *.tor localhost' >> /etc/exim4/conf.d/router/100_smtorp
+    echo '        address_data    = $smtp_active_hostname' >> /etc/exim4/conf.d/router/100_smtorp
+
+    echo 'remote_smtp_onion:' > /etc/exim4/conf.d/transport/100_smtorp
+    echo '        debug_print = "T: remote_smtp_onion for $local_part@$original_domain"' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        driver = smtp' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        # set helo_data to where we want to connect to,' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        # for the proxy program tor-smtp' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        helo_data = "$address_data $original_domain"' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        # wherever we configured our script at' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        port = 12668' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        # cannot use TLS otherwise it will EHLO again!!' >> /etc/exim4/conf.d/transport/100_smtorp
+    echo '        hosts_avoid_tls = *' >> /etc/exim4/conf.d/transport/100_smtorp
+
+    cd $INSTALL_DIR
+    git clone $EXIM_ONION_REPO
+    cd $INSTALL_DIR/exim4-smtorp/tor-smtp
+    make
+    if [ ! -f $INSTALL_DIR/exim4-smtorp/tor-smtp/tor-smtp ]; then
+        echo $'Unable to make tor smtp transport'
+        exit 52629
+    fi
+    if [ ! -d /usr/lib/exim4-smtorp ]; then
+        mkdir /usr/lib/exim4-smtorp
+    fi
+    cp $INSTALL_DIR/exim4-smtorp/tor-smtp/tor-smtp /usr/lib/exim4-smtorp/tor-smtp
+    if [ ! -f /usr/lib/exim4-smtorp/tor-smtp ]; then
+        echo $'Unable to copy tor-smtp'
+        exit 83503
+    fi
+    cp $INSTALL_DIR/exim4-smtorp/xinetd /etc/xinetd.d/tor-smtp
+    if [ ! -f /etc/xinetd.d/tor-smtp ]; then
+        echo $'Unable to copy to xinetd.d'
+        exit 835954
+    fi
+    systemctl restart xinetd
 
     # configure for Maildir format
     sed -i 's/MAIL_DIR/#MAIL_DIR/g' /etc/login.defs
@@ -4111,7 +4217,13 @@ function configure_email {
     sed -i 's|pam_mail.so nopen|pam_mail.so dir=~/Maildir nopen|g' /etc/pam.d/su
 
     echo 'dc_eximconfig_configtype="internet"' > /etc/exim4/update-exim4.conf.conf
-    echo "dc_other_hostnames='$DEFAULT_DOMAIN_NAME'" >> /etc/exim4/update-exim4.conf.conf
+	if [[ $ONION_ONLY == "no" ]]; then
+		# both ICANN and onion domains
+		echo "dc_other_hostnames='${DEFAULT_DOMAIN_NAME};${EMAIL_ONION_HOSTNAME}'" >> /etc/exim4/update-exim4.conf.conf
+	else
+		# in onion-only mode the default domain is the same as the onion domain for email
+		echo "dc_other_hostnames='${DEFAULT_DOMAIN_NAME}'" >> /etc/exim4/update-exim4.conf.conf
+	fi
     echo "dc_local_interfaces=''" >> /etc/exim4/update-exim4.conf.conf
     echo "dc_readhost=''" >> /etc/exim4/update-exim4.conf.conf
     echo "dc_relay_domains=''" >> /etc/exim4/update-exim4.conf.conf
@@ -4129,7 +4241,7 @@ function configure_email {
     echo "dc_localdelivery='maildir_home'" >> /etc/exim4/update-exim4.conf.conf
     update-exim4.conf
     sed -i "s/START=no/START=yes/g" /etc/default/saslauthd
-    /etc/init.d/saslauthd start
+    systemctl start saslauthd
 
     # make a tls certificate for email
     if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
@@ -4151,7 +4263,7 @@ function configure_email {
 
     adduser $MY_USERNAME sasl
     addgroup Debian-exim sasl
-    /etc/init.d/exim4 restart
+    systemctl restart exim4
     if [ ! -d /etc/skel/Maildir ]; then
         mkdir -m 700 /etc/skel/.mutt
         mkdir -m 700 /etc/skel/Maildir
