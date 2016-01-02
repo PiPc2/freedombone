@@ -1678,15 +1678,20 @@ function get_cjdns_password {
 # script to automatically renew any Let's Encrypt certificates
 function letsencrypt_renewals {
     renewals_script=/etc/cron.monthly/letsencrypt
+    renewals_retry_script=/etc/cron.daily/letsencrypt
     renewal_failure_msg=$'The certificate for $LETSENCRYPT_DOMAIN could not be renewed'
     renewal_email_title=$'${PROJECT_NAME} Lets Encrypt certificate renewal'
 
+    # the main script tries to renew once per month
     echo '#!/bin/bash' > $renewals_script
     echo '' >> $renewals_script
     echo "PROJECT_NAME='${PROJECT_NAME}'" >> $renewals_script
     echo 'COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt' >> $renewals_script
     echo '' >> $renewals_script
     echo 'if [ -d /etc/letsencrypt ]; then' >> $renewals_script
+    echo '    if [ -f ~/letsencrypt_failed ]; then' >> $renewals_script
+    echo '        rm ~/letsencrypt_failed' >> $renewals_script
+    echo '    fi' >> $renewals_script
     echo -n '    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | ' >> $renewals_script
     echo -n "awk -F ':' '{print " >> $renewals_script
     echo -n '$2' >> $renewals_script
@@ -1705,11 +1710,51 @@ function letsencrypt_renewals {
     echo -n "                cat ~/temp_renewletsencrypt.txt | mail -s \"${renewal_email_title}\" " >> $renewals_script
     echo '$ADMIN_EMAIL_ADDRESS' >> $renewals_script
     echo '               rm ~/temp_renewletsencrypt.txt' >> $renewals_script
+    echo '               if [ ! -f ~/letsencrypt_failed ]; then' >> $renewals_script
+    echo '                   touch ~/letsencrypt_failed' >> $renewals_script
+    echo '               fi' >> $renewals_script
     echo '            fi' >> $renewals_script
     echo '        fi' >> $renewals_script
     echo '    done' >> $renewals_script
     echo 'fi' >> $renewals_script
     chmod +x $renewals_script
+
+    # a secondary script keeps trying to renew after a failure
+    echo '#!/bin/bash' > $renewals_retry_script
+    echo '' >> $renewals_retry_script
+    echo "PROJECT_NAME='${PROJECT_NAME}'" >> $renewals_retry_script
+    echo 'COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt' >> $renewals_retry_script
+    echo '' >> $renewals_retry_script
+    echo 'if [ -d /etc/letsencrypt ]; then' >> $renewals_retry_script
+    echo '    if [ -f ~/letsencrypt_failed ]; then' >> $renewals_retry_script
+    echo '        rm ~/letsencrypt_failed' >> $renewals_retry_script
+    echo -n '        ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | ' >> $renewals_retry_script
+    echo -n "awk -F ':' '{print " >> $renewals_retry_script
+    echo -n '$2' >> $renewals_retry_script
+    echo "}')" >> $renewals_retry_script
+    echo '        ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME@$HOSTNAME' >> $renewals_retry_script
+    echo '        for d in /etc/letsencrypt/live/*/ ; do' >> $renewals_retry_script
+    echo -n '            LETSENCRYPT_DOMAIN=$(echo "$d" | ' >> $renewals_retry_script
+    echo -n "awk -F '/' '{print " >> $renewals_retry_script
+    echo -n '$5' >> $renewals_retry_script
+    echo "}')" >> $renewals_retry_script
+    echo '            if [ -f /etc/nginx/sites-available/$LETSENCRYPT_DOMAIN ]; then' >> $renewals_retry_script
+    echo '                ${PROJECT_NAME}-renew-cert -h $LETSENCRYPT_DOMAIN -p letsencrypt' >> $renewals_retry_script
+    echo '                if [ ! "$?" = "0" ]; then' >> $renewals_retry_script
+    echo "                   echo \"${renewal_failure_msg}\n\n\" > ~/temp_renewletsencrypt.txt" >> $renewals_retry_script
+    echo '                   ${PROJECT_NAME}-renew-cert -h $LETSENCRYPT_DOMAIN -p letsencrypt >> ~/temp_renewletsencrypt.txt' >> $renewals_retry_script
+    echo -n "                    cat ~/temp_renewletsencrypt.txt | mail -s \"${renewal_email_title}\" " >> $renewals_retry_script
+    echo '$ADMIN_EMAIL_ADDRESS' >> $renewals_retry_script
+    echo '                   rm ~/temp_renewletsencrypt.txt' >> $renewals_retry_script
+    echo '                   if [ ! -f ~/letsencrypt_failed ]; then' >> $renewals_retry_script
+    echo '                       touch ~/letsencrypt_failed' >> $renewals_retry_script
+    echo '                   fi' >> $renewals_retry_script
+    echo '                fi' >> $renewals_retry_script
+    echo '            fi' >> $renewals_retry_script
+    echo '        done' >> $renewals_retry_script
+    echo '    fi' >> $renewals_retry_script
+    echo 'fi' >> $renewals_retry_script
+    chmod +x $renewals_retry_script
 }
 
 function save_firewall_settings {
