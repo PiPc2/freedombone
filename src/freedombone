@@ -86,6 +86,7 @@ INSTALLING_FROM_CONFIGURATION_FILE="no"
 CONFIGURATION_FILE="${PROJECT_NAME}.cfg"
 
 SSH_PORT=2222
+SSH_ONION_PORT=8094
 IRC_PORT=6697
 
 # An optional password to log into IRC. This applies to all users
@@ -3678,6 +3679,40 @@ function configure_ssh {
 
     apt-get -y install fail2ban
     echo 'configure_ssh' >> $COMPLETION_FILE
+}
+
+function configure_ssh_onion {
+    if grep -Fxq "configure_ssh_onion" $COMPLETION_FILE; then
+        return
+    fi
+    if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+
+    if [ ! -d /var/lib/tor ]; then
+        echo $'No Tor installation found. ssh onion domain cannot be configured.'
+        exit 32672
+    fi
+    if ! grep -q "hidden_service_ssh" /etc/tor/torrc; then
+        echo 'HiddenServiceDir /var/lib/tor/hidden_service_ssh/' >> /etc/tor/torrc
+        echo "HiddenServicePort ${SSH_PORT} 127.0.0.1:${SSH_ONION_PORT}" >> /etc/tor/torrc
+        echo $'Added onion domain for ssh'
+    fi
+
+    systemctl restart tor
+
+    if [ ! -f /var/lib/tor/hidden_service_ssh/hostname ]; then
+        echo $'ssh onion domain hostname not found'
+        exit 62983
+    fi
+    SSH_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_ssh/hostname)
+    if ! grep -q "ssh onion domain" $COMPLETION_FILE; then
+        echo "ssh onion domain:${SSH_ONION_HOSTNAME}" >> $COMPLETION_FILE
+    else
+        sed -i "s|ssh onion domain.*|ssh onion domain:${SSH_ONION_HOSTNAME}|g" $COMPLETION_FILE
+    fi
+
+    echo 'configure_ssh_onion' >> $COMPLETION_FILE
 }
 
 # see https://stribika.github.io/2015/01/04/secure-secure-shell.html
@@ -9712,6 +9747,7 @@ time_synchronisation
 configure_internet_protocol
 create_git_project
 configure_ssh
+configure_ssh_onion
 remove_instructions_from_motd
 check_hwrng
 search_for_attached_usb_drive
