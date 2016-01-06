@@ -43,6 +43,10 @@ UPDATE_DATE_SCRIPT=/usr/bin/updatedate
 # Minimum number of characters in a password
 MINIMUM_PASSWORD_LENGTH=8
 
+# voip
+VOIP_PORT=64738
+VOIP_ONION_PORT=8095
+
 USB_DRIVE=sdb
 # get default USB from config file
 CONFIG_FILE=$HOME/${PROJECT_NAME}.cfg
@@ -144,6 +148,11 @@ function show_domains {
         echo -n -e "$(pad_string ${DEFAULT_DOMAIN_NAME})"
         echo "$(cat ${COMPLETION_FILE} | grep 'XMPP onion domain' | awk -F ':' '{print $2}')"
     fi
+    if grep -q "VoIP onion domain" $COMPLETION_FILE; then
+        echo -n -e "$(pad_string 'VoIP/Mumble')"
+        echo -n -e "$(pad_string ${DEFAULT_DOMAIN_NAME})"
+        echo "$(cat ${COMPLETION_FILE} | grep 'VoIP onion domain' | awk -F ':' '{print $2}')"
+    fi
     if grep -q "Wiki domain" $COMPLETION_FILE; then
         echo -n -e "$(pad_string 'Wiki')"
         WIKIDOM=$(cat ${COMPLETION_FILE} | grep 'Wiki domain' | awk -F ':' '{print $2}')
@@ -198,6 +207,7 @@ function show_domains {
         fi
         echo ''
     fi
+
     echo ''
 }
 
@@ -1179,6 +1189,33 @@ Enter a static local IP address for this system.\n\nIt will typically be 192.168
     fi
 }
 
+function mumble_via_onion {
+    if ! grep -q $"VoIP onion domain" $COMPLETION_FILE; then
+        return
+    fi
+    if [ ! -f /etc/mumble-server.ini ]; then
+        return
+    fi
+    enable_mumble_via_onion="no"
+    dialog --title $"Enable Mumble via onion service" \
+           --backtitle $"Freedombone Control Panel" \
+           --defaultno \
+           --yesno $"Enable Mumble via an onion domain?" 10 60
+    sel=$?
+    case $sel in
+        0) enable_mumble_via_onion="yes";;
+        255) return;;
+    esac
+
+    if [[ $enable_mumble_via_onion == "yes" ]]; then
+        sed -i "s|port=.*|port=${VOIP_ONION_PORT}|g" /etc/mumble-server.ini
+    else
+        sed -i "s|port=.*|port=${VOIP_PORT}|g" /etc/mumble-server.ini
+    fi
+
+    systemctl restart mumble-server
+}
+
 function menu_backup_restore {
     while true
     do
@@ -1322,6 +1359,28 @@ function menu_media {
     done
 }
 
+function menu_voip {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"SIP/VoIP Menu" \
+               --radiolist $"Choose an operation:" 13 70 2 \
+               1 $"Mumble via onion service" off \
+               2 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) mumble_via_onion;;
+            2) break;;
+        esac
+    done
+}
+
 function menu_irc {
     while true
     do
@@ -1351,7 +1410,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 25 70 18 \
+               --radiolist $"Choose an operation:" 26 70 19 \
                1 $"About this system" off \
                2 $"Backup and Restore" off \
                3 $"Reset Tripwire" off \
@@ -1362,14 +1421,15 @@ function menu_top_level {
                8 $"Security Settings" off \
                9 $"Hubzilla" off \
                10 $"Media menu" off \
-               11 $"IRC menu" off \
-               12 $"Change the name of this system" off \
-               13 $"Set the TLS date/time source" off \
-               14 $"Set a static local IP address" off \
-               15 $"Check for updates" off \
-               16 $"Power off the system" off \
-               17 $"Restart the system" off \
-               18 $"Exit" on 2> $data
+               11 $"SIP/VoIP menu" off \
+               12 $"IRC menu" off \
+               13 $"Change the name of this system" off \
+               14 $"Set the TLS date/time source" off \
+               15 $"Set a static local IP address" off \
+               16 $"Check for updates" off \
+               17 $"Power off the system" off \
+               18 $"Restart the system" off \
+               19 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -1386,14 +1446,15 @@ function menu_top_level {
             8) security_settings;;
             9) menu_hubzilla;;
             10) menu_media;;
-            11) menu_irc;;
-            12) change_system_name;;
-            13) set_tls_time_source;;
-            14) set_static_IP;;
-            15) check_for_updates;;
-            16) shut_down_system;;
-            17) restart_system;;
-            18) break;;
+            11) menu_voip;;
+            12) menu_irc;;
+            13) change_system_name;;
+            14) set_tls_time_source;;
+            15) set_static_IP;;
+            16) check_for_updates;;
+            17) shut_down_system;;
+            18) restart_system;;
+            19) break;;
         esac
     done
 }
