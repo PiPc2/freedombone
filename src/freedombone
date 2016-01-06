@@ -1271,6 +1271,39 @@ function set_default_onion_domains {
     fi
 }
 
+function add_onion_service {
+    onion_service_name="$1"
+    onion_service_port_from=$2
+    onion_service_port_to=$3
+    if [ ! -d /var/lib/tor ]; then
+        echo $"No Tor installation found. ${onion_service_name} onion site cannot be configured."
+        exit 877367
+    fi
+    if ! grep -q "hidden_service_${onion_service_name}" /etc/tor/torrc; then
+        echo "HiddenServiceDir /var/lib/tor/hidden_service_${onion_service_name}/" >> /etc/tor/torrc
+        echo "HiddenServicePort ${onion_service_port_from} 127.0.0.1:${onion_service_port_to}" >> /etc/tor/torrc
+        echo $"Added onion site for ${onion_service_name}"
+    fi
+
+    systemctl restart tor
+
+    # wait for the new service to appear
+    sleep_ctr=0
+    while [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; do
+        sleep 1
+        sleep_ctr=$((sleep_ctr + 1))
+        if [ $sleep_ctr -gt 10 ]; then
+            break
+        fi
+    done
+
+    if [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; then
+        echo $"${onion_service_name} onion site hostname not found"
+        exit 76362
+    fi
+    echo $(cat /var/lib/tor/hidden_service_${onion_service_name}/hostname)
+}
+
 function create_avahi_onion_domains {
     if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
         return
@@ -3705,24 +3738,8 @@ function configure_ssh_onion {
         return
     fi
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. ssh onion domain cannot be configured.'
-        exit 32672
-    fi
-    if ! grep -q "hidden_service_ssh" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_ssh/' >> /etc/tor/torrc
-        echo "HiddenServicePort ${SSH_PORT} 127.0.0.1:${SSH_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion domain for ssh'
-    fi
+    SSH_ONION_HOSTNAME=$(add_onion_service ssh ${SSH_PORT} ${SSH_ONION_PORT})
 
-    systemctl restart tor
-    sleep 2
-
-    if [ ! -f /var/lib/tor/hidden_service_ssh/hostname ]; then
-        echo $'ssh onion domain hostname not found'
-        exit 62983
-    fi
-    SSH_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_ssh/hostname)
     if ! grep -q "ssh onion domain" $COMPLETION_FILE; then
         echo "ssh onion domain:${SSH_ONION_HOSTNAME}" >> $COMPLETION_FILE
     else
@@ -4219,24 +4236,8 @@ function configure_email {
         exit 48
     fi
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. Email onion domain cannot be configured.'
-        exit 69356
-    fi
-    if ! grep -q "hidden_service_email" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/' >> /etc/tor/torrc
-        echo "HiddenServicePort 25 127.0.0.1:${EMAIL_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion domain for email'
-    fi
+    EMAIL_ONION_HOSTNAME=$(add_onion_service email 25 ${EMAIL_ONION_PORT})
 
-    systemctl restart tor
-    sleep 2
-
-    if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
-        echo $'Email onion domain hostname not found'
-        exit 73928
-    fi
-    EMAIL_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_email/hostname)
     if [[ $ONION_ONLY != "no" ]]; then
         set_hostname ${EMAIL_ONION_HOSTNAME}
         MY_EMAIL_ADDRESS=${MY_USERNAME}@${DEFAULT_DOMAIN_NAME}
@@ -6340,26 +6341,10 @@ quit" > $INSTALL_DIR/batch.sql
 
     nginx_ensite $OWNCLOUD_DOMAIN_NAME
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. Owncloud onion site cannot be configured.'
-        exit 877367
-    fi
-    if ! grep -q "hidden_service_owncloud" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_owncloud/' >> /etc/tor/torrc
-        echo "HiddenServicePort 80 127.0.0.1:${OWNCLOUD_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion site for Owncloud'
-    fi
+    OWNCLOUD_ONION_HOSTNAME=$(add_onion_service owncloud 80 ${OWNCLOUD_ONION_PORT})
 
     systemctl restart php5-fpm
     systemctl restart nginx
-    systemctl restart tor
-    sleep 2
-
-    if [ ! -f /var/lib/tor/hidden_service_owncloud/hostname ]; then
-        echo $'Owncloud onion site hostname not found'
-        exit 76362
-    fi
-    OWNCLOUD_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_owncloud/hostname)
 
     if ! grep -q "Owncloud onion domain" /home/$MY_USERNAME/README; then
         echo "Owncloud onion domain: ${OWNCLOUD_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
@@ -6669,26 +6654,10 @@ quit" > $INSTALL_DIR/batch.sql
 
     nginx_ensite $GIT_DOMAIN_NAME
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. Gogs onion site cannot be configured.'
-        exit 83547
-    fi
-    if ! grep -q "hidden_service_gogs" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_gogs/' >> /etc/tor/torrc
-        echo "HiddenServicePort 80 127.0.0.1:${GIT_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion site for Gogs'
-    fi
+    GIT_ONION_HOSTNAME=$(add_onion_service gogs 80 ${GIT_ONION_PORT})
 
     systemctl restart php5-fpm
     systemctl restart nginx
-    systemctl restart tor
-    sleep 2
-
-    if [ ! -f /var/lib/tor/hidden_service_gogs/hostname ]; then
-        echo $'Gogs onion site hostname not found'
-        exit 53935
-    fi
-    GIT_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_gogs/hostname)
 
     if ! grep -q "Gogs onion domain" /home/$MY_USERNAME/README; then
         echo "Gogs onion domain: ${GIT_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
@@ -7593,26 +7562,11 @@ function install_wiki {
 
     nginx_ensite $WIKI_DOMAIN_NAME
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. Wiki onion site cannot be configured.'
-        exit 877367
-    fi
-    if ! grep -q "hidden_service_wiki" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_wiki/' >> /etc/tor/torrc
-        echo "HiddenServicePort 80 127.0.0.1:${WIKI_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion site for Wiki'
-    fi
+    WIKI_ONION_HOSTNAME=$(add_onion_service wiki 80 ${WIKI_ONION_PORT})
 
     systemctl restart php5-fpm
     systemctl restart nginx
-    systemctl restart tor
-    sleep 2
 
-    if [ ! -f /var/lib/tor/hidden_service_wiki/hostname ]; then
-        echo $'Wiki onion site hostname not found'
-        exit 52383
-    fi
-    WIKI_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_wiki/hostname)
     echo "Wiki onion domain:${WIKI_ONION_HOSTNAME}" >> $COMPLETION_FILE
 
     # update the dynamic DNS
@@ -8006,26 +7960,10 @@ function install_blog {
 
     nginx_ensite $FULLBLOG_DOMAIN_NAME
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. Blog onion site cannot be configured.'
-        exit 45926
-    fi
-    if ! grep -q "hidden_service_blog" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_blog/' >> /etc/tor/torrc
-        echo "HiddenServicePort 80 127.0.0.1:${FULLBLOG_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion site for blog'
-    fi
+    FULLBLOG_ONION_HOSTNAME=$(add_onion_service blog 80 ${FULLBLOG_ONION_PORT})
 
     systemctl restart php5-fpm
     systemctl restart nginx
-    systemctl restart tor
-    sleep 2
-
-    if [ ! -f /var/lib/tor/hidden_service_blog/hostname ]; then
-        echo $'Blog onion site hostname not found'
-        exit 12053
-    fi
-    FULLBLOG_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_blog/hostname)
 
     if ! grep -q "Blog onion domain" /home/$MY_USERNAME/README; then
         echo "Blog onion domain: ${FULLBLOG_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
@@ -8323,26 +8261,10 @@ quit" > $INSTALL_DIR/batch.sql
     fi
     nginx_ensite $MICROBLOG_DOMAIN_NAME
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. GNU Social onion site cannot be configured.'
-        exit 45927
-    fi
-    if ! grep -q "hidden_service_microblog" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_microblog/' >> /etc/tor/torrc
-        echo "HiddenServicePort 80 127.0.0.1:${MICROBLOG_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion site for GNU Social'
-    fi
+    MICROBLOG_ONION_HOSTNAME=$(add_onion_service microblog 80 ${MICROBLOG_ONION_PORT})
 
     systemctl restart php5-fpm
     systemctl restart nginx
-    systemctl restart tor
-    sleep 2
-
-    if [ ! -f /var/lib/tor/hidden_service_microblog/hostname ]; then
-        echo $'GNU Social onion site hostname not found'
-        exit 12054
-    fi
-    MICROBLOG_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_microblog/hostname)
 
     if ! grep -q "GNU Social onion domain" /home/$MY_USERNAME/README; then
         echo "GNU Social onion domain: ${MICROBLOG_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
@@ -8759,27 +8681,11 @@ quit" > $INSTALL_DIR/batch.sql
 
     nginx_ensite $HUBZILLA_DOMAIN_NAME
 
-    if [ ! -d /var/lib/tor ]; then
-        echo $'No Tor installation found. Hubzilla onion site cannot be configured.'
-        exit 45925
-    fi
-    if ! grep -q "hidden_service_hubzilla" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_hubzilla/' >> /etc/tor/torrc
-        echo "HiddenServicePort 80 127.0.0.1:${HUBZILLA_ONION_PORT}" >> /etc/tor/torrc
-        echo $'Added onion site for Hubzilla'
-    fi
+    HUBZILLA_ONION_HOSTNAME=$(add_onion_service hubzilla 80 ${HUBZILLA_ONION_PORT})
 
     systemctl restart php5-fpm
     systemctl restart nginx
     systemctl restart cron
-    systemctl restart tor
-    sleep 2
-
-    if [ ! -f /var/lib/tor/hidden_service_hubzilla/hostname ]; then
-        echo $'Hubzilla onion site hostname not found'
-        exit 12052
-    fi
-    HUBZILLA_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_hubzilla/hostname)
 
     if ! grep -q "Hubzilla onion domain" /home/$MY_USERNAME/README; then
         echo "Hubzilla onion domain: ${HUBZILLA_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
