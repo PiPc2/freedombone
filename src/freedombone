@@ -285,10 +285,6 @@ MARIADB_PASSWORD=
 # Directory where XMPP settings are stored
 XMPP_DIRECTORY="/var/lib/prosody"
 
-# port used for xmpp as an onion service
-XMPP_ONION_PORT=8091
-XMPP_ONION_PORT2=8092
-
 # file containing a list of remote locations to backup to
 # Format: [username@friendsdomain//home/username] [ssh_password]
 # With the only space character being between the server and the password
@@ -312,9 +308,6 @@ XMPP_ECC_CURVE='"secp384r1"'
 
 # the default email address
 MY_EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
-
-# port used for SMTP via an onion address
-EMAIL_ONION_PORT=8093
 
 # optionally specify your name to appear on the blog
 MY_NAME=$DEFAULT_DOMAIN_NAME
@@ -4238,7 +4231,37 @@ function configure_email {
         exit 48
     fi
 
-    EMAIL_ONION_HOSTNAME=$(add_onion_service email 25 ${EMAIL_ONION_PORT})
+    onion_service_name='email'
+    if [ ! -d /var/lib/tor ]; then
+        echo $"No Tor installation found. ${onion_service_name} onion site cannot be configured."
+        exit 877367
+    fi
+    if ! grep -q "hidden_service_${onion_service_name}" /etc/tor/torrc; then
+        echo "HiddenServiceDir /var/lib/tor/hidden_service_${onion_service_name}/" >> /etc/tor/torrc
+        echo 'HiddenServicePort 25 127.0.0.1:25' >> /etc/tor/torrc
+        echo 'HiddenServicePort 587 127.0.0.1:587' >> /etc/tor/torrc
+        echo 'HiddenServicePort 465 127.0.0.1:465' >> /etc/tor/torrc
+        echo 'HiddenServicePort 993 127.0.0.1:993' >> /etc/tor/torrc
+        echo $"Added onion site for ${onion_service_name}"
+    fi
+
+    systemctl restart tor
+
+    # wait for the new service to appear
+    sleep_ctr=0
+    while [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; do
+        sleep 1
+        sleep_ctr=$((sleep_ctr + 1))
+        if [ $sleep_ctr -gt 10 ]; then
+            break
+        fi
+    done
+
+    if [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; then
+        echo $"${onion_service_name} onion site hostname not found"
+        exit 76362
+    fi
+    EMAIL_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_${onion_service_name}/hostname)
 
     if [[ $ONION_ONLY != "no" ]]; then
         set_hostname ${EMAIL_ONION_HOSTNAME}
@@ -7042,13 +7065,13 @@ function install_xmpp {
     fi
     if ! grep -q "hidden_service_xmpp" /etc/tor/torrc; then
         echo 'HiddenServiceDir /var/lib/tor/hidden_service_xmpp/' >> /etc/tor/torrc
-        echo "HiddenServicePort 5222 127.0.0.1:${XMPP_ONION_PORT}" >> /etc/tor/torrc
-        echo "HiddenServicePort 5269 127.0.0.1:${XMPP_ONION_PORT2}" >> /etc/tor/torrc
+        echo "HiddenServicePort 5222 127.0.0.1:5222" >> /etc/tor/torrc
+        echo "HiddenServicePort 5269 127.0.0.1:5269" >> /etc/tor/torrc
         echo $'Added onion site for XMPP chat'
     fi
 
     systemctl restart tor
-    sleep 2
+    sleep 5
 
     if [ ! -f /var/lib/tor/hidden_service_xmpp/hostname ]; then
         echo $'XMPP onion site hostname not found'
