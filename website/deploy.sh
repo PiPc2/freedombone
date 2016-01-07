@@ -18,7 +18,7 @@ if [ ! -d $dest_dir/images ]; then
 	mkdir $dest_dir/images
 fi
 
-cp -r website/* $dest_dir
+cp -r website/$lang/* $dest_dir
 cp *.css $dest_dir
 cp -r ../img/* $dest_dir/images
 chown -R www-data:www-data $dest_dir
