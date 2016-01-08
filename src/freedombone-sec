@@ -493,6 +493,69 @@ function create_letsencrypt {
   exit 0
 }
 
+function update_ciphersuite {
+    project_filename=/usr/local/bin/${PROJECT_NAME}
+    if [ ! -f $project_filename ]; then
+        project_filename=/usr/bin/${PROJECT_NAME}
+    fi
+
+    RECOMMENDED_SSL_CIPHERS=$(cat $project_filename | grep 'SSL_CIPHERS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
+    if [ ! "$RECOMMENDED_SSL_CIPHERS" ]; then
+        return
+    fi
+    if [ ${#RECOMMENDED_SSL_CIPHERS} -lt 5 ]; then
+        return
+    fi
+
+    RECOMMENDED_SSL_PROTOCOLS=$(cat $project_filename | grep 'SSL_PROTOCOLS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
+    if [ ! "$RECOMMENDED_SSL_PROTOCOLS" ]; then
+        return
+    fi
+    if [ ${#RECOMMENDED_SSL_PROTOCOLS} -lt 5 ]; then
+        return
+    fi
+
+    RECOMMENDED_SSH_CIPHERS=$(cat $project_filename | grep 'SSH_CIPHERS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
+    if [ ! "$RECOMMENDED_SSH_CIPHERS" ]; then
+        return
+    fi
+    if [ ${#RECOMMENDED_SSH_CIPHERS} -lt 5 ]; then
+        return
+    fi
+
+    RECOMMENDED_SSH_MACS=$(cat $project_filename | grep 'SSH_MACS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
+    if [ ! "$RECOMMENDED_SSH_MACS" ]; then
+        return
+    fi
+    if [ ${#RECOMMENDED_SSH_MACS} -lt 5 ]; then
+        return
+    fi
+
+    RECOMMENDED_SSH_KEX=$(cat $project_filename | grep 'SSH_KEX=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
+    if [ ! "$RECOMMENDED_SSH_KEX" ]; then
+        return
+    fi
+    if [ ${#RECOMMENDED_SSH_KEX} -lt 5 ]; then
+        return
+    fi
+
+    cd $WEBSITES_DIRECTORY
+    for file in `dir -d *` ; do
+        sed -i "s|ssl_protocols .*|ssl_protocols $RECOMMENDED_SSL_PROTOCOLS;|g" $WEBSITES_DIRECTORY/$file
+        sed -i "s|ssl_ciphers .*|ssl_ciphers '$RECOMMENDED_SSL_CIPHERS';|g" $WEBSITES_DIRECTORY/$file
+    done
+    systemctl restart nginx
+
+    sed -i "s|Ciphers .*|Ciphers $RECOMMENDED_SSH_CIPHERS|g" $SSH_CONFIG
+    sed -i "s|MACs .*|MACs $RECOMMENDED_SSH_MACS|g" $SSH_CONFIG
+    sed -i "s|KexAlgorithms .*|KexAlgorithms $RECOMMENDED_SSH_KEX|g" $SSH_CONFIG
+    systemctl restart ssh
+
+    dialog --title $"Update ciphersuite" \
+           --msgbox $"The ciphersuite has been updated to recommended versions" 6 40
+    exit 0
+}
+
 function housekeeping {
   cmd=(dialog --separate-output \
               --backtitle "Freedombone Security Configuration" \
@@ -501,8 +564,9 @@ function housekeeping {
   options=(1 "Regenerate ssh host keys" off
            2 "Regenerate Diffie-Hellman keys" off
            3 "Renew a StartSSL certificate" off
-           4 "Create a new Let's Encrypt certificate" off
-           5 "Renew Let's Encrypt certificate" off)
+           4 "Update cipersuite" off
+           5 "Create a new Let's Encrypt certificate" off
+           6 "Renew Let's Encrypt certificate" off)
   choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
   clear
   for choice in $choices
@@ -518,9 +582,12 @@ function housekeeping {
         renew_startssl
         ;;
       4)
-        create_letsencrypt
+        update_ciphersuite
         ;;
       5)
+        create_letsencrypt
+        ;;
+      6)
         renew_letsencrypt
         ;;
     esac
