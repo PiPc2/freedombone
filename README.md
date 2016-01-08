@@ -51,7 +51,7 @@ To build a 64bit Qemu image:
 
     freedombone-image -t qemu-x86_64 -s 8G
 
-Other supported boards are cubieboard2, cubietruck and olinuxino-lime2.
+Other supported boards are cubieboard2, cubietruck, olinuxino-lime2 and olinuxino-micro.
 
 Checklist
 =========
@@ -87,6 +87,7 @@ Currently the following boards are supported:
     Cubieboard 2
     Cubietruck (Cubieboard 3)
     olinuxino Lime2
+    olinuxino Micro
 
 If there is no existing image available then you can build one from scratch. See the section above on how to do that. If an existing image is available then you can download it and check the signature with:
 
