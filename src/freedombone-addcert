@@ -33,6 +33,9 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-addcert
 export TEXTDOMAINDIR="/usr/share/locale"
 
+CONFIG_FILE=$HOME/${PROJECT_NAME}.cfg
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
 HOSTNAME=
 LETSENCRYPT_HOSTNAME=
 COUNTRY_CODE="US"
@@ -46,6 +49,7 @@ DH_KEYLENGTH=2048
 INSTALL_DIR=/root/build
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 LETSENCRYPT_REPO='https://github.com/letsencrypt/letsencrypt'
+MY_EMAIL_ADDRESS=
 
 function show_help {
     echo ''
@@ -63,6 +67,7 @@ function show_help {
     echo $'  -l --location [locn]        Optional location name'
     echo $'  -o --organisation [name]    Optional organisation name'
     echo $'  -u --unit [name]            Optional unit name'
+    echo $'     --email [address]        Email address for letsencrypt'
     echo $'     --dhkey [bits]           DH key length in bits'
     echo $'     --nodh ""                Do not calculate DH params'
     echo $'     --ca ""                  Certificate authority cert'
@@ -85,6 +90,10 @@ case $key in
     -e|--letsencrypt)
     shift
     LETSENCRYPT_HOSTNAME="$1"
+    ;;
+    --email)
+    shift
+    MY_EMAIL_ADDRESS="$1"
     ;;
     -s|--server)
     shift
@@ -151,6 +160,23 @@ CERTFILE=$HOSTNAME
 function add_cert_letsencrypt {
     CERTFILE=$LETSENCRYPT_HOSTNAME
 
+    # obtain the email address for the admin user
+    if [ ! $MY_EMAIL_ADDRESS ]; then
+        if [ -f $CONFIG_FILE ]; then
+            if grep -q "MY_EMAIL_ADDRESS=" $CONFIG_FILE; then
+                MY_EMAIL_ADDRESS=$(cat $CONFIG_FILE | grep "MY_EMAIL_ADDRESS=" | awk -F '=' '{print $2}')
+            fi
+        fi
+    fi
+    if [ ! $MY_EMAIL_ADDRESS ]; then
+        if [ -f $COMPLETION_FILE ]; then
+            if grep -q "Admin user:" $COMPLETION_FILE; then
+                ADMIN_USER=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+                MY_EMAIL_ADDRESS=$ADMIN_USER@$HOSTNAME
+            fi
+        fi
+    fi
+
     if [ ! -d $INSTALL_DIR ]; then
         mkdir -p $INSTALL_DIR
     fi
@@ -172,7 +198,7 @@ function add_cert_letsencrypt {
     systemctl stop nginx
 
     cd ${INSTALL_DIR}/letsencrypt
-    ./letsencrypt-auto certonly --server $LETSENCRYPT_SERVER --standalone -d $LETSENCRYPT_HOSTNAME --renew-by-default
+    ./letsencrypt-auto certonly --server $LETSENCRYPT_SERVER --standalone -d $LETSENCRYPT_HOSTNAME --renew-by-default --agree-tos --email $MY_EMAIL_ADDRESS
     if [ ! "$?" = "0" ]; then
         echo $"Failed to install letsencrypt for domain $LETSENCRYPT_HOSTNAME"
         systemctl start nginx
