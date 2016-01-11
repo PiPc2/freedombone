@@ -215,6 +215,8 @@ create_generic_image() {
     # Don't install any configuration. This will be a base system
     if [[ $VARIANT != "mesh" ]]; then
         CONFIG_FILENAME=
+    else
+        touch $rootdir/root/.initial_mesh_setup
     fi
 
     # The presence of this file indicates that the initial
@@ -292,7 +294,7 @@ EOF
             echo "    ${PROJECT_NAME} menuconfig-onion" >> $rootdir/root/.bashrc
         fi
     else
-        echo "    ${PROJECT_NAME}-image-mesh" >> $rootdir/root/.bashrc
+        echo 'echo ""'
     fi
     echo '    if [ "$?" = "0" ]; then' >> $rootdir/root/.bashrc
     echo "        if [ -f ~/${PROJECT_NAME}-completed.txt ]; then" >> $rootdir/root/.bashrc
@@ -357,6 +359,32 @@ atheros_wifi() {
     else
         echo 'WARNING: Atheros Wifi firmware hash does not match. The driver has not been installed.'
     fi
+}
+
+initialise_mesh() {
+    if [[ $VARIANT != "mesh" ]]; then
+        return
+    fi
+    MESH_SERVICE='mesh-setup.service'
+    MESH_SETUP_DAEMON=$rootdir/etc/systemd/system/$MESH_SERVICE
+
+    echo '[Unit]' > $MESH_SETUP_DAEMON
+    echo 'Description=Initial mesh router configuration' >> $MESH_SETUP_DAEMON
+    echo 'After=syslog.target' >> $MESH_SETUP_DAEMON
+    echo 'After=network.target' >> $MESH_SETUP_DAEMON
+    echo '[Service]' >> $MESH_SETUP_DAEMON
+    echo 'Type=simple' >> $MESH_SETUP_DAEMON
+    echo 'User=root' >> $MESH_SETUP_DAEMON
+    echo 'Group=root' >> $MESH_SETUP_DAEMON
+    echo 'WorkingDirectory=/root' >> $MESH_SETUP_DAEMON
+    echo "ExecStart=/usr/local/bin/${PROJECT_NAME}-image-mesh > /var/log/mesh-setup.log" >> $MESH_SETUP_DAEMON
+    echo '' >> $MESH_SETUP_DAEMON
+    echo 'TimeoutSec=99999' >> $MESH_SETUP_DAEMON
+    echo '' >> $MESH_SETUP_DAEMON
+    echo '[Install]' >> $MESH_SETUP_DAEMON
+    echo 'WantedBy=multi-user.target' >> $MESH_SETUP_DAEMON
+
+    chroot $rootdir systemctl enable $MESH_SERVICE
 }
 
 # Set to true/false to control if eatmydata is used during build
@@ -470,6 +498,7 @@ admin_user_sudo
 create_generic_image
 atheros_wifi
 continue_installation
+initialise_mesh
 
 cd /
 echo $"info: killing leftover processes in chroot"
