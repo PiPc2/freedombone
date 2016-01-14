@@ -1,0 +1,222 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Used to enable or disable batman mesh protocol on wlanX
+#
+# License
+# =======
+#
+# Copyright (C) 2015-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+COMPLETION_FILE=/root/${PROJECT_NAME}-completed.txt
+
+if [[ $1 == "start" ]]; then
+    # install avahi
+    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|#disallow-other-stacks=.*|disallow-other-stacks=yes|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf
+fi
+
+# Mesh definition
+ESSID=
+if ! grep -q "ESSID:" $COMPLETION_FILE; then
+    ESSID='mesh'
+else
+    ESSID=$(cat $COMPLETION_FILE | grep "ESSID:" | awk -F ':' '{print $2}')
+fi
+sed -i "s|ESSID:.*|ESSID:${ESSID}|g" $COMPLETION_FILE
+
+CELLID='any'
+
+CHANNEL=
+if ! grep -q "Wifi channel:" $COMPLETION_FILE; then
+    CHANNEL=2
+else
+    CHANNEL=$(cat $COMPLETION_FILE | grep "Wifi channel:" | awk -F ':' '{print $2}')
+fi
+sed -i "s|Wifi channel:.*|Wifi channel:${CHANNEL}|g" $COMPLETION_FILE
+
+ZERONET_PORT=15441
+IPFS_PORT=4001
+
+# Ethernet bridge definition (bridged to bat0)
+BRIDGE=br-mesh
+IFACE='wlan0'
+EIFACE=eth0
+
+if [[ $IFACE == "wlan0" ]]; then
+    if grep -q "wlan1" /proc/net/dev; then
+        IFACE=wlan1
+    fi
+fi
+if [[ $IFACE == "wlan0" ]]; then
+    if grep -q "wlan2" /proc/net/dev; then
+        IFACE=wlan2
+    fi
+fi
+if [[ $IFACE == "wlan0" ]]; then
+    if grep -q "wlan3" /proc/net/dev; then
+        IFACE=wlan3
+    fi
+fi
+
+if [ -e /etc/default/batctl ]; then
+    . /etc/default/batctl
+fi
+
+start() {
+    if [ -z "$IFACE" ] ; then
+        echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
+        return
+    fi
+    echo 'info: enabling batman-adv mesh network $ESSID on $IFACE'
+
+    systemctl stop network-manager
+    sleep 5
+
+    # remove an avahi service which isn't used
+    if [ -f /etc/avahi/services/udisks.service ]; then
+        sudo rm /etc/avahi/services/udisks.service
+    fi
+
+    # Might have to re-enable wifi
+    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true
+
+    ifconfig $IFACE down
+    ifconfig $IFACE mtu 1532
+    iwconfig $IFACE enc off
+    iwconfig $IFACE mode ad-hoc essid $ESSID channel $CHANNEL
+    sleep 1
+    iwconfig $IFACE ap $CELLID
+
+    modprobe batman-adv
+    batctl if add $IFACE
+    ifconfig $IFACE up
+    avahi-autoipd --force-bind --daemonize --wait $BRIDGE
+    avahi-autoipd --force-bind --daemonize --wait $IFACE
+    ifconfig bat0 up promisc
+
+    #Use persistent HWAddr
+    ether_new=$(ifconfig eth0 | grep HWaddr | sed -e "s/.*HWaddr //")
+    if [ ! -f /var/lib/mesh-node/bat0 ]; then
+        mkdir /var/lib/mesh-node
+        echo "${ether_new}" > /var/lib/mesh-node/bat0
+    else
+        ether=$(cat /var/lib/mesh-node/bat0)
+        ifconfig bat0 hw ether ${ether}
+    fi
+
+    if [ "$EIFACE" ] ; then
+        brctl addbr $BRIDGE
+        brctl addif $BRIDGE bat0
+        brctl addif $BRIDGE $EIFACE
+        ifconfig bat0 0.0.0.0
+        ifconfig $EIFACE 0.0.0.0
+        ifconfig $EIFACE up promisc
+        ifconfig $BRIDGE up
+    fi
+
+    iptables -A INPUT -p tcp --dport 548 -j ACCEPT
+    iptables -A INPUT -p udp --dport 548 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 5353 -j ACCEPT
+    iptables -A INPUT -p udp --dport 5353 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 5354 -j ACCEPT
+    iptables -A INPUT -p udp --dport 5354 -j ACCEPT
+    iptables -A INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport $ZERONET_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+
+    systemctl restart avahi-daemon
+}
+
+stop() {
+    if [ -z "$IFACE" ]; then
+        echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
+        return
+    fi
+    if [ "$EIFACE" ]; then
+        brctl delif $BRIDGE bat0
+        brctl delif $BRIDGE $EIFACE
+        ifconfig $BRIDGE down || true
+        brctl delbr $BRIDGE
+        ifconfig $EIFACE down -promisc
+    fi
+
+    avahi-autoipd -k $BRIDGE
+    avahi-autoipd -k $IFACE
+    ifconfig bat0 down -promisc
+
+    batctl if del $IFACE
+    rmmod batman-adv
+    ifconfig $IFACE mtu 1500
+    ifconfig $IFACE down
+    iwconfig $IFACE mode managed
+
+    iptables -D INPUT -p tcp --dport 548 -j ACCEPT
+    iptables -D INPUT -p udp --dport 548 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 5353 -j ACCEPT
+    iptables -D INPUT -p udp --dport 5353 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 5354 -j ACCEPT
+    iptables -D INPUT -p udp --dport 5354 -j ACCEPT
+    iptables -D INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT
+    iptables -D INPUT -p udp --dport $ZERONET_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+
+    systemctl restart network-manager
+}
+
+if ! grep -q "$IFACE" /proc/net/dev; then
+    echo 'Interface $IFACE was not found'
+    stop
+    exit 1
+fi
+
+case "$1" in
+    start|stop)
+        $1
+        ;;
+    restart)
+        stop
+        sleep 10
+        start
+        ;;
+    status)
+        batctl o
+        ;;
+    ping)
+        batctl ping $2
+        ;;
+    ls|list)
+        avahi-browse -atl
+        ;;
+    *)
+    echo "error: invalid parameter $1"
+    echo 'usage: $0 {start|stop|restart|status|ping|ls|list}'
+    exit 2
+    ;;
+esac
+exit 0
