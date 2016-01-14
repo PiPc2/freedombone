@@ -30,6 +30,7 @@ set -e
 set -x
 
 PROJECT_NAME='freedombone'
+INSTALL_DIR=/root/build
 
 # username created by default within a debian image
 GENERIC_IMAGE_USERNAME='fbone'
@@ -432,6 +433,110 @@ function mesh_batman {
     echo '[Install]' >> $rootdir/etc/systemd/system/batman.service
     echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/batman.service
     chroot "$rootdir" systemctl enable batman
+}
+
+function mesh_tox_node {
+    chroot "$rootdir" apt-get -y install build-essential libtool autotools-dev
+    chroot "$rootdir" apt-get -y install automake checkinstall check git yasm
+    chroot "$rootdir" apt-get -y install libsodium13 libsodium-dev libcap2-bin
+    chroot "$rootdir" apt-get -y install libconfig9 libconfig-dev
+
+    git clone $TOX_REPO $rootdir/$INSTALL_DIR/toxcore
+    chroot "$rootdir" cd $INSTALL_DIR/toxcore
+    chroot "$rootdir" git checkout $TOX_COMMIT -b $TOX_COMMIT
+
+    chroot "$rootdir" autoreconf -i
+    chroot "$rootdir" ./configure --enable-daemon
+    chroot "$rootdir" make
+    chroot "$rootdir" make install
+    chroot "$rootdir" cp /usr/local/lib/libtoxcore* /usr/lib/
+
+    if [ ! -f $rootdir/usr/local/bin/tox-bootstrapd ]; then
+        echo $"File not found /usr/local/bin/tox-bootstrapd"
+    fi
+
+    chroot "$rootdir" useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment $"Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
+    chroot "$rootdir" chmod 700 /var/lib/tox-bootstrapd
+    if [ ! -f $rootdir/$INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf ]; then
+        echo $"File not found $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf"
+    fi
+    # remove Maildir
+    if [ -d $rootdir/var/lib/tox-bootstrapd/Maildir ]; then
+        rm -rf $rootdir/var/lib/tox-bootstrapd/Maildir
+    fi
+
+    # create configuration file
+    echo "port = $TOX_PORT" > $rootdir/etc/tox-bootstrapd.conf
+    echo 'keys_file_path = "/var/lib/tox-bootstrapd/keys"' >> $rootdir/etc/tox-bootstrapd.conf
+    echo 'pid_file_path = "/var/run/tox-bootstrapd/tox-bootstrapd.pid"' >> $rootdir/etc/tox-bootstrapd.conf
+    echo 'enable_ipv6 = true' >> $rootdir/etc/tox-bootstrapd.conf
+    echo 'enable_ipv4_fallback = true' >> $rootdir/etc/tox-bootstrapd.conf
+    echo 'enable_lan_discovery = true' >> $rootdir/etc/tox-bootstrapd.conf
+    echo 'enable_tcp_relay = true' >> $rootdir/etc/tox-bootstrapd.conf
+    echo "tcp_relay_ports = [443, 3389, $TOX_PORT]" >> $rootdir/etc/tox-bootstrapd.conf
+    echo 'enable_motd = true' >> $rootdir/etc/tox-bootstrapd.conf
+    echo 'motd = "tox-bootstrapd"' >> $rootdir/etc/tox-bootstrapd.conf
+
+    if [ $TOX_NODES ]; then
+        echo 'bootstrap_nodes = (' >> $rootdir/etc/tox-bootstrapd.conf
+        toxcount=0
+        while [ "x${TOX_NODES[toxcount]}" != "x" ]
+        do
+            toxval_ipv4=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $1}')
+            toxval_ipv6=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $2}')
+            toxval_port=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $3}')
+            toxval_pubkey=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $4}')
+            toxval_maintainer=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $5}')
+            echo "{ // $toxval_maintainer" >> $rootdir/etc/tox-bootstrapd.conf
+            if [[ $toxval_ipv6 != 'NONE' ]]; then
+                echo "  address = \"$toxval_ipv6\"" >> $rootdir/etc/tox-bootstrapd.conf
+            else
+                echo "  address = \"$toxval_ipv4\"" >> $rootdir/etc/tox-bootstrapd.conf
+            fi
+            echo "  port = $toxval_port" >> $rootdir/etc/tox-bootstrapd.conf
+            echo "  public_key = \"$toxval_pubkey\"" >> $rootdir/etc/tox-bootstrapd.conf
+            toxcount=$(( $toxcount + 1 ))
+            if [ "x${TOX_NODES[toxcount]}" != "x" ]; then
+                echo "}," >> $rootdir/etc/tox-bootstrapd.conf
+            else
+                echo "}" >> $rootdir/etc/tox-bootstrapd.conf
+            fi
+        done
+        echo ')' >> $rootdir/etc/tox-bootstrapd.conf
+    fi
+
+    if [ ! -f $rootdir/$INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.service ]; then
+        echo $"File not found $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.service"
+    fi
+    cp $rootdir/$INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.service $rootdir/etc/systemd/system/
+
+    chroot "$rootdir" systemctl enable tox-bootstrapd.service
+
+    # TODO
+
+    TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
+    if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
+        echo $'Could not obtain the tox node public key'
+        exit 6529
+    fi
+
+    # save the public key for later reference
+    echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
+
+    configure_firewall_for_tox
+
+    if ! grep -q $"Your Tox node public key is" /home/$MY_USERNAME/README; then
+        echo '' >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo 'Tox' >> /home/$MY_USERNAME/README
+        echo '===' >> /home/$MY_USERNAME/README
+        echo $"tox onion domain: ${TOX_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo $"Your Tox node public key is: $TOX_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+        echo $'In the Toxic client you can connect to it with:' >> /home/$MY_USERNAME/README
+        echo "  /connect $DEFAULT_DOMAIN_NAME.local $TOX_PORT $TOX_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    fi
 }
 
 initialise_mesh() {
