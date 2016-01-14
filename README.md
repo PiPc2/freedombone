@@ -31,7 +31,7 @@ Install the freedombone commands onto your laptop/desktop:
 
 Then install packages needed for building images:
 
-    sudo apt-get -y install python-docutils mktorrent vmdebootstrap
+    sudo apt-get -y install python-docutils mktorrent vmdebootstrap xz-utils
     sudo apt-get -y install dosfstools btrfs-tools extlinux python-distro-info mbr
     sudo apt-get -y install qemu-user-static binfmt-support u-boot-tools qemu
 
@@ -99,7 +99,7 @@ And the hash with:
 
 If the image is compressed then decompress it with:
 
-    tar -xjvf filename.tar.bz2
+    unxz filename.img.xz
 
 Then copy it to a microSD card. Depending on your system you may need an adaptor to be able to do that.
 
