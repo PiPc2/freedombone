@@ -31,6 +31,7 @@ set -x
 
 PROJECT_NAME='freedombone'
 INSTALL_DIR=/root/build
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 
 # username created by default within a debian image
 GENERIC_IMAGE_USERNAME='fbone'
@@ -65,6 +66,9 @@ GENERIC_IMAGE="no"
 
 # default SSH port
 SSH_PORT=2222
+
+# for mesh installs
+TRACKER_PORT=6969
 
 # Whether sites are accessible only within a Tor browser
 ONION_ONLY="no"
@@ -440,7 +444,6 @@ mesh_batman() {
 mesh_firewall() {
     TOX_PORT=33445
     ZERONET_PORT=15441
-    TRACKER_PORT=6969
     FIREWALL_FILENAME=$rootdir/etc/systemd/system/meshfirewall.service
     MESH_FIREWALL_SCRIPT=/usr/bin/mesh-firewall
 
@@ -506,8 +509,6 @@ mesh_tox_node() {
     #  '192.254.75.102,2607:5600:284::2,33445,951C88B7E75C867418ACDB5D273821372BB5BD652740BCDF623A4FA293E75D2F,Tox RELENG,US'
     #  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
     #)
-    iptables -A INPUT -p tcp --dport $TOX_PORT -j ACCEPT
-    save_firewall_settings
 
     chroot "$rootdir" apt-get -y install build-essential libtool autotools-dev
     chroot "$rootdir" apt-get -y install automake checkinstall check git yasm
@@ -526,6 +527,7 @@ mesh_tox_node() {
 
     if [ ! -f $rootdir/usr/local/bin/tox-bootstrapd ]; then
         echo $"File not found /usr/local/bin/tox-bootstrapd"
+        return
     fi
 
     chroot "$rootdir" useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment $"Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
@@ -584,32 +586,75 @@ mesh_tox_node() {
     cp $rootdir/$INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.service $rootdir/etc/systemd/system/
 
     chroot "$rootdir" systemctl enable tox-bootstrapd.service
+}
 
-    # TODO
+function mesh_zeronet {
+    ZERONET_REPO='https://github.com/HelloZeroNet/ZeroNet.git'
+    ZERONET_COMMIT='675bd462556c541d65e2d95f91f899146a373aad'
 
-    TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
-    if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
-        echo $'Could not obtain the tox node public key'
-        exit 6529
+    chroot "$rootdir" apt-get -y install python python-msgpack python-gevent
+    chroot "$rootdir" apt-get -y install python-pip bittornado
+    chroot "$rootdir" pip install msgpack-python --upgrade
+
+    chroot "$rootdir" useradd -d /opt/zeronet/ -s /bin/false zeronet
+    git clone $ZERONET_REPO $rootdir/opt/zeronet
+    if [ ! -d $rootdir/opt/zeronet ]; then
+        echo 'WARNING: Unable to clone zeronet'
+        return
     fi
+    cd $rootdir/opt/zeronet
+    git checkout $ZERONET_COMMIT -b $ZERONET_COMMIT
+    echo "ZeroNet commit:$ZERONET_COMMIT" >> $rootdir$COMPLETION_FILE
+    chown -R zeronet:zeronet $rootdir/opt/zeronet
 
-    # save the public key for later reference
-    echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
+    # Hack to ensure that the file access port is opened
+    # This is because zeronet normally relies on an internet site
+    # to do this, but on a purely local mesh the internet isn't available
+    sed -i 's|fileserver_port = 0|fileserver_port = config.fileserver_port\n            sys.modules["main"].file_server.port_opened = True|g' $rootdir/opt/zeronet/src/Site/Site.py
 
-    configure_firewall_for_tox
+    echo '[Unit]' > $rootdir/etc/systemd/system/zeronet.service
+    echo 'Description=Zeronet Server' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'After=syslog.target' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/zeronet.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'Type=simple' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'User=zeronet' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'Group=zeronet' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'WorkingDirectory=/opt/zeronet' >> $rootdir/etc/systemd/system/zeronet.service
+    echo "ExecStart=/usr/bin/python zeronet.py --ip_external ${DEFAULT_DOMAIN_NAME}.local --trackers_file /opt/zeronet/bootstrap" >> $rootdir/etc/systemd/system/zeronet.service
+    echo '' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'TimeoutSec=300' >> $rootdir/etc/systemd/system/zeronet.service
+    echo '' >> $rootdir/etc/systemd/system/zeronet.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/zeronet.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/zeronet.service
 
-    if ! grep -q $"Your Tox node public key is" /home/$MY_USERNAME/README; then
-        echo '' >> /home/$MY_USERNAME/README
-        echo '' >> /home/$MY_USERNAME/README
-        echo 'Tox' >> /home/$MY_USERNAME/README
-        echo '===' >> /home/$MY_USERNAME/README
-        echo $"tox onion domain: ${TOX_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
-        echo $"Your Tox node public key is: $TOX_PUBLIC_KEY" >> /home/$MY_USERNAME/README
-        echo $'In the Toxic client you can connect to it with:' >> /home/$MY_USERNAME/README
-        echo "  /connect $DEFAULT_DOMAIN_NAME.local $TOX_PORT $TOX_PUBLIC_KEY" >> /home/$MY_USERNAME/README
-        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-        chmod 600 /home/$MY_USERNAME/README
+    echo '[Unit]' > $rootdir/etc/systemd/system/tracker.service
+    echo 'Description=Torrent Tracker' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'After=syslog.target' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/tracker.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'Type=simple' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'User=tracker' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'Group=tracker' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'WorkingDirectory=/opt/tracker' >> $rootdir/etc/systemd/system/tracker.service
+    echo "ExecStart=/usr/bin/bttrack --port $TRACKER_PORT --dfile /opt/tracker/dstate --logfile /opt/tracker/tracker.log --nat_check 0 --scrape_allowed full --ipv6_enabled 0" >> $rootdir/etc/systemd/system/tracker.service
+    echo '' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'TimeoutSec=300' >> $rootdir/etc/systemd/system/tracker.service
+    echo '' >> $rootdir/etc/systemd/system/tracker.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/tracker.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/tracker.service
+
+    chroot "$rootdir" useradd -d /opt/tracker/ -s /bin/false tracker
+    if [ ! -d $rootdir/opt/tracker ]; then
+        mkdir $rootdir/opt/tracker
     fi
+    chown -R tracker:tracker $rootdir/opt/tracker
+
+    # publish regularly
+    echo "* *     * * *   root    zeronetavahi > /dev/null" >> $rootdir/etc/crontab
+
+    chroot "$rootdir" systemctl enable tracker.service
+    chroot "$rootdir" systemctl enable zeronet.service
 }
 
 initialise_mesh() {
@@ -619,7 +664,8 @@ initialise_mesh() {
     mesh_firewall
     mesh_avahi
     mesh_batman
-    #mesh_tox_node
+    mesh_tox_node
+    mesh_zeronet
 
     MESH_SERVICE='mesh-setup.service'
     MESH_SETUP_DAEMON=$rootdir/etc/systemd/system/$MESH_SERVICE
