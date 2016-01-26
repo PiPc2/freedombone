@@ -93,7 +93,7 @@ MY_TROVE_PASSWORD=
 # friend's repo trove
 FRIENDS_TROVE_PASSWORD=
 FRIENDS_TROVE_SERVER=
-FRIENDS_TROVE_SSH_PORT=
+FRIENDS_TROVE_SSH_PORT=2222
 
 # An optional password to log into IRC. This applies to all users
 IRC_PASSWORD=
@@ -903,6 +903,44 @@ function parse_args {
     fi
 }
 
+function read_repo_servers {
+    if grep -q "FRIENDS_TROVE_SERVER" $CONFIGURATION_FILE; then
+        FRIENDS_TROVE_SERVER=$(grep "FRIENDS_TROVE_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE; then
+        FRIENDS_TROVE_SSH_PORT=$(grep "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "MY_TROVE_PASSWORD" $CONFIGURATION_FILE; then
+        MY_TROVE_PASSWORD=$(grep "MY_TROVE_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE; then
+        FRIENDS_TROVE_PASSWORD=$(grep "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+
+    if [ ! $FRIENDS_TROVE_SERVER ]; then
+        return
+    fi
+    if [ ${#FRIENDS_TROVE_SERVER} -lt 2 ]; then
+        return
+    fi
+
+    MAIN_COMMAND=/usr/local/bin/${PROJECT_NAME}
+    if [ ! -f $MAIN_COMMAND ]; then
+        MAIN_COMMAND=/usr/bin/${PROJECT_NAME}
+    fi
+
+    REPOS=($(cat ${MAIN_COMMAND} | grep "_REPO=\"" | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+
+    for line in "${REPOS[@]}"
+    do
+        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
+        trove_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
+        #repo_url=$(echo "$line" | awk -F '=' '{print $2}'  | awk -F '"' '{print $2}')
+        friends_repo_url="ssh://trove@${FRIENDS_TROVE_SERVER}:${FRIENDS_TROVE_SSH_PORT}/home/trove/${trove_name}"
+        ${repo_name}="${friends_repo_url}"
+    done
+}
+
 function read_configuration {
     # if not installing on a Beaglebone then use sdb as the USB drive by default
     if [ ! $INSTALLING_ON_BBB ]; then
@@ -919,21 +957,11 @@ function read_configuration {
     fi
 
     if [ -f $CONFIGURATION_FILE ]; then
+        read_repo_servers
+
         # Ensure that a copy of the config exists for upgrade purposes
         if [[ $CONFIGURATION_FILE != "/root/${PROJECT_NAME}.cfg" ]]; then
             cp $CONFIGURATION_FILE /root/${PROJECT_NAME}.cfg
-        fi
-        if grep -q "FRIENDS_TROVE_SERVER" $CONFIGURATION_FILE; then
-            FRIENDS_TROVE_SERVER=$(grep "FRIENDS_TROVE_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        if grep -q "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE; then
-            FRIENDS_TROVE_SSH_PORT=$(grep "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        if grep -q "MY_TROVE_PASSWORD" $CONFIGURATION_FILE; then
-            MY_TROVE_PASSWORD=$(grep "MY_TROVE_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        if grep -q "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE; then
-            FRIENDS_TROVE_PASSWORD=$(grep "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
         if grep -q "PROJECT_WEBSITE" $CONFIGURATION_FILE; then
             PROJECT_WEBSITE=$(grep "PROJECT_WEBSITE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
