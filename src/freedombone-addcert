@@ -8,7 +8,7 @@
 #
 #                    Freedom in the Cloud
 #
-# A script for creating self-signed certificates on Debian
+# Create self-signed or Let's Encrypt certificates on Debian
 
 # License
 # =======
@@ -52,28 +52,86 @@ LETSENCRYPT_REPO="https://github.com/letsencrypt/letsencrypt"
 MY_EMAIL_ADDRESS=
 FRIENDS_TROVE_SERVER=
 FRIENDS_TROVE_PASSWORD=
+FRIENDS_TROVE_SSH_PORT=
+MY_TROVE_PASSWORD=
 
-if [ -f $CONFIGURATION_FILE ]; then
-    if grep -q "LETSENCRYPT_REPO" $CONFIGURATION_FILE; then
-        LETSENCRYPT_REPO=$(grep "LETSENCRYPT_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if grep -q "LETSENCRYPT_SERVER" $CONFIGURATION_FILE; then
-        LETSENCRYPT_SERVER=$(grep "LETSENCRYPT_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-
-    # use a trove?
-    if ! grep -q "FRIENDS_TROVE_SERVER" $CONFIGURATION_FILE; then
+function read_repo_servers {
+    if grep -q "FRIENDS_TROVE_SERVER" $CONFIGURATION_FILE; then
         FRIENDS_TROVE_SERVER=$(grep "FRIENDS_TROVE_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        FRIENDS_TROVE_SSH_PORT=2222
-        if ! grep -q "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE; then
-            FRIENDS_TROVE_PASSWORD=$(grep "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        if ! grep -q "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE; then
-            FRIENDS_TROVE_SSH_PORT=$(grep "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        LETSENCRYPT_REPO="ssh://trove@${FRIENDS_TROVE_SERVER}:${FRIENDS_TROVE_SSH_PORT}/home/trove/letsencrypt"
     fi
-fi
+    if grep -q "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE; then
+        FRIENDS_TROVE_SSH_PORT=$(grep "FRIENDS_TROVE_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "MY_TROVE_PASSWORD" $CONFIGURATION_FILE; then
+        MY_TROVE_PASSWORD=$(grep "MY_TROVE_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE; then
+        FRIENDS_TROVE_PASSWORD=$(grep "FRIENDS_TROVE_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+
+    if [ ! $FRIENDS_TROVE_SERVER ]; then
+        return
+    fi
+    if [ ${#FRIENDS_TROVE_SERVER} -lt 2 ]; then
+        return
+    fi
+
+    MAIN_COMMAND=/usr/local/bin/${PROJECT_NAME}
+    if [ ! -f $MAIN_COMMAND ]; then
+        MAIN_COMMAND=/usr/bin/${PROJECT_NAME}
+    fi
+
+    REPOS=($(cat ${MAIN_COMMAND} | grep "_REPO=\"" | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+
+    for line in "${REPOS[@]}"
+    do
+        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
+        trove_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
+        friends_repo_url="ssh://trove@${FRIENDS_TROVE_SERVER}:${FRIENDS_TROVE_SSH_PORT}/home/trove/${trove_name}"
+        ${repo_name}="${friends_repo_url}"
+    done
+}
+
+function git_clone {
+    repo_url="$1"
+    destination_dir="$2"
+    if [[ "$repo_url" == "ssh:"* ]]; then
+        if [ "${FRIENDS_TROVE_SERVER}" ]; then
+            if [ ${#FRIENDS_TROVE_SERVER} -gt 2 ]; then
+                if [ "$FRIENDS_TROVE_PASSWORD" ]; then
+                    if [ ${#FRIENDS_TROVE_PASSWORD} -gt 2 ]; then
+                        sshpass -p "$FRIENDS_TROVE_PASSWORD" git clone "$repo_url" "$destination_dir"
+                        return
+                    fi
+                fi
+            fi
+        fi
+    fi
+    git clone "$repo_url" "$destination_dir"
+}
+
+function git_pull {
+    git stash
+    git checkout master
+    if [ "${FRIENDS_TROVE_SERVER}" ]; then
+        if [ ${#FRIENDS_TROVE_SERVER} -gt 2 ]; then
+            if [ "$FRIENDS_TROVE_PASSWORD" ]; then
+                if [ ${#FRIENDS_TROVE_PASSWORD} -gt 2 ]; then
+                    sshpass -p "$FRIENDS_TROVE_PASSWORD" git pull
+                    if [ $1 ]; then
+                        git checkout $1 -b $1
+                    fi
+                    return
+                fi
+            fi
+        fi
+    fi
+    git pull
+
+    if [ $1 ]; then
+        git checkout $1 -b $1
+    fi
+}
 
 function show_help {
     echo ''
@@ -181,24 +239,6 @@ fi
 
 CERTFILE=$HOSTNAME
 
-function git_clone {
-    repo_url="$1"
-    destination_dir="$2"
-    if [[ "$repo_url" == "ssh:"* ]]; then
-        if [ "${FRIENDS_TROVE_SERVER}" ]; then
-            if [ ${#FRIENDS_TROVE_SERVER} -gt 2 ]; then
-                if [ "$FRIENDS_TROVE_PASSWORD" ]; then
-                    if [ ${#FRIENDS_TROVE_PASSWORD} -gt 2 ]; then
-                        sshpass -p "$FRIENDS_TROVE_PASSWORD" git clone "$repo_url" "$destination_dir"
-                        return
-                    fi
-                fi
-            fi
-        fi
-    fi
-    git clone "$repo_url" "$destination_dir"
-}
-
 function add_cert_letsencrypt {
     CERTFILE=$LETSENCRYPT_HOSTNAME
 
@@ -232,8 +272,7 @@ function add_cert_letsencrypt {
         fi
     else
         cd ${INSTALL_DIR}/letsencrypt
-        git stash
-        git pull
+        git_pull
     fi
 
     # stop the web server
@@ -336,6 +375,7 @@ function create_cert {
     fi
 }
 
+read_repo_servers
 create_cert
 generate_dh_params
 restart_web_server
