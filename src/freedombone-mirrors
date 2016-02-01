@@ -1,0 +1,245 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Mirror git repos which the project depends on
+#
+# License
+# =======
+#
+# Copyright (C) 2015-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-mirrors
+export TEXTDOMAINDIR="/usr/share/locale"
+
+# Minimum number of characters in a password
+MINIMUM_PASSWORD_LENGTH=10
+
+CONFIGURATION_FILE="/root/${PROJECT_NAME}.cfg"
+
+# if this is blank then just use the default repos
+FRIENDS_MIRRORS_SERVER=
+REPOS=
+MIRRORS_BASE=/home/mirrors/mirrors
+MY_MIRRORS_PASSWORD=
+FRIENDS_MIRRORS_PASSWORD=
+NEW_MIRRORS='no'
+FRIENDS_MIRRORS_SSH_PORT=2222
+
+MAIN_COMMAND=/usr/local/bin/${PROJECT_NAME}
+if [ ! -f $MAIN_COMMAND ]; then
+    MAIN_COMMAND=/usr/bin/${PROJECT_NAME}
+fi
+
+REPOS=($(cat ${MAIN_COMMAND} | grep "_REPO=\"" | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+
+# obtain the mirrors password if it exists
+if [ -f $CONFIGURATION_FILE ]; then
+    if ! grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
+        MY_MIRRORS_PASSWORD=$(grep "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if ! grep -q "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE; then
+        FRIENDS_MIRRORS_SERVER=$(grep "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if ! grep -q "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
+        FRIENDS_MIRRORS_PASSWORD=$(grep "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if ! grep -q "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE; then
+        FRIENDS_MIRRORS_SSH_PORT=$(grep "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+fi
+
+function show_help {
+    echo ''
+    echo $"${PROJECT_NAME}-mirrors --sync [domain/url] -p [password]"
+    echo ''
+    echo $'Creates or syncs with a set of git repositories'
+    echo ''
+    echo $'     --help                   Show help'
+    echo $'  -n|--new [yes|no]           Start a new mirrors'
+    echo $"  -p|--password [yes|no]      Friend's mirrors user password"
+    echo $"  -m|--mypassword [yes|no]    Local mirrors user password"
+    echo $"     --port [number]          Friend's server ssh port number"
+    echo $"  -s|--sync [domain]          Friend's server domain to sync with"
+    echo ''
+    exit 0
+}
+
+function create_mirrors_user {
+    if [ -d /home/mirrors ]; then
+        return
+    fi
+
+    create_password='no'
+    if [ ! "$MY_MIRRORS_PASSWORD" ]; then
+        create_password='yes'
+    fi
+    if [ ${#MY_MIRRORS_PASSWORD} -lt ${MINIMUM_PASSWORD_LENGTH} ]; then
+        echo $'Password is too short. Creating new one.'
+        create_password='yes'
+    fi
+
+    if [[ $create_password == 'yes' ]]; then
+        MY_MIRRORS_PASSWORD="$(openssl rand -base64 20 | cut -c1-18)"
+    fi
+
+    useradd -m -p "$MY_MIRRORS_PASSWORD" -s /bin/bash mirrors
+
+    # remove any existing user files
+    rm -rf /home/mirrors/*
+
+    # store the mirrors password
+    if [ -f $CONFIGURATION_FILE ]; then
+        if ! grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
+            echo "MY_MIRRORS_PASSWORD=$MY_MIRRORS_PASSWORD" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|MY_MIRRORS_PASSWORD=.*|MY_MIRRORS_PASSWORD=${MY_MIRRORS_PASSWORD}|g" $CONFIGURATION_FILE
+        fi
+    fi
+}
+
+function enable_mirrors_via_onion {
+    if ! grep -q 'Host *.onion' /home/mirrors/.ssh/config; then
+        if [ ! -d /home/mirrors/.ssh ]; then
+            mkdir /home/mirrors/.ssh
+        fi
+        echo 'Host *.onion' >> /home/mirrors/.ssh/config
+        echo 'ProxyCommand connect -R remote -5 -S 127.0.0.1:9050 %h %p' >> /home/mirrors/.ssh/config
+        chown mirrors:mirrors /home/mirrors/.ssh
+        chown mirrors:mirrors /home/mirrors/.ssh/config
+    fi
+}
+
+function update_repos_from_friend {
+    if [ ! $FRIENDS_MIRRORS_SERVER ]; then
+       return
+    fi
+    if [ ${#FRIENDS_MIRRORS_SERVER} -lt 2 ]; then
+        return
+    fi
+
+    new_repos=()
+    for line in "${REPOS[@]}"
+    do
+        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
+        mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
+        #repo_url=$(echo "$line" | awk -F '=' '{print $2}'  | awk -F '"' '{print $2}')
+        friends_repo_url="ssh://mirrors@${FRIENDS_MIRRORS_SERVER}:${FRIENDS_MIRRORS_SSH_PORT}/home/mirrors/${mirrors_name}"
+        new_line="${repo_name}=\"${friends_repo_url}\""
+        new_repos+=($new_line)
+    done
+    REPOS=("${new_repos[@]}")
+}
+
+function sync_mirrors_repos {
+    for line in "${REPOS[@]}"
+    do
+        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
+        repo_url=$(echo "$line" | awk -F '=' '{print $2}'  | awk -F '"' '{print $2}')
+        mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
+        if [[ ${mirrors_name} != 'debian' ]]; then
+            if [[ $NEW_MIRRORS == 'yes' ]]; then
+                if [ -d /home/mirrors/${mirrors_name} ]; then
+                    rm -rf /home/mirrors/${mirrors_name}
+                fi
+            fi
+            if [ ! -d /home/mirrors/${mirrors_name} ]; then
+                if [[ ${repo_url} != 'ssh:'* ]]; then
+                    git clone --mirror ${repo_url} /home/mirrors/${mirrors_name}
+                else
+                    sshpass -p "$FRIENDS_MIRRORS_PASSWORD" git clone --mirror ${repo_url} /home/mirrors/${mirrors_name}
+                fi
+                if [ ! -d /home/mirrors/${mirrors_name} ]; then
+                    echo $"WARNING: failed to mirror repo ${repo_url}"
+                fi
+            else
+                cd /home/mirrors/${mirrors_name}
+                git remote set-url origin ${repo_url}
+                if [[ ${repo_url} != 'ssh:'* ]]; then
+                    git fetch -p origin
+                else
+                    sshpass -p "$FRIENDS_MIRRORS_PASSWORD" git fetch -p origin
+                fi
+            fi
+        fi
+    done
+    chown -R mirrors:mirrors /home/mirrors
+}
+
+while [[ $# > 1 ]]
+do
+key="$1"
+
+case $key in
+    --help)
+    show_help
+    ;;
+    -s|--sync)
+    shift
+    # use repos on another server
+    FRIENDS_MIRRORS_SERVER="$1"
+    ;;
+    -m|--mypass|--mypassword)
+    shift
+    MY_MIRRORS_PASSWORD="$1"
+    if [ -f $CONFIGURATION_FILE ]; then
+        if ! grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
+            echo "MY_MIRRORS_PASSWORD=$MY_MIRRORS_PASSWORD" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|MY_MIRRORS_PASSWORD=.*|MY_MIRRORS_PASSWORD=${MY_MIRRORS_PASSWORD}|g" $CONFIGURATION_FILE
+        fi
+    fi
+    ;;
+    -p|--pass|--password)
+    shift
+    FRIENDS_MIRRORS_PASSWORD="$1"
+    if [ -f $CONFIGURATION_FILE ]; then
+        if ! grep -q "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
+            echo "FRIENDS_MIRRORS_PASSWORD=$FRIENDS_MIRRORS_PASSWORD" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|FRIENDS_MIRRORS_PASSWORD=.*|FRIENDS_MIRRORS_PASSWORD=${FRIENDS_MIRRORS_PASSWORD}|g" $CONFIGURATION_FILE
+        fi
+    fi
+    ;;
+    -n|--new)
+    shift
+    NEW_MIRRORS="$1"
+    ;;
+    --port)
+    shift
+    FRIENDS_MIRRORS_SSH_PORT=${1}
+    ;;
+    *)
+    # unknown option
+    ;;
+esac
+shift
+done
+
+create_mirrors_user
+enable_mirrors_via_onion
+update_repos_from_friend
+sync_mirrors_repos
+
+exit 0
