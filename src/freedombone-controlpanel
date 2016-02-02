@@ -556,6 +556,93 @@ function change_ssh_public_key {
     esac
 }
 
+function remove_user_from_mailing_list {
+    select_user
+    if [ ! $SELECTED_USERNAME ]; then
+        return
+    fi
+    USER_MAILING_LISTS=$(cat "/home/$SELECTED_USERNAME/.procmailrc" | grep '\[' | grep '\]' | awk -F '\[' '{print $2}' | awk -F '\\' '{print $1}')
+
+    i=0
+    W=()
+    list_name=()
+    while read -r listname; do
+        i=$((i+1))
+        W+=($i "$listname")
+        list_name+=("$listname")
+        echo $listname
+    done <<< "$USER_MAILING_LISTS"
+
+    i=$((i+1))
+    W+=($i $"Exit back to user mainenance")
+
+    list_selected=$(dialog --default-item "$i" --backtitle $"Freedombone Control Panel" --title $"Remove a mailing list for $SELECTED_USERNAME" --menu $"Select one of the following:" 24 50 17 "${W[@]}" 3>&2 2>&1 1>&3)
+
+    if [ $? -eq 0 ]; then # Exit with OK
+        if [ ${list_selected} -ne ${i} ]; then
+            remove_list_name="${list_name[$((list_selected-1))]}"
+
+            # find the line number where the list is defined
+            line_number=0
+            i=0
+            while read -r line
+            do
+                if [[ "$line" == *"\[${remove_list_name}\\]"* ]]; then
+                    line_number=${i}
+                fi
+                i=$((i+1))
+            done < "/home/$SELECTED_USERNAME/.procmailrc"
+
+            if [ ${line_number} -eq 0 ]; then
+                # no match was found
+                return
+            fi
+
+            # recreate the file
+            if [ -f /home/${SELECTED_USERNAME}/.procmailrc_new ]; then
+                rm /home/${SELECTED_USERNAME}/.procmailrc_new
+            fi
+            i=0
+            clip=0
+            while read -r line
+            do
+                i=$((i+1))
+                if [ ${i} -gt $((line_number-1)) ]; then
+                    if [ ${clip} -eq 0 ]; then
+                        clip=1
+                    fi
+                    if [ ${clip} -eq 1 ]; then
+                        if [ ${i} -lt $((line_number+2)) ]; then
+                            continue
+                        else
+                            if [ ${#line} -lt 1 ]; then
+                                clip=2
+                                continue
+                            fi
+                            if [[ "$line" == ":"* || "$line" == "#"* ]]; then
+                                clip=2
+                            else
+                                continue
+                            fi
+                        fi
+                    fi
+                fi
+
+                echo "$line" >> /home/${SELECTED_USERNAME}/.procmailrc_new
+
+                if [[ "$line" == *"\[${remove_list_name}\\]"* ]]; then
+                    line_number=${i}
+                fi
+            done < "/home/$SELECTED_USERNAME/.procmailrc"
+            cp /home/${SELECTED_USERNAME}/.procmailrc_new /home/${SELECTED_USERNAME}/.procmailrc
+            rm /home/${SELECTED_USERNAME}/.procmailrc_new
+            chown ${SELECTED_USERNAME}:${SELECTED_USERNAME} /home/${SELECTED_USERNAME}/.procmailrc
+            dialog --title $"Remove user from mailing list" \
+                   --msgbox $"${SELECTED_USERNAME} has been removed from ${remove_list_name}" 6 50
+        fi
+    fi
+}
+
 function add_to_mailing_list {
     select_user
     if [ ! $SELECTED_USERNAME ]; then
@@ -1380,12 +1467,13 @@ function menu_email {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Email Filtering Rules" \
-               --radiolist $"Choose an operation:" 12 70 5 \
+               --radiolist $"Choose an operation:" 13 70 6 \
                1 $"Add a user to a mailing list" off \
-               2 $"Add an email rule" off \
-               3 $"Block/Unblock an email address" off \
-               4 $"Block/Unblock email with subject text" off \
-               5 $"Back to main menu" on 2> $data
+               2 $"Remove a user from a mailing list" off \
+               3 $"Add an email rule" off \
+               4 $"Block/Unblock an email address" off \
+               5 $"Block/Unblock email with subject text" off \
+               6 $"Back to main menu" on 2> $data
         sel=$?
         case $sel in
             1) break;;
@@ -1393,10 +1481,11 @@ function menu_email {
         esac
         case $(cat $data) in
             1) add_to_mailing_list;;
-            2) email_rule;;
-            3) block_unblock_email;;
-            4) block_unblock_subject;;
-            5) break;;
+            2) remove_user_from_mailing_list;;
+            3) email_rule;;
+            4) block_unblock_email;;
+            5) block_unblock_subject;;
+            6) break;;
         esac
     done
 }
