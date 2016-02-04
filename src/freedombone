@@ -200,6 +200,7 @@ MICROBLOG_COMMIT='771f08b3c761ff122c3fff7bdb13ec6625828018'
 MICROBLOG_THEME_REPO="https://git.gnu.io/h2p/Qvitter.git"
 MICROBLOG_THEME_COMMIT='8abbdeb3c0a6a34754411452ae832d2f19cef7ab'
 MICROBLOG_WELCOME_MESSAGE=$'<h1>Welcome to $MICROBLOG_DOMAIN_NAME – a federated microblog</h1><p>Another Freedombone site</p>'
+MICROBLOG_BACKGROUND_IMAGE_URL=
 
 # Domain name for hubzilla installation
 HUBZILLA_DOMAIN_NAME=
@@ -1022,6 +1023,9 @@ function read_configuration {
         # Ensure that a copy of the config exists for upgrade purposes
         if [[ $CONFIGURATION_FILE != "/root/${PROJECT_NAME}.cfg" ]]; then
             cp $CONFIGURATION_FILE /root/${PROJECT_NAME}.cfg
+        fi
+        if grep -q "MICROBLOG_BACKGROUND_IMAGE_URL" $CONFIGURATION_FILE; then
+            MICROBLOG_BACKGROUND_IMAGE_URL=$(grep "MICROBLOG_BACKGROUND_IMAGE_URL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
         if grep -q "MICROBLOG_WELCOME_MESSAGE" $CONFIGURATION_FILE; then
             MICROBLOG_WELCOME_MESSAGE=$(grep "MICROBLOG_WELCOME_MESSAGE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -8609,6 +8613,8 @@ function install_gnu_social_theme {
         return
     fi
 
+    apt-get -y install wget
+
     if [ ! -d /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local/plugins ]; then
         mkdir -p /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local/plugins
     fi
@@ -8617,6 +8623,17 @@ function install_gnu_social_theme {
     git_clone $MICROBLOG_THEME_REPO Qvitter
     cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local/plugins/Qvitter
     git checkout $MICROBLOG_THEME_COMMIT -b $MICROBLOG_THEME_COMMIT
+
+    # download a custom background image
+    if [ $MICROBLOG_BACKGROUND_IMAGE_URL ]; then
+        MICROBLOG_BACKGROUND_IMAGE_URL_EXT=$(echo $MICROBLOG_BACKGROUND_IMAGE_URL | awk -F '.' '{print $2}')
+        wget $MICROBLOG_BACKGROUND_IMAGE_URL -o img/custom.${MICROBLOG_BACKGROUND_IMAGE_URL_EXT}
+        if [ ! -f img/custom.${MICROBLOG_BACKGROUND_IMAGE_URL_EXT} ]; then
+            echo "$MICROBLOG_BACKGROUND_IMAGE_URL"
+            echo $'Custom background image for microblog could not be downloaded'
+            exit 87524
+        fi
+    fi
 
     microblog_config_file=/var/www/$MICROBLOG_DOMAIN_NAME/htdocs/config.php
     if ! grep -q "addPlugin('Qvitter')" $microblog_config_file; then
@@ -8630,7 +8647,11 @@ function install_gnu_social_theme {
         echo "\$config['site']['qvitter']['timebetweenpolling'] = 120000; // two minutes" >> $microblog_config_file
         echo "\$config['site']['qvitter']['urlshortenerapiurl'] = 'http://qttr.at/shortener.php';" >> $microblog_config_file
         echo "\$config['site']['qvitter']['urlshortenersignature'] = 'b6afeec983';" >> $microblog_config_file
-        echo "\$config['site']['qvitter']['sitebackground'] = 'img/vagnsmossen.jpg';" >> $microblog_config_file
+        if [ $MICROBLOG_BACKGROUND_IMAGE_URL ]; then
+            echo "\$config['site']['qvitter']['sitebackground'] = 'img/custom.${MICROBLOG_BACKGROUND_IMAGE_URL_EXT}';" >> $microblog_config_file
+        else
+            echo "\$config['site']['qvitter']['sitebackground'] = 'img/vagnsmossen.jpg';" >> $microblog_config_file
+        fi
         echo "\$config['site']['qvitter']['favicon'] = 'img/favicon.ico?v=4';" >> $microblog_config_file
         echo "\$config['site']['qvitter']['sprite'] = Plugin::staticPath('Qvitter', '').'img/sprite.png?v=40';" >> $microblog_config_file
         echo "\$config['site']['qvitter']['enablewelcometext'] = true;" >> $microblog_config_file
@@ -8639,6 +8660,10 @@ function install_gnu_social_theme {
         echo "\$config['site']['qvitter']['customwelcometext']['fr'] = '$MICROBLOG_WELCOME_MESSAGE';" >> $microblog_config_file
         echo "\$config['site']['qvitter']['customwelcometext']['es'] = '$MICROBLOG_WELCOME_MESSAGE';" >> $microblog_config_file
         echo "\$config['site']['qvitter']['blocked_ips'] = array();" >> $microblog_config_file
+    else
+        if [ -f img/custom.${MICROBLOG_BACKGROUND_IMAGE_URL_EXT} ]; then
+            sed -i "s|\$config['site']['qvitter']['sitebackground'].*|\$config['site']['qvitter']['sitebackground'] = 'img/custom.${MICROBLOG_BACKGROUND_IMAGE_URL_EXT}';|g" $microblog_config_file
+        fi
     fi
 
     if ! grep -q "GNU Social theme commit" $COMPLETION_FILE; then
