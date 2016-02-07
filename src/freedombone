@@ -493,6 +493,12 @@ ATHEROS_WIFI_REPO="https://github.com/qca/open-ath9k-htc-firmware.git"
 LETSENCRYPT_ENABLED="no"
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
+RSS_READER_REPO="https://tt-rss.org/git/tt-rss.git tt-rss"
+RSS_READER_COMMIT='50bda3fefbff31e5a5503d6fd1a927412fe29026'
+RSS_READER_ADMIN_PASSWORD=
+RSS_READER_ONION_PORT=8091
+RSS_READER_DOMAIN_NAME=ttrss
+
 function show_help {
     echo ''
     echo $"${PROJECT_NAME} -c [configuration file]"
@@ -1023,6 +1029,18 @@ function read_configuration {
         # Ensure that a copy of the config exists for upgrade purposes
         if [[ $CONFIGURATION_FILE != "/root/${PROJECT_NAME}.cfg" ]]; then
             cp $CONFIGURATION_FILE /root/${PROJECT_NAME}.cfg
+        fi
+        if grep -q "RSS_READER_REPO" $CONFIGURATION_FILE; then
+            RSS_READER_REPO=$(grep "RSS_READER_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "RSS_READER_COMMIT" $CONFIGURATION_FILE; then
+            RSS_READER_COMMIT=$(grep "RSS_READER_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "RSS_READER_ADMIN_PASSWORD" $CONFIGURATION_FILE; then
+            RSS_READER_ADMIN_PASSWORD=$(grep "RSS_READER_ADMIN_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "RSS_READER_DOMAIN_NAME" $CONFIGURATION_FILE; then
+            RSS_READER_DOMAIN_NAME=$(grep "RSS_READER_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
         if grep -q "MICROBLOG_BACKGROUND_IMAGE_URL" $CONFIGURATION_FILE; then
             MICROBLOG_BACKGROUND_IMAGE_URL=$(grep "MICROBLOG_BACKGROUND_IMAGE_URL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -3288,6 +3306,14 @@ function get_mariadb_gnusocial_admin_password {
         fi
         if grep -q "Microblog administrator password" /home/$MY_USERNAME/README; then
             MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Microblog administrator password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+        fi
+    fi
+}
+
+function get_mariadb_rss_reader_admin_password {
+    if [ -f /home/$MY_USERNAME/README ]; then
+        if grep -q "RSS reader admin password" /home/$MY_USERNAME/README; then
+            RSS_READER_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "RSS reader admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
         fi
     fi
 }
@@ -8258,6 +8284,133 @@ function install_blog {
     echo 'install_blog' >> $COMPLETION_FILE
 }
 
+function install_rss_reader {
+    if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+
+    RSS_READER_PATH=/etc/share/tt-rss
+
+    # update to the next commit
+    if [ -d $RSS_READER_PATH ]; then
+        if grep -q "RSS reader commit" $COMPLETION_FILE; then
+            CURRENT_RSS_READER_COMMIT=$(grep "RSS reader commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+            if [[ "$CURRENT_RSS_READER_COMMIT" != "$RSS_READER_COMMIT" ]]; then
+                cd $RSS_READER_PATH
+                git_pull $RSS_READER_REPO $RSS_READER_COMMIT
+                sed -i "s/RSS reader commit.*/RSS reader commit:$RSS_READER_COMMIT/g" $COMPLETION_FILE
+                chown -R www-data:www-data $RSS_READER_PATH
+            fi
+        else
+            echo "RSS reader commit:$RSS_READER_COMMIT" >> $COMPLETION_FILE
+        fi
+    fi
+
+    if grep -Fxq "install_rss_reader" $COMPLETION_FILE; then
+        return
+    fi
+
+    apt-get -y install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
+
+    git_clone $RSS_READER_REPO $RSS_READER_PATH
+    if [ ! -d $RSS_READER_PATH ]; then
+        echo $'Could not clone RSS reader repo'
+        exit 52925
+    fi
+    cd $RSS_READER_PATH
+    git checkout $RSS_READER_COMMIT -b $RSS_READER_COMMIT
+    if ! grep -q "RSS reader commit" $COMPLETION_FILE; then
+        echo "RSS reader commit:$RSS_READER_COMMIT" >> $COMPLETION_FILE
+    fi
+
+    install_mariadb
+    get_mariadb_password
+    repair_databases_script
+
+    get_mariadb_rss_reader_admin_password
+    if [ ! $RSS_READER_ADMIN_PASSWORD ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            RSS_READER_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            RSS_READER_ADMIN_PASSWORD="$(openssl rand -base64 32)"
+        fi
+    fi
+
+    create_database ttrss "$RSS_READER_ADMIN_PASSWORD" $MY_USERNAME
+
+    MICROBLOG_ONION_HOSTNAME=$(add_onion_service ttrss 80 ${RSS_READER_ONION_PORT})
+
+    echo 'server {' > /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo "    listen 127.0.0.1:$RSS_READER_ONION_PORT default_server;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo "    server_name $RSS_READER_DOMAIN_NAME;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Logs' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  access_log off;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  error_log off;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Root' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo "  root $RSS_READER_PATH;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Index' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  index index.php;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # PHP' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  location ~ \.php {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Location' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  location / {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    try_files $uri $uri/ @ttrss;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Fancy URLs' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  location @ttrss {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Restrict access that is unnecessary anyway' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  location ~ /\.(ht|git) {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    deny all;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  client_max_body_size 15m;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '}' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+
+    configure_php
+
+    nginx_ensite $RSS_READER_DOMAIN_NAME
+    systemctl restart php5-fpm
+    systemctl restart nginx
+
+    if ! grep -q "RSS reader onion domain" $COMPLETION_FILE; then
+        echo "RSS reader onion domain:${RSS_READER_ONION_HOSTNAME}" >> $COMPLETION_FILE
+    fi
+    if ! grep -q "GNU Social domain" $COMPLETION_FILE; then
+        echo "GNU Social domain:${RSS_READER_DOMAIN_NAME}" >> $COMPLETION_FILE
+    fi
+
+    # some post-install instructions for the user
+    if ! grep -q $"RSS Reader" /home/$MY_USERNAME/README; then
+        echo '' >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo $'RSS Reader' >> /home/$MY_USERNAME/README
+        echo '==========' >> /home/$MY_USERNAME/README
+        echo $"RSS reader domain: ${RSS_READER_DOMAIN_NAME}" >> /home/$MY_USERNAME/README
+        echo $"RSS reader onion domain: ${RSS_READER_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo $"RSS reader admin username: ${MY_USERNAME}" >> /home/$MY_USERNAME/README
+        echo $"RSS reader admin password: ${RSS_READER_ADMIN_PASSWORD}" >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    fi
+
+    echo 'install_rss_reader' >> $COMPLETION_FILE
+}
+
 function install_gnu_social {
     if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
         return
@@ -8439,6 +8592,8 @@ function install_gnu_social {
     echo '    deny all;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
     echo '  }' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+    echo '  add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
+    echo '  add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
     echo '  client_max_body_size 15m;' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
     echo '}' >> /etc/nginx/sites-available/$MICROBLOG_DOMAIN_NAME
 
@@ -10150,6 +10305,7 @@ install_blog
 mark_blog_domain
 install_gnu_social
 install_gnu_social_theme
+install_rss_reader
 install_hubzilla
 install_dlna_server
 configure_firewall_for_dlna
