@@ -125,6 +125,27 @@ function restore_database_from_friend {
         restore_directory_from_friend /root/temp${1} ${1}
         RESTORE_SUBDIR="var"
         if [ ${1} ]; then
+
+            # special handling of ttrss
+            if [[ ${2} == "ttrss" ]]; then
+                if [ -d /etc/share/${2} ]; then
+                    rm -rf /etc/share/${2}
+                    mv /root/temp${1}/etc/share/${2} /etc/share/
+                    if [ ! "$?" = "0" ]; then
+                        exit 639
+                    fi
+                    if [ -d /etc/letsencrypt/live/${2} ]; then
+                        ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+                        ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+                    else
+                        # Ensure that the bundled SSL cert is being used
+                        if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+                            sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+                        fi
+                    fi
+                fi
+            fi
+
             if [ -d /var/www/${2}/htdocs ]; then
                 if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
                     rm -rf /var/www/${2}/htdocs
@@ -575,6 +596,24 @@ function restore_gnu_social {
     fi
 }
 
+function restore_rss_reader {
+    if [[ $RESTORE_APP != 'all' ]]; then
+        if [[ $RESTORE_APP != 'ttrss' ]]; then
+            return
+        fi
+    fi
+    if grep -q "RSS reader domain" $COMPLETION_FILE; then
+        RSS_READER_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "RSS reader domain" | awk -F ':' '{print $2}')
+        restore_database_from_friend ttrss ${RSS_READER_DOMAIN_NAME}
+        if [ -d $SERVER_DIRECTORY/backup/ttrss ]; then
+            chown -R www-data:www-data /etc/share/ttrss
+        fi
+        if [ -d /root/tempttrss ]; then
+            rm -rf /root/tempttrss
+        fi
+    fi
+}
+
 function restore_hubzilla {
     if [[ $RESTORE_APP != 'all' ]]; then
         if [[ $RESTORE_APP != 'hubzilla' ]]; then
@@ -886,6 +925,7 @@ restore_mailing_list
 restore_xmpp
 restore_gnu_social
 restore_hubzilla
+restore_rss_reader
 restore_owncloud
 restore_gogs
 restore_wiki
