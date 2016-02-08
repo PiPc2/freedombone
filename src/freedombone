@@ -498,6 +498,8 @@ RSS_READER_COMMIT='50bda3fefbff31e5a5503d6fd1a927412fe29026'
 RSS_READER_ADMIN_PASSWORD=
 RSS_READER_ONION_PORT=8092
 RSS_READER_DOMAIN_NAME=ttrss
+RSS_MOBILE_READER_REPO="https://github.com/mboinet/ttrss-mobile"
+RSS_MOBILE_READER_COMMIT='d5242e1c269e9480ab3b66b7a38da3c892dfb326'
 
 function show_help {
     echo ''
@@ -1033,8 +1035,14 @@ function read_configuration {
         if grep -q "RSS_READER_REPO" $CONFIGURATION_FILE; then
             RSS_READER_REPO=$(grep "RSS_READER_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
+        if grep -q "RSS_MOBILE_READER_REPO" $CONFIGURATION_FILE; then
+            RSS_MOBILE_READER_REPO=$(grep "RSS_MOBILE_READER_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
         if grep -q "RSS_READER_COMMIT" $CONFIGURATION_FILE; then
             RSS_READER_COMMIT=$(grep "RSS_READER_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "RSS_MOBILE_READER_COMMIT" $CONFIGURATION_FILE; then
+            RSS_MOBILE_READER_COMMIT=$(grep "RSS_MOBILE_READER_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
         if grep -q "RSS_READER_ADMIN_PASSWORD" $CONFIGURATION_FILE; then
             RSS_READER_ADMIN_PASSWORD=$(grep "RSS_READER_ADMIN_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -8433,6 +8441,7 @@ function install_rss_reader {
         echo $'  Host name: localhost' >> /home/$MY_USERNAME/README
         echo $'  Port: 3306' >> /home/$MY_USERNAME/README
         echo $"  Tiny Tint RSS URL: http://${RSS_READER_ONION_HOSTNAME}/" >> /home/$MY_USERNAME/README
+        echo $"  Tiny Tint RSS URL (mobile): http://${RSS_READER_ONION_HOSTNAME}/mobile" >> /home/$MY_USERNAME/README
         echo '' >> /home/$MY_USERNAME/README
         echo $'Click "Test Configuration" and then "Initialize database"' >> /home/$MY_USERNAME/README
         echo $'You may need to click "save configuration"' >> /home/$MY_USERNAME/README
@@ -8440,12 +8449,66 @@ function install_rss_reader {
         echo $'Then go to Preferences/Users, click on the "admin" user and then change the password.' >> /home/$MY_USERNAME/README
         echo $'You will immediately see what looks like an authorisation error, so log out and log back' >> /home/$MY_USERNAME/README
         echo $'in with username "admin" and your new password.' >> /home/$MY_USERNAME/README
-        echo '' >> /home/$MY_USERNAME/README
         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
         chmod 600 /home/$MY_USERNAME/README
     fi
 
     echo 'install_rss_reader' >> $COMPLETION_FILE
+}
+
+function install_rss_mobile_reader {
+    if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+
+    if [ ! $RSS_READER_PATH ]; then
+        RSS_READER_PATH=/etc/share/tt-rss
+    fi
+    RSS_MOBILE_READER_PATH=/etc/share/ttrss-mobile
+
+    if [ ! -d $RSS_READER_PATH ]; then
+        echo $'tt-rss is not installed, so the mobile version cannot be installed'
+        exit 63452
+    fi
+
+    # update to the next commit
+    if [ -d $RSS_MOBILE_READER_PATH ]; then
+        if grep -q "RSS mobile reader commit" $COMPLETION_FILE; then
+            CURRENT_RSS_MOBILE_READER_COMMIT=$(grep "RSS mobile reader commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
+            if [[ "$CURRENT_RSS_MOBILE_READER_COMMIT" != "$RSS_MOBILE_READER_COMMIT" ]]; then
+                cd $RSS_MOBILE_READER_PATH
+                git_pull $RSS_MOBILE_READER_REPO $RSS_MOBILE_READER_COMMIT
+                sed -i "s/RSS mobile reader commit.*/RSS mobile reader commit:$RSS_MOBILE_READER_COMMIT/g" $COMPLETION_FILE
+                chown -R www-data:www-data $RSS_MOBILE_READER_PATH
+            fi
+        else
+            echo "RSS mobile reader commit:$RSS_MOBILE_READER_COMMIT" >> $COMPLETION_FILE
+        fi
+    fi
+
+    if grep -Fxq "install_rss_mobile_reader" $COMPLETION_FILE; then
+        return
+    fi
+
+    cd /etc/share
+    git_clone $RSS_MOBILE_READER_REPO ttrss-mobile
+    if [ ! -d $RSS_MOBILE_READER_PATH ]; then
+        echo $'Could not clone RSS mobile reader repo'
+        exit 24816
+    fi
+    cd $RSS_MOBILE_READER_PATH
+    git checkout $RSS_MOBILE_READER_COMMIT -b $RSS_MOBILE_READER_COMMIT
+    if ! grep -q "RSS mobile reader commit" $COMPLETION_FILE; then
+        echo "RSS mobile reader commit:$RSS_MOBILE_READER_COMMIT" >> $COMPLETION_FILE
+    fi
+
+    # link to the main site
+    ln -s $RSS_MOBILE_READER_PATH $RSS_READER_PATH/mobile
+
+    chown -R www-data:www-data $RSS_MOBILE_READER_PATH
+    chmod a+x $RSS_MOBILE_READER_PATH
+
+    echo 'install_rss_mobile_reader' >> $COMPLETION_FILE
 }
 
 function install_gnu_social {
@@ -10343,6 +10406,7 @@ mark_blog_domain
 install_gnu_social
 install_gnu_social_theme
 install_rss_reader
+install_rss_mobile_reader
 install_hubzilla
 install_dlna_server
 configure_firewall_for_dlna
