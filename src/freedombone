@@ -8913,15 +8913,6 @@ function install_gnu_social {
     fi
     echo "GNU Social onion domain:${MICROBLOG_ONION_HOSTNAME}" >> $COMPLETION_FILE
 
-    # clear down the database periodically
-    echo '$n = new Notice();' > /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/clear-database.php
-    echo "\$n->whereAdd('created < NOW() - INTERVAL 1 YEAR');" >> /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/clear-database.php
-    echo 'if ($n->find()) { while ($n->fetch()) { $n->deleteAs($n->getProfile()); } }' >> /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/clear-database.php
-    echo 'exit' >> /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/clear-database.php
-    echo '#!/bin/bash' > /etc/cron.weekly/clear-microblog-database
-    echo "cat /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/clear-database.php | php /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/console.php" >> /etc/cron.weekly/clear-microblog-database
-    chmod +x /etc/cron.weekly/clear-microblog-database
-
     # some post-install instructions for the user
     if ! grep -q $"Microblog administrator" /home/$MY_USERNAME/README; then
         echo '' >> /home/$MY_USERNAME/README
@@ -8937,6 +8928,64 @@ function install_gnu_social {
 
     echo "GNU Social domain:$MICROBLOG_DOMAIN_NAME" >> $COMPLETION_FILE
     echo 'install_gnu_social' >> $COMPLETION_FILE
+}
+
+function expire_gnu_social_posts {
+    # To prevent the database size from growing endlessly this script expires posts
+    # after a number of months
+    if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+    if [ ! -d /var/www/$MICROBLOG_DOMAIN_NAME/htdocs ]; then
+        return
+    fi
+
+    gnusocial_expire_script=/usr/bin/gnusocial-expire
+
+    echo '<?php' > $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo '// GNU Social post expiry script, based on StatExpire by Tony Baldwin' > $gnusocial_expire_script
+    echo '// https://github.com/tonybaldwin/statexpire' > $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo '$oldate=date(("Y-m-d"), strtotime("-3 months"));' >> $gnusocial_expire_script
+    echo '$username="root";' >> $gnusocial_expire_script
+    echo "\$password=file_get_contents(\"$DATABASE_PASSWORD_FILE\");" >> $gnusocial_expire_script
+    echo '$database="gnusocial";' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'if (!$link = mysql_connect("localhost", $username, $password)) {' >> $gnusocial_expire_script
+    echo '    echo "Could not connect to mariadb";' >> $gnusocial_expire_script
+    echo '    exit;' >> $gnusocial_expire_script
+    echo '}' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'if (!mysql_select_db($database, $link)) {' >> $gnusocial_expire_script
+    echo '    echo "Could not select gnusocial database";' >> $gnusocial_expire_script
+    echo '    exit;' >> $gnusocial_expire_script
+    echo '}' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo "\$notice_query=\"DELETE FROM notice WHERE created <= '\$oldate 01:01:01'\";" >> $gnusocial_expire_script
+    echo "\$conversation_query=\"DELETE FROM conversation WHERE created <= '$oldate 01:01:01'\";" >> $gnusocial_expire_script
+    echo "\$reply_query=\"DELETE FROM reply WHERE modified <= '\$oldate 01:01:01'\";" >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'mysql_query($notice_query);' >> $gnusocial_expire_script
+    echo '$rowaff1=mysql_affected_rows();' >> $gnusocial_expire_script
+    echo 'mysql_query($conversation_query);' >> $gnusocial_expire_script
+    echo '$rowaff2=mysql_affected_rows();' >> $gnusocial_expire_script
+    echo 'mysql_query($reply_query);' >> $gnusocial_expire_script
+    echo '$rowaff3=mysql_affected_rows();' >> $gnusocial_expire_script
+    echo 'mysql_close();' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'echo "Expire GNU Social posts: $rowaff1 notices, $rowaff2 conversations, and $rowaff3 replies deleted from database.\n";' >> $gnusocial_expire_script
+    chmod +x $gnusocial_expire_script
+
+    # Add a cron job
+    if ! grep -q "$gnusocial_expire_script" /etc/crontab; then
+        echo "10 3 *   *   *   root /usr/bin/timeout 500 /usr/bin/php $gnusocial_expire_script" >> /etc/crontab
+    fi
+
+    # remove old expire script
+    if [ -f /etc/cron.weekly/clear-microblog-database ]; then
+        rm /etc/cron.weekly/clear-microblog-database
+    fi
 }
 
 function install_gnu_social_theme {
@@ -10490,6 +10539,7 @@ install_wiki
 install_blog
 mark_blog_domain
 install_gnu_social
+expire_gnu_social_posts
 install_gnu_social_theme
 install_rss_reader
 install_rss_mobile_reader
