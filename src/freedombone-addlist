@@ -38,10 +38,11 @@ MYUSERNAME=$USER
 MAILINGLIST=
 SUBJECTTAG=
 LIST_ADDRESS=
+PUBLIC='yes'
 
 function show_help {
     echo ''
-    echo $"${PROJECT_NAME}-addlist -u [username] -l [mailing list name] -s [subject tag] -e [list email address]"
+    echo $"${PROJECT_NAME}-addlist -u [username] -l [mailing list name] -s [subject tag] -e [list email address] --public [yes|no]"
     echo ''
     exit 0
 }
@@ -69,6 +70,10 @@ case $key in
     -e|--email)
     shift
     LIST_ADDRESS="$1"
+    ;;
+    -p|--public)
+    shift
+    PUBLIC="$1"
     ;;
     *)
     # unknown option
@@ -100,7 +105,8 @@ fi
 chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR
 
 if ! grep -q "Subject:.*()\[$SUBJECTTAG\]" $PM; then
-    if ! grep -q "\# encrypt" $PM; then
+    if [[ $PUBLIC != "yes" ]]; then
+        # private emails go after the encryption stage
         filter="
 # Email rule for $MAILINGLIST subject [$SUBJECTTAG]
 :0
@@ -110,8 +116,20 @@ $LISTDIR/new
 "
         echo "$filter" >> $PM
     else
-        filter=$(echo "# Email rule for $MAILINGLIST subject [$SUBJECTTAG]\n:0\n  * ^Subject:.*()\\\[$SUBJECTTAG\\\]\n$LISTDIR/new\n# End of rule\n")
-        sed -i "/# encrypt/i ${filter}" $PM
+        # public emails are copied before hte encryption stage
+        if ! grep -q '# encrypt' $PM; then
+            filter="
+# Email rule for $MAILINGLIST subject [$SUBJECTTAG]
+:0
+  * ^Subject:.*()\[$SUBJECTTAG\]
+$LISTDIR/new
+# End of rule
+"
+            echo "$filter" >> $PM
+        else
+            filter=$(echo "# Email rule for $MAILINGLIST subject [$SUBJECTTAG]\n:0\n  * ^Subject:.*()\\\[$SUBJECTTAG\\\]\n$LISTDIR/new\n# End of rule\n")
+            sed -i "/# encrypt/i ${filter}" $PM
+        fi
     fi
     chown $MYUSERNAME:$MYUSERNAME $PM
 fi
