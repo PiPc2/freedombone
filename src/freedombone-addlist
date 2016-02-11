@@ -82,7 +82,10 @@ esac
 shift
 done
 
-if ! [[ $MYUSERNAME && $MAILINGLIST && $SUBJECTTAG ]]; then
+if ! [[ $MYUSERNAME ]]; then
+    show_help
+fi
+if [ ! $MAILINGLIST && ! $SUBJECTTAG ]; then
     show_help
 fi
 
@@ -104,20 +107,11 @@ fi
 
 chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR
 
-if ! grep -q "Subject:.*()\[$SUBJECTTAG\]" $PM; then
-    if [[ $PUBLIC != "yes" ]]; then
-        # private emails go after the encryption stage
-        filter="
-# Email rule for $MAILINGLIST subject [$SUBJECTTAG]
-:0
-  * ^Subject:.*()\[$SUBJECTTAG\]
-$LISTDIR/new
-# End of rule
-"
-        echo "$filter" >> $PM
-    else
-        # public emails are copied before hte encryption stage
-        if ! grep -q '# encrypt' $PM; then
+if [ ${#SUBJECTTAG} -gt 0 ]; then
+    # use the subject tag
+    if ! grep -q "Subject:.*()\[$SUBJECTTAG\]" $PM; then
+        if [[ $PUBLIC != "yes" ]]; then
+            # private emails go after the encryption stage
             filter="
 # Email rule for $MAILINGLIST subject [$SUBJECTTAG]
 :0
@@ -127,11 +121,25 @@ $LISTDIR/new
 "
             echo "$filter" >> $PM
         else
-            filter=$(echo "# Email rule for $MAILINGLIST subject [$SUBJECTTAG]\n:0\n  * ^Subject:.*()\\\[$SUBJECTTAG\\\]\n$LISTDIR/new\n# End of rule\n")
-            sed -i "/# encrypt/i ${filter}" $PM
+            # public emails are copied before hte encryption stage
+            if ! grep -q '# encrypt' $PM; then
+                filter="
+# Email rule for $MAILINGLIST subject [$SUBJECTTAG]
+:0
+  * ^Subject:.*()\[$SUBJECTTAG\]
+$LISTDIR/new
+# End of rule
+"
+                echo "$filter" >> $PM
+            else
+                filter=$(echo "# Email rule for $MAILINGLIST subject [$SUBJECTTAG]\n:0\n  * ^Subject:.*()\\\[$SUBJECTTAG\\\]\n$LISTDIR/new\n# End of rule\n")
+                sed -i "/# encrypt/i ${filter}" $PM
+            fi
         fi
+        chown $MYUSERNAME:$MYUSERNAME $PM
     fi
-    chown $MYUSERNAME:$MYUSERNAME $PM
+else
+    exit ${PROJECT_NAME}-addemail -u $MYUSERNAME -e $LIST_ADDRESS -g $MAILINGLIST --public $PUBLIC
 fi
 
 if [ ! -f "$MUTTRC" ]; then
