@@ -49,6 +49,9 @@ VOIP_ONION_PORT=8095
 
 SSH_PORT=2222
 
+IRC_PORT=6697
+IRC_ONION_PORT=8093
+
 USB_DRIVE=sdb
 # get default USB from config file
 CONFIGURATION_FILE=/root/${PROJECT_NAME}.cfg
@@ -61,6 +64,9 @@ if [ -f $CONFIGURATION_FILE ]; then
     fi
     if grep -q "SSH_PORT=" $CONFIGURATION_FILE; then
         SSH_PORT=$(cat $CONFIGURATION_FILE | grep "SSH_PORT=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "IRC_PORT=" $CONFIGURATION_FILE; then
+        IRC_PORT=$(cat $CONFIGURATION_FILE | grep "IRC_PORT=" | awk -F '=' '{print $2}')
     fi
 fi
 
@@ -569,6 +575,32 @@ function change_ssh_public_key {
             fi
             ;;
     esac
+}
+
+function irc_via_onion {
+    dialog --title $"IRC Server" \
+           --backtitle $"Freedombone Control Panel" \
+           --defaultno \
+           --yesno $"\nAccess the IRC server via an onion address?" 8 60
+    sel=$?
+    irc_onion='no'
+    case $sel in
+        0) irc_onion='yes';;
+        255) return;;
+    esac
+    if [[ $irc_onion == 'no' ]]; then
+        sed -i ":a;N;\$!ba;s/;Ports =.*/;Ports = $IRC_PORT, $IRC_ONION_PORT/1" /etc/ngircd/ngircd.conf
+        sed -i ":a;N;\$!ba;s/;Ports =.*/Ports = $IRC_PORT/2" /etc/ngircd/ngircd.conf
+        systemctl restart ngircd
+        dialog --title $"IRC Server" \
+               --msgbox $"The IRC server can now be accessed via SSL at your main domain name" 8 50
+    else
+        sed -i ":a;N;\$!ba;s/;Ports =.*/Ports = $IRC_PORT, $IRC_ONION_PORT/1" /etc/ngircd/ngircd.conf
+        sed -i ":a;N;\$!ba;s/;Ports =.*/Ports = $IRC_PORT/2" /etc/ngircd/ngircd.conf
+        systemctl restart ngircd
+        dialog --title $"IRC Server" \
+               --msgbox $"The IRC server can now be accessed via its onion address without SSL" 8 50
+    fi
 }
 
 function remove_user_from_mailing_list {
@@ -1612,9 +1644,10 @@ function menu_irc {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"IRC Menu" \
-               --radiolist $"Choose an operation:" 13 70 3 \
+               --radiolist $"Choose an operation:" 14 70 4 \
                1 $"Set a password for all IRC users" off \
-               2 $"Exit" on 2> $data
+               2 $"Access via the onion address" off \
+               3 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) break;;
@@ -1622,7 +1655,8 @@ function menu_irc {
         esac
         case $(cat $data) in
             1) irc_set_global_password;;
-            2) break;;
+            2) irc_via_onion;;
+            3) break;;
         esac
     done
 }
