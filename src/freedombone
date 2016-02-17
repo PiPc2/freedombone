@@ -224,6 +224,8 @@ GIT_DOMAIN_REPO="https://github.com/gogits/gogs"
 GIT_ADMIN_PASSWORD=
 GOGS_COMMIT='efea642d6cf419c9587d44b95ff2bc04e89f7bfe'
 GO_PACKAGE_MANAGER_REPO="https://github.com/gpmgo/gopm"
+GVM_REPO="https://github.com/moovweb/gvm"
+GVM_COMMIT='25ea8ae158e2861c92e2b22c458e60840157832f'
 
 # Domain name for Owncloud installation
 OWNCLOUD_DOMAIN_NAME=
@@ -6636,6 +6638,55 @@ function install_owncloud {
     fi
 }
 
+function upgrade_golang {
+    if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+
+    # NOTE: this is annoyingly hacky and going in the opposite
+    # direction of a pure blend, but it's necessary if you want
+    # to run the latest version of gogs
+
+    # update to the next commit
+    set_repo_commit $INSTALL_DIR/gvm "gvm commit" "$GVM_COMMIT" $GVM_REPO
+
+    if grep -Fxq "upgrade_golang" $COMPLETION_FILE; then
+        return
+    fi
+
+    apt-get -y install curl git mercurial make binutils bison gcc build-essential
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir $INSTALL_DIR
+    fi
+    cd $INSTALL_DIR
+    git_clone $GVM_REPO gvm
+    cd $INSTALL_DIR/gvm
+    git checkout $GVM_COMMIT -b $GVM_COMMIT
+    if [ ! -f binscripts/gvm-installer ]; then
+        echo $'gvm installer not found'
+    fi
+    chmod +x binscripts/gvm-installer
+    ./binscripts/gvm-installer
+    [[ -s "$HOME/.gvm/scripts/gvm" ]] && source "$HOME/.gvm/scripts/gvm"
+    gvm install go1.4
+    gvm use go1.4
+    export GOROOT_BOOTSTRAP=$GOROOT
+    gvm install go1.5
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to upgrade golang'
+        exit 529252
+    fi
+    gvm use go1.5
+
+    if ! grep -q "gvm commit" $COMPLETION_FILE; then
+        echo "gvm commit:$GVM_COMMIT" >> $COMPLETION_FILE
+    else
+        sed -i "s/gvm commit.*/gvm commit:$GVM_COMMIT/g" $COMPLETION_FILE
+    fi
+
+    echo 'upgrade_golang' >> $COMPLETION_FILE
+}
+
 function install_gogs {
     if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
         return
@@ -6696,7 +6747,7 @@ function install_gogs {
         sed -i "s/Gogs commit.*/Gogs commit:$GOGS_COMMIT/g" $COMPLETION_FILE
     fi
 
-	go build
+    go build
     if [ ! "$?" = "0" ]; then
         echo $'install_gogs: go build failed'
         exit 546750
@@ -10381,7 +10432,8 @@ configure_firewall_for_web_server
 install_owncloud
 install_owncloud_music_app
 configure_owncloud_onion_site
-install_gogs
+#upgrade_golang
+#install_gogs
 install_xmpp
 install_tox_node
 install_tox_client
