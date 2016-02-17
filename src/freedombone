@@ -503,6 +503,7 @@ RSS_READER_ONION_PORT=8092
 RSS_READER_DOMAIN_NAME=ttrss
 RSS_MOBILE_READER_REPO="https://github.com/g2ttrss/g2ttrss-mobile"
 RSS_MOBILE_READER_COMMIT='c5af46ebf64076e4c62c978551fa749af268710b'
+RSS_READER_PATH=/etc/share/tt-rss
 
 function show_help {
     echo ''
@@ -1434,6 +1435,84 @@ function set_default_onion_domains {
     fi
 }
 
+function set_repo_commit {
+    repo_dir=$1
+    repo_commit_name=$2
+    repo_commit=$3
+    repo_url=$4
+    if [ -d $repo_dir ]; then
+        if grep -q "$repo_commit_name" $COMPLETION_FILE; then
+            CURRENT_REPO_COMMIT=$(grep "$repo_commit_name" $COMPLETION_FILE | awk -F ':' '{print $2}')
+            if [[ "$CURRENT_REPO_COMMIT" != "$repo_commit" ]]; then
+                cd $repo_dir
+                git_pull $repo_url $repo_commit
+                sed -i "s/${repo_commit_name}.*/${repo_commit_name}:$repo_commit/g" $COMPLETION_FILE
+
+                # application specific stuff after updating the repo
+                if [[ $repo_dir == *"www"* ]]; then
+                    chown -R www-data:www-data $repo_dir
+                fi
+                if [[ $repo_dir == *"cjdns" ]]; then
+                    ./do
+                fi
+                if [[ $repo_dir == *"gpgit" ]]; then
+                    cp gpgit.pl /usr/bin/gpgit.pl
+                fi
+                if [[ $repo_dir == *"cleanup-maildir" ]]; then
+                    cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
+                fi
+                if [[ $repo_dir == *"nginx_ensite" ]]; then
+                    make install
+                fi
+                if [[ $repo_dir == *"gogs" ]]; then
+                    go get -u ./...
+                    if [ ! "$?" = "0" ]; then
+                        exit 52792
+                    fi
+                    go build
+                    if [ ! "$?" = "0" ]; then
+                        exit 36226
+                    fi
+                    systemctl restart gogs
+                fi
+                if [[ $repo_dir == *"toxcore" ]]; then
+                    autoreconf -i
+                    ./configure --enable-daemon
+                    make
+                    make install
+                    systemctl restart tox-bootstrapd.service
+                fi
+                if [[ $repo_dir == *"toxic" ]]; then
+                    make
+                    make install
+                fi
+                if [[ $repo_dir == $RSS_READER_PATH ]]; then
+                    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/plugins/af_unburn/init.php; then
+                        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/plugins/af_unburn/init.php
+                    fi
+                    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/include/functions.php; then
+                        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/include/functions.php
+                    fi
+                    chown -R www-data:www-data $RSS_READER_PATH
+                fi
+                if [[ $repo_dir == *"inadyn" ]]; then
+                    ./configure
+                    USE_OPENSSL=1 make
+                    make install
+                    systemctl restart inadyn
+                fi
+                if [[ $repo_dir == *"ipfs" ]]; then
+                    chown -R git:git /home/git
+                    systemctl restart ipfs
+                    systemctl daemon-reload
+                fi
+            fi
+        else
+            echo "\${repo_commit_name}:${repo_commit}" >> $COMPLETION_FILE
+        fi
+    fi
+}
+
 function wait_for_onion_service {
     onion_service_name="$1"
 
@@ -2020,18 +2099,8 @@ function mesh_cjdns {
     fi
 
     # update to the next commit
-    if [ -d /etc/cjdns ]; then
-        if grep -q "cjdns commit" $COMPLETION_FILE; then
-            CURRENT_CJDNS_COMMIT=$(grep "cjdns commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_CJDNS_COMMIT" != "$CJDNS_COMMIT" ]]; then
-                cd /etc/cjdns
-                git_pull $CJDNS_REPO $CJDNS_COMMIT
-                sed -i "s/cjdns commit.*/cjdns commit:$CJDNS_COMMIT/g" $COMPLETION_FILE
-                ./do
-            fi
-        fi
-    fi
-
+    set_repo_commit /etc/cjdns "cjdns commit" "$CJDNS_COMMIT" $CJDNS_REPO
+    
     if grep -Fxq "mesh_cjdns" $COMPLETION_FILE; then
         return
     fi
@@ -2374,19 +2443,8 @@ function install_zeronet_blog {
         return
     fi
 
-    if [ -d /opt/zeronet/ZeroBlog ]; then
-        if grep -q "ZeroNet Blog commit" $COMPLETION_FILE; then
-            CURRENT_ZERONET_BLOG_COMMIT=$(grep "ZeroNet Blog commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_ZERONET_BLOG_COMMIT" != "$ZERONET_BLOG_COMMIT" ]]; then
-                cd /opt/zeronet/ZeroBlog
-                git_pull $ZERONET_BLOG_REPO $ZERONET_BLOG_COMMIT
-                sed -i "s/ZeroNet Blog commit.*/ZeroNet Blog commit:$ZERONET_BLOG_COMMIT/g" $COMPLETION_FILE
-            fi
-        else
-            echo "ZeroNet Blog commit:$ZERONET_BLOG_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
-
+    set_repo_commit /opt/zeronet/ZeroBlog "ZeroNet Blog commit" "$ZERONET_BLOG_COMMIT" $ZERONET_BLOG_REPO
+    
     if grep -Fxq "install_zeronet_blog" $COMPLETION_FILE; then
         return
     fi
@@ -2497,18 +2555,7 @@ function install_zeronet_mail {
         return
     fi
 
-    if [ -d /opt/zeronet/ZeroMail ]; then
-        if grep -q "ZeroNet Mail commit" $COMPLETION_FILE; then
-            CURRENT_ZERONET_MAIL_COMMIT=$(grep "ZeroNet Mail commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_ZERONET_MAIL_COMMIT" != "$ZERONET_MAIL_COMMIT" ]]; then
-                cd /opt/zeronet/ZeroMail
-                git_pull $ZERONET_MAIL_REPO $ZERONET_MAIL_COMMIT
-                sed -i "s/ZeroNet Mail commit.*/ZeroNet Mail commit:$ZERONET_MAIL_COMMIT/g" $COMPLETION_FILE
-            fi
-        else
-            echo "ZeroNet Mail commit:$ZERONET_MAIL_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /opt/zeronet/ZeroMail "ZeroNet Mail commit" "$ZERONET_MAIL_COMMIT" $ZERONET_MAIL_REPO
 
     if grep -Fxq "install_zeronet_mail" $COMPLETION_FILE; then
         return
@@ -2621,18 +2668,7 @@ function install_zeronet_forum {
     fi
 
     # update to the next commit
-    if [ -d /opt/zeronet/ZeroTalk ]; then
-        if grep -q "ZeroNet Forum commit" $COMPLETION_FILE; then
-            CURRENT_ZERONET_FORUM_COMMIT=$(grep "ZeroNet Forum commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_ZERONET_FORUM_COMMIT" != "$ZERONET_FORUM_COMMIT" ]]; then
-                cd /opt/zeronet/ZeroTalk
-                git_pull $ZERONET_FORUM_REPO $ZERONET_FORUM_COMMIT
-                sed -i "s/ZeroNet Forum commit.*/ZeroNet Forum commit:$ZERONET_FORUM_COMMIT/g" $COMPLETION_FILE
-            fi
-        else
-            echo "ZeroNet Forum commit:$ZERONET_FORUM_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /opt/zeronet/ZeroTalk "ZeroNet Forum commit" "$ZERONET_FORUM_COMMIT" $ZERONET_FORUM_REPO
 
     if grep -Fxq "install_zeronet_forum" $COMPLETION_FILE; then
         return
@@ -2739,19 +2775,7 @@ function install_zeronet {
     fi
 
     # update to the next commit
-    if [ -d /opt/zeronet ]; then
-        if grep -q "ZeroNet commit" $COMPLETION_FILE; then
-            CURRENT_ZERONET_COMMIT=$(grep "ZeroNet commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_ZERONET_COMMIT" != "$ZERONET_COMMIT" ]]; then
-                cd /opt/zeronet
-                git_pull $ZERONET_REPO $ZERONET_COMMIT
-                sed -i "s/ZeroNet commit.*/ZeroNet commit:$ZERONET_COMMIT/g" $COMPLETION_FILE
-                systemctl restart zeronet.service
-            fi
-        else
-            echo "ZeroNet commit:$ZERONET_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /opt/zeronet "ZeroNet commit" "$ZERONET_COMMIT" $ZERONET_REPO
 
     if grep -Fxq "install_zeronet" $COMPLETION_FILE; then
         return
@@ -5345,19 +5369,7 @@ function encrypt_incoming_email {
     fi
 
     # update to the next commit
-    if [ -f /usr/bin/gpgit.pl ]; then
-        if grep -q "gpgit commit" $COMPLETION_FILE; then
-            CURRENT_GPGIT_COMMIT=$(grep "gpgit commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_GPGIT_COMMIT" != "$GPGIT_COMMIT" ]]; then
-                cd $INSTALL_DIR/gpgit
-                git_pull $GPGIT_REPO $GPGIT_COMMIT
-                sed -i "s/gpgit commit.*/gpgit commit:$GPGIT_COMMIT/g" $COMPLETION_FILE
-                cp gpgit.pl /usr/bin/gpgit.pl
-            fi
-        else
-            echo "gpgit commit:$GPGIT_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $INSTALL_DIR/gpgit "gpgit commit" "$GPGIT_COMMIT" $GPGIT_REPO
 
     if grep -Fxq "encrypt_incoming_email" $COMPLETION_FILE; then
         return
@@ -5657,19 +5669,7 @@ function email_archiving {
     chmod +x /etc/cron.daily/archivemail
 
     # update to the next commit
-    if [ -d $INSTALL_DIR/cleanup-maildir ]; then
-        if grep -q "cleanup-maildir commit" $COMPLETION_FILE; then
-            CURRENT_CLEANUP_MAILDIR_COMMIT=$(grep "cleanup-maildir commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_CLEANUP_MAILDIR_COMMIT" != "$CLEANUP_MAILDIR_COMMIT" ]]; then
-                cd $INSTALL_DIR/cleanup-maildir
-                git_pull $CLEANUP_MAILDIR_REPO $CLEANUP_MAILDIR_COMMIT
-                sed -i "s/cleanup-maildir commit.*/cleanup-maildir commit:$CLEANUP_MAILDIR_COMMIT/g" $COMPLETION_FILE
-                cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
-            fi
-        else
-            echo "cleanup-maildir commit:$CLEANUP_MAILDIR_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $INSTALL_DIR/cleanup-maildir "cleanup-maildir commit" "$CLEANUP_MAILDIR_COMMIT" $CLEANUP_MAILDIR_REPO
 
     if grep -Fxq "email_archiving" $COMPLETION_FILE; then
         return
@@ -5943,19 +5943,7 @@ function install_web_server {
     fi
 
     # update to the next commit
-    if [ -d $INSTALL_DIR/nginx_ensite ]; then
-        if grep -q "Nginx-ensite commit" $COMPLETION_FILE; then
-            CURRENT_NGINX_ENSITE_COMMIT=$(grep "Nginx-ensite commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_NGINX_ENSITE_COMMIT" != "$NGINX_ENSITE_COMMIT" ]]; then
-                $INSTALL_DIR/nginx_ensite
-                git_pull $NGINX_ENSITE_REPO $NGINX_ENSITE_COMMIT
-                sed -i "s/Nginx-ensite commit.*/Nginx-ensite commit:$NGINX_ENSITE_COMMIT/g" $COMPLETION_FILE
-                make install
-            fi
-        else
-            echo "Nginx-ensite commit:$NGINX_ENSITE_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $INSTALL_DIR/nginx_ensite "Nginx-ensite commit" "$NGINX_ENSITE_COMMIT" $NGINX_ENSITE_REPO
 
     if grep -Fxq "install_web_server" $COMPLETION_FILE; then
         return
@@ -6209,18 +6197,7 @@ function install_owncloud_music_app {
     fi
 
     # update to the next commit
-    if [ -d /usr/share/owncloud/apps/music ]; then
-        if grep -q "Owncloud music app commit" $COMPLETION_FILE; then
-            CURRENT_OWNCLOUD_MUSIC_APP_COMMIT=$(grep "Owncloud music app commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$OWNCLOUD_MUSIC_APP_COMMIT" != "$OWNCLOUD_MUSIC_APP_COMMIT" ]]; then
-                cd /usr/share/owncloud/apps/music
-                git_pull $OWNCLOUD_MUSIC_APP_REPO $OWNCLOUD_MUSIC_APP_COMMIT
-                sed -i "s/Owncloud music app commit.*/Owncloud music app commit:$OWNCLOUD_MUSIC_APP_COMMIT/g" $COMPLETION_FILE
-            fi
-        else
-            echo "Owncloud music app commit:$OWNCLOUD_MUSIC_APP_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /usr/share/owncloud/apps/music "Owncloud music app commit" "$OWNCLOUD_MUSIC_APP_COMMIT" $OWNCLOUD_MUSIC_APP_REPO
 
     if grep -Fxq "install_owncloud_music_app" $COMPLETION_FILE; then
         return
@@ -6671,27 +6648,7 @@ function install_gogs {
     systemctl set-environment GOPATH=/home/git/go
 
     # update to the next commit
-    if [ -d /var/www/$GIT_DOMAIN_NAME ]; then
-        if grep -q "Gogs commit" $COMPLETION_FILE; then
-            CURRENT_GOGS_COMMIT=$(grep "Gogs commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_GOGS_COMMIT" != "$GOGS_COMMIT" ]]; then
-                cd $GOPATH/src/github.com/gogits/gogs
-                git_pull $GIT_DOMAIN_REPO $GOGS_COMMIT
-                sed -i "s/Gogs commit.*/Gogs commit:$GOGS_COMMIT/g" $COMPLETION_FILE
-                go get -u ./...
-                if [ ! "$?" = "0" ]; then
-                    exit 52792
-                fi
-                go build
-                if [ ! "$?" = "0" ]; then
-                    exit 36226
-                fi
-                systemctl restart gogs
-            fi
-        else
-            echo "Gogs commit:$GOGS_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $GOPATH/src/github.com/gogits/gogs "Gogs commit" "$GOGS_COMMIT" $GIT_DOMAIN_REPO
 
     if grep -Fxq "install_gogs" $COMPLETION_FILE; then
         return
@@ -7010,23 +6967,7 @@ function install_tox_node {
     fi
 
     # update to the next commit
-    if [ -d $INSTALL_DIR/toxcore ]; then
-        if grep -q "toxcore commit" $COMPLETION_FILE; then
-            CURRENT_TOX_COMMIT=$(grep "toxcore commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_TOX_COMMIT" != "$TOX_COMMIT" ]]; then
-                cd $INSTALL_DIR/toxcore
-                git_pull $TOX_REPO $TOX_COMMIT
-                sed -i "s/toxcore commit.*/toxcore commit:$TOX_COMMIT/g" $COMPLETION_FILE
-                autoreconf -i
-                ./configure --enable-daemon
-                make
-                make install
-                systemctl restart tox-bootstrapd.service
-            fi
-        else
-            echo "toxcore commit:$TOX_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $INSTALL_DIR/toxcore "toxcore commit" "$TOX_COMMIT" $TOX_REPO
 
     if grep -Fxq "install_tox_node" $COMPLETION_FILE; then
         return
@@ -7176,20 +7117,7 @@ function install_tox_client {
     fi
 
     # update to the next commit
-    if [ -d $INSTALL_DIR/toxic ]; then
-        if grep -q "Toxic commit" $COMPLETION_FILE; then
-            CURRENT_TOXIC_COMMIT=$(grep "Toxic commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_TOXIC_COMMIT" != "$TOXIC_COMMIT" ]]; then
-                cd $INSTALL_DIR/toxic
-                git_pull $TOXIC_REPO $TOXIC_COMMIT
-                sed -i "s/Toxic commit.*/Toxic commit:$TOXIC_COMMIT/g" $COMPLETION_FILE
-                make
-                make install
-            fi
-        else
-            echo "Toxic commit:$TOXIC_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $INSTALL_DIR/toxic "Toxix commit" "$TOXIC_COMMIT" $TOXIC_REPO
 
     if grep -Fxq "install_tox_client" $COMPLETION_FILE; then
         return
@@ -7932,19 +7860,7 @@ function install_blog {
     fi
 
     # update to the next commit
-    if [ -d /var/www/$FULLBLOG_DOMAIN_NAME/htdocs ]; then
-        if grep -q "Blog commit" $COMPLETION_FILE; then
-            CURRENT_FULLBLOG_COMMIT=$(grep "Blog commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_FULLBLOG_COMMIT" != "$FULLBLOG_COMMIT" ]]; then
-                cd /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
-                git_pull $FULLBLOG_REPO $FULLBLOG_COMMIT
-                sed -i "s/Blog commit.*/Blog commit:$FULLBLOG_COMMIT/g" $COMPLETION_FILE
-                chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
-            fi
-        else
-            echo "Blog commit:$FULLBLOG_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /var/www/$FULLBLOG_DOMAIN_NAME/htdocs "Blog commit" "$FULLBLOG_COMMIT" $FULLBLOG_REPO
 
     if grep -Fxq "install_blog" $COMPLETION_FILE; then
         return
@@ -8304,29 +8220,8 @@ function install_rss_reader {
         return
     fi
 
-    RSS_READER_PATH=/etc/share/tt-rss
-
     # update to the next commit
-    if [ -d $RSS_READER_PATH ]; then
-        if grep -q "RSS reader commit" $COMPLETION_FILE; then
-            CURRENT_RSS_READER_COMMIT=$(grep "RSS reader commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_RSS_READER_COMMIT" != "$RSS_READER_COMMIT" ]]; then
-                cd $RSS_READER_PATH
-                git_pull $RSS_READER_REPO $RSS_READER_COMMIT
-                sed -i "s/RSS reader commit.*/RSS reader commit:$RSS_READER_COMMIT/g" $COMPLETION_FILE
-                # ensure that socks5 proxy is used
-                if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/plugins/af_unburn/init.php; then
-                    sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/plugins/af_unburn/init.php
-                fi
-                if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/include/functions.php; then
-                    sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/include/functions.php
-                fi
-                chown -R www-data:www-data $RSS_READER_PATH
-            fi
-        else
-            echo "RSS reader commit:$RSS_READER_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $RSS_READER_PATH "RSS reader commit" "$RSS_READER_COMMIT" $RSS_READER_REPO
 
     if grep -Fxq "install_rss_reader" $COMPLETION_FILE; then
         return
@@ -8562,19 +8457,7 @@ function install_rss_mobile_reader {
     fi
 
     # update to the next commit
-    if [ -d $RSS_MOBILE_READER_PATH ]; then
-        if grep -q "RSS mobile reader commit" $COMPLETION_FILE; then
-            CURRENT_RSS_MOBILE_READER_COMMIT=$(grep "RSS mobile reader commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_RSS_MOBILE_READER_COMMIT" != "$RSS_MOBILE_READER_COMMIT" ]]; then
-                cd $RSS_MOBILE_READER_PATH
-                git_pull $RSS_MOBILE_READER_REPO $RSS_MOBILE_READER_COMMIT
-                sed -i "s/RSS mobile reader commit.*/RSS mobile reader commit:$RSS_MOBILE_READER_COMMIT/g" $COMPLETION_FILE
-                chown -R www-data:www-data $RSS_MOBILE_READER_PATH
-            fi
-        else
-            echo "RSS mobile reader commit:$RSS_MOBILE_READER_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $RSS_MOBILE_READER_PATH "RSS mobile reader commit" "$RSS_MOBILE_READER_COMMIT" $RSS_MOBILE_READER_REPO
 
     if grep -Fxq "install_rss_mobile_reader" $COMPLETION_FILE; then
         return
@@ -8614,19 +8497,7 @@ function install_gnu_social {
     fi
 
     # update to the next commit
-    if [ -d /var/www/$MICROBLOG_DOMAIN_NAME/htdocs ]; then
-        if grep -q "GNU Social commit" $COMPLETION_FILE; then
-            CURRENT_MICROBLOG_COMMIT=$(grep "GNU Social commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_MICROBLOG_COMMIT" != "$MICROBLOG_COMMIT" ]]; then
-                cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-                git_pull $MICROBLOG_REPO $MICROBLOG_COMMIT
-                sed -i "s/GNU Social commit.*/GNU Social commit:$MICROBLOG_COMMIT/g" $COMPLETION_FILE
-                chown -R www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-            fi
-        else
-            echo "GNU Social commit:$MICROBLOG_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /var/www/$MICROBLOG_DOMAIN_NAME/htdocs "GNU Social commit" "$MICROBLOG_COMMIT" $MICROBLOG_REPO
 
     if grep -Fxq "install_gnu_social" $COMPLETION_FILE; then
         return
@@ -9001,19 +8872,7 @@ function install_gnu_social_theme {
     fi
 
     # update to the next commit
-    if grep -q "addPlugin('Qvitter')" /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/config.php; then
-        if grep -q "GNU Social theme commit" $COMPLETION_FILE; then
-            CURRENT_MICROBLOG_THEME_COMMIT=$(grep "GNU Social theme commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_MICROBLOG_THEME_COMMIT" != "$MICROBLOG_THEME_COMMIT" ]]; then
-                cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local/plugins/Qvitter
-                git_pull $MICROBLOG_THEME_REPO $MICROBLOG_THEME_COMMIT
-                sed -i "s/GNU Social theme commit.*/GNU Social theme commit:$MICROBLOG_THEME_COMMIT/g" $COMPLETION_FILE
-                chown -R www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local
-            fi
-        else
-            echo "GNU Social theme commit:$MICROBLOG_THEME_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local/plugins/Qvitter "GNU Social theme commit" "$MICROBLOG_THEME_COMMIT" $MICROBLOG_THEME_REPO
 
     if grep -Fxq "install_gnu_social_theme" $COMPLETION_FILE; then
         return
@@ -9100,19 +8959,7 @@ function install_gnu_social_markdown {
     fi
 
     # update to the next commit
-    if grep -q "addPlugin('Markdown'" /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/config.php; then
-        if grep -q "GNU Social Markdown commit" $COMPLETION_FILE; then
-            CURRENT_MICROBLOG_MARKDOWN_COMMIT=$(grep "GNU Social Markdown commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_MICROBLOG_MARKDOWN_COMMIT" != "$MICROBLOG_MARKDOWN_COMMIT" ]]; then
-                cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local/plugins/Markdown
-                git_pull $MICROBLOG_MARKDOWN_REPO $MICROBLOG_MARKDOWN_COMMIT
-                sed -i "s/GNU Social Markdown commit.*/GNU Social Markdown commit:$MICROBLOG_MARKDOWN_COMMIT/g" $COMPLETION_FILE
-                chown -R www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local
-            fi
-        else
-            echo "GNU Social Markdown commit:$MICROBLOG_MARKDOWN_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/local/plugins/Markdown "GNU Social Markdown commit" "$MICROBLOG_MARKDOWN_COMMIT" $MICROBLOG_MARKDOWN_REPO
 
     if grep -Fxq "install_gnu_social_markdown" $COMPLETION_FILE; then
         return
@@ -9155,31 +9002,9 @@ function install_hubzilla {
         return
     fi
 
-    # update to the next commit
-    if [ -d /var/www/$HUBZILLA_DOMAIN_NAME/htdocs ]; then
-        if grep -q "Hubzilla commit" $COMPLETION_FILE; then
-            CURRENT_HUBZILLA_COMMIT=$(grep "Hubzilla commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_HUBZILLA_COMMIT" != "$HUBZILLA_COMMIT" ]]; then
-                cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
-                git_pull $HUBZILLA_REPO $HUBZILLA_COMMIT
-                sed -i "s/Hubzilla commit.*/Hubzilla commit:$HUBZILLA_COMMIT/g" $COMPLETION_FILE
-                chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
-            fi
-        else
-            echo "Hubzilla commit:$HUBZILLA_COMMIT" >> $COMPLETION_FILE
-        fi
-        if grep -q "Hubzilla addons commit" $COMPLETION_FILE; then
-            CURRENT_HUBZILLA_ADDONS_COMMIT=$(grep "Hubzilla addons commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_HUBZILLA_ADDONS_COMMIT" != "$HUBZILLA_ADDONS_COMMIT" ]]; then
-                cd /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/addon
-                git_pull $HUBZILLA_ADDONS_REPO $HUBZILLA_ADDONS_COMMIT
-                sed -i "s/Hubzilla addons commit.*/Hubzilla addons commit:$HUBZILLA_ADDONS_COMMIT/g" $COMPLETION_FILE
-                chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
-            fi
-        else
-            echo "Hubzilla addons commit:$HUBZILLA_ADDONS_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    # update to a new commit if needed
+    set_repo_commit /var/www/$HUBZILLA_DOMAIN_NAME/htdocs "Hubzilla commit" "$HUBZILLA_COMMIT" $HUBZILLA_REPO
+    set_repo_commit /var/www/$HUBZILLA_DOMAIN_NAME/htdocs "Hubzilla addons commit" "$HUBZILLA_ADDONS_COMMIT" $HUBZILLA_ADDONS_REPO
 
     if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
         return
@@ -10012,22 +9837,7 @@ function install_dynamicdns {
     fi
 
     # update to the next commit
-    if [ -d $INSTALL_DIR/inadyn ]; then
-        if grep -q "inadyn commit" $COMPLETION_FILE; then
-            CURRENT_INADYN_COMMIT=$(grep "inadyn commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_INADYN_COMMIT" != "$INADYN_COMMIT" ]]; then
-                cd $INSTALL_DIR/inadyn
-                git_pull $INADYN_REPO $INADYN_COMMIT
-                sed -i "s/inadyn commit.*/inadyn commit:$INADYN_COMMIT/g" $COMPLETION_FILE
-                ./configure
-                USE_OPENSSL=1 make
-                make install
-                systemctl restart inadyn
-            fi
-        else
-            echo "inadyn commit:$INADYN_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit $INSTALL_DIR/inadyn "inadyn commit" "$INADYN_COMMIT" $INADYN_REPO
 
     if grep -Fxq "install_dynamicdns" $COMPLETION_FILE; then
         return
@@ -10128,21 +9938,7 @@ function install_ipfs {
     systemctl set-environment GOPATH=/home/git/go
 
     # update to the next commit
-    if [ -d /home/git/go/src/github.com/ipfs/go-ipfs ]; then
-        if grep -q "ipfs commit" $COMPLETION_FILE; then
-            CURRENT_IPFS_COMMIT=$(grep "ipfs commit" $COMPLETION_FILE | awk -F ':' '{print $2}')
-            if [[ "$CURRENT_IPFS_COMMIT" != "$IPFS_COMMIT" ]]; then
-                cd /home/git/go/src/github.com/ipfs/go-ipfs
-                git_pull $IPFS_GO_REPO $IPFS_COMMIT
-                sed -i "s/ipfs commit.*/ipfs commit:$IPFS_COMMIT/g" $COMPLETION_FILE
-                chown -R git:git /home/git
-                systemctl restart ipfs
-                systemctl daemon-reload
-            fi
-        else
-            echo "ipfs commit:$IPFS_COMMIT" >> $COMPLETION_FILE
-        fi
-    fi
+    set_repo_commit /home/git/go/src/github.com/ipfs/go-ipfs "ipfs commit" "$IPFS_COMMIT" $IPFS_REPO
 
     if grep -Fxq "install_ipfs" $COMPLETION_FILE; then
         return
