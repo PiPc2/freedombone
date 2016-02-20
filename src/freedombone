@@ -1843,11 +1843,14 @@ function check_certificates {
     fi
 }
 
-function backup_database_local_daily {
+function backup_database_local {
+    # Makes local backups of databases which can then be automatically rolled
+    # back if corruption is detected
     database_name=$1
+
     backup_databases_script=/usr/bin/backupdatabases
     echo '' >> $backup_databases_script
-    echo $"# Backup the ${database_name} database" >> $backup_databases_script
+    echo "# Backup the ${database_name} database" >> $backup_databases_script
     echo "TEMPFILE=/root/${database_name}.sql" >> $backup_databases_script
     echo 'DAILYFILE=/var/backups/${database_name}_daily.sql' >> $backup_databases_script
     echo "mysqldump --password=\"\$MYSQL_PASSWORD\" ${database_name} > \$TEMPFILE" >> $backup_databases_script
@@ -1872,6 +1875,36 @@ function backup_database_local_daily {
     echo '    # Make the backup readable only by root' >> $backup_databases_script
     echo '    chmod 600 $DAILYFILE' >> $backup_databases_script
     echo 'fi' >> $backup_databases_script
+
+    weekly_backup_script=/etc/cron.weekly/backupdatabasesweekly
+    if ! grep -q "${database_name}" ${weekly_backup_script}; then
+        echo '' >> ${weekly_backup_script}
+        echo "# ${database_name}" >> ${weekly_backup_script}
+        echo "if [ -f /var/backups/${database_name}_weekly.sql ]; then" >> ${weekly_backup_script}
+        echo "  cp -f /var/backups/${database_name}_weekly.sql /var/backups/${database_name}_2weekly.sql" >> ${weekly_backup_script}
+        echo 'fi' >> ${weekly_backup_script}
+        echo "if [ -f /var/backups/${database_name}_daily.sql ]; then" >> ${weekly_backup_script}
+        echo "  cp -f /var/backups/${database_name}_daily.sql /var/backups/${database_name}_weekly.sql" >> ${weekly_backup_script}
+        echo 'fi' >> ${weekly_backup_script}
+    fi
+
+    monthly_backup_script=/etc/cron.monthly/backupdatabasesmonthly
+    if ! grep -q "${database_name}" ${monthly_backup_script}; then
+        echo '' >> ${monthly_backup_script}
+        echo "# ${database_name}" >> ${monthly_backup_script}
+        echo "if [ -f /var/backups/${database_name}_monthly.sql ]; then" >> ${monthly_backup_script}
+        echo "  cp -f /var/backups/${database_name}_monthly.sql /var/backups/${database_name}_2monthly.sql" >> ${monthly_backup_script}
+        echo 'fi' >> ${monthly_backup_script}
+        echo "if [ -f /var/backups/${database_name}_weekly.sql ]; then" >> ${monthly_backup_script}
+        echo "  cp -f /var/backups/${database_name}_weekly.sql /var/backups/${database_name}_monthly.sql" >> ${monthly_backup_script}
+        echo 'fi' >> ${monthly_backup_script}
+    fi
+
+    if ! grep -q "${database_name}" /etc/cron.hourly/repair; then
+        echo "${PROJECT_NAME}-repair-database ${database_name}" >> /etc/cron.hourly/repair
+        # remove legacy stuff
+        sed -i 's|/usr/bin/repairdatabase redmatrix||g' /etc/cron.hourly/repair
+    fi
 }
 
 function install_not_on_BBB {
@@ -6608,7 +6641,7 @@ function install_owncloud {
     # backups are not being used
     backup_databases_script_header
 
-    backup_database_local_daily owncloud
+    backup_database_local owncloud
 
     nginx_ensite $OWNCLOUD_DOMAIN_NAME
 
@@ -8744,35 +8777,8 @@ function install_gnu_social {
     # backups are not being used
     backup_databases_script_header
 
-    if ! grep -q "gnusocial" /usr/bin/backupdatabases; then
-        backup_database_local_daily gnusocial
-    fi
+    backup_database_local gnusocial
 
-    if ! grep -q "GNU Social" /etc/cron.weekly/backupdatabasesweekly; then
-        echo '' >> /etc/cron.weekly/backupdatabasesweekly
-        echo $'# GNU Social' >> /etc/cron.weekly/backupdatabasesweekly
-        echo 'if [ -f /var/backups/gnusocial_weekly.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
-        echo '  cp -f /var/backups/gnusocial_weekly.sql /var/backups/gnusocial_2weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
-        echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
-        echo 'if [ -f /var/backups/gnusocial_daily.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
-        echo '  cp -f /var/backups/gnusocial_daily.sql /var/backups/gnusocial_weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
-        echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
-    fi
-
-    if ! grep -q "GNU Social" /etc/cron.monthly/backupdatabasesmonthly; then
-        echo '' >> /etc/cron.monthly/backupdatabasesmonthly
-        echo $'# GNU Social' >> /etc/cron.monthly/backupdatabasesmonthly
-        echo 'if [ -f /var/backups/gnusocial_monthly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
-        echo '  cp -f /var/backups/gnusocial_monthly.sql /var/backups/gnusocial_2monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
-        echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
-        echo 'if [ -f /var/backups/gnusocial_weekly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
-        echo '  cp -f /var/backups/gnusocial_weekly.sql /var/backups/gnusocial_monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
-        echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
-    fi
-
-    if ! grep -q "gnusocial" /etc/cron.hourly/repair; then
-        echo "${PROJECT_NAME}-repair-database gnusocial" >> /etc/cron.hourly/repair
-    fi
     nginx_ensite $MICROBLOG_DOMAIN_NAME
 
     # NOTE: For the typical case always enable SSL and only
@@ -9333,31 +9339,7 @@ function install_hubzilla {
     # backups are not being used
     backup_databases_script_header
 
-    backup_database_local_daily hubzilla
-
-    echo '' >> /etc/cron.weekly/backupdatabasesweekly
-    echo '# Hubzilla' >> /etc/cron.weekly/backupdatabasesweekly
-    echo 'if [ -f /var/backups/hubzilla_weekly.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
-    echo '  cp -f /var/backups/hubzilla_weekly.sql /var/backups/hubzilla_2weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
-    echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
-    echo 'if [ -f /var/backups/hubzilla_daily.sql ]; then' >> /etc/cron.weekly/backupdatabasesweekly
-    echo '  cp -f /var/backups/hubzilla_daily.sql /var/backups/hubzilla_weekly.sql' >> /etc/cron.weekly/backupdatabasesweekly
-    echo 'fi' >> /etc/cron.weekly/backupdatabasesweekly
-
-    echo '' >> /etc/cron.monthly/backupdatabasesmonthly
-    echo '# Hubzilla' >> /etc/cron.monthly/backupdatabasesmonthly
-    echo 'if [ -f /var/backups/hubzilla_monthly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
-    echo '  cp -f /var/backups/hubzilla_monthly.sql /var/backups/hubzilla_2monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
-    echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
-    echo 'if [ -f /var/backups/hubzilla_weekly.sql ]; then' >> /etc/cron.monthly/backupdatabasesmonthly
-    echo '  cp -f /var/backups/hubzilla_weekly.sql /var/backups/hubzilla_monthly.sql' >> /etc/cron.monthly/backupdatabasesmonthly
-    echo 'fi' >> /etc/cron.monthly/backupdatabasesmonthly
-
-    if ! grep -q "hubzilla" /etc/cron.hourly/repair; then
-        echo "${PROJECT_NAME}-repair-database hubzilla" >> /etc/cron.hourly/repair
-        # remove legacy stuff
-        sed -i 's|/usr/bin/repairdatabase redmatrix||g' /etc/cron.hourly/repair
-    fi
+    backup_database_local hubzilla
 
     chown -R www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs
 
