@@ -8988,9 +8988,9 @@ function install_hubzilla {
         return
     fi
     # Don't install on onion-only systems
-    if [[ $ONION_ONLY != 'no' ]]; then
-        return
-    fi
+    #if [[ $ONION_ONLY != 'no' ]]; then
+    #    return
+    #fi
 
     # update to a new commit if needed
     set_repo_commit /var/www/$HUBZILLA_DOMAIN_NAME/htdocs "Hubzilla commit" "$HUBZILLA_COMMIT" $HUBZILLA_REPO
@@ -9261,6 +9261,43 @@ function install_hubzilla {
         fi
         echo "Hubzilla onion domain:${HUBZILLA_ONION_HOSTNAME}" >> $COMPLETION_FILE
     fi
+
+    # initialize the database
+    if [ ! -f /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/install/schema_mysql.sql ]; then
+        echo $'No database schema found for hubzilla'
+        exit 252782
+    fi
+    mysql -u root --password="$MARIADB_PASSWORD" -D hubzilla < /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/install/schema_mysql.sql
+
+    # create the config file
+    echo '<?php' > /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$db_host = 'localhost';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$db_port = '0';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$db_user = 'hubzillaadmin';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$db_pass = '${HUBZILLA_ADMIN_PASSWORD}';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$db_data = 'hubzilla';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$db_type = '0';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$default_timezone = 'Europe/London';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    if [[ $ONION_ONLY == 'no' ]]; then
+        echo "\$a->config['system']['baseurl'] = 'https://${HUBZILLA_DOMAIN_NAME}';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    else
+        echo "\$a->config['system']['baseurl'] = 'http://${HUBZILLA_ONION_HOSTNAME}';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    fi
+    echo "\$a->config['system']['sitename'] = \"Hubzilla\";" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    HUBZILLA_LOCATION_HASH="$(openssl rand -base64 32)"
+    echo "\$a->config['system']['location_hash'] = '${HUBZILLA_LOCATION_HASH}';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['register_policy'] = REGISTER_OPEN;" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['register_text'] = '';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['admin_email'] = '${MY_EMAIL_ADDRESS}';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['verify_email'] = 1;" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['access_policy'] = ACCESS_PRIVATE;" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['sellpage'] = '';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['max_import_size'] = 200000;" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['php_path'] = '/usr/bin/php';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['directory_mode']  = DIRECTORY_MODE_NORMAL;" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    echo "\$a->config['system']['theme'] = 'redbasic';" >> /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    chown www-data:www-data /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
+    chmod +x /var/www/$HUBZILLA_DOMAIN_NAME/htdocs/.htconfig.php
 
     systemctl restart php5-fpm
     systemctl restart nginx
