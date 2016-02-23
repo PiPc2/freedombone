@@ -12,7 +12,7 @@ The Freedombone system can be installed onto a Beaglebone Black, or any system c
  - **Developer**: Host your own git projects with a Github-like user interface
  - **Mesh**: A wireless mesh network which is like the internet, but not the internet
 
-Except for the mesh variant all web systems installed also have an equivalent [onion address](https://en.wikipedia.org/wiki/.onion) so that they may be accessed via a Tor browser. This can provide some additional defense against unwanted surveillance or metadata gethering.
+Except for the mesh variant all web systems installed also have an equivalent [onion address](https://en.wikipedia.org/wiki/.onion) so that they may be accessed via a Tor browser. This can provide some additional defense against unwanted surveillance or metadata gethering. Non-mesh variants also come with an RSS reader which provides strong reading privacy via the use of a Tor onion service.
 
 Freedombone has an emphasis on security and privacy, and when installed on a Beaglebone Black it uses the built-in hardware random number generator as an entropy source.  All communications with the box are encrypted by default using the recommendations from https://bettercrypto.org. The firewall is configured to only allow communications on the necessary ports and to drop all other packets, icmp is disabled by default, emails are stored in encrypted form using your public key and time synchronisation occurs via TLS only.  Backups are also encrypted and can be local or remote.
 
