@@ -36,12 +36,13 @@ export TEXTDOMAINDIR="/usr/share/locale"
 
 MYUSERNAME=$USER
 EMAILADDRESS=
+SUBJECT_TEXT=
 GROUP_NAME=
 PUBLIC='no'
 
 function show_help {
     echo ''
-    echo $"${PROJECT_NAME}-addemail -u [username] -e [email address] -g [group name] --public [yes|no]"
+    echo $"${PROJECT_NAME}-addemail -u [username] -e [email address] -s [subject text] -g [group name] --public [yes|no]"
     echo ''
     exit 0
 }
@@ -62,6 +63,10 @@ case $key in
     shift
     EMAILADDRESS="$1"
     ;;
+    -s|--subject)
+    shift
+    SUBJECT_TEXT="$1"
+    ;;
     -g|--group)
     shift
     GROUP_NAME="$1"
@@ -77,13 +82,26 @@ esac
 shift
 done
 
-if ! [[ $MYUSERNAME && $EMAILADDRESS && $GROUP_NAME ]]; then
+if ! [[ $MYUSERNAME && $GROUP_NAME ]]; then
     show_help
+fi
+
+if [ ${#EMAILADDRESS} -lt 2 ]; then
+    if [ ${#SUBJECT_TEXT} -lt 2 ]; then
+        show_help
+    fi
 fi
 
 MUTTRC=/home/$MYUSERNAME/.muttrc
 PM=/home/$MYUSERNAME/.procmailrc
 LISTDIR=/home/$MYUSERNAME/Maildir/$GROUP_NAME
+
+proc_rule="  * ^From:.*$EMAILADDRESS"
+proc_comment="# Email rule for $EMAILADDRESS -> $GROUP_NAME"
+if [ ${#SUBJECT_TEXT} -gt 0 ]; then
+    proc_rule="  * ^From:.*$EMAILADDRESS"
+    proc_comment="# Email rule for '$SUBJECT_TEXT' -> $GROUP_NAME"
+fi
 
 if [ ! -d "$LISTDIR" ]; then
     mkdir -m 700 $LISTDIR
@@ -92,40 +110,43 @@ if [ ! -d "$LISTDIR" ]; then
     mkdir -m 700 $LISTDIR/cur
 fi
 chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR
-if ! grep -q "Email rule for $EMAILADDRESS -> $GROUP_NAME" $PM; then
+if ! grep -q "$proc_comment" $PM; then
     if [[ $PUBLIC != "yes" ]]; then
         # private emails go after the encryption stage
         echo '' >> $PM
-        echo "# Email rule for $EMAILADDRESS -> $GROUP_NAME" >> $PM
+        echo "$proc_comment" >> $PM
         echo ":0" >> $PM
-        echo "  * ^From:.*$EMAILADDRESS" >> $PM
+        echo "$proc_rule" >> $PM
         echo "$LISTDIR/new" >> $PM
         echo "# End of rule" >> $PM
     else
-        # public emails are copied before hte encryption stage
+        # public emails are copied before the encryption stage
         if ! grep -q '# encrypt' $PM; then
             echo '' >> $PM
-            echo "# Email rule for $EMAILADDRESS -> $GROUP_NAME" >> $PM
+            echo "$proc_comment" >> $PM
             echo ":0" >> $PM
-            echo "  * ^From:.*$EMAILADDRESS" >> $PM
+            echo "$proc_rule" >> $PM
             echo "$LISTDIR/new" >> $PM
             echo "# End of rule" >> $PM
         else
-            filter=$(echo "# Email rule for $EMAILADDRESS -> $GROUP_NAME\n:0\n  * ^From:.*$EMAILADDRESS\n$LISTDIR/new\n# End of rule\n")
+            filter=$(echo "$proc_comment\n:0\n${proc_rule}\n$LISTDIR/new\n# End of rule\n")
             sed -i "/# encrypt/i ${filter}" $PM
         fi
     fi
     chown $MYUSERNAME:$MYUSERNAME $PM
 fi
+
 if [ ! -f "$MUTTRC" ]; then
   cp /etc/Muttrc $MUTTRC
   chown $MYUSERNAME:$MYUSERNAME $MUTTRC
 fi
+
 PROCMAILLOG=/home/$MYUSERNAME/log
 if [ ! -d $PROCMAILLOG ]; then
   mkdir $PROCMAILLOG
   chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG
 fi
+
 MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)
 if [[ $MUTT_MAILBOXES != *$GROUP_NAME* ]]; then
   if ! grep -q "=$GROUP_NAME" $MUTTRC; then
