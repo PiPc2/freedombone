@@ -1,0 +1,425 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# User control panel for email
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-controlpanel-user
+export TEXTDOMAINDIR="/usr/share/locale"
+
+function any_key {
+    echo ' '
+    read -n1 -r -p $"Press any key to continue..." key
+}
+
+function remove_user_from_mailing_list {
+    USER_MAILING_LISTS=$(cat "/home/$USER/.procmailrc" | grep '\[' | grep '\]' | awk -F '\[' '{print $2}' | awk -F '\\' '{print $1}')
+
+    i=0
+    W=()
+    list_name=()
+    while read -r listname; do
+        i=$((i+1))
+        W+=($i "$listname")
+        list_name+=("$listname")
+        echo $listname
+    done <<< "$USER_MAILING_LISTS"
+
+    i=$((i+1))
+    W+=($i $"Exit back to user mainenance")
+
+    list_selected=$(dialog --default-item "$i" --backtitle $"Freedombone User Control Panel" --title $"Remove a mailing list for $USER" --menu $"Select one of the following:" 24 50 17 "${W[@]}" 3>&2 2>&1 1>&3)
+
+    if [ $? -eq 0 ]; then # Exit with OK
+        if [ ${list_selected} -ne ${i} ]; then
+            remove_list_name="${list_name[$((list_selected-1))]}"
+
+            # find the line number where the list is defined
+            line_number=0
+            i=0
+            while read -r line
+            do
+                if [[ "$line" == *"\[${remove_list_name}\\]"* ]]; then
+                    line_number=${i}
+                fi
+                i=$((i+1))
+            done < "/home/$USER/.procmailrc"
+
+            if [ ${line_number} -eq 0 ]; then
+                # no match was found
+                return
+            fi
+
+            # recreate the file
+            if [ -f /home/${USER}/.procmailrc_new ]; then
+                rm /home/${USER}/.procmailrc_new
+            fi
+            i=0
+            clip=0
+            while read -r line
+            do
+                i=$((i+1))
+                if [ ${i} -gt $((line_number-1)) ]; then
+                    if [ ${clip} -eq 0 ]; then
+                        clip=1
+                    fi
+                    if [ ${clip} -eq 1 ]; then
+                        if [ ${i} -lt $((line_number+2)) ]; then
+                            continue
+                        else
+                            if [ ${#line} -lt 1 ]; then
+                                clip=2
+                                continue
+                            fi
+                            if [[ "$line" == ":"* || "$line" == "#"* ]]; then
+                                clip=2
+                            else
+                                continue
+                            fi
+                        fi
+                    fi
+                fi
+
+                echo "$line" >> /home/${USER}/.procmailrc_new
+
+                if [[ "$line" == *"\[${remove_list_name}\\]"* ]]; then
+                    line_number=${i}
+                fi
+            done < "/home/$USER/.procmailrc"
+            cp /home/${USER}/.procmailrc_new /home/${USER}/.procmailrc
+            rm /home/${USER}/.procmailrc_new
+            chown ${USER}:${USER} /home/${USER}/.procmailrc
+            dialog --title $"Remove user from mailing list" \
+                   --msgbox $"${USER} has been removed from ${remove_list_name}" 6 50
+        fi
+    fi
+}
+
+function add_to_mailing_list {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title $"Subscribe to a mailing list" \
+           --form $"You can either enter a subject or an email address\n" 11 68 4 \
+              $"List folder name:" 1 1 "" 1 35 26 25 \
+              $"Name between [] on subject line:" 2 1 "" 2 35 26 25 \
+              $"List email address:" 3 1 "" 3 35 26 25 \
+              $"Public:" 4 1 $"yes" 4 35 4 25 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    LIST_NAME=$(cat $data | sed -n 1p)
+    LIST_SUBJECT=$(cat $data | sed -n 2p)
+    LIST_EMAIL=$(cat $data | sed -n 3p)
+    LIST_PUBLIC=$(cat $data | sed -n 4p)
+
+    if [ ${#LIST_PUBLIC} -lt 1 ]; then
+        LIST_PUBLIC='no'
+    fi
+    if [[ $LIST_PUBLIC == $'y' || $LIST_PUBLIC == $'Y' || $LIST_PUBLIC == $'true' || $LIST_PUBLIC == $'True' || $LIST_PUBLIC == $'yes' || $LIST_PUBLIC == $'Yes' || $LIST_PUBLIC == $'YES' ]]; then
+        LIST_PUBLIC='yes'
+    else
+        LIST_PUBLIC='no'
+    fi
+    if [ ${#LIST_NAME} -lt 2 ]; then
+        dialog --title $"Add mailing list" \
+               --msgbox $"No mailing list name was given" 6 40
+        return
+    fi
+    if [ ${#LIST_SUBJECT} -lt 2 ]; then
+        if [ ${#LIST_EMAIL} -lt 2 ]; then
+            dialog --title $"Add mailing list" \
+                   --msgbox $"No mailing list subject or address was given" 6 40
+            return
+        fi
+    fi
+    if [ ${#LIST_SUBJECT} -gt 1 ]; then
+        ${PROJECT_NAME}-addlist -u $USER -l "$LIST_NAME" \
+                       -s "$LIST_SUBJECT" --public $LIST_PUBLIC
+    else
+        if [[ "$LIST_EMAIL" != *"@"* || "$LIST_EMAIL" != *"."* ]]; then
+            dialog --title $"Add mailing list" \
+                   --msgbox $"Unrecognised email address" 6 40
+            return
+        else
+            ${PROJECT_NAME}-addlist -u $USER -l "$LIST_NAME" \
+                           -e "$LIST_EMAIL" --public $LIST_PUBLIC
+        fi
+    fi
+
+    dialog --title $"Add mailing list" \
+           --msgbox $"$LIST_NAME list was added" 6 40
+}
+
+function email_rule {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title $"Email rule for user $USER" \
+           --form "\n" 9 65 4 \
+              $"When email arrives from address:" 1 1 "" 1 35 24 28 \
+              $"Move to folder:" 2 1 "" 2 35 24 28 \
+              $"Public:" 3 1 $"no" 3 35 4 25 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    RULE_EMAIL=$(cat $data | sed -n 1p)
+    RULE_FOLDER=$(cat $data | sed -n 2p)
+    RULE_PUBLIC=$(cat $data | sed -n 3p)
+
+    if [ ${#RULE_PUBLIC} -lt 1 ]; then
+        RULE_PUBLIC='no'
+    fi
+    if [[ $RULE_PUBLIC == $'y' || $RULE_PUBLIC == $'Y' || $RULE_PUBLIC == $'true' || $RULE_PUBLIC == $'True' || $RULE_PUBLIC == $'yes' || $RULE_PUBLIC == $'Yes' || $RULE_PUBLIC == $'YES' ]]; then
+        RULE_PUBLIC='yes'
+    else
+        RULE_PUBLIC='no'
+    fi
+    if [ ${#RULE_EMAIL} -lt 2 ]; then
+        dialog --title $"Add email rule" \
+               --msgbox $"No email address was given" 6 40
+        return
+    fi
+    if [ ${#RULE_FOLDER} -lt 2 ]; then
+        dialog --title $"Add email rule" \
+               --msgbox $"No folder name was given" 6 40
+        return
+    fi
+    if [[ "$RULE_EMAIL" != *"@"* || "$RULE_EMAIL" != *"."* ]]; then
+        dialog --title $"Add email rule" \
+               --msgbox $"Unrecognised email address" 6 40
+        return
+    fi
+
+    ${PROJECT_NAME}-addemail -u $USER -e "$RULE_EMAIL" \
+                         -g "$RULE_FOLDER" --public $RULE_PUBLIC
+    dialog --title $"Add email rule" \
+           --msgbox $"Email rule for $RULE_EMAIL was added" 6 40
+}
+
+function block_unblock_email {
+    blockstr=$"Block/Unblock email going to"
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title "$blockstr $USER" \
+           --form "\n" 8 65 3 \
+              $"When email arrives from address:" 1 1 "" 1 35 24 28 \
+              $"Block it:" 2 1 "yes" 2 35 4 4 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    BLOCK_EMAIL=$(cat $data | sed -n 1p)
+    BLOCK=$(cat $data | sed -n 2p)
+    if [ ${#BLOCK_EMAIL} -lt 2 ]; then
+        dialog --title $"Block/Unblock an email" \
+               --msgbox $"No email address was given" 6 40
+        return
+    fi
+    if [[ "$BLOCK_EMAIL" != *"@"* || "$BLOCK_EMAIL" != *"."* ]]; then
+        dialog --title $"Block/Unblock an email" \
+               --msgbox $"Unrecognised email address" 6 40
+        return
+    fi
+    if [[ $BLOCK == "y"* || $BLOCK == "Y"* ]]; then
+        ${PROJECT_NAME}-ignore -u $USER -e "$BLOCK_EMAIL"
+        dialog --title $"Block an email" \
+               --msgbox "Email from $BLOCK_EMAIL to $USER blocked" 6 40
+    else
+        ${PROJECT_NAME}-unignore -u $USER -e "$BLOCK_EMAIL"
+        dialog --title $"Unblock an email" \
+               --msgbox "Email from $BLOCK_EMAIL to $USER unblocked" 6 40
+    fi
+}
+
+function block_unblock_subject {
+    blockstr=$"Block/Unblock email going to"
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title "$blockstr $USER" \
+           --form "\n" 8 70 3 \
+              $"When email arrives with subject text:" 1 1 "" 1 40 24 28 \
+              $"Block it:" 2 1 "yes" 2 40 4 4 \
+              2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    BLOCK_SUBJECT=$(cat $data | sed -n 1p)
+    BLOCK=$(cat $data | sed -n 2p)
+    if [ ${#BLOCK_SUBJECT} -lt 2 ]; then
+        dialog --title $"Block/Unblock an email" \
+               --msgbox $"No subject was given" 6 40
+        return
+    fi
+    if [[ $BLOCK == "y"* || $BLOCK == "Y"* ]]; then
+        ${PROJECT_NAME}-ignore -u $USER -t "$BLOCK_SUBJECT"
+        dialog --title $"Block an email" \
+               --msgbox "Email with subject $BLOCK_SUBJECT to $USER blocked" 6 40
+    else
+        ${PROJECT_NAME}-unignore -u $USER -t "$BLOCK_SUBJECT"
+        dialog --title $"Unblock an email" \
+               --msgbox "Email with subject $BLOCK_SUBJECT to $USER unblocked" 6 40
+    fi
+}
+
+function create_keydrive_master {
+    select_user
+    if [ ! $USER ]; then
+        return
+    fi
+    dialog --title $"USB Master Keydrive" \
+           --msgbox $"Plug in a LUKS encrypted USB drive" 6 40
+    clear
+    ${PROJECT_NAME}-keydrive -u $USER --master 'yes'
+    any_key
+}
+
+function create_keydrive_fragment {
+    select_user
+    if [ ! $USER ]; then
+        return
+    fi
+    dialog --title $"USB Fragment Keydrive" \
+           --msgbox $"Plug in a LUKS encrypted USB drive" 6 40
+    clear
+    ${PROJECT_NAME}-keydrive -u $USER
+    any_key
+}
+
+function restore_gpg_key {
+    select_user
+    if [ ! $USER ]; then
+        return
+    fi
+    restorestr=$"Restore encryption key for user"
+    dialog --title "$restorestr $USER" \
+           --msgbox $"Plug in your USB keydrive" 6 40
+    clear
+    ${PROJECT_NAME}-recoverkey -u $USER
+    any_key
+}
+
+
+function menu_encryption_key {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone User Control Panel" \
+               --title $"Your Encryption Key" \
+               --radiolist $"Choose an operation:" 12 70 5 \
+               1 $"Restore encryption key from USB keydrive" off \
+               2 $"Backup encryption key to USB (master keydrive)" off \
+               3 $"Backup encryption key to USB (fragment keydrive)" off \
+               4 $"Back to main menu" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) restore_gpg_key;;
+            2) create_keydrive_master;;
+            3) create_keydrive_fragment;;
+            4) break;;
+        esac
+    done
+}
+
+function menu_email {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone User Control Panel" \
+               --title $"Change Email Filtering Rules" \
+               --radiolist $"Choose an operation:" 13 70 6 \
+               1 $"Add a user to a mailing list" off \
+               2 $"Remove a user from a mailing list" off \
+               3 $"Add an email rule" off \
+               4 $"Block/Unblock an email address" off \
+               5 $"Block/Unblock email with subject text" off \
+               6 $"Back to main menu" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) add_to_mailing_list;;
+            2) remove_user_from_mailing_list;;
+            3) email_rule;;
+            4) block_unblock_email;;
+            5) block_unblock_subject;;
+            6) break;;
+        esac
+    done
+}
+
+
+function menu_top_level {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone User Control Panel" \
+               --title $"User Control Panel" \
+               --radiolist $"Choose an operation:" 10 50 3 \
+               1 $"Your Encryption Key" off \
+               2 $"Change Email Filtering Rules" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) exit 1;;
+            255) exit 1;;
+        esac
+        case $(cat $data) in
+            1) menu_encryption_key;;
+            2) menu_email;;
+            3) break;;
+        esac
+    done
+}
+
+menu_top_level
+clear
+. ~/.bashrc
+exit 0
