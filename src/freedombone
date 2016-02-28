@@ -304,6 +304,7 @@ MARIADB_PASSWORD=
 
 # Directory where XMPP settings are stored
 XMPP_DIRECTORY="/var/lib/prosody"
+XMPP_PASSWORD=
 
 # file containing a list of remote locations to backup to
 # Format: [username@friendsdomain//home/username] [ssh_password]
@@ -1037,6 +1038,9 @@ function read_configuration {
         # Ensure that a copy of the config exists for upgrade purposes
         if [[ $CONFIGURATION_FILE != "/root/${PROJECT_NAME}.cfg" ]]; then
             cp $CONFIGURATION_FILE /root/${PROJECT_NAME}.cfg
+        fi
+        if grep -q "XMPP_PASSWORD" $CONFIGURATION_FILE; then
+            XMPP_PASSWORD=$(grep "XMPP_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
         if grep -q "RSS_READER_REPO" $CONFIGURATION_FILE; then
             RSS_READER_REPO=$(grep "RSS_READER_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -7428,10 +7432,12 @@ function install_xmpp {
     fi
 
     if ! grep -q "Your XMPP password is" /home/$MY_USERNAME/README; then
-        if [ -f $IMAGE_PASSWORD_FILE ]; then
-            XMPP_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-        else
-            XMPP_PASSWORD="$(openssl rand -base64 8)"
+        if [ ${#XMPP_PASSWORD} -lt 8 ]; then
+            if [ -f $IMAGE_PASSWORD_FILE ]; then
+                XMPP_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+            else
+                XMPP_PASSWORD="$(openssl rand -base64 8)"
+            fi
         fi
         prosodyctl register $MY_USERNAME $DEFAULT_DOMAIN_NAME $XMPP_PASSWORD
         echo '' >> /home/$MY_USERNAME/README
@@ -7478,6 +7484,9 @@ function install_xmpp_client {
         echo 'priority.away=0' >> $XMPP_CLIENT_ACCOUNTS
         echo 'priority.xa=0' >> $XMPP_CLIENT_ACCOUNTS
         echo 'priority.dnd=0' >> $XMPP_CLIENT_ACCOUNTS
+        if [ ${#XMPP_PASSWORD} -gt 2 ]; then
+            echo "password=$XMPP_PASSWORD" >> $XMPP_CLIENT_ACCOUNTS
+        fi
     fi
 
     if [ -f /var/lib/tor/hidden_service_xmpp/hostname ]; then
@@ -7499,6 +7508,9 @@ function install_xmpp_client {
         echo 'priority.away=0' >> $XMPP_CLIENT_ACCOUNTS
         echo 'priority.xa=0' >> $XMPP_CLIENT_ACCOUNTS
         echo 'priority.dnd=0' >> $XMPP_CLIENT_ACCOUNTS
+        if [ ${#XMPP_PASSWORD} -gt 2 ]; then
+            echo "password=$XMPP_PASSWORD" >> $XMPP_CLIENT_ACCOUNTS
+        fi
     fi
 
     if [ ! -d /home/$MY_USERNAME/.config/profanity ]; then
