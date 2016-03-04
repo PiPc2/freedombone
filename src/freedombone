@@ -251,6 +251,13 @@ FULLBLOG_COMMIT='bf5fe9486160be4da86d8987d3e5c977e1dc6d32'
 MY_BLOG_TITLE="My Blog"
 MY_BLOG_SUBTITLE="Another ${PROJECT_NAME} Blog"
 
+# search engine
+SEARCH_ENGINE_REPO="https://github.com/asciimoo/searx"
+SEARCH_ENGINE_COMMIT='fee556c9904637051a9ba874ba7e71cd9f10789f'
+SEARCH_ENGINE_PATH=/etc
+SEARCH_ENGINE_ONION_PORT=8094
+SEARCH_ENGINE_ONION_HOSTNAME=
+
 GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # whether to encrypt all incoming email with your public key
@@ -9152,6 +9159,124 @@ function install_gnu_social_markdown {
     echo 'install_gnu_social_markdown' >> $COMPLETION_FILE
 }
 
+function install_search_engine {
+    if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+    if [ ! -d /etc/nginx ]; then
+        echo $'Webserver is not installed'
+        exit 62429
+    fi
+
+    # update to a new commit if needed
+    set_repo_commit $SEARCH_ENGINE_PATH/searx "Search engine commit" "$SEARCH_ENGINE_COMMIT" $SEARCH_ENGINE_REPO
+
+    if grep -Fxq "install_search_engine" $COMPLETION_FILE; then
+        return
+    fi
+
+    if [ ! -d $SEARCH_ENGINE_PATH ]; then
+        mkdir -p $SEARCH_ENGINE_PATH
+    fi
+
+    # clone the repo
+    cd $SEARCH_ENGINE_PATH
+    git_clone $SEARCH_ENGINE_REPO searx
+    git checkout $SEARCH_ENGINE_COMMIT -b $SEARCH_ENGINE_COMMIT
+    if ! grep -q "Search engine commit" $COMPLETION_FILE; then
+        echo "Search engine commit:$SEARCH_ENGINE_COMMIT" >> $COMPLETION_FILE
+    else
+        sed -i "s/Search engine commit.*/Search engine commit:$SEARCH_ENGINE_COMMIT/g" $COMPLETION_FILE
+    fi
+
+    # create an onion service
+    SEARCH_ENGINE_ONION_HOSTNAME=$(add_onion_service searx 80 ${SEARCH_ENGINE_ONION_PORT})
+    if ! grep "Search engine onion domain" $COMPLETION_FILE; then
+        echo "Search engine onion domain:${SEARCH_ENGINE_ONION_HOSTNAME}" >> $COMPLETION_FILE
+    else
+        sed -i "s|Search engine onion domain.*|Search engine onion domain:${SEARCH_ENGINE_ONION_HOSTNAME}|g" $COMPLETION_FILE
+    fi
+
+    # an unprivileged user to run as
+    useradd -d ${SEARCH_ENGINE_PATH}/searx/ -s /bin/false searx
+
+    # daemon
+    echo '[Unit]' > /etc/systemd/system/searx.service
+    echo 'Description=Searx search engine' >> /etc/systemd/system/searx.service
+    echo 'After=syslog.target' >> /etc/systemd/system/searx.service
+    echo 'After=network.target' >> /etc/systemd/system/searx.service
+    echo '[Service]' >> /etc/systemd/system/searx.service
+    echo 'Type=simple' >> /etc/systemd/system/searx.service
+    echo 'User=searx' >> /etc/systemd/system/searx.service
+    echo 'Group=searx' >> /etc/systemd/system/searx.service
+    echo "WorkingDirectory=${SEARCH_ENGINE_PATH}/searx" >> /etc/systemd/system/searx.service
+    echo 'ExecStart=torify python searx/webapp.py' >> /etc/systemd/system/searx.service
+    echo '' >> /etc/systemd/system/searx.service
+    echo 'TimeoutSec=300' >> /etc/systemd/system/searx.service
+    echo '' >> /etc/systemd/system/searx.service
+    echo '[Install]' >> /etc/systemd/system/searx.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/searx.service
+
+    # create a webserver file
+    echo 'server {' >> /etc/nginx/sites-available/searx
+    echo "    listen 127.0.0.1:${SEARCH_ENGINE_ONION_PORT} default_server;" >> /etc/nginx/sites-available/searx
+    echo "    root ${SEARCH_ENGINE_PATH}/searx;" >> /etc/nginx/sites-available/searx
+    echo "    server_name searx;" >> /etc/nginx/sites-available/searx
+    echo '    access_log off;' >> /etc/nginx/sites-available/searx
+    echo "    error_log /var/log/searx_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/searx
+    echo '' >> /etc/nginx/sites-available/searx
+    nginx_limits searx '1M'
+    nginx_disable_sniffing searx
+    echo '    add_header Strict-Transport-Security max-age=0;' >> /etc/nginx/sites-available/searx
+    echo '' >> /etc/nginx/sites-available/searx
+    echo '    location / {' >> /etc/nginx/sites-available/searx
+    echo '        proxy_pass http://localhost:8888;' >> /etc/nginx/sites-available/searx
+    echo '        proxy_set_header Host $host;' >> /etc/nginx/sites-available/searx
+    echo '        proxy_set_header X-Real-IP $remote_addr;' >> /etc/nginx/sites-available/searx
+    echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /etc/nginx/sites-available/searx
+    echo '        proxy_set_header X-Remote-Port $remote_port;' >> /etc/nginx/sites-available/searx
+    echo '        proxy_set_header X-Forwarded-Proto $scheme;' >> /etc/nginx/sites-available/searx
+    echo '        proxy_redirect off;' >> /etc/nginx/sites-available/searx
+    echo '    }' >> /etc/nginx/sites-available/searx
+    echo '' >> /etc/nginx/sites-available/searx
+    echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/searx
+    echo '' >> /etc/nginx/sites-available/searx
+    echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/searx
+    echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/searx
+    echo '' >> /etc/nginx/sites-available/searx
+    echo '    location = /robots.txt {' >> /etc/nginx/sites-available/searx
+    echo '        allow all;' >> /etc/nginx/sites-available/searx
+    echo '        log_not_found off;' >> /etc/nginx/sites-available/searx
+    echo '        access_log off;' >> /etc/nginx/sites-available/searx
+    echo '    }' >> /etc/nginx/sites-available/searx
+    echo '}' >> /etc/nginx/sites-available/searx
+
+    # replace the secret key
+    if ! grep "Search engine key" $COMPLETION_FILE; then
+        SEARCH_ENGINE_SECRET_KEY="$(openssl rand -base64 32)"
+        echo "Search engine key:${SEARCH_ENGINE_SECRET_KEY}" >> $COMPLETION_FILE
+    else
+        SEARCH_ENGINE_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
+    fi
+    sed -i "s|secret_key.*|secret_key : \"$SEARCH_ENGINE_SECRET_KEY\"|g" ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+
+    chown -R searx:searx ${SEARCH_ENGINE_PATH}/searx
+
+    # enable the site
+    nginx_ensite searx
+
+    # restart the web server
+    systemctl restart php5-fpm
+    systemctl restart nginx
+
+    # start the daemon
+    systemctl enable searx.service
+    systemctl daemon-reload
+    systemctl start searx.service
+
+    echo 'install_search_engine' >> $COMPLETION_FILE
+}
+
 function install_hubzilla {
     if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
         return
@@ -10510,6 +10635,7 @@ install_gnu_social_markdown
 install_rss_reader
 install_rss_mobile_reader
 install_hubzilla
+#install_search_engine
 install_dlna_server
 configure_firewall_for_dlna
 #install_mediagoblin
