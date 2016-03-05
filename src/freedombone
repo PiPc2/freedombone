@@ -9160,6 +9160,14 @@ function install_gnu_social_markdown {
 }
 
 function install_search_engine {
+    # Note: having a search engine is a nice idea, but at present there are a couple
+    # of problems. One is that there is no access control, such that J random web surfer
+    # could use your search engine. Secondly, the outgoing connection to other search
+    # engines currently can't be socks5 proxied. This potentially causes legal liability
+    # issues for the user - (i) providing secondard services beyond household members
+    # and (ii) adversaries could try to incriminate you by searching for things illegal
+    # within your zone.
+    # Until these factors are addressed it's unwise to have this enabled by default.
     if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
         return
     fi
@@ -9172,6 +9180,13 @@ function install_search_engine {
     set_repo_commit $SEARCH_ENGINE_PATH/searx "Search engine commit" "$SEARCH_ENGINE_COMMIT" $SEARCH_ENGINE_REPO
     if grep "Search engine key" $COMPLETION_FILE; then
         if [ -f ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml ]; then
+            # note: this might change to a --tor option in a later version
+            if ! grep 'socks5://127.0.0.1:9050' ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml; then
+                echo 'outgoing: # communication with search engines' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+                echo '    proxies:' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+                echo '        http : socks5://127.0.0.1:9050' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+                echo '        https: socks5://127.0.0.1:9050' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+            fi
             SEARCH_ENGINE_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
             sed -i "s|secret_key.*|secret_key : \"${SEARCH_ENGINE_SECRET_KEY}\"|g" ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
             if [ -f /var/lib/tor/hidden_service_searx/hostname ]; then
@@ -9241,22 +9256,22 @@ function install_search_engine {
     useradd -d ${SEARCH_ENGINE_PATH}/searx/ -s /bin/false searx
 
     # daemon
-	echo '[Unit]' > /etc/systemd/system/searx.service
-	echo 'Description=Searx (search engine)' >> /etc/systemd/system/searx.service
-	echo 'After=syslog.target' >> /etc/systemd/system/searx.service
-	echo 'After=network.target' >> /etc/systemd/system/searx.service
-	echo '' >> /etc/systemd/system/searx.service
-	echo '[Service]' >> /etc/systemd/system/searx.service
-	echo 'Type=simple' >> /etc/systemd/system/searx.service
-	echo 'User=searx' >> /etc/systemd/system/searx.service
-	echo 'Group=searx' >> /etc/systemd/system/searx.service
-	echo "WorkingDirectory=${SEARCH_ENGINE_PATH}/searx" >> /etc/systemd/system/searx.service
-	echo "ExecStart=/usr/bin/python ${SEARCH_ENGINE_PATH}/searx/searx/webapp.py" >> /etc/systemd/system/searx.service
-	echo 'Restart=always' >> /etc/systemd/system/searx.service
-	echo 'Environment="USER=searx"' >> /etc/systemd/system/searx.service
-	echo '' >> /etc/systemd/system/searx.service
-	echo '[Install]' >> /etc/systemd/system/searx.service
-	echo 'WantedBy=multi-user.target' >> /etc/systemd/system/searx.service
+    echo '[Unit]' > /etc/systemd/system/searx.service
+    echo 'Description=Searx (search engine)' >> /etc/systemd/system/searx.service
+    echo 'After=syslog.target' >> /etc/systemd/system/searx.service
+    echo 'After=network.target' >> /etc/systemd/system/searx.service
+    echo '' >> /etc/systemd/system/searx.service
+    echo '[Service]' >> /etc/systemd/system/searx.service
+    echo 'Type=simple' >> /etc/systemd/system/searx.service
+    echo 'User=searx' >> /etc/systemd/system/searx.service
+    echo 'Group=searx' >> /etc/systemd/system/searx.service
+    echo "WorkingDirectory=${SEARCH_ENGINE_PATH}/searx" >> /etc/systemd/system/searx.service
+    echo "ExecStart=/usr/bin/python ${SEARCH_ENGINE_PATH}/searx/searx/webapp.py" >> /etc/systemd/system/searx.service
+    echo 'Restart=always' >> /etc/systemd/system/searx.service
+    echo 'Environment="USER=searx"' >> /etc/systemd/system/searx.service
+    echo '' >> /etc/systemd/system/searx.service
+    echo '[Install]' >> /etc/systemd/system/searx.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/searx.service
 
     # create a webserver file
     echo 'server {' >> /etc/nginx/sites-available/searx
@@ -9301,6 +9316,14 @@ function install_search_engine {
     fi
     sed -i "s|secret_key.*|secret_key : \"${SEARCH_ENGINE_SECRET_KEY}\"|g" ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
     sed -i "s|base_url.*|base_url : \"http://${SEARCH_ENGINE_ONION_HOSTNAME}\"|g" ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+
+    # note: this might change to a --tor option in a later version
+    if ! grep 'socks5://127.0.0.1:9050' ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml; then
+        echo 'outgoing: # communication with search engines' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+        echo '    proxies:' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+        echo '        http : socks5://127.0.0.1:9050' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+        echo '        https: socks5://127.0.0.1:9050' >> ${SEARCH_ENGINE_PATH}/searx/searx/settings.yml
+    fi
 
     chown -R searx:searx ${SEARCH_ENGINE_PATH}/searx
 
