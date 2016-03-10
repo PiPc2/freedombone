@@ -47,7 +47,7 @@ GENERIC_IMAGE_PASSWORD='freedombone'
 IMAGE_TYPE='beaglebone'
 CURR_DIR=$(pwd)
 CURR_USER=$(echo $USER)
-BUILD_DIR=~/.tmp_${PROJECT_NAME}_build
+TEMPBUILD_DIR=~/.tmp_${PROJECT_NAME}_build
 VMDEBOOTSTRAP_REPO=git://git.liw.fi/vmdebootstrap
 VMDEBOOTSTRAP_VERSION=0.8
 MAKEFILE=${PROJECT_NAME}-image-makefile
@@ -244,33 +244,47 @@ if [ ! $PASSWORD ]; then
     PASSWORD="$(openssl rand -base64 10 | cut -c1-8)"
 fi
 
+# Move any existing images into a build subdirectory
 image_types=( xz img sig vdi qcow2 )
 for im in "${image_types[@]}"
 do
     no_of_files=$(ls -afq ${CURR_DIR}/${PROJECT_NAME}*.${im} | wc -l)
     if (( no_of_files > 0 )); then
-        rm ${CURR_DIR}/${PROJECT_NAME}*.${im}
+        if [ ! -d ${CURR_DIR}/build ]; then
+            mkdir ${CURR_DIR}/build
+        fi
+        mv -f ${CURR_DIR}/${PROJECT_NAME}*.${im} ${CURR_DIR}/build
     fi
 done
 
+# Delete anything which didn't move
+for im in "${image_types[@]}"
+do
+    no_of_files=$(ls -afq ${CURR_DIR}/${PROJECT_NAME}*.${im} | wc -l)
+    if (( no_of_files > 0 )); then
+        rm -f ${CURR_DIR}/${PROJECT_NAME}*.${im}
+    fi
+done
+
+# Remove any existing login credentials file
 if [ -f ${CURR_DIR}/${PROJECT_NAME}_login_credentials.txt ]; then
     rm ${CURR_DIR}/${PROJECT_NAME}_login_credentials.txt
 fi
 
-if [ -d $BUILD_DIR ]; then
-    rm -rf $BUILD_DIR
+if [ -d $TEMPBUILD_DIR ]; then
+    rm -rf $TEMPBUILD_DIR
 fi
-mkdir -p $BUILD_DIR
+mkdir -p $TEMPBUILD_DIR
 if [ -f /usr/local/bin/$MAKEFILE ]; then
-    cp /usr/local/bin/$MAKEFILE $BUILD_DIR/Makefile
+    cp /usr/local/bin/$MAKEFILE $TEMPBUILD_DIR/Makefile
 else
-    cp /usr/bin/$MAKEFILE $BUILD_DIR/Makefile
+    cp /usr/bin/$MAKEFILE $TEMPBUILD_DIR/Makefile
 fi
 
-cp -r /etc/${PROJECT_NAME}/* $BUILD_DIR
-rm -rf $BUILD_DIR/vendor
-chown -R $CURR_USER:$CURR_USER $BUILD_DIR
-cd $BUILD_DIR
+cp -r /etc/${PROJECT_NAME}/* $TEMPBUILD_DIR
+rm -rf $TEMPBUILD_DIR/vendor
+chown -R $CURR_USER:$CURR_USER $TEMPBUILD_DIR
+cd $TEMPBUILD_DIR
 
 if [[ $MINIMAL_INSTALL == "yes" ]]; then
     IMAGE_NAME='min'
@@ -280,30 +294,30 @@ if [[ $ONION_ONLY != "no" ]]; then
     IMAGE_NAME='onion'
 fi
 
-cd $BUILD_DIR
+cd $TEMPBUILD_DIR
 make $IMAGE_TYPE \
-    USERNAME="$USERNAME" \
-    PASSWORD="$PASSWORD" \
-    ROUTER_IP_ADDRESS="$ROUTER_IP_ADDRESS" \
-    BOX_IP_ADDRESS="$BOX_IP_ADDRESS" \
-    NAMESERVER1="$NAMESERVER1" \
-    NAMESERVER2="$NAMESERVER2" \
-    PROJECT_NAME="$PROJECT_NAME" \
-    CONFIG_FILENAME="$CONFIG_FILENAME" \
-    IMAGE_SIZE="$IMAGE_SIZE" \
-    SSH_PUBKEY="$SSH_PUBKEY" \
-    GENERIC_IMAGE="$GENERIC_IMAGE" \
-    MINIMAL_INSTALL="$MINIMAL_INSTALL" \
-    SSH_PORT="$SSH_PORT" \
-    ONION_ONLY="$ONION_ONLY" \
-    IMAGE_NAME="$IMAGE_NAME" \
-    PROJECT_REPO="$PROJECT_REPO" \
-    MIRROR="$MIRROR" \
-    BUILD_MIRROR="$MIRROR"
+     USERNAME="$USERNAME" \
+     PASSWORD="$PASSWORD" \
+     ROUTER_IP_ADDRESS="$ROUTER_IP_ADDRESS" \
+     BOX_IP_ADDRESS="$BOX_IP_ADDRESS" \
+     NAMESERVER1="$NAMESERVER1" \
+     NAMESERVER2="$NAMESERVER2" \
+     PROJECT_NAME="$PROJECT_NAME" \
+     CONFIG_FILENAME="$CONFIG_FILENAME" \
+     IMAGE_SIZE="$IMAGE_SIZE" \
+     SSH_PUBKEY="$SSH_PUBKEY" \
+     GENERIC_IMAGE="$GENERIC_IMAGE" \
+     MINIMAL_INSTALL="$MINIMAL_INSTALL" \
+     SSH_PORT="$SSH_PORT" \
+     ONION_ONLY="$ONION_ONLY" \
+     IMAGE_NAME="$IMAGE_NAME" \
+     PROJECT_REPO="$PROJECT_REPO" \
+     MIRROR="$MIRROR" \
+     BUILD_MIRROR="$MIRROR"
 
 if [ ! "$?" = "0" ]; then
     echo $'Build failed'
-    rm -rf $BUILD_DIR
+    rm -rf $TEMPBUILD_DIR
     exit 1
 fi
 
@@ -319,11 +333,11 @@ shopt -s nullglob
 imgfiles=(build/${PROJECT_NAME}*.${EXPECTED_EXTENSION})
 if [ ${#imgfiles[@]} -eq 0 ]; then
     echo $'Image was not created'
-    rm -rf $BUILD_DIR
+    rm -rf $TEMPBUILD_DIR
     exit 2
 fi
 
-# Move images to the current directory
+# Move images from temporary directory to the current directory
 for im in "${image_types[@]}"
 do
     no_of_files=$(ls -afq build/${PROJECT_NAME}*.${im} | wc -l)
@@ -332,7 +346,8 @@ do
     fi
 done
 
-rm -rf ${BUILD_DIR}
+# Remove the temporary directory
+rm -rf ${TEMPBUILD_DIR}
 
 cd ${CURR_DIR}
 
@@ -380,7 +395,7 @@ if [[ $IMAGE_TYPE != "virtualbox"* && $IMAGE_TYPE != "qemu"* ]]; then
     echo ''
     echo $'You can copy the image to a microSD card with:'
     echo ''
-    echo "    unxz ${PROJECT_NAME}*.img.xz"
+    echo "    unxz -k ${PROJECT_NAME}*.img.xz"
     echo "    sudo dd bs=1M if=${PROJECT_NAME}*.img of=/dev/sdX conv=fdatasync"
     echo ''
 fi
