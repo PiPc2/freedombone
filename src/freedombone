@@ -6472,31 +6472,6 @@ function add_ddns_domain {
     CURRENT_DDNS_DOMAIN=
 }
 
-function configure_owncloud_onion_site {
-    if [ ! $OWNCLOUD_DOMAIN_NAME ]; then
-        return
-    fi
-    if [ ! -f /var/www/owncloud/config/config.php ]; then
-        return
-    fi
-    if [ ! -f /var/lib/tor/hidden_service_owncloud/hostname ]; then
-        return
-    fi
-    OWNCLOUD_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_owncloud/hostname)
-    if ! grep -q "${OWNCLOUD_ONION_HOSTNAME}" /var/www/owncloud/config/config.php; then
-        sed -i "s|0 => '${OWNCLOUD_DOMAIN_NAME}',|0 => '${OWNCLOUD_DOMAIN_NAME}',
-    1 => '${OWNCLOUD_ONION_HOSTNAME}',|g" /var/www/owncloud/config/config.php
-        sed -i "s|'writable' => false,|'writable' => false,
-    ),
-    1 =>
-    array (
-      'path' => '/var/www/owncloud/apps',
-      'url' => '/apps',
-      'writable' => false,|g" /var/www/owncloud/config/config.php
-        echo $'Owncloud configured for onion site'
-    fi
-}
-
 function upgrade_owncloud_start {
     # copies data and config directories to a temporary upgrade directory
     if [ ! -d /etc/owncloud ]; then
@@ -6902,10 +6877,10 @@ function install_owncloud_official_deb {
         cp $OWNCLOUD_PATH/config/config.sample.php $OWNCLOUD_PATH/config/config.php
     fi
 
-    if [ -f $OWNCLOUD_UPGRADE_PATH/config/config.php ]; then
+    if [ -f $OWNCLOUD_PATH/config/config.php ]; then
         OWNCLOUD_INSTANCE_ID="$(openssl rand -base64 14 | cut -c1-12)"
         OWNCLOUD_PASSWORD_SALT="$(openssl rand -base64 32 | cut -c1-30)"
-        OWNCLOUD_DATA_DIR='/var/www/owncloud/data'
+        OWNCLOUD_DATA_DIR="$OWNCLOUD_PATH/data"
         OWNCLOUD_DBTYPE='mysql'
         OWNCLOUD_DBNAME='owncloud'
         OWNCLOUD_DBHOST='localhost'
@@ -6913,6 +6888,8 @@ function install_owncloud_official_deb {
         OWNCLOUD_DBPASS="$OWNCLOUD_ADMIN_PASSWORD"
         OWNCLOUD_SECRET="$(openssl rand -base64 32 | cut -c1-30)$(openssl rand -base64 32 | cut -c1-30)$(openssl rand -base64 32 | cut -c1-30)$(openssl rand -base64 32 | cut -c1-30)"
 
+        sed -i "s|demo.example.org|${OWNCLOUD_DOMAIN_NAME}|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|otherdomain.example.org|${OWNCLOUD_ONION_HOSTNAME}|g" $OWNCLOUD_PATH/config/config.php
         sed -i "s|'instanceid'.*|'instanceid' => '$OWNCLOUD_INSTANCE_ID',|g" $OWNCLOUD_PATH/config/config.php
         sed -i "s|'passwordsalt'.*|'passwordsalt' => '$OWNCLOUD_PASSWORD_SALT',|g" $OWNCLOUD_PATH/config/config.php
         sed -i "s|'datadirectory'.*|'datadirectory' => '$OWNCLOUD_DATA_DIR',|g" $OWNCLOUD_PATH/config/config.php
@@ -10904,7 +10881,6 @@ install_web_server_access_control
 configure_firewall_for_web_server
 install_owncloud_official_deb
 install_owncloud_repo_music_app
-configure_owncloud_onion_site
 upgrade_golang
 install_gogs
 install_xmpp
