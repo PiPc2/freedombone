@@ -228,14 +228,14 @@ GVM_REPO="https://github.com/moovweb/gvm"
 GVM_COMMIT='25ea8ae158e2861c92e2b22c458e60840157832f'
 
 # Domain name for Owncloud installation
-OWNCLOUD_REPO="https://github.com/owncloud/core"
-OWNCLOUD_COMMIT='stable9'
 OWNCLOUD_DOMAIN_NAME=
 OWNCLOUD_CODE=
 OWNCLOUD_ONION_PORT=8088
 OWNCLOUD_ADMIN_PASSWORD=
 OWNCLOUD_MUSIC_APP_REPO="https://github.com/owncloud/music"
 OWNCLOUD_MUSIC_APP_COMMIT='0c0e1fadbe31a43f9c98d6a2a7b3960ff881ca0e'
+OWNCLOUD_PATH=/var/www/owncloud
+OWNCLOUD_UPGRADE_PATH=/root/owncloud_upgrade
 
 # Domain name for your wiki
 WIKI_DOMAIN_NAME=
@@ -614,6 +614,18 @@ function git_pull {
     if [ $2 ]; then
         git checkout $2 -b $2
     fi
+}
+
+function remove_database {
+    app_name="$1"
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir $INSTALL_DIR
+    fi
+    echo "drop database ${app_name};
+quit" > $INSTALL_DIR/batch.sql
+    chmod 600 $INSTALL_DIR/batch.sql
+    mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
+    shred -zu $INSTALL_DIR/batch.sql
 }
 
 function create_database {
@@ -6285,7 +6297,7 @@ function install_mariadb {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             MARIADB_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            MARIADB_PASSWORD="$(openssl rand -base64 32)"
+            MARIADB_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
         fi
         echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
         chmod 600 $DATABASE_PASSWORD_FILE
@@ -6391,15 +6403,15 @@ function install_owncloud_repo_music_app {
     fi
 
     # update to the next commit
-    set_repo_commit /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/apps/music "Owncloud music app commit" "$OWNCLOUD_MUSIC_APP_COMMIT" $OWNCLOUD_MUSIC_APP_REPO
+    set_repo_commit $OWNCLOUD_PATH/apps/music "Owncloud music app commit" "$OWNCLOUD_MUSIC_APP_COMMIT" $OWNCLOUD_MUSIC_APP_REPO
 
     if grep -Fxq "install_owncloud_repo_music_app" $COMPLETION_FILE; then
         return
     fi
 
-    cd /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/apps
+    cd $OWNCLOUD_PATH/apps
     git_clone $OWNCLOUD_MUSIC_APP_REPO Music
-    cd /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/apps/Music
+    cd $OWNCLOUD_PATH/apps/Music
     git checkout $OWNCLOUD_MUSIC_APP_COMMIT -b $OWNCLOUD_MUSIC_APP_COMMIT
     if ! grep -q "Owncloud music app commit" $COMPLETION_FILE; then
         echo "Owncloud music app commit:$OWNCLOUD_MUSIC_APP_COMMIT" >> $COMPLETION_FILE
@@ -6464,74 +6476,120 @@ function configure_owncloud_onion_site {
     if [ ! $OWNCLOUD_DOMAIN_NAME ]; then
         return
     fi
-    if [ ! -f /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config/config.php ]; then
+    if [ ! -f /var/www/owncloud/config/config.php ]; then
         return
     fi
     if [ ! -f /var/lib/tor/hidden_service_owncloud/hostname ]; then
         return
     fi
     OWNCLOUD_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_owncloud/hostname)
-    if ! grep -q "${OWNCLOUD_ONION_HOSTNAME}" /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config/config.php; then
+    if ! grep -q "${OWNCLOUD_ONION_HOSTNAME}" /var/www/owncloud/config/config.php; then
         sed -i "s|0 => '${OWNCLOUD_DOMAIN_NAME}',|0 => '${OWNCLOUD_DOMAIN_NAME}',
-    1 => '${OWNCLOUD_ONION_HOSTNAME}',|g" /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config/config.php
+    1 => '${OWNCLOUD_ONION_HOSTNAME}',|g" /var/www/owncloud/config/config.php
         sed -i "s|'writable' => false,|'writable' => false,
     ),
     1 =>
     array (
-      'path' => '/var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/apps',
+      'path' => '/var/www/owncloud/apps',
       'url' => '/apps',
-      'writable' => false,|g" /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config/config.php
+      'writable' => false,|g" /var/www/owncloud/config/config.php
         echo $'Owncloud configured for onion site'
     fi
 }
 
-function upgrade_owncloud {
-    # upgrades from the debian packaged version to a repo based version
-    # The debian package for Owncloud is likely to be removed in future debian releases
+function upgrade_owncloud_start {
+    # copies data and config directories to a temporary upgrade directory
     if [ ! -d /etc/owncloud ]; then
         return
     fi
 
+    # remove any owncloud entries from completion
+    sed -i 's/install_owncloud.*/d' $COMPLETION_FILE
+    sed -i 's/owncloud.*/d' $COMPLETION_FILE
+
     # create directories
-    if [ ! -d /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/data ]; then
-        mkdir /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/data
+    if [ ! -d $OWNCLOUD_UPGRADE_PATH/data ]; then
+        mkdir -p $OWNCLOUD_UPGRADE_PATH/data
     fi
-    if [ ! -d /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config ]; then
-        mkdir /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config
+    if [ ! -d $OWNCLOUD_UPGRADE_PATH/config ]; then
+        mkdir -p $OWNCLOUD_UPGRADE_PATH/config
     fi
 
-    # move the data
+    # copy data to the temporary directory
     if [ -d /var/lib/owncloud/data ]; then
-        # copy users over
-        cp -rf /var/lib/owncloud/data/* /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/data/
-        # set ownership to www-data
-        chown -R www-data:www-data /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/data
+        cp -rf /var/lib/owncloud/data/* $OWNCLOUD_UPGRADE_PATH/data/
     fi
 
-    # move the config files
+    # copy the config files to the temporary directory
     if [ -d /etc/owncloud ]; then
-        # copy users over
-        cp -rf /etc/owncloud/* /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config/
-        # set ownership to www-data
-        chown -R www-data:www-data /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/config
+        cp -rf /etc/owncloud/* $OWNCLOUD_UPGRADE_PATH/config/
+    fi
+
+    # remove the previous owncloud install
+    apt-get -y remove --purge owncloud
+
+    # ensure directories do not exist
+    rm -rf /etc/owncloud
+    if [ -d /var/lib/owncloud ]; then
+        rm -rf /var/lib/owncloud
+    fi
+}
+
+function upgrade_owncloud_finish {
+    # copies data from a temporary upgrade directory to the new
+    # owncloud install
+    if [ ! -d $OWNCLOUD_PATH ]; then
+        return
+    fi
+    if [ ! -d $OWNCLOUD_UPGRADE_PATH ]; then
+        return
+    fi
+
+    if [ ! -d $OWNCLOUD_PATH/data ]; then
+        mkdir $OWNCLOUD_PATH/data
+    fi
+    cp -r $OWNCLOUD_UPGRADE_PATH/data/* $OWNCLOUD_PATH/data/
+
+    if [ ! -f $OWNCLOUD_PATH/config/config.php ]; then
+        if [ ! -f $OWNCLOUD_PATH/config/config.sample.php ]; then
+            echo $'No owncloud configuration sample file found'
+            exit 54289
+        fi
+        cp $OWNCLOUD_PATH/config/config.sample.php $OWNCLOUD_PATH/config/config.php
+    fi
+
+    if [ -f $OWNCLOUD_UPGRADE_PATH/config/config.php ]; then
+        OWNCLOUD_INSTANCE_ID=$(cat config.php | grep "instanceid" | awk -F "'" '{print $4}')
+        OWNCLOUD_PASSWORD_SALT=$(cat config.php | grep "passwordsalt" | awk -F "'" '{print $4}')
+        OWNCLOUD_DATA_DIR=$(cat config.php | grep "datadirectory" | awk -F "'" '{print $4}')
+        OWNCLOUD_DBTYPE=$(cat config.php | grep "dbtype" | awk -F "'" '{print $4}')
+        OWNCLOUD_DBNAME=$(cat config.php | grep "dbname" | awk -F "'" '{print $4}')
+        OWNCLOUD_DBHOST=$(cat config.php | grep "dbhost" | awk -F "'" '{print $4}')
+        OWNCLOUD_DBUSER=$(cat config.php | grep "dbuser" | awk -F "'" '{print $4}')
+        OWNCLOUD_DBPASS=$(cat config.php | grep "dbpassword" | awk -F "'" '{print $4}')
+        OWNCLOUD_SECRET=$(cat config.php | grep "secret" | awk -F "'" '{print $4}')
+
+        sed -i "s|'instanceid'.*|'instanceid' => '$OWNCLOUD_INSTANCE_ID',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'passwordsalt'.*|'passwordsalt' => '$OWNCLOUD_PASSWORD_SALT',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'datadirectory'.*|'datadirectory' => '$OWNCLOUD_DATA_DIR',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbtype'.*|'dbtype' => '$OWNCLOUD_DBTYPE',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbname'.*|'dbname' => '$OWNCLOUD_DBNAME',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbhost'.*|'dbhost' => '$OWNCLOUD_DBHOST',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbuser'.*|'dbuser' => '$OWNCLOUD_DBUSER',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbpassword'.*|'dbpassword' => '$OWNCLOUD_DBPASS',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'secret'.*|'secret' => '$OWNCLOUD_SECRET',|g" $OWNCLOUD_PATH/config/config.php
     fi
 
     # re-index the files
     for d in /home/*/ ; do
         USRNAME=$(echo "$d" | awk -F '/' '{print $3}')
         if [[ $USRNAME != "git" && $USRNAME != "mirrors" ]]; then
-            /var/www/${OWNCLOUD_DOMAIN_NAME}/htdocs/occ files:scan $USRNAME
+            $OWNCLOUD_PATH/occ files:scan $USRNAME
         fi
     done
-
-    # TODO enable this once upgrade is confirmed working
-    #apt-get -y remove --purge owncloud
-    #rm -rf /etc/owncloud
-    #rm -rf /usr/share/owncloud
-    #rm -rf /var/lib/owncloud
 }
 
-function install_owncloud_from_repo {
+function install_owncloud_official_deb {
     # new version not based on debian package
     if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
         return
@@ -6554,20 +6612,12 @@ function install_owncloud_from_repo {
         fi
     fi
 
-    OWNCLOUD_PATH=/var/www/$OWNCLOUD_DOMAIN_NAME/htdocs
-
-    # was this previously installed from a package?
-    WAS_INSTALLED_FROM_PACKAGE=
-    if [ -d /etc/owncloud ]; then
-        WAS_INSTALLED_FROM_PACKAGE='yes'
-    fi
-
-    # update to a new commit if needed
-    set_repo_commit $OWNCLOUD_PATH "Owncloud commit" "$OWNCLOUD_COMMIT" $OWNCLOUD_REPO
+    # begin doing an upgrade if needed
+    upgrade_owncloud_start
 
     OWNCLOUD_COMPLETION_MSG1=$" *** ${PROJECT_NAME} $SYSTEM_TYPE is now installed ***"
     OWNCLOUD_COMPLETION_MSG2=$"Open $OWNCLOUD_DOMAIN_NAME in a web browser to complete the setup"
-    if grep -Fxq "install_owncloud_from_repo" $COMPLETION_FILE; then
+    if grep -Fxq "install_owncloud_official_deb" $COMPLETION_FILE; then
         if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
             install_owncloud_repo_music_app
             backup_to_friends_servers
@@ -6596,43 +6646,30 @@ function install_owncloud_from_repo {
         echo $'Removed Apache installation after Owncloud install'
     fi
 
-    # create the directory where owncloud will live
-    if [ ! -d /var/www/$OWNCLOUD_DOMAIN_NAME ]; then
-        mkdir /var/www/$OWNCLOUD_DOMAIN_NAME
+    # get the official owncloud deb package. Note that this is not the same as the one
+    # from the debian repos, and doesn't follow the debian packaging guidelines
+    cd $INSTALL_DIR
+    wget -nv https://download.owncloud.org/download/repositories/stable/Debian_8.0/Release.key -O owncloud.key
+    apt-key add - < owncloud.key
+    if [ ! -f /etc/apt/sources.list.d/owncloud.list ]; then
+        echo 'deb http://download.owncloud.org/download/repositories/stable/Debian_8.0/ /' >> /etc/apt/sources.list.d/owncloud.list
     fi
-
-    # clone the owncloud repo
-    cd /var/www/$OWNCLOUD_DOMAIN_NAME
-    if [ -d $OWNCLOUD_PATH ]; then
-        if [ $WAS_INSTALLED_FROM_PACKAGE ]; then
-            # remove the existing link to /usr/share/owncloud
-            rm $OWNCLOUD_PATH
-            if [ -d $OWNCLOUD_PATH ]; then
-                echo $'Tried to unlink old owncloud, but link remains'
-                exit 67248
-            fi
-        fi
-    fi
-    git_clone $OWNCLOUD_REPO $OWNCLOUD_PATH
-    cd $OWNCLOUD_PATH
-    git checkout $OWNCLOUD_COMMIT -b $OWNCLOUD_COMMIT
-
-    # record the current commit
-    if ! grep -q "Owncloud commit" $COMPLETION_FILE; then
-        echo "Owncloud commit:$OWNCLOUD_COMMIT" >> $COMPLETION_FILE
-    else
-        sed -i "s/Owncloud commit.*/Owncloud commit:$OWNCLOUD_COMMIT/g" $COMPLETION_FILE
-    fi
+    apt-get update
+    apt-get -y install owncloud
 
     install_mariadb
     get_mariadb_password
+    if [ ! -d $OWNCLOUD_PATH ]; then
+        echo $'Owncloud was not installed'
+        exit 82584
+    fi
 
     get_mariadb_owncloud_admin_password
     if [ ! $OWNCLOUD_ADMIN_PASSWORD ]; then
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             OWNCLOUD_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            OWNCLOUD_ADMIN_PASSWORD="$(openssl rand -base64 32)"
+            OWNCLOUD_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
         fi
     fi
 
@@ -6658,9 +6695,11 @@ function install_owncloud_from_repo {
         chmod 600 /home/$MY_USERNAME/README
     fi
 
-    if [ ! $WAS_INSTALLED_FROM_PACKAGE ]; then
-        create_database owncloud "$OWNCLOUD_ADMIN_PASSWORD"
+    if [ -d /etc/owncloud ]; then
+        remove_database owncloud
     fi
+
+    create_database owncloud "$OWNCLOUD_ADMIN_PASSWORD"
 
     if [[ $ONION_ONLY == "no" ]]; then
         nginx_http_redirect $OWNCLOUD_DOMAIN_NAME
@@ -6849,7 +6888,40 @@ function install_owncloud_from_repo {
         echo "Owncloud domain:$OWNCLOUD_DOMAIN_NAME" >> $COMPLETION_FILE
     fi
 
-    echo 'install_owncloud_from_repo' >> $COMPLETION_FILE
+    upgrade_owncloud_finish
+
+    # copy the configuration file
+    if [ ! -f $OWNCLOUD_PATH/config/config.php ]; then
+        if [ ! -f $OWNCLOUD_PATH/config/config.sample.php ]; then
+            echo $'No owncloud configuration sample file found'
+            exit 54289
+        fi
+        cp $OWNCLOUD_PATH/config/config.sample.php $OWNCLOUD_PATH/config/config.php
+    fi
+
+    if [ -f $OWNCLOUD_UPGRADE_PATH/config/config.php ]; then
+        OWNCLOUD_INSTANCE_ID="$(openssl rand -base64 14 | cut -c1-12)"
+        OWNCLOUD_PASSWORD_SALT="$(openssl rand -base64 32 | cut -c1-30)"
+        OWNCLOUD_DATA_DIR='/var/www/owncloud/data'
+        OWNCLOUD_DBTYPE='mysql'
+        OWNCLOUD_DBNAME='owncloud'
+        OWNCLOUD_DBHOST='localhost'
+        OWNCLOUD_DBUSER="owncloudadmin"
+        OWNCLOUD_DBPASS="$OWNCLOUD_ADMIN_PASSWORD"
+        OWNCLOUD_SECRET="$(openssl rand -base64 32 | cut -c1-30)$(openssl rand -base64 32 | cut -c1-30)$(openssl rand -base64 32 | cut -c1-30)$(openssl rand -base64 32 | cut -c1-30)"
+
+        sed -i "s|'instanceid'.*|'instanceid' => '$OWNCLOUD_INSTANCE_ID',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'passwordsalt'.*|'passwordsalt' => '$OWNCLOUD_PASSWORD_SALT',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'datadirectory'.*|'datadirectory' => '$OWNCLOUD_DATA_DIR',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbtype'.*|'dbtype' => '$OWNCLOUD_DBTYPE',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbname'.*|'dbname' => '$OWNCLOUD_DBNAME',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbhost'.*|'dbhost' => '$OWNCLOUD_DBHOST',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbuser'.*|'dbuser' => '$OWNCLOUD_DBUSER',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'dbpassword'.*|'dbpassword' => '$OWNCLOUD_DBPASS',|g" $OWNCLOUD_PATH/config/config.php
+        sed -i "s|'secret'.*|'secret' => '$OWNCLOUD_SECRET',|g" $OWNCLOUD_PATH/config/config.php
+    fi
+
+    echo 'install_owncloud_official_deb' >> $COMPLETION_FILE
 
     if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" ]]; then
         install_owncloud_repo_music_app
@@ -6994,7 +7066,7 @@ function install_gogs {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             GIT_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            GIT_ADMIN_PASSWORD="$(openssl rand -base64 32)"
+            GIT_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
         fi
     fi
 
@@ -7560,7 +7632,7 @@ function install_xmpp {
             if [ -f $IMAGE_PASSWORD_FILE ]; then
                 XMPP_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
             else
-                XMPP_PASSWORD="$(openssl rand -base64 8)"
+                XMPP_PASSWORD="$(openssl rand -base64 10 | cut -c1-8)"
             fi
         fi
         prosodyctl register $MY_USERNAME $DEFAULT_DOMAIN_NAME $XMPP_PASSWORD
@@ -7786,11 +7858,11 @@ function install_irc_server {
     sed -i 's/;MaxUsers = 23/MaxUsers = 23/g' /etc/ngircd/ngircd.conf
     sed -i "s|;KeyFile = /etc/ngircd/#chan.key|KeyFile = /etc/ngircd/#${PROJECT_NAME}.key|g" /etc/ngircd/ngircd.conf
     sed -i "s/;CloakHost = cloaked.host/CloakHost = ${PROJECT_NAME}/g" /etc/ngircd/ngircd.conf
-    IRC_SALT="$(openssl rand -base64 32)"
+    IRC_SALT="$(openssl rand -base64 32 | cut -c1-30)"
     if [ -f $IMAGE_PASSWORD_FILE ]; then
         IRC_OPERATOR_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
     else
-        IRC_OPERATOR_PASSWORD="$(openssl rand -base64 8)"
+        IRC_OPERATOR_PASSWORD="$(openssl rand -base64 10 | cut -c1-8)"
     fi
     sed -i "s|;CloakHostSalt = abcdefghijklmnopqrstuvwxyz|CloakHostSalt = $IRC_SALT|g" /etc/ngircd/ngircd.conf
     sed -i 's/;ConnectIPv4 = yes/ConnectIPv4 = yes/g' /etc/ngircd/ngircd.conf
@@ -7928,7 +8000,7 @@ function install_wiki {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             WIKI_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            WIKI_ADMIN_PASSWORD="$(openssl rand -base64 16)"
+            WIKI_ADMIN_PASSWORD="$(openssl rand -base64 18 | cut -c1-16)"
         fi
     fi
     HASHED_WIKI_PASSWORD=$(echo -n "$WIKI_ADMIN_PASSWORD" | md5sum | awk -F ' ' '{print $1}')
@@ -8523,7 +8595,7 @@ function install_blog {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             FULLBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            FULLBLOG_ADMIN_PASSWORD="$(openssl rand -base64 16)"
+            FULLBLOG_ADMIN_PASSWORD="$(openssl rand -base64 18 | cut -c1-16)"
         fi
         echo '' >> /home/$MY_USERNAME/README
         echo '' >> /home/$MY_USERNAME/README
@@ -8606,7 +8678,7 @@ function install_rss_reader {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             RSS_READER_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            RSS_READER_ADMIN_PASSWORD="$(openssl rand -base64 32)"
+            RSS_READER_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
         fi
     fi
 
@@ -8883,7 +8955,7 @@ function install_gnu_social {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             MICROBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            MICROBLOG_ADMIN_PASSWORD="$(openssl rand -base64 32)"
+            MICROBLOG_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
         fi
     fi
 
@@ -9430,7 +9502,7 @@ function install_search_engine {
 
     # replace the secret key
     if ! grep "Search engine key" $COMPLETION_FILE; then
-        SEARCH_ENGINE_SECRET_KEY="$(openssl rand -base64 32)"
+        SEARCH_ENGINE_SECRET_KEY="$(openssl rand -base64 32 | cut -c1-30)"
         echo "Search engine key:${SEARCH_ENGINE_SECRET_KEY}" >> $COMPLETION_FILE
     else
         SEARCH_ENGINE_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
@@ -9467,7 +9539,7 @@ function install_search_engine {
             if [ -f $IMAGE_PASSWORD_FILE ]; then
                 SEARCH_ENGINE_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
             else
-                SEARCH_ENGINE_PASSWORD="$(openssl rand -base64 16)"
+                SEARCH_ENGINE_PASSWORD="$(openssl rand -base64 18 | cut -c1-16)"
             fi
         fi
         echo "$SEARCH_ENGINE_PASSWORD" | htpasswd -i -s -c /etc/nginx/.htpasswd $MY_USERNAME
@@ -9563,7 +9635,7 @@ function install_hubzilla {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             HUBZILLA_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            HUBZILLA_ADMIN_PASSWORD="$(openssl rand -base64 32)"
+            HUBZILLA_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
         fi
         echo '' >> /home/$MY_USERNAME/README
         echo '' >> /home/$MY_USERNAME/README
@@ -9795,7 +9867,7 @@ function install_hubzilla {
         echo "\$a->config['system']['baseurl'] = 'http://${HUBZILLA_ONION_HOSTNAME}';" >> $HUBZILLA_PATH/.htconfig.php
     fi
     echo "\$a->config['system']['sitename'] = \"Hubzilla\";" >> $HUBZILLA_PATH/.htconfig.php
-    HUBZILLA_LOCATION_HASH="$(openssl rand -base64 32)"
+    HUBZILLA_LOCATION_HASH="$(openssl rand -base64 32 | cut -c1-30)"
     echo "\$a->config['system']['location_hash'] = '${HUBZILLA_LOCATION_HASH}';" >> $HUBZILLA_PATH/.htconfig.php
     echo "\$a->config['system']['register_policy'] = REGISTER_OPEN;" >> $HUBZILLA_PATH/.htconfig.php
     echo "\$a->config['system']['register_text'] = '';" >> $HUBZILLA_PATH/.htconfig.php
@@ -10520,9 +10592,9 @@ function install_voip {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             VOIP_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            VOIP_SERVER_PASSWORD="$(openssl rand -base64 16)"
+            VOIP_SERVER_PASSWORD="$(openssl rand -base64 18 | cut -c1-16)"
             if [ ${#VOIP_SERVER_PASSWORD} -lt $MINIMUM_PASSWORD_LENGTH ]; then
-                VOIP_SERVER_PASSWORD="$(openssl rand -base64 16)"
+                VOIP_SERVER_PASSWORD="$(openssl rand -base64 18 | cut -c1-16)"
             fi
         fi
     fi
@@ -10617,7 +10689,7 @@ function install_sip {
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             SIP_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            SIP_SERVER_PASSWORD="$(openssl rand -base64 10)"
+            SIP_SERVER_PASSWORD="$(openssl rand -base64 12 | cut -c1-10)"
         fi
     fi
 
@@ -10827,8 +10899,7 @@ script_for_attaching_usb_drive
 install_web_server
 install_web_server_access_control
 configure_firewall_for_web_server
-install_owncloud_from_repo
-upgrade_owncloud
+install_owncloud_official_deb
 install_owncloud_repo_music_app
 configure_owncloud_onion_site
 upgrade_golang
