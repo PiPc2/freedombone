@@ -2931,77 +2931,8 @@ function install_zeronet {
         return
     fi
 
-    apt-get -y install python python-msgpack python-gevent
-    apt-get -y install python-pip bittornado
-    pip install msgpack-python --upgrade
-
-    useradd -d /opt/zeronet/ -s /bin/false zeronet
-    git_clone $ZERONET_REPO /opt/zeronet
-    if [ ! -d /opt/zeronet ]; then
-        exit 56823
-    fi
-    cd /opt/zeronet
-    git checkout $ZERONET_COMMIT -b $ZERONET_COMMIT
-    if ! grep -q "ZeroNet commit" $COMPLETION_FILE; then
-        echo "ZeroNet commit:$ZERONET_COMMIT" >> $COMPLETION_FILE
-    else
-        sed -i "s/ZeroNet commit.*/ZeroNet commit:$ZERONET_COMMIT/g" $COMPLETION_FILE
-    fi
-    sudo chown -R zeronet:zeronet /opt/zeronet
-
-    #git checkout bashrc/bootstrap-file
-    # Hack to ensure that the file access port is opened
-    # This is because zeronet normally relies on an internet site
-    # to do this, but on a purely local mesh the internet isn't available
-    sed -i 's|fileserver_port = 0|fileserver_port = config.fileserver_port\n            sys.modules["main"].file_server.port_opened = True|g' /opt/zeronet/src/Site/Site.py
-
-    echo '[Unit]' > /etc/systemd/system/zeronet.service
-    echo 'Description=Zeronet Server' >> /etc/systemd/system/zeronet.service
-    echo 'After=syslog.target' >> /etc/systemd/system/zeronet.service
-    echo 'After=network.target' >> /etc/systemd/system/zeronet.service
-    echo '[Service]' >> /etc/systemd/system/zeronet.service
-    echo 'Type=simple' >> /etc/systemd/system/zeronet.service
-    echo 'User=zeronet' >> /etc/systemd/system/zeronet.service
-    echo 'Group=zeronet' >> /etc/systemd/system/zeronet.service
-    echo 'WorkingDirectory=/opt/zeronet' >> /etc/systemd/system/zeronet.service
-    echo "ExecStart=/usr/bin/python zeronet.py --ip_external ${DEFAULT_DOMAIN_NAME}.local --trackers_file /opt/zeronet/bootstrap" >> /etc/systemd/system/zeronet.service
-    echo '' >> /etc/systemd/system/zeronet.service
-    echo 'TimeoutSec=300' >> /etc/systemd/system/zeronet.service
-    echo '' >> /etc/systemd/system/zeronet.service
-    echo '[Install]' >> /etc/systemd/system/zeronet.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/zeronet.service
-
-    echo '[Unit]' > /etc/systemd/system/tracker.service
-    echo 'Description=Torrent Tracker' >> /etc/systemd/system/tracker.service
-    echo 'After=syslog.target' >> /etc/systemd/system/tracker.service
-    echo 'After=network.target' >> /etc/systemd/system/tracker.service
-    echo '[Service]' >> /etc/systemd/system/tracker.service
-    echo 'Type=simple' >> /etc/systemd/system/tracker.service
-    echo 'User=tracker' >> /etc/systemd/system/tracker.service
-    echo 'Group=tracker' >> /etc/systemd/system/tracker.service
-    echo 'WorkingDirectory=/opt/tracker' >> /etc/systemd/system/tracker.service
-    echo "ExecStart=/usr/bin/bttrack --port $TRACKER_PORT --dfile /opt/tracker/dstate --logfile /opt/tracker/tracker.log --nat_check 0 --scrape_allowed full --ipv6_enabled 0" >> /etc/systemd/system/tracker.service
-    echo '' >> /etc/systemd/system/tracker.service
-    echo 'TimeoutSec=300' >> /etc/systemd/system/tracker.service
-    echo '' >> /etc/systemd/system/tracker.service
-    echo '[Install]' >> /etc/systemd/system/tracker.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/tracker.service
-
-    useradd -d /opt/tracker/ -s /bin/false tracker
-    if [ ! -d /opt/tracker ]; then
-        mkdir /opt/tracker
-    fi
-    chown -R tracker:tracker /opt/tracker
-
-    # publish regularly
-    if ! grep -q "zeronetavahi" /etc/crontab; then
-        echo "* *     * * *   root    zeronetavahi > /dev/null" >> /etc/crontab
-    fi
-
-    systemctl enable tracker.service
-    systemctl enable zeronet.service
+    ${PROJECT_NAME}=mesh-install zeronet
     systemctl daemon-reload
-
     systemctl start tracker.service
     systemctl start zeronet.service
 
@@ -3081,47 +3012,18 @@ function configure_avahi {
     if [[ $ENABLE_BABEL != "yes" && $ENABLE_BATMAN != "yes" && $ENABLE_CJDNS != "yes" ]]; then
         return
     fi
-    apt-get -y install avahi-utils avahi-autoipd avahi-dnsconfd
+
+    ${PROJECT_NAME}-mesh-install avahi
 
     if [ $DEFAULT_DOMAIN_NAME ]; then
         sed -i "s|#host-name=.*|host-name=$DEFAULT_DOMAIN_NAME|g" /etc/avahi/avahi-daemon.conf
+        sed -i "s|host-name=.*|host-name=$DEFAULT_DOMAIN_NAME|g" /etc/avahi/avahi-daemon.conf
     else
         decarray=( 1 2 3 4 5 6 7 8 9 0 )
         PEER_ID=${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}
         sed -i "s|#host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
+        sed -i "s|host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
     fi
-
-    if [ ! -d /etc/avahi/services ]; then
-        mkdir -p /etc/avahi/services
-    fi
-
-    # remove an avahi service which isn't used
-    if [ -f /etc/avahi/services/udisks.service ]; then
-        rm /etc/avahi/services/udisks.service
-    fi
-
-    # Add an ssh service
-    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /etc/avahi/services/ssh.service
-    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /etc/avahi/services/ssh.service
-    echo '<service-group>' >> /etc/avahi/services/ssh.service
-    echo '  <name replace-wildcards="yes">%h SSH</name>' >> /etc/avahi/services/ssh.service
-    echo '  <service>' >> /etc/avahi/services/ssh.service
-    echo '    <type>_ssh._tcp</type>' >> /etc/avahi/services/ssh.service
-    echo "    <port>$SSH_PORT</port>" >> /etc/avahi/services/ssh.service
-    echo '  </service>' >> /etc/avahi/services/ssh.service
-    echo '</service-group>' >> /etc/avahi/services/ssh.service
-
-    # keep the daemon running
-    echo '' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-    echo '# keep avahi daemon running' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-    echo 'AVAHI_RUNNING=$(pgrep avahi-daemon > /dev/null && echo Running)' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-    echo 'if [ ! $AVAHI_RUNNING ]; then' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-    echo '  systemctl start avahi-daemon' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-    echo '  echo -n $CURRENT_DATE >> $LOGFILE' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-    echo '  echo " Avahi daemon restarted" >> $LOGFILE' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-    echo 'fi' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
-
-    systemctl restart avahi-daemon
 
     echo 'configure_avahi' >> $COMPLETION_FILE
 }
@@ -3133,306 +3035,21 @@ function mesh_babel {
     if [[ $ENABLE_BABEL != "yes" ]]; then
         return
     fi
-    apt-get -y install babeld
 
-    babel_script=/var/lib/babel
-
-    echo '#!/bin/bash' > $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ $1 == "ls" || $1 == "list" ]]; then' >> $babel_script
-    echo '    avahi-browse -atl' >> $babel_script
-    echo '    exit 0' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ $1 == "start" ]]; then' >> $babel_script
-    echo '    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf' >> $babel_script
-    echo '    systemctl restart avahi-daemon' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo "IFACE=$WIFI_INTERFACE" >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan1" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan1' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan2" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan2' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan3" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan3' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ ! grep -q "$IFACE" /proc/net/dev || $1 == "stop" ]]; then' >> $babel_script
-    echo '    if ! grep -q "$IFACE" /proc/net/dev; then' >> $babel_script
-    echo '        echo "Interface $IFACE was not found"' >> $babel_script
-    echo '    else' >> $babel_script
-    echo '        echo "Stopping"' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo '    ifconfig $IFACE down' >> $babel_script
-    echo '    pkill babeld' >> $babel_script
-    echo '    systemctl restart network-manager' >> $babel_script
-    echo '    exit 1' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'systemctl stop network-manager' >> $babel_script
-    echo 'ifconfig $IFACE down' >> $babel_script
-    echo -n 'iwconfig $IFACE mode ad-hoc channel ' >> $babel_script
-    echo "$WIFI_CHANNEL essid \"$ESSID\"" >> $babel_script
-    echo 'ifconfig $IFACE up' >> $babel_script
-    echo -n 'ifconfig $IFACE:avahi ' >> $babel_script
-    echo -n "$LOCAL_NETWORK_STATIC_IP_ADDRESS netmask " >> $babel_script
-    echo '255.255.255.0 broadcast 192.168.13.255' >> $babel_script
-    echo -n 'babeld -D $IFACE:avahi -p ' >> $babel_script
-    echo -n "$BABEL_PORT -d 5 " >> $babel_script
-    echo '$IFACE' >> $babel_script
-    echo 'exit 0' >> $babel_script
-    chmod +x $babel_script
-
-    echo '[Unit]' > /etc/systemd/system/babel.service
-    echo 'Description=Babel Mesh' >> /etc/systemd/system/babel.service
-    echo '' >> /etc/systemd/system/babel.service
-    echo '[Service]' >> /etc/systemd/system/babel.service
-    echo 'Type=oneshot' >> /etc/systemd/system/babel.service
-    echo "ExecStart=$babel_script start" >> /etc/systemd/system/babel.service
-    echo "ExecStop=$babel_script stop" >> /etc/systemd/system/babel.service
-    echo 'RemainAfterExit=yes' >> /etc/systemd/system/babel.service
-    echo '' >> /etc/systemd/system/babel.service
-    echo '# Allow time for the server to start/stop' >> /etc/systemd/system/babel.service
-    echo 'TimeoutSec=300' >> /etc/systemd/system/babel.service
-    echo '' >> /etc/systemd/system/babel.service
-    echo '[Install]' >> /etc/systemd/system/babel.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/babel.service
-    systemctl enable babel
+    ${PROJECT_NAME}-mesh-install babel
 
     echo 'mesh_babel' >> $COMPLETION_FILE
 }
 
-function mesh_batman_bridge {
-    # https://sudoroom.org/wiki/Mesh/Relay_setup
-    # also see http://www.netlore.co.uk/airmesh/
-    # https://www.youtube.com/watch?v=CLKHWfQlFqQ
-    # http://pastebin.com/4U9vdFFm
-    # http://pastebin.com/eeTmL5XL
-    if grep -Fxq "mesh_batman_bridge" $COMPLETION_FILE; then
+function mesh_batman {
+    if grep -Fxq "mesh_batman" $COMPLETION_FILE; then
         return
     fi
     if [[ $ENABLE_BATMAN != "yes" ]]; then
         return
     fi
 
-    apt-get -y install iproute bridge-utils libnetfilter-conntrack3 batctl
-    apt-get -y install python-dev libevent-dev ebtables python-pip git
-    apt-get -y install wireless-tools rfkill
-
-    #install_vpn_tunnel
-
-    modprobe batman-adv
-    [ $? -ne 0 ] && echo "B.A.T.M.A.N module not available" && exit 76482
-    if ! grep -q "batman_adv" /etc/modules; then
-        echo 'batman_adv' >> /etc/modules
-    fi
-
-    batman_script=/var/lib/batman
-
-    echo '#!/bin/bash' > $batman_script
-    echo '' >> $batman_script
-    echo 'if [[ $1 == "start" ]]; then' >> $batman_script
-    echo '    # install avahi' >> $batman_script
-    echo '    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
-    echo '    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
-    echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
-    echo '    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
-    echo '    sed -i "s|#disallow-other-stacks=.*|disallow-other-stacks=yes|g" /etc/avahi/avahi-daemon.conf' >> $batman_script
-    echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf' >> $batman_script
-    echo 'fi' >> $batman_script
-    echo '' >> $batman_script
-    echo '# Mesh definition' >> $batman_script
-    echo "ESSID=$ESSID" >> $batman_script
-    echo "CELLID=$BATMAN_CELLID" >> $batman_script
-    echo "CHANNEL=$WIFI_CHANNEL" >> $batman_script
-    echo '' >> $batman_script
-    echo '# Ethernet bridge definition (bridged to bat0)' >> $batman_script
-    echo 'BRIDGE=br-mesh' >> $batman_script
-    echo "IFACE=$WIFI_INTERFACE" >> $batman_script
-    echo 'EIFACE=eth0' >> $batman_script
-    echo '' >> $batman_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $batman_script
-    echo '    if grep -q "wlan1" /proc/net/dev; then' >> $batman_script
-    echo '        IFACE=wlan1' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo 'fi' >> $batman_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $batman_script
-    echo '    if grep -q "wlan2" /proc/net/dev; then' >> $batman_script
-    echo '        IFACE=wlan2' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo 'fi' >> $batman_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $batman_script
-    echo '    if grep -q "wlan3" /proc/net/dev; then' >> $batman_script
-    echo '        IFACE=wlan3' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo 'fi' >> $batman_script
-    echo '' >> $batman_script
-    echo 'if [ -e /etc/default/batctl ]; then' >> $batman_script
-    echo '    . /etc/default/batctl' >> $batman_script
-    echo 'fi' >> $batman_script
-    echo '' >> $batman_script
-    echo 'start() {' >> $batman_script
-    echo '    if [ -z "$IFACE" ] ; then' >> $batman_script
-    echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
-    echo '        return' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo '    echo "info: enabling batman-adv mesh network $ESSID on $IFACE"' >> $batman_script
-
-    echo '    systemctl stop network-manager' >> $batman_script
-    echo '    sleep 5' >> $batman_script
-    echo '' >> $batman_script
-    echo "    # remove an avahi service which isn't used" >> $batman_script
-    echo '    if [ -f /etc/avahi/services/udisks.service ]; then' >> $batman_script
-    echo '        sudo rm /etc/avahi/services/udisks.service' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo '' >> $batman_script
-    echo '    # Might have to re-enable wifi' >> $batman_script
-    echo '    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true' >> $batman_script
-    echo '' >> $batman_script
-    echo '    ifconfig $IFACE down' >> $batman_script
-    echo '    ifconfig $IFACE mtu 1532' >> $batman_script
-    echo '    iwconfig $IFACE enc off' >> $batman_script
-    echo '    iwconfig $IFACE mode ad-hoc essid $ESSID channel $CHANNEL' >> $batman_script
-    echo '    sleep 1' >> $batman_script
-    echo '    iwconfig $IFACE ap $CELLID' >> $batman_script
-    echo '' >> $batman_script
-    echo '    modprobe batman-adv' >> $batman_script
-    echo '    batctl if add $IFACE' >> $batman_script
-    echo '    ifconfig $IFACE up' >> $batman_script
-    echo '    avahi-autoipd --force-bind --daemonize --wait $BRIDGE' >> $batman_script
-    echo '    avahi-autoipd --force-bind --daemonize --wait $IFACE' >> $batman_script
-    echo '    ifconfig bat0 up promisc' >> $batman_script
-    echo '' >> $batman_script
-    echo '    #Use persistent HWAddr' >> $batman_script
-    echo '    ether_new=$(ifconfig eth0 | grep HWaddr | sed -e "s/.*HWaddr //")' >> $batman_script
-    echo '    if [ ! -f /var/lib/mesh-node/bat0 ]; then' >> $batman_script
-    echo '        mkdir /var/lib/mesh-node' >> $batman_script
-    echo '        echo "${ether_new}" > /var/lib/mesh-node/bat0' >> $batman_script
-    echo '    else' >> $batman_script
-    echo '        ether=$(cat /var/lib/mesh-node/bat0)' >> $batman_script
-    echo '        ifconfig bat0 hw ether ${ether}' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo '' >> $batman_script
-    echo '    if [ "$EIFACE" ] ; then' >> $batman_script
-    echo '        brctl addbr $BRIDGE' >> $batman_script
-    echo '        brctl addif $BRIDGE bat0' >> $batman_script
-    echo '        brctl addif $BRIDGE $EIFACE' >> $batman_script
-    echo '        ifconfig bat0 0.0.0.0' >> $batman_script
-    echo '        ifconfig $EIFACE 0.0.0.0' >> $batman_script
-    echo '        ifconfig $EIFACE up promisc' >> $batman_script
-    echo '        ifconfig $BRIDGE up' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo '' >> $batman_script
-    echo '    iptables -A INPUT -p tcp --dport 548 -j ACCEPT' >> $batman_script
-    echo '    iptables -A INPUT -p udp --dport 548 -j ACCEPT' >> $batman_script
-    echo '    iptables -A INPUT -p tcp --dport 5353 -j ACCEPT' >> $batman_script
-    echo '    iptables -A INPUT -p udp --dport 5353 -j ACCEPT' >> $batman_script
-    echo '    iptables -A INPUT -p tcp --dport 5354 -j ACCEPT' >> $batman_script
-    echo '    iptables -A INPUT -p udp --dport 5354 -j ACCEPT' >> $batman_script
-    echo "    iptables -A INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT" >> $batman_script
-    echo "    iptables -A INPUT -p udp --dport $ZERONET_PORT -j ACCEPT" >> $batman_script
-    echo "    iptables -A INPUT -p tcp --dport $IPFS_PORT -j ACCEPT" >> $batman_script
-    echo '' >> $batman_script
-    echo '    systemctl restart avahi-daemon' >> $batman_script
-    echo '}' >> $batman_script
-    echo '' >> $batman_script
-    echo 'stop() {' >> $batman_script
-    echo '    if [ -z "$IFACE" ]; then' >> $batman_script
-    echo '        echo "error: unable to find wifi interface, not enabling batman-adv mesh"' >> $batman_script
-    echo '        return' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo '    if [ "$EIFACE" ]; then' >> $batman_script
-    echo '        brctl delif $BRIDGE bat0' >> $batman_script
-    echo '        brctl delif $BRIDGE $EIFACE' >> $batman_script
-    echo '        ifconfig $BRIDGE down || true' >> $batman_script
-    echo '        brctl delbr $BRIDGE' >> $batman_script
-    echo '        ifconfig $EIFACE down -promisc' >> $batman_script
-    echo '    fi' >> $batman_script
-    echo '' >> $batman_script
-    echo '    avahi-autoipd -k $BRIDGE' >> $batman_script
-    echo '    avahi-autoipd -k $IFACE' >> $batman_script
-    echo '    ifconfig bat0 down -promisc' >> $batman_script
-    echo '' >> $batman_script
-    echo '    batctl if del $IFACE' >> $batman_script
-    echo '    rmmod batman-adv' >> $batman_script
-    echo '    ifconfig $IFACE mtu 1500' >> $batman_script
-    echo '    ifconfig $IFACE down' >> $batman_script
-    echo '    iwconfig $IFACE mode managed' >> $batman_script
-    echo '' >> $batman_script
-    echo '    iptables -D INPUT -p tcp --dport 548 -j ACCEPT' >> $batman_script
-    echo '    iptables -D INPUT -p udp --dport 548 -j ACCEPT' >> $batman_script
-    echo '    iptables -D INPUT -p tcp --dport 5353 -j ACCEPT' >> $batman_script
-    echo '    iptables -D INPUT -p udp --dport 5353 -j ACCEPT' >> $batman_script
-    echo '    iptables -D INPUT -p tcp --dport 5354 -j ACCEPT' >> $batman_script
-    echo '    iptables -D INPUT -p udp --dport 5354 -j ACCEPT' >> $batman_script
-    echo "    iptables -D INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT" >> $batman_script
-    echo "    iptables -D INPUT -p udp --dport $ZERONET_PORT -j ACCEPT" >> $batman_script
-    echo "    iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT" >> $batman_script
-    echo '' >> $batman_script
-    echo '    systemctl restart network-manager' >> $batman_script
-    echo '}' >> $batman_script
-    echo '' >> $batman_script
-    echo 'if ! grep -q "$IFACE" /proc/net/dev; then' >> $batman_script
-    echo '    echo "Interface $IFACE was not found"' >> $batman_script
-    echo '    stop' >> $batman_script
-    echo '    exit 1' >> $batman_script
-    echo 'fi' >> $batman_script
-    echo '' >> $batman_script
-    echo 'case "$1" in' >> $batman_script
-    echo '    start|stop)' >> $batman_script
-    echo '        $1' >> $batman_script
-    echo '        ;;' >> $batman_script
-    echo '    restart)' >> $batman_script
-    echo '        stop' >> $batman_script
-    echo '        sleep 10' >> $batman_script
-    echo '        start' >> $batman_script
-    echo '        ;;' >> $batman_script
-    echo '    status)' >> $batman_script
-    echo '        batctl o' >> $batman_script
-    echo '        ;;' >> $batman_script
-    echo '    ping)' >> $batman_script
-    echo '        batctl ping $2' >> $batman_script
-    echo '        ;;' >> $batman_script
-    echo '    ls|list)' >> $batman_script
-    echo '        avahi-browse -atl' >> $batman_script
-    echo '        ;;' >> $batman_script
-    echo '    *)' >> $batman_script
-    echo '    echo "error: invalid parameter $1"' >> $batman_script
-    echo '    echo "usage: $0 {start|stop|restart|status|ping|ls|list}"' >> $batman_script
-    echo '    exit 2' >> $batman_script
-    echo '    ;;' >> $batman_script
-    echo 'esac' >> $batman_script
-    echo 'exit 0' >> $batman_script
-    chmod +x $batman_script
-
-    echo '[Unit]' > /etc/systemd/system/batman.service
-    echo 'Description=B.A.T.M.A.N. Advanced' >> /etc/systemd/system/batman.service
-    echo '' >> /etc/systemd/system/batman.service
-    echo '[Service]' >> /etc/systemd/system/batman.service
-    echo 'Type=oneshot' >> /etc/systemd/system/batman.service
-    echo "ExecStart=$batman_script start" >> /etc/systemd/system/batman.service
-    echo "ExecStop=$batman_script stop" >> /etc/systemd/system/batman.service
-    echo 'RemainAfterExit=yes' >> /etc/systemd/system/batman.service
-    echo '' >> /etc/systemd/system/batman.service
-    echo '# Allow time for the server to start/stop' >> /etc/systemd/system/batman.service
-    echo 'TimeoutSec=300' >> /etc/systemd/system/batman.service
-    echo '' >> /etc/systemd/system/batman.service
-    echo '[Install]' >> /etc/systemd/system/batman.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/batman.service
-    systemctl enable batman
+    ${PROJECT_NAME}-mesh-install -f batman
 
     if ! grep -q "Mesh Networking (B.A.T.M.A.N)" /home/$MY_USERNAME/README; then
         echo '' >> /home/$MY_USERNAME/README
@@ -3446,7 +3063,7 @@ function mesh_batman_bridge {
         chmod 600 /home/$MY_USERNAME/README
     fi
 
-    echo 'mesh_batman_bridge' >> $COMPLETION_FILE
+    echo 'mesh_batman' >> $COMPLETION_FILE
 }
 
 function remove_instructions_from_motd {
@@ -7203,106 +6820,7 @@ function install_tox_node {
         return
     fi
 
-    # toxcore
-    apt-get -y install build-essential libtool autotools-dev
-    apt-get -y install automake checkinstall check git yasm
-    apt-get -y install libsodium13 libsodium-dev libcap2-bin
-    apt-get -y install libconfig9 libconfig-dev
-
-    cd $INSTALL_DIR
-    git_clone $TOX_REPO $INSTALL_DIR/toxcore
-    cd $INSTALL_DIR/toxcore
-
-    git checkout $TOX_COMMIT -b $TOX_COMMIT
-    if ! grep -q "toxcore commit" $COMPLETION_FILE; then
-        echo "toxcore commit:$TOX_COMMIT" >> $COMPLETION_FILE
-    else
-        sed -i "s/toxcore commit.*/toxcore commit:$TOX_COMMIT/g" $COMPLETION_FILE
-    fi
-
-    autoreconf -i
-    ./configure --enable-daemon
-    if [ ! "$?" = "0" ]; then
-        exit 78467
-    fi
-    make
-    if [ ! "$?" = "0" ]; then
-        exit 84562
-    fi
-    make install
-    cp /usr/local/lib/libtoxcore* /usr/lib/
-
-    if [ ! -f /usr/local/bin/tox-bootstrapd ]; then
-        echo $"File not found /usr/local/bin/tox-bootstrapd"
-        exit 73862
-    fi
-
-    useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment $"Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
-    chmod 700 /var/lib/tox-bootstrapd
-    if [ ! -f $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf ]; then
-        echo $"File not found $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.conf"
-        exit 476835
-    fi
-    # remove Maildir
-    if [ -d /var/lib/tox-bootstrapd/Maildir ]; then
-        rm -rf /var/lib/tox-bootstrapd/Maildir
-    fi
-
-    # create configuration file
-    echo "port = $TOX_PORT" > /etc/tox-bootstrapd.conf
-    echo 'keys_file_path = "/var/lib/tox-bootstrapd/keys"' >> /etc/tox-bootstrapd.conf
-    echo 'pid_file_path = "/var/run/tox-bootstrapd/tox-bootstrapd.pid"' >> /etc/tox-bootstrapd.conf
-    echo 'enable_ipv6 = true' >> /etc/tox-bootstrapd.conf
-    echo 'enable_ipv4_fallback = true' >> /etc/tox-bootstrapd.conf
-    echo 'enable_lan_discovery = true' >> /etc/tox-bootstrapd.conf
-    echo 'enable_tcp_relay = true' >> /etc/tox-bootstrapd.conf
-    echo "tcp_relay_ports = [443, 3389, $TOX_PORT]" >> /etc/tox-bootstrapd.conf
-    echo 'enable_motd = true' >> /etc/tox-bootstrapd.conf
-    echo 'motd = "tox-bootstrapd"' >> /etc/tox-bootstrapd.conf
-
-    if [ $TOX_NODES ]; then
-        echo 'bootstrap_nodes = (' >> /etc/tox-bootstrapd.conf
-        toxcount=0
-        while [ "x${TOX_NODES[toxcount]}" != "x" ]
-        do
-            toxval_ipv4=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $1}')
-            toxval_ipv6=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $2}')
-            toxval_port=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $3}')
-            toxval_pubkey=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $4}')
-            toxval_maintainer=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $5}')
-            echo "{ // $toxval_maintainer" >> /etc/tox-bootstrapd.conf
-            if [[ $toxval_ipv6 != 'NONE' ]]; then
-                echo "  address = \"$toxval_ipv6\"" >> /etc/tox-bootstrapd.conf
-            else
-                echo "  address = \"$toxval_ipv4\"" >> /etc/tox-bootstrapd.conf
-            fi
-            echo "  port = $toxval_port" >> /etc/tox-bootstrapd.conf
-            echo "  public_key = \"$toxval_pubkey\"" >> /etc/tox-bootstrapd.conf
-            toxcount=$(( $toxcount + 1 ))
-            if [ "x${TOX_NODES[toxcount]}" != "x" ]; then
-                echo "}," >> /etc/tox-bootstrapd.conf
-            else
-                echo "}" >> /etc/tox-bootstrapd.conf
-            fi
-        done
-        echo ')' >> /etc/tox-bootstrapd.conf
-    fi
-
-    if [ ! -f $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.service ]; then
-        echo $"File not found $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.service"
-        exit 7359
-    fi
-    cp $INSTALL_DIR/toxcore/other/bootstrap_daemon/tox-bootstrapd.service /etc/systemd/system/
-
-    enable_ipv6
-
-    systemctl daemon-reload
-    systemctl enable tox-bootstrapd.service
-    systemctl start tox-bootstrapd.service
-    if [ ! "$?" = "0" ]; then
-        systemctl status tox-bootstrapd.service
-        exit 5846
-    fi
+    ${PROJECT_NAME}-mesh-install -f tox_node
 
     TOX_ONION_HOSTNAME=$(add_onion_service tox ${TOX_PORT} ${TOX_PORT})
 
@@ -7353,23 +6871,9 @@ function install_tox_client {
         return
     fi
 
-    apt-get -y install libncursesw5-dev libconfig-dev libqrencode-dev libcurl4-openssl-dev
+    ${PROJECT_NAME}-mesh-install tox_client
 
-    cd $INSTALL_DIR
-    git_clone $TOXIC_REPO $INSTALL_DIR/toxic
-    cd $INSTALL_DIR/toxic
-    git checkout $TOXIC_COMMIT -b $TOXIC_COMMIT
-    if ! grep -q "Toxic commit" $COMPLETION_FILE; then
-        echo "Toxic commit:$TOXIC_COMMIT" >> $COMPLETION_FILE
-    else
-        sed -i "s/Toxic commit.*/Toxic commit:$TOXIC_COMMIT/g" $COMPLETION_FILE
-    fi
-
-    make
-    if [ ! -f $INSTALL_DIR/toxic/build/toxic ]; then
-        exit 74872
-    fi
-    make install
+    # initial setup of username
     su -c "echo 'n
 /nick $MY_USERNAME
 /exit
@@ -8087,526 +7591,526 @@ function install_wiki {
     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
     echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        expires 30d;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    # block these file types' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    # or a unix socket' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    location ~ /\. {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    #deny access to store' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    location ~ /store {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '      deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '      deny  all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
-     echo '}' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        expires 30d;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    # block these file types' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    # or a unix socket' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    location ~ /\. {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    #deny access to store' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    location ~ /store {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '        deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '      deny all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '      deny  all;' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
+    echo '}' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
 
-     if [[ $ONION_ONLY == "no" ]]; then
-         if [ ! -f /etc/ssl/certs/$WIKI_DOMAIN_NAME.dhparam ]; then
-             if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                 ${PROJECT_NAME}-addcert -h $WIKI_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-             else
-                 ${PROJECT_NAME}-addcert -e $WIKI_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-             fi
-             check_certificates $WIKI_DOMAIN_NAME
-         fi
-     fi
+    if [[ $ONION_ONLY == "no" ]]; then
+        if [ ! -f /etc/ssl/certs/$WIKI_DOMAIN_NAME.dhparam ]; then
+            if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+                ${PROJECT_NAME}-addcert -h $WIKI_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+            else
+                ${PROJECT_NAME}-addcert -e $WIKI_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
+            fi
+            check_certificates $WIKI_DOMAIN_NAME
+        fi
+    fi
 
-     configure_php
+    configure_php
 
-     nginx_ensite $WIKI_DOMAIN_NAME
+    nginx_ensite $WIKI_DOMAIN_NAME
 
-     systemctl restart php5-fpm
-     systemctl restart nginx
+    systemctl restart php5-fpm
+    systemctl restart nginx
 
-     echo "Wiki onion domain:${WIKI_ONION_HOSTNAME}" >> $COMPLETION_FILE
+    echo "Wiki onion domain:${WIKI_ONION_HOSTNAME}" >> $COMPLETION_FILE
 
-     # update the dynamic DNS
-     CURRENT_DDNS_DOMAIN=$WIKI_DOMAIN_NAME
-     add_ddns_domain
+    # update the dynamic DNS
+    CURRENT_DDNS_DOMAIN=$WIKI_DOMAIN_NAME
+    add_ddns_domain
 
-     # add some post-install instructions
-     if ! grep -q $"Wiki password" /home/$MY_USERNAME/README; then
-         echo '' >> /home/$MY_USERNAME/README
-         echo '' >> /home/$MY_USERNAME/README
-         echo $'Wiki' >> /home/$MY_USERNAME/README
-         echo '====' >> /home/$MY_USERNAME/README
-         echo $"Wiki onion domain: ${WIKI_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
-         echo $"Wiki username: $MY_USERNAME" >> /home/$MY_USERNAME/README
-         echo $"Wiki password: $WIKI_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
-         echo '' >> /home/$MY_USERNAME/README
-         echo $'Once you have set up the wiki then remove the install file:' >> /home/$MY_USERNAME/README
-         echo '' >> /home/$MY_USERNAME/README
-         echo "  rm /var/www/$WIKI_DOMAIN_NAME/htdocs/install.php" >> /home/$MY_USERNAME/README
-         echo '' >> /home/$MY_USERNAME/README
-         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-         chmod 600 /home/$MY_USERNAME/README
-     fi
+    # add some post-install instructions
+    if ! grep -q $"Wiki password" /home/$MY_USERNAME/README; then
+        echo '' >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo $'Wiki' >> /home/$MY_USERNAME/README
+        echo '====' >> /home/$MY_USERNAME/README
+        echo $"Wiki onion domain: ${WIKI_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo $"Wiki username: $MY_USERNAME" >> /home/$MY_USERNAME/README
+        echo $"Wiki password: $WIKI_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo $'Once you have set up the wiki then remove the install file:' >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo "  rm /var/www/$WIKI_DOMAIN_NAME/htdocs/install.php" >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    fi
 
-     echo "Wiki domain:$WIKI_DOMAIN_NAME" >> $COMPLETION_FILE
-     echo 'install_wiki' >> $COMPLETION_FILE
- }
+    echo "Wiki domain:$WIKI_DOMAIN_NAME" >> $COMPLETION_FILE
+    echo 'install_wiki' >> $COMPLETION_FILE
+}
 
- function get_blog_admin_password {
-     if [ -f /home/$MY_USERNAME/README ]; then
-         if grep -q "Your blog password is" /home/$MY_USERNAME/README; then
-             FULLBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Your blog password is" | awk -F ':' '{print $2}' | sed 's/^ *//')
-         fi
-     fi
- }
+function get_blog_admin_password {
+    if [ -f /home/$MY_USERNAME/README ]; then
+        if grep -q "Your blog password is" /home/$MY_USERNAME/README; then
+            FULLBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Your blog password is" | awk -F ':' '{print $2}' | sed 's/^ *//')
+        fi
+    fi
+}
 
- function install_blog {
-     if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
-         return
-     fi
-     if [ ! $FULLBLOG_DOMAIN_NAME ]; then
-         echo $'The blog domain name was not specified'
-         exit 5062
-     fi
+function install_blog {
+    if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+    if [ ! $FULLBLOG_DOMAIN_NAME ]; then
+        echo $'The blog domain name was not specified'
+        exit 5062
+    fi
 
-     # update to the next commit
-     set_repo_commit /var/www/$FULLBLOG_DOMAIN_NAME/htdocs "Blog commit" "$FULLBLOG_COMMIT" $FULLBLOG_REPO
+    # update to the next commit
+    set_repo_commit /var/www/$FULLBLOG_DOMAIN_NAME/htdocs "Blog commit" "$FULLBLOG_COMMIT" $FULLBLOG_REPO
 
-     if grep -Fxq "install_blog" $COMPLETION_FILE; then
-         return
-     fi
+    if grep -Fxq "install_blog" $COMPLETION_FILE; then
+        return
+    fi
 
-     if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME ]; then
-         mkdir /var/www/$FULLBLOG_DOMAIN_NAME
-     fi
+    if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME ]; then
+        mkdir /var/www/$FULLBLOG_DOMAIN_NAME
+    fi
 
-     cd /var/www/$FULLBLOG_DOMAIN_NAME
-     git_clone $FULLBLOG_REPO htdocs
-     cd htdocs
-     git checkout $FULLBLOG_COMMIT -b $FULLBLOG_COMMIT
-     if ! grep -q "Blog commit" $COMPLETION_FILE; then
-         echo "Blog commit:$FULLBLOG_COMMIT" >> $COMPLETION_FILE
-     else
-         sed -i "s/Blog commit.*/Blog commit:$FULLBLOG_COMMIT/g" $COMPLETION_FILE
-     fi
-     cd /var/www/$FULLBLOG_DOMAIN_NAME
+    cd /var/www/$FULLBLOG_DOMAIN_NAME
+    git_clone $FULLBLOG_REPO htdocs
+    cd htdocs
+    git checkout $FULLBLOG_COMMIT -b $FULLBLOG_COMMIT
+    if ! grep -q "Blog commit" $COMPLETION_FILE; then
+        echo "Blog commit:$FULLBLOG_COMMIT" >> $COMPLETION_FILE
+    else
+        sed -i "s/Blog commit.*/Blog commit:$FULLBLOG_COMMIT/g" $COMPLETION_FILE
+    fi
+    cd /var/www/$FULLBLOG_DOMAIN_NAME
 
-     chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
+    chown -R www-data:www-data /var/www/$FULLBLOG_DOMAIN_NAME/htdocs
 
-     if [[ $ONION_ONLY == "no" ]]; then
-         echo 'server {' > /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    listen 80;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    error_log /var/log/nginx/${FULLBLOG_DOMAIN_NAME}_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         nginx_limits $FULLBLOG_DOMAIN_NAME
-         nginx_disable_sniffing $FULLBLOG_DOMAIN_NAME
-         echo '    # Always redirect the login page to https' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location /login {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        rewrite ^ https://$server_name$request_uri?;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo 'server {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    error_log /var/log/nginx/${FULLBLOG_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         nginx_limits $FULLBLOG_DOMAIN_NAME
-         nginx_ssl $FULLBLOG_DOMAIN_NAME
-         nginx_disable_sniffing $FULLBLOG_DOMAIN_NAME
-         echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-         echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     else
-         echo -n '' > /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     fi
-     echo 'server {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "    listen 127.0.0.1:${FULLBLOG_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "    error_log /var/log/nginx/${FULLBLOG_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     nginx_limits $FULLBLOG_DOMAIN_NAME
-     nginx_disable_sniffing $FULLBLOG_DOMAIN_NAME
-     echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
-     echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        echo 'server {' > /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    listen 80;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    error_log /var/log/nginx/${FULLBLOG_DOMAIN_NAME}_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        nginx_limits $FULLBLOG_DOMAIN_NAME
+        nginx_disable_sniffing $FULLBLOG_DOMAIN_NAME
+        echo '    # Always redirect the login page to https' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location /login {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        rewrite ^ https://$server_name$request_uri?;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo 'server {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    error_log /var/log/nginx/${FULLBLOG_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        nginx_limits $FULLBLOG_DOMAIN_NAME
+        nginx_ssl $FULLBLOG_DOMAIN_NAME
+        nginx_disable_sniffing $FULLBLOG_DOMAIN_NAME
+        echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    else
+        echo -n '' > /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    fi
+    echo 'server {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "    listen 127.0.0.1:${FULLBLOG_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "    root /var/www/$FULLBLOG_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "    server_name $FULLBLOG_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    access_log off;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "    error_log /var/log/nginx/${FULLBLOG_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    charset utf-8;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    nginx_limits $FULLBLOG_DOMAIN_NAME
+    nginx_disable_sniffing $FULLBLOG_DOMAIN_NAME
+    echo '    add_header Strict-Transport-Security "max-age=0;";' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location / {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        allow all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        expires 30d;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # block these file types' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # or a unix socket' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    #deny access to store' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ~ /store {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '        deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ~ /(data|conf|bin|inc)/ {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '      deny all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '      deny  all;' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
+    echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
 
-     if [[ $ONION_ONLY == "no" ]]; then
-         if [ ! -f /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam ]; then
-             if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                 ${PROJECT_NAME}-addcert -h $FULLBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-             else
-                 ${PROJECT_NAME}-addcert -e $FULLBLOG_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-             fi
-             check_certificates $FULLBLOG_DOMAIN_NAME
-         fi
-     fi
+    if [[ $ONION_ONLY == "no" ]]; then
+        if [ ! -f /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam ]; then
+            if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+                ${PROJECT_NAME}-addcert -h $FULLBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+            else
+                ${PROJECT_NAME}-addcert -e $FULLBLOG_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
+            fi
+            check_certificates $FULLBLOG_DOMAIN_NAME
+        fi
+    fi
 
-     configure_php
+    configure_php
 
-     # blog settings
-     cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-     sed -i "s|site.url.*|site.url = '/'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-     sed -i "s|blog.title.*|blog.title = '$MY_BLOG_TITLE'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-     sed -i "s|blog.tagline.*|blog.tagline = '$MY_BLOG_SUBTITLE'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-     sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-     sed -i "s|Your name|$MY_NAME|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    # blog settings
+    cp /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini.example /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    sed -i "s|site.url.*|site.url = '/'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    sed -i "s|blog.title.*|blog.title = '$MY_BLOG_TITLE'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    sed -i "s|blog.tagline.*|blog.tagline = '$MY_BLOG_SUBTITLE'|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    sed -i "s|Your name|$MY_NAME|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
 
-     # create a user password
-     get_blog_admin_password
-     if [ ! $FULLBLOG_ADMIN_PASSWORD ]; then
-         if [ -f $IMAGE_PASSWORD_FILE ]; then
-             FULLBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-         else
-             FULLBLOG_ADMIN_PASSWORD="$(openssl rand -base64 18 | cut -c1-16)"
-         fi
-         echo '' >> /home/$MY_USERNAME/README
-         echo '' >> /home/$MY_USERNAME/README
-         echo $'HTMLy Blog' >> /home/$MY_USERNAME/README
-         echo '==========' >> /home/$MY_USERNAME/README
-         echo $"Your blog username: $MY_USERNAME" >> /home/$MY_USERNAME/README
-         echo $"Your blog password is: $FULLBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
-         if [[ $ONION_ONLY == 'no' ]]; then
-             echo $"Log into your blog at https://$FULLBLOG_DOMAIN_NAME/login" >> /home/$MY_USERNAME/README
-         fi
-         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-         chmod 600 /home/$MY_USERNAME/README
-     fi
+    # create a user password
+    get_blog_admin_password
+    if [ ! $FULLBLOG_ADMIN_PASSWORD ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            FULLBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            FULLBLOG_ADMIN_PASSWORD="$(openssl rand -base64 18 | cut -c1-16)"
+        fi
+        echo '' >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo $'HTMLy Blog' >> /home/$MY_USERNAME/README
+        echo '==========' >> /home/$MY_USERNAME/README
+        echo $"Your blog username: $MY_USERNAME" >> /home/$MY_USERNAME/README
+        echo $"Your blog password is: $FULLBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+        if [[ $ONION_ONLY == 'no' ]]; then
+            echo $"Log into your blog at https://$FULLBLOG_DOMAIN_NAME/login" >> /home/$MY_USERNAME/README
+        fi
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    fi
 
-     # create a user
-     echo ';Password' > /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-     echo "password = '$FULLBLOG_ADMIN_PASSWORD'" >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-     echo 'encryption = clear' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-     echo ';Role' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-     echo 'role = admin' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    # create a user
+    echo ';Password' > /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo "password = '$FULLBLOG_ADMIN_PASSWORD'" >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo 'encryption = clear' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo ';Role' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo 'role = admin' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
 
-     nginx_ensite $FULLBLOG_DOMAIN_NAME
+    nginx_ensite $FULLBLOG_DOMAIN_NAME
 
-     FULLBLOG_ONION_HOSTNAME=$(add_onion_service blog 80 ${FULLBLOG_ONION_PORT})
+    FULLBLOG_ONION_HOSTNAME=$(add_onion_service blog 80 ${FULLBLOG_ONION_PORT})
 
-     systemctl restart php5-fpm
-     systemctl restart nginx
+    systemctl restart php5-fpm
+    systemctl restart nginx
 
-     if ! grep -q "Blog onion domain" /home/$MY_USERNAME/README; then
-         echo $"Blog onion domain: ${FULLBLOG_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
-         echo $"Log into your blog at https://${FULLBLOG_ONION_HOSTNAME}/login" >> /home/$MY_USERNAME/README
-         echo '' >> /home/$MY_USERNAME/README
-         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-         chmod 600 /home/$MY_USERNAME/README
-     fi
-     echo "Blog onion domain:${FULLBLOG_ONION_HOSTNAME}" >> $COMPLETION_FILE
+    if ! grep -q "Blog onion domain" /home/$MY_USERNAME/README; then
+        echo $"Blog onion domain: ${FULLBLOG_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo $"Log into your blog at https://${FULLBLOG_ONION_HOSTNAME}/login" >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    fi
+    echo "Blog onion domain:${FULLBLOG_ONION_HOSTNAME}" >> $COMPLETION_FILE
 
-     # update the dynamic DNS
-     CURRENT_DDNS_DOMAIN=$FULLBLOG_DOMAIN_NAME
-     add_ddns_domain
+    # update the dynamic DNS
+    CURRENT_DDNS_DOMAIN=$FULLBLOG_DOMAIN_NAME
+    add_ddns_domain
 
-     echo 'install_blog' >> $COMPLETION_FILE
- }
+    echo 'install_blog' >> $COMPLETION_FILE
+}
 
- function install_rss_reader {
-     if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
-         return
-     fi
+function install_rss_reader {
+    if [[ $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
 
-     # update to the next commit
-     set_repo_commit $RSS_READER_PATH "RSS reader commit" "$RSS_READER_COMMIT" $RSS_READER_REPO
+    # update to the next commit
+    set_repo_commit $RSS_READER_PATH "RSS reader commit" "$RSS_READER_COMMIT" $RSS_READER_REPO
 
-     if grep -Fxq "install_rss_reader" $COMPLETION_FILE; then
-         return
-     fi
+    if grep -Fxq "install_rss_reader" $COMPLETION_FILE; then
+        return
+    fi
 
-     apt-get -y install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
+    apt-get -y install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
 
-     if [ ! -d /etc/share ]; then
-         mkdir /etc/share
-     fi
-     cd /etc/share
-     git_clone $RSS_READER_REPO tt-rss
-     if [ ! -d $RSS_READER_PATH ]; then
-         echo $'Could not clone RSS reader repo'
-         exit 52925
-     fi
-     cd $RSS_READER_PATH
-     git checkout $RSS_READER_COMMIT -b $RSS_READER_COMMIT
-     if ! grep -q "RSS reader commit" $COMPLETION_FILE; then
-         echo "RSS reader commit:$RSS_READER_COMMIT" >> $COMPLETION_FILE
-     fi
+    if [ ! -d /etc/share ]; then
+        mkdir /etc/share
+    fi
+    cd /etc/share
+    git_clone $RSS_READER_REPO tt-rss
+    if [ ! -d $RSS_READER_PATH ]; then
+        echo $'Could not clone RSS reader repo'
+        exit 52925
+    fi
+    cd $RSS_READER_PATH
+    git checkout $RSS_READER_COMMIT -b $RSS_READER_COMMIT
+    if ! grep -q "RSS reader commit" $COMPLETION_FILE; then
+        echo "RSS reader commit:$RSS_READER_COMMIT" >> $COMPLETION_FILE
+    fi
 
-     install_mariadb
-     get_mariadb_password
-     repair_databases_script
+    install_mariadb
+    get_mariadb_password
+    repair_databases_script
 
-     get_mariadb_rss_reader_admin_password
-     if [ ! $RSS_READER_ADMIN_PASSWORD ]; then
-         if [ -f $IMAGE_PASSWORD_FILE ]; then
-             RSS_READER_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-         else
-             RSS_READER_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
-         fi
-     fi
+    get_mariadb_rss_reader_admin_password
+    if [ ! $RSS_READER_ADMIN_PASSWORD ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            RSS_READER_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            RSS_READER_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
+        fi
+    fi
 
-     create_database ttrss "$RSS_READER_ADMIN_PASSWORD" $MY_USERNAME
+    create_database ttrss "$RSS_READER_ADMIN_PASSWORD" $MY_USERNAME
 
-     RSS_READER_ONION_HOSTNAME=$(add_onion_service ttrss 80 ${RSS_READER_ONION_PORT})
+    RSS_READER_ONION_HOSTNAME=$(add_onion_service ttrss 80 ${RSS_READER_ONION_PORT})
 
-     echo 'server {' > /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo "    listen 127.0.0.1:$RSS_READER_ONION_PORT default_server;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo "    server_name $RSS_READER_DOMAIN_NAME;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  # Logs' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  access_log off;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  error_log off;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  # Root' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo "  root $RSS_READER_PATH;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  # Index' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  index index.html index.htm index.php;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  # PHP' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  location ~ \.php {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  # Location' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  location / {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '    index index.php;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '    try_files $uri $uri/ @ttrss;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  location /mobile {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '    index index.htm;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '    try_files $uri $uri/ @ttrss;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-     echo '  # Fancy URLs' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo 'server {' > /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo "    listen 127.0.0.1:$RSS_READER_ONION_PORT default_server;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo "    server_name $RSS_READER_DOMAIN_NAME;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Logs' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  access_log off;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  error_log off;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Root' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo "  root $RSS_READER_PATH;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Index' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  index index.html index.htm index.php;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # PHP' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  location ~ \.php {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Location' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  location / {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    index index.php;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    try_files $uri $uri/ @ttrss;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  location /mobile {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    index index.htm;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    try_files $uri $uri/ @ttrss;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '  # Fancy URLs' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  location @ttrss {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
@@ -10085,21 +9589,25 @@ function intrusion_detection {
     # Don't report log changes
     sed -i 's|/var/log.*||g' /etc/tripwire/twpol.txt
     # Ignore /etc/tripwire
-    if ! grep -q "!/etc/tripwire" /etc/tripwire/twpol.txt; then
-        sed -i '\|/etc\t\t->.*|a\        !/etc/tripwire;' /etc/tripwire/twpol.txt
+    if ! grep -q '!/etc/tripwire' /etc/tripwire/twpol.txt; then
+        sed -i '\|/etc\t\t->.*|a\    !/etc/tripwire;' /etc/tripwire/twpol.txt
+    fi
+    # ignore tt-rss cache
+    if ! grep -q '!/etc/share/tt-rss/cache' /etc/tripwire/twpol.txt; then
+        sed -i '\|/etc\t\t->.*|a\    !/etc/share/tt-rss/cache' /etc/tripwire/twpol.txt
     fi
     # Avoid logging the changed database
     sed -i 's|$(TWETC)/tw.pol.*||g' /etc/tripwire/twpol.txt
     # recreate the configuration
     echo '
 
-' | twadmin --create-cfgfile -S /etc/tripwire/site.key /etc/tripwire/twcfg.txt
+       ' | twadmin --create-cfgfile -S /etc/tripwire/site.key /etc/tripwire/twcfg.txt
     # reset
     echo '
 
 
 
-' | reset-tripwire
+       ' | reset-tripwire
 
     echo 'intrusion_detection' >> $COMPLETION_FILE
 }
@@ -10769,7 +10277,7 @@ configure_firewall_for_cjdns
 mesh_cjdns
 mesh_cjdns_tools
 configure_firewall_for_batman
-mesh_batman_bridge
+mesh_batman
 configure_firewall_for_babel
 mesh_babel
 route_outgoing_traffic_through_tor
