@@ -52,6 +52,14 @@ SSH_PORT=2222
 IRC_PORT=6697
 IRC_ONION_PORT=8093
 
+# outgoing SMTP proxy
+SMTP_PROXY_ENABLE=$'no'
+SMTP_PROXY_PROTOCOL='smtps'
+SMTP_PROXY_SERVER='mail.myispdomain'
+SMTP_PROXY_PORT=465
+SMTP_PROXY_USERNAME=''
+SMTP_PROXY_PASSWORD=''
+
 USB_DRIVE=sdb
 # get default USB from config file
 CONFIGURATION_FILE=/root/${PROJECT_NAME}.cfg
@@ -67,6 +75,25 @@ if [ -f $CONFIGURATION_FILE ]; then
     fi
     if grep -q "IRC_PORT=" $CONFIGURATION_FILE; then
         IRC_PORT=$(cat $CONFIGURATION_FILE | grep "IRC_PORT=" | awk -F '=' '{print $2}')
+    fi
+
+    if grep -q "SMTP_PROXY_ENABLE=" $CONFIGURATION_FILE; then
+        SMTP_PROXY_ENABLE=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_ENABLE=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "SMTP_PROXY_PROTOCOL=" $CONFIGURATION_FILE; then
+        SMTP_PROXY_PROTOCOL=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_PROTOCOL=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "SMTP_PROXY_SERVER=" $CONFIGURATION_FILE; then
+        SMTP_PROXY_SERVER=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_SERVER=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "SMTP_PROXY_PORT=" $CONFIGURATION_FILE; then
+        SMTP_PROXY_PORT=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_PORT=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "SMTP_PROXY_USERNAME=" $CONFIGURATION_FILE; then
+        SMTP_PROXY_USERNAME=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_USERNAME=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "SMTP_PROXY_PASSWORD=" $CONFIGURATION_FILE; then
+        SMTP_PROXY_PASSWORD=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_PASSWORD=" | awk -F '=' '{print $2}')
     fi
 fi
 
@@ -138,10 +165,10 @@ function set_main_repo {
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Main Repository (Mirrors)" \
            --form $"If you do not wish to use the default repositories they can be obtained from mirrors on another ${PROJECT_NAME} server." 14 60 3 \
-              $"URL:" 1 1 "$FRIENDS_MIRRORS_SERVER" 1 14 40 15 \
-              $"SSH Port:" 2 1 "$FRIENDS_MIRRORS_SSH_PORT" 2 14 40 10000 \
-              $"Password:" 3 1 "$FRIENDS_MIRRORS_PASSWORD" 3 14 40 10000 \
-              2> $data
+           $"URL:" 1 1 "$FRIENDS_MIRRORS_SERVER" 1 14 40 15 \
+           $"SSH Port:" 2 1 "$FRIENDS_MIRRORS_SSH_PORT" 2 14 40 10000 \
+           $"Password:" 3 1 "$FRIENDS_MIRRORS_PASSWORD" 3 14 40 10000 \
+           2> $data
     sel=$?
     case $sel in
         1) return;;
@@ -200,9 +227,9 @@ function add_user {
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Add new user" \
            --form "\n" 8 60 3 \
-              $"Username:" 1 1 "" 1 28 16 15 \
-              $"ssh public key (optional):" 2 1 "" 2 28 40 10000 \
-              2> $data
+           $"Username:" 1 1 "" 1 28 16 15 \
+           $"ssh public key (optional):" 2 1 "" 2 28 40 10000 \
+           2> $data
     sel=$?
     case $sel in
         1) return;;
@@ -450,6 +477,83 @@ function select_user {
 
     if [ $? -eq 0 ]; then
         SELECTED_USERNAME="${name[$((user_index-1))]}"
+    fi
+}
+
+function smtp_proxy {
+    MUTTRC_FILE=/home/$ADMIN_USER/.muttrc
+    if [ ! -f $MUTTRC_FILE ]; then
+        return
+    fi
+    
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"SMTP Proxy for $ADMIN_USER" \
+           --form $"You may need to proxy outgoing email via your ISP's mail server. If so enter the details below." 14 75 6 \
+           $"Enable proxy:" 1 1 "$SMTP_PROXY_ENABLE" 1 24 5 5 \
+           $"Protocol (smtp/smtps):" 2 1 "$SMTP_PROXY_PROTOCOL" 2 24 5 5 \
+           $"ISP mail server:" 3 1 "$SMTP_PROXY_SERVER" 3 24 40 10000 \
+           $"Port:" 4 1 "$SMTP_PROXY_PORT" 4 24 5 5 \
+           $"Username:" 5 1 "$SMTP_PROXY_USERNAME" 5 24 40 10000 \
+           $"Password:" 6 1 "$SMTP_PROXY_PASSWORD" 6 24 40 10000 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    SMTP_PROXY_ENABLE=$(cat $data | sed -n 1p)
+    SMTP_PROXY_PROTOCOL=$(cat $data | sed -n 2p)
+    SMTP_PROXY_SERVER=$(cat $data | sed -n 3p)
+    SMTP_PROXY_PORT=$(cat $data | sed -n 4p)
+    SMTP_PROXY_USERNAME=$(cat $data | sed -n 5p)
+    SMTP_PROXY_PASSWORD=$(cat $data | sed -n 6p)
+
+    # change muttrc
+    if [ $SMTP_PROXY_ENABLE != $'no' ]; then
+        if ! grep "set smtp_url" $MUTTRC_FILE; then
+            echo "set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"" >> $MUTTRC_FILE
+        else
+            sed -i "s|set smtp_url=.*|set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"|g" $MUTTRC_FILE
+        fi          
+        sed -i 's|#set smtp_url|set smtp_url|g' $MUTTRC_FILE
+    else
+        if grep "set smtp_url" $MUTTRC_FILE; then
+            sed -i 's|set smtp_url|#set smtp_url|g' $MUTTRC_FILE
+        fi
+    fi
+
+    # save settings within the main configuration file
+    if ! grep -q "SMTP_PROXY_ENABLE=" $CONFIGURATION_FILE; then
+        echo "SMTP_PROXY_ENABLE=$SMTP_PROXY_ENABLE" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|SMTP_PROXY_ENABLE=.*|SMTP_PROXY_ENABLE=$SMTP_PROXY_ENABLE|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "SMTP_PROXY_PROTOCOL=" $CONFIGURATION_FILE; then
+        echo "SMTP_PROXY_PROTOCOL=$SMTP_PROXY_PROTOCOL" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|SMTP_PROXY_PROTOCOL=.*|SMTP_PROXY_PROTOCOL=$SMTP_PROXY_PROTOCOL|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "SMTP_PROXY_SERVER=" $CONFIGURATION_FILE; then
+        echo "SMTP_PROXY_SERVER=$SMTP_PROXY_SERVER" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|SMTP_PROXY_SERVER=.*|SMTP_PROXY_SERVER=$SMTP_PROXY_SERVER|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "SMTP_PROXY_PORT=" $CONFIGURATION_FILE; then
+        echo "SMTP_PROXY_PORT=$SMTP_PROXY_PORT" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|SMTP_PROXY_PORT=.*|SMTP_PROXY_PORT=$SMTP_PROXY_PORT|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "SMTP_PROXY_USERNAME=" $CONFIGURATION_FILE; then
+        echo "SMTP_PROXY_USERNAME=$SMTP_PROXY_USERNAME" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|SMTP_PROXY_USERNAME=.*|SMTP_PROXY_USERNAME=$SMTP_PROXY_USERNAME|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "SMTP_PROXY_PASSWORD=" $CONFIGURATION_FILE; then
+        echo "SMTP_PROXY_PASSWORD=$SMTP_PROXY_PASSWORD" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|SMTP_PROXY_PASSWORD=.*|SMTP_PROXY_PASSWORD=$SMTP_PROXY_PASSWORD|g" $CONFIGURATION_FILE
     fi
 }
 
@@ -714,11 +818,11 @@ function add_to_mailing_list {
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Subscribe $SELECTED_USERNAME to a mailing list" \
            --form $"You can either enter a subject or an email address\n" 11 68 4 \
-              $"List folder name:" 1 1 "" 1 35 26 25 \
-              $"Name between [] on subject line:" 2 1 "" 2 35 26 25 \
-              $"List email address:" 3 1 "" 3 35 26 25 \
-              $"Public:" 4 1 $"yes" 4 35 4 25 \
-              2> $data
+           $"List folder name:" 1 1 "" 1 35 26 25 \
+           $"Name between [] on subject line:" 2 1 "" 2 35 26 25 \
+           $"List email address:" 3 1 "" 3 35 26 25 \
+           $"Public:" 4 1 $"yes" 4 35 4 25 \
+           2> $data
     sel=$?
     case $sel in
         1) return;;
@@ -777,10 +881,10 @@ function email_rule {
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Email rule for user $SELECTED_USERNAME" \
            --form "\n" 9 65 4 \
-              $"When email arrives from address:" 1 1 "" 1 35 24 28 \
-              $"Move to folder:" 2 1 "" 2 35 24 28 \
-              $"Public:" 3 1 $"no" 3 35 4 25 \
-              2> $data
+           $"When email arrives from address:" 1 1 "" 1 35 24 28 \
+           $"Move to folder:" 2 1 "" 2 35 24 28 \
+           $"Public:" 3 1 $"no" 3 35 4 25 \
+           2> $data
     sel=$?
     case $sel in
         1) return;;
@@ -815,7 +919,7 @@ function email_rule {
     fi
 
     ${PROJECT_NAME}-addemail -u $SELECTED_USERNAME -e "$RULE_EMAIL" \
-                         -g "$RULE_FOLDER" --public $RULE_PUBLIC
+                   -g "$RULE_FOLDER" --public $RULE_PUBLIC
     dialog --title $"Add email rule" \
            --msgbox $"Email rule for $RULE_EMAIL was added" 6 40
 }
@@ -831,9 +935,9 @@ function block_unblock_email {
     dialog --backtitle $"Freedombone Control Panel" \
            --title "$blockstr $SELECTED_USERNAME" \
            --form "\n" 8 65 3 \
-              $"When email arrives from address:" 1 1 "" 1 35 24 100 \
-              $"Block it:" 2 1 "yes" 2 35 4 4 \
-              2> $data
+           $"When email arrives from address:" 1 1 "" 1 35 24 100 \
+           $"Block it:" 2 1 "yes" 2 35 4 4 \
+           2> $data
     sel=$?
     case $sel in
         1) return;;
@@ -873,9 +977,9 @@ function block_unblock_subject {
     dialog --backtitle $"Freedombone Control Panel" \
            --title "$blockstr $SELECTED_USERNAME" \
            --form "\n" 8 70 3 \
-              $"When email arrives with subject text:" 1 1 "" 1 40 24 28 \
-              $"Block it:" 2 1 "yes" 2 40 4 4 \
-              2> $data
+           $"When email arrives with subject text:" 1 1 "" 1 40 24 28 \
+           $"Block it:" 2 1 "yes" 2 40 4 4 \
+           2> $data
     sel=$?
     case $sel in
         1) return;;
@@ -1216,7 +1320,7 @@ function reset_tripwire {
     echo ' '
     echo '
 
-' | reset-tripwire
+                ' | reset-tripwire
     any_key
 }
 
@@ -1704,7 +1808,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 26 70 19 \
+               --radiolist $"Choose an operation:" 27 70 20 \
                1 $"About this system" off \
                2 $"Backup and Restore" off \
                3 $"Reset Tripwire" off \
@@ -1712,18 +1816,19 @@ function menu_top_level {
                5 $"Ping enable/disable" off \
                6 $"Manage Users" off \
                7 $"Email Filtering Rules" off \
-               8 $"Security Settings" off \
-               9 $"Set the main repository (repo mirrors)" off \
-               10 $"Hubzilla" off \
-               11 $"Media menu" off \
-               12 $"IRC menu" off \
-               13 $"Change the name of this system" off \
-               14 $"Set the TLS date/time source" off \
-               15 $"Set a static local IP address" off \
-               16 $"Check for updates" off \
-               17 $"Power off the system" off \
-               18 $"Restart the system" off \
-               19 $"Exit" on 2> $data
+               8 $"Outgoing Email Proxy" off \
+               9 $"Security Settings" off \
+               10 $"Set the main repository (repo mirrors)" off \
+               11 $"Hubzilla" off \
+               12 $"Media menu" off \
+               13 $"IRC menu" off \
+               14 $"Change the name of this system" off \
+               15 $"Set the TLS date/time source" off \
+               16 $"Set a static local IP address" off \
+               17 $"Check for updates" off \
+               18 $"Power off the system" off \
+               19 $"Restart the system" off \
+               20 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -1737,18 +1842,19 @@ function menu_top_level {
             5) ping_enable_disable;;
             6) menu_users;;
             7) menu_email;;
-            8) security_settings;;
-            9) set_main_repo;;
-            10) menu_hubzilla;;
-            11) menu_media;;
-            12) menu_irc;;
-            13) change_system_name;;
-            14) set_tls_time_source;;
-            15) set_static_IP;;
-            16) check_for_updates;;
-            17) shut_down_system;;
-            18) restart_system;;
-            19) break;;
+            8) smtp_proxy;;
+            9) security_settings;;
+            10) set_main_repo;;
+            11) menu_hubzilla;;
+            12) menu_media;;
+            13) menu_irc;;
+            14) change_system_name;;
+            15) set_tls_time_source;;
+            16) set_static_IP;;
+            17) check_for_updates;;
+            18) shut_down_system;;
+            19) restart_system;;
+            20) break;;
         esac
     done
 }

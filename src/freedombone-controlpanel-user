@@ -475,6 +475,70 @@ function remove_ssh_key {
     esac
 }
 
+function smtp_proxy {
+    MUTTRC_FILE=/home/$USER/.muttrc
+    if [ ! -f $MUTTRC_FILE ]; then
+        return
+    fi
+    SMTP_PROXY_ENABLE=$'no'
+    SMTP_PROXY_PROTOCOL='smtps'
+    SMTP_PROXY_SERVER='mail.myispdomain'
+    SMTP_PROXY_PORT=465
+    SMTP_PROXY_USERNAME=''
+    SMTP_PROXY_PASSWORD=''
+
+    if grep -q "set smtp_url" $MUTTRC_FILE; then
+        if grep -q "#set smtp_url" $MUTTRC_FILE; then
+            SMTP_PROXY_ENABLE=$'no'
+        else
+            SMTP_PROXY_ENABLE=$'yes'
+        fi      
+        SMTP_PROXY_PROTOCOL=$(cat $MUTTRC_FILE | grep "set smtp_url" | awk -F '"' '{print $2}' | awk -F ':' '{print $1}')
+        SMTP_PROXY_SERVER=$(cat $MUTTRC_FILE | grep "set smtp_url" | awk -F '"' '{print $2}' | awk -F '/' '{print $3}' | awk -F ':' '{print $2}' | awk -F '@' '{print $2}')
+        SMTP_PROXY_PORT=$(cat $MUTTRC_FILE | grep "set smtp_url" | awk -F ':' '{print $4}' | awk -F '/' '{print $1}')
+        SMTP_PROXY_USERNAME=$(cat $MUTTRC_FILE | grep "set smtp_url" | awk -F '"' '{print $2}' | awk -F '/' '{print $3}' | awk -F ':' '{print $1}')
+        SMTP_PROXY_PASSWORD=$(cat $MUTTRC_FILE | grep "set smtp_url" | awk -F '"' '{print $2}' | awk -F '/' '{print $3}' | awk -F ':' '{print $2}' | awk -F '@' '{print $1}')
+    fi
+    
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"SMTP Proxy for $USER" \
+           --form $"You may need to proxy outgoing email via your ISP's mail server. If so enter the details below." 14 75 6 \
+           $"Enable proxy:" 1 1 "$SMTP_PROXY_ENABLE" 1 24 5 5 \
+           $"Protocol (smtp/smtps):" 2 1 "$SMTP_PROXY_PROTOCOL" 2 24 5 5 \
+           $"ISP mail server:" 3 1 "$SMTP_PROXY_SERVER" 3 24 40 10000 \
+           $"Port:" 4 1 "$SMTP_PROXY_PORT" 4 24 5 5 \
+           $"Username:" 5 1 "$SMTP_PROXY_USERNAME" 5 24 40 10000 \
+           $"Password:" 6 1 "$SMTP_PROXY_PASSWORD" 6 24 40 10000 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    SMTP_PROXY_ENABLE=$(cat $data | sed -n 1p)
+    SMTP_PROXY_PROTOCOL=$(cat $data | sed -n 2p)
+    SMTP_PROXY_SERVER=$(cat $data | sed -n 3p)
+    SMTP_PROXY_PORT=$(cat $data | sed -n 4p)
+    SMTP_PROXY_USERNAME=$(cat $data | sed -n 5p)
+    SMTP_PROXY_PASSWORD=$(cat $data | sed -n 6p)
+
+    # change muttrc
+    if [ $SMTP_PROXY_ENABLE != $'no' ]; then
+        if ! grep -q "set smtp_url" $MUTTRC_FILE; then
+            echo "set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"" >> $MUTTRC_FILE
+        else
+            sed -i "s|set smtp_url=.*|set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"|g" $MUTTRC_FILE
+        fi          
+        sed -i 's|#set smtp_url|set smtp_url|g' $MUTTRC_FILE
+    else
+        if grep "set smtp_url" $MUTTRC_FILE; then
+            sed -i 's|set smtp_url|#set smtp_url|g' $MUTTRC_FILE
+        fi
+    fi
+}
+
 function menu_encryption_keys {
     while true
     do
@@ -559,7 +623,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone User Control Panel" \
                --title $"User Control Panel" \
-               --radiolist $"Choose an operation:" 17 50 10 \
+               --radiolist $"Choose an operation:" 18 50 11 \
                1 $"Use Email" off \
                2 $"Change Email Filtering Rules" off \
                3 $"Use Tox Chat" off \
@@ -567,9 +631,10 @@ function menu_top_level {
                5 $"Use IRC" off \
                6 $"Browse the Web" off \
                7 $"Your Encryption Keys" off \
-               8 $"Administrator controls" off \
-               9 $"Exit to the command line" off \
-               10 $"Log out" on 2> $data
+               8 $"Set an outgoing email proxy" off \
+               9 $"Administrator controls" off \
+               10 $"Exit to the command line" off \
+               11 $"Log out" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -583,9 +648,10 @@ function menu_top_level {
             5) torify irssi;;
             6) torify elinks;;
             7) menu_encryption_keys;;
-            8) menu_admin;;
-            9) break;;
-            10) kill -HUP `pgrep -s 0 -o`;;
+            8) smtp_proxy;;
+            9) menu_admin;;
+            10) break;;
+            11) kill -HUP `pgrep -s 0 -o`;;
         esac
     done
 }
