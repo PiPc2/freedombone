@@ -381,6 +381,9 @@ VOIP_SERVER_PASSWORD=
 VOIP_PORT=64738
 SIP_SERVER_PASSWORD=
 SIP_PORT=5060
+VOIP_TURN_PORT=3478
+VOIP_TURN_TLS_PORT=5349
+VOIP_TURN_NONCE=
 
 # Location of VoIP database and configuration
 VOIP_DATABASE="mumble-server.sqlite"
@@ -1065,6 +1068,15 @@ function read_configuration {
         # Ensure that a copy of the config exists for upgrade purposes
         if [[ $CONFIGURATION_FILE != "/root/${PROJECT_NAME}.cfg" ]]; then
             cp $CONFIGURATION_FILE /root/${PROJECT_NAME}.cfg
+        fi      
+        if grep -q "VOIP_TURN_PORT" $CONFIGURATION_FILE; then
+            VOIP_TURN_PORT=$(grep "VOIP_TURN_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "VOIP_TURN_TLS_PORT" $CONFIGURATION_FILE; then
+            VOIP_TURN_TLS_PORT=$(grep "VOIP_TURN_TLS_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "VOIP_TURN_NONCE" $CONFIGURATION_FILE; then
+            VOIP_TURN_NONCE=$(grep "VOIP_TURN_NONCE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
         if grep -q "DEFAULT_SEARCH" $CONFIGURATION_FILE; then
             DEFAULT_SEARCH=$(grep "DEFAULT_SEARCH" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -4001,6 +4013,24 @@ function configure_firewall_for_voip {
     save_firewall_settings
     echo 'configure_firewall_for_voip' >> $COMPLETION_FILE
 }
+
+function configure_firewall_for_voip_turn {
+    if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+        return
+    fi
+    if grep -Fxq "configure_firewall_for_voip_turn" $COMPLETION_FILE; then
+        return
+    fi
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+    iptables -A INPUT -p udp --dport $VOIP_TURN_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $VOIP_TURN_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $VOIP_TURN_TLS_PORT -j ACCEPT
+    save_firewall_settings
+    echo 'configure_firewall_for_voip_turn' >> $COMPLETION_FILE
+}
+
 
 function configure_firewall_for_sip {
     if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
@@ -10347,6 +10377,144 @@ function install_sip {
     echo 'install_sip' >> $COMPLETION_FILE
 }
 
+function install_sip_turn {
+    if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+        return
+    fi
+    if grep -Fxq "install_sip_turn" $COMPLETION_FILE; then
+        return
+    fi
+
+    apt-get -y install turnserver
+
+    if [ ! $VOIP_TURN_NONCE ]; then
+        VOIP_TURN_NONCE="$(openssl rand -base64 32 | cut -c1-30)"
+    fi
+
+    echo '##' > /etc/turnserver/turnserver.conf
+    echo '# TurnServer configuration file.' >> /etc/turnserver/turnserver.conf
+    echo '#' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Public IPv4 address of any relayed address (if not set, no relay for IPv4).' >> /etc/turnserver/turnserver.conf
+    echo '## To have multiple address, separate addresses with a comma' >> /etc/turnserver/turnserver.conf
+    echo '## (i.e. listen_address = { "172.16.0.1", "172.17.0.1" }).' >> /etc/turnserver/turnserver.conf
+    echo "listen_address = { \"192.168.0.1\" }" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Public IPv6 address of any relayed address (if not set, no relay for IPv6).' >> /etc/turnserver/turnserver.conf
+    echo '## To have multiple address, separate address with a comma' >> /etc/turnserver/turnserver.conf
+    echo '## (i.e. listen_addressv6 = { "2001:db8:1::1", "2001:db8:2::1" }).' >> /etc/turnserver/turnserver.conf
+    echo "#listen_addressv6 = { \"2001:db8::1\" }" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## UDP listening port.' >> /etc/turnserver/turnserver.conf
+    echo "udp_port = $VOIP_TURN_PORT" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## TCP listening port.' >> /etc/turnserver/turnserver.conf
+    echo "tcp_port = $VOIP_TURN_PORT" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## TLS listening port.' >> /etc/turnserver/turnserver.conf
+    echo "tls_port = $VOIP_TURN_TLS_PORT" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## TLS support.' >> /etc/turnserver/turnserver.conf
+    echo 'tls = true' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## DTLS support. It is an experimental feature and is not defined in TURN' >> /etc/turnserver/turnserver.conf
+    echo '## standard.' >> /etc/turnserver/turnserver.conf
+    echo 'dtls = false' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Maximum allocation port number.' >> /etc/turnserver/turnserver.conf
+    echo 'max_port = 65535' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Minimum allocation port number.' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo 'min_port = 49152' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## TURN-TCP support.' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo 'turn_tcp = true' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## TURN-TCP buffering mode:' >> /etc/turnserver/turnserver.conf
+    echo '## - true, use userspace buffering;' >> /etc/turnserver/turnserver.conf
+    echo '## - false, use kernel buffering.' >> /etc/turnserver/turnserver.conf
+    echo 'tcp_buffer_userspace = true' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## TURN-TCP maximum buffer size.' >> /etc/turnserver/turnserver.conf
+    echo 'tcp_buffer_size = 32768' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Daemon mode.' >> /etc/turnserver/turnserver.conf
+    echo 'daemon = true' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Unprivileged user.' >> /etc/turnserver/turnserver.conf
+    echo '## If you want to use this feature create a system user.' >> /etc/turnserver/turnserver.conf
+    echo '## On Linux: adduser --system --group turnserver' >> /etc/turnserver/turnserver.conf
+    echo 'unpriv_user = turnserver' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Realm value.' >> /etc/turnserver/turnserver.conf
+    echo "realm = \"$DEFAULT_DOMAIN_NAME\"" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Nonce key.' >> /etc/turnserver/turnserver.conf
+    echo "nonce_key = \"$VOIP_TURN_NONCE\"" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Max relay per username.' >> /etc/turnserver/turnserver.conf
+    echo 'max_relay_per_username = 5' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Allocation lifetime.' >> /etc/turnserver/turnserver.conf
+    echo 'allocation_lifetime = 1800' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Allocation bandwidth limitation (in KBytes/s).' >> /etc/turnserver/turnserver.conf
+    echo '## 0 value means bandwidth quota disabled.' >> /etc/turnserver/turnserver.conf
+    echo 'bandwidth_per_allocation = 150' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Restricted user bandwidth (in KBytes/s).' >> /etc/turnserver/turnserver.conf
+    echo '## 0 value means bandwidth limitation disabled.' >> /etc/turnserver/turnserver.conf
+    echo 'restricted_bandwidth = 10' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Denied addresses.' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '# disallow relaying to localhost' >> /etc/turnserver/turnserver.conf
+    echo 'denied_address {' >> /etc/turnserver/turnserver.conf
+    echo '  address = "127.0.0.1"' >> /etc/turnserver/turnserver.conf
+    echo '  mask = "8"' >> /etc/turnserver/turnserver.conf
+    echo '  port = 0' >> /etc/turnserver/turnserver.conf
+    echo '}' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '# disallow relaying to ip6-localhost' >> /etc/turnserver/turnserver.conf
+    echo 'denied_address {' >> /etc/turnserver/turnserver.conf
+    echo '  address = "::1"' >> /etc/turnserver/turnserver.conf
+    echo '  mask = "128"' >> /etc/turnserver/turnserver.conf
+    echo '  port = 0' >> /etc/turnserver/turnserver.conf
+    echo '}' >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Certification Authority file.' >> /etc/turnserver/turnserver.conf
+    echo "ca_file = \"/etc/ssl/certs/ca-certificates.crt\"" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Server certificate file.' >> /etc/turnserver/turnserver.conf
+    if [ -f /etc/ssl/certs/$DEFAULT_DOMAIN_NAME.pem ]; then
+        echo "cert_file = \"/etc/ssl/certs/$DEFAULT_DOMAIN_NAME.pem\"" >> /etc/turnserver/turnserver.conf
+    else
+        if [ -f /etc/ssl/certs/$DEFAULT_DOMAIN_NAME.crt ]; then
+            echo "cert_file = \"/etc/ssl/certs/$DEFAULT_DOMAIN_NAME.crt\"" >> /etc/turnserver/turnserver.conf
+        else
+
+        fi
+    fi
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Private key file.' >> /etc/turnserver/turnserver.conf
+    echo "private_key_file = \"/etc/ssl/certs/$DEFAULT_DOMAIN_NAME.key\"" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Account method.' >> /etc/turnserver/turnserver.conf
+    echo "account_method = \"file\"" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## Account file (if account_method = file).' >> /etc/turnserver/turnserver.conf
+    echo "account_file = \"/etc/turnserver/turnusers.txt\"" >> /etc/turnserver/turnserver.conf
+    echo '' >> /etc/turnserver/turnserver.conf
+    echo '## mod_tmpuser.' >> /etc/turnserver/turnserver.conf
+    echo 'mod_tmpuser = false' >> /etc/turnserver/turnserver.conf
+
+    systemctl restart turnserver
+
+    echo 'install_sip_turn' >> $COMPLETION_FILE
+}
+
 function install_final {
     if grep -Fxq "install_final" $COMPLETION_FILE; then
         return
@@ -10361,29 +10529,29 @@ function install_final {
     clear
     echo ''
     echo $"
-  *** ${PROJECT_NAME} installation is complete. Rebooting... ***
+    *** ${PROJECT_NAME} installation is complete. Rebooting... ***
 
     Now forward these ports from your internet router
 
-                     HTTP     80
-                     HTTPS    443
-                     SSH      2222
-                     DLNA     1900
-                     DLNA     8200
-                     XMPP     5222-5223
-                     XMPP     5269
-                     XMPP     5280-5281
-                     IRC      6697
-                     Git      9418
-                     Email    25
-                     Email    587
-                     Email    465
-                     Email    993
-                     VoIP     64738
-                     VoIP     5060
-                     Tox      33445
-                     IPFS     4001
-"
+    HTTP     80
+    HTTPS    443
+    SSH      2222
+    DLNA     1900
+    DLNA     8200
+    XMPP     5222-5223
+    XMPP     5269
+    XMPP     5280-5281
+    IRC      6697
+    Git      9418
+    Email    25
+    Email    587
+    Email    465
+    Email    993
+    VoIP     64738
+    VoIP     5060
+    Tox      33445
+    IPFS     4001
+    "
     if [ -f "/home/$MY_USERNAME/README" ]; then
         echo $"See /home/$MY_USERNAME/README for post-installation instructions."
         echo ''
@@ -10412,6 +10580,7 @@ configure_firewall_for_dns
 configure_firewall_for_ftp
 configure_firewall_for_web_access
 configure_firewall_for_voip
+configure_firewall_for_voip_turn
 configure_firewall_for_sip
 configure_firewall_for_avahi
 configure_firewall_for_zeronet
@@ -10501,6 +10670,7 @@ install_voip
 install_sip
 update_sipwitch_daemon
 install_wiki
+install_sip_turn
 install_blog
 mark_blog_domain
 install_gnu_social
