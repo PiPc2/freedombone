@@ -91,6 +91,8 @@ FULLBLOG_DOMAIN_NAME=
 FULLBLOG_CODE=
 OWNCLOUD_DOMAIN_NAME=
 OWNCLOUD_CODE=
+MEDIAGOBLIN_DOMAIN_NAME=
+MEDIAGOBLIN_CODE=
 HUBZILLA_DOMAIN_NAME=
 HUBZILLA_CODE=
 MICROBLOG_DOMAIN_NAME=
@@ -561,10 +563,10 @@ function set_main_repo {
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Main Repository (Mirrors)" \
            --form $"If you don't know what this means then just select Ok.\n\nIf you don't wish to use the default repositories they can be obtained from mirrored repos on another ${PROJECT_NAME} system.\n\nThe repositories are for applications which are not yet packaged for Debian." 18 65 4 \
-              $"URL:" 1 1 "$FRIENDS_MIRRORS_SERVER" 1 18 40 18 \
-              $"SSH Port:" 2 1 "$FRIENDS_MIRRORS_SSH_PORT" 2 18 10 10000 \
-              $"Password:" 3 1 "$FRIENDS_MIRRORS_PASSWORD" 3 18 40 10000 \
-              2> $data
+           $"URL:" 1 1 "$FRIENDS_MIRRORS_SERVER" 1 18 40 18 \
+           $"SSH Port:" 2 1 "$FRIENDS_MIRRORS_SSH_PORT" 2 18 10 10000 \
+           $"Password:" 3 1 "$FRIENDS_MIRRORS_PASSWORD" 3 18 40 10000 \
+           2> $data
     sel=$?
     case $sel in
         1) return;;
@@ -1659,6 +1661,63 @@ function interactive_configuration {
         save_configuration_file
     fi
 
+    if [[ $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
+        if [[ $ONION_ONLY != "no" ]]; then
+            MEDIAGOBLIN_DOMAIN_NAME='media.local'
+        else
+            MEDIAGOBLIN_DETAILS_COMPLETE=
+            while [ ! $MEDIAGOBLIN_DETAILS_COMPLETE ]
+            do
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Mediagoblin Configuration" \
+                           --form $"\nPlease enter your Mediagoblin details, or just select Ok if you don't need a Mediagoblin site:" 11 55 2 \
+                           $"Domain:" 1 1 "$(grep 'MEDIAGOBLIN_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 33 40 \
+                           $"Code:" 2 1 "$(grep 'MEDIAGOBLIN_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 16 33 255 \
+                           2> $data
+                else
+                    dialog --backtitle $"Freedombone Configuration" \
+                           --title $"Mediagoblin Configuration" \
+                           --form $"\nPlease enter your Mediagoblin details, or just select Ok if you don't need a Mediagoblin site:" 11 55 2 \
+                           $"Domain:" 1 1 "$(grep 'MEDIAGOBLIN_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 16 33 40 \
+                           2> $data
+                fi
+                sel=$?
+                case $sel in
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+                MEDIAGOBLIN_DOMAIN_NAME=$(cat $data | sed -n 1p)
+                if [ $MEDIAGOBLIN_DOMAIN_NAME ]; then
+                    TEST_DOMAIN_NAME=$MEDIAGOBLIN_DOMAIN_NAME
+                    validate_domain_name
+                    if [[ $TEST_DOMAIN_NAME != $MEDIAGOBLIN_DOMAIN_NAME ]]; then
+                        MEDIAGOBLIN_DOMAIN_NAME='invalid'
+                        dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                    else
+                        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                            MEDIAGOBLIN_CODE=$(cat $data | sed -n 2p)
+                            validate_freedns_code "$MEDIAGOBLIN_CODE"
+                            if [ ! $VALID_CODE ]; then
+                                MEDIAGOBLIN_DOMAIN_NAME='invalid'
+                            fi
+                        fi
+                    fi
+                fi
+                if [ $MEDIAGOBLIN_DOMAIN_NAME ]; then
+                    if [[ $MEDIAGOBLIN_DOMAIN_NAME == 'invalid' ]]; then
+                        MEDIAGOBLIN_DOMAIN_NAME=
+                    else
+                        MEDIAGOBLIN_DETAILS_COMPLETE="yes"
+                    fi
+                fi
+            done
+        fi
+        save_configuration_file
+    fi
+
     if [[ $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_FULL" ]]; then
         if [[ $ONION_ONLY != "no" ]]; then
             HUBZILLA_DOMAIN_NAME='hubzilla.local'
@@ -1884,38 +1943,38 @@ function interactive_configuration {
                         dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
                     else
                         DEFAULT_DOMAIN_DETAILS_COMPLETE="yes"
-                                                                                                                                                                                                    fi
-                                                                                                                                                                                                fi
-                                                                                                                                                                                            done
-                                                                                                                                                                                        fi
-                                                                                                                                                                                        save_configuration_file
+                    fi
+                fi
+            done
+        fi
+        save_configuration_file
 
-                                                                                                                                                                                        if [[ $ONION_ONLY != "no" ]]; then
-                                                                                                                                                                                            EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
-                                                                                                                                                                                        else
-                                                                                                                                                                                            while [ ${#MY_EMAIL_ADDRESS} -lt 5 ]
-                                                                                                                                                                                            do
-                                                                                                                                                                                                EMAIL_ADDRESS=$(grep 'MY_EMAIL_ADDRESS' temp.cfg | awk -F '=' '{print $2}')
-                                                                                                                                                                                                if [ ! $EMAIL_ADDRESS ]; then
-                                                                                                                                                                                                    EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
-                                                                                                                                                                                                fi
-                                                                                                                                                                                                if [ ${#MY_EMAIL_ADDRESS} -lt 5 ]; then
-                                                                                                                                                                                                    EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
-                                                                                                                                                                                                fi
+        if [[ $ONION_ONLY != "no" ]]; then
+            EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
+        else
+            while [ ${#MY_EMAIL_ADDRESS} -lt 5 ]
+            do
+                EMAIL_ADDRESS=$(grep 'MY_EMAIL_ADDRESS' temp.cfg | awk -F '=' '{print $2}')
+                if [ ! $EMAIL_ADDRESS ]; then
+                    EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
+                fi
+                if [ ${#MY_EMAIL_ADDRESS} -lt 5 ]; then
+                    EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
+                fi
 
-                                                                                                                                                                                                data=$(tempfile 2>/dev/null)
-                                                                                                                                                                                                trap "rm -f $data" 0 1 2 5 15
-                                                                                                                                                                                                dialog --backtitle $"Freedombone Configuration" \
-                                                                                                                                                                                                       --inputbox $"Your email address" 10 30 "$EMAIL_ADDRESS" 2> $data
-                                                                                                                                                                                                sel=$?
-                                                                                                                                                                                                case $sel in
-                                                                                                                                                                                                    0) MY_EMAIL_ADDRESS=$(cat $data);;
-                                                                                                                                                                                                    1) exit 1;;
-                                                                                                                                                                                                    255) exit 1;;
-                                                                                                                                                                                                esac
-                                                                                                                                                                                            done
-                                                                                                                                                                                        fi
-                                                                                                                                                                                        save_configuration_file
+                data=$(tempfile 2>/dev/null)
+                trap "rm -f $data" 0 1 2 5 15
+                dialog --backtitle $"Freedombone Configuration" \
+                       --inputbox $"Your email address" 10 30 "$EMAIL_ADDRESS" 2> $data
+                sel=$?
+                case $sel in
+                    0) MY_EMAIL_ADDRESS=$(cat $data);;
+                    1) exit 1;;
+                    255) exit 1;;
+                esac
+            done
+        fi
+        save_configuration_file
     fi
 
     # delete the temporary configuration file
@@ -2048,6 +2107,12 @@ function read_configuration {
         fi
         if grep -q "OWNCLOUD_CODE" $CONFIGURATION_FILE; then
             OWNCLOUD_CODE=$(grep "OWNCLOUD_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "MEDIAGOBLIN_DOMAIN_NAME" $CONFIGURATION_FILE; then
+            MEDIAGOBLIN_DOMAIN_NAME=$(grep "MEDIAGOBLIN_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "MEDIAGOBLIN_CODE" $CONFIGURATION_FILE; then
+            MEDIAGOBLIN_CODE=$(grep "MEDIAGOBLIN_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
         if grep -q "WIKI_DOMAIN_NAME" $CONFIGURATION_FILE; then
             WIKI_DOMAIN_NAME=$(grep "WIKI_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
