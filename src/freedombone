@@ -1933,7 +1933,11 @@ function check_certificates {
     if [ ! $1 ]; then
         return
     fi
-    if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+    USE_LETSENCRYPT='no'
+    if [ $2 ]; then
+        USE_LETSENCRYPT=$2
+    fi
+    if [[ $USE_LETSENCRYPT == 'no' ]]; then
         if [ ! -f /etc/ssl/private/$1.key ]; then
             echo $"Private certificate for $CHECK_HOSTNAME was not created"
             exit 63959
@@ -1955,6 +1959,39 @@ function check_certificates {
     if [ ! -f /etc/ssl/certs/$1.dhparam ]; then
         echo $"Diffie–Hellman parameters for $CHECK_HOSTNAME were not created"
         exit 5989
+    fi
+}
+
+function create_site_certificate {
+    SITE_DOMAIN_NAME="$1"
+
+    # if yes then only "valid" certs are allowed, not self-signed
+    NO_SELF_SIGNED='no'
+    if [ $2 ]; then
+        NO_SELF_SIGNED="$2"
+    fi
+
+    if [[ $ONION_ONLY == "no" ]]; then
+        if [ ! -f /etc/ssl/certs/$SITE_DOMAIN_NAME.dhparam ]; then
+            if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+                ${PROJECT_NAME}-addcert -h $SITE_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+                check_certificates $SITE_DOMAIN_NAME
+            else
+                ${PROJECT_NAME}-addcert -e $SITE_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
+                if [ ! "$?" = "0" ]; then
+                    if [[ $NO_SELF_SIGNED == 'no' ]]; then
+                        echo $"Lets Encrypt failed for $SITE_DOMAIN_NAME, so try making a self-signed cert"
+                        ${PROJECT_NAME}-addcert -h $SITE_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+                        check_certificates $SITE_DOMAIN_NAME
+                    else
+                        echo $"Lets Encrypt failed for $SITE_DOMAIN_NAME"
+                        exit 682529
+                    fi
+                else
+                    check_certificates $SITE_DOMAIN_NAME 'yes'
+                fi
+            fi
+        fi
     fi
 }
 
@@ -6452,16 +6489,7 @@ function install_owncloud_official_deb {
 
     configure_php
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/$OWNCLOUD_DOMAIN_NAME.dhparam ]; then
-            if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                ${PROJECT_NAME}-addcert -h $OWNCLOUD_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-            else
-                ${PROJECT_NAME}-addcert -e $OWNCLOUD_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-            fi
-            check_certificates $OWNCLOUD_DOMAIN_NAME
-        fi
-    fi
+    create_site_certificate $OWNCLOUD_DOMAIN_NAME
 
     # Ensure that the database gets backed up locally, if remote
     # backups are not being used
@@ -6804,16 +6832,7 @@ function install_gogs {
 
     configure_php
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/$GIT_DOMAIN_NAME.dhparam ]; then
-            if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                ${PROJECT_NAME}-addcert -h $GIT_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-            else
-                ${PROJECT_NAME}-addcert -e $GIT_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-            fi
-            check_certificates $GIT_DOMAIN_NAME
-        fi
-    fi
+    create_site_certificate $GIT_DOMAIN_NAME
 
     nginx_ensite $GIT_DOMAIN_NAME
 
@@ -7726,16 +7745,7 @@ function install_wiki {
     echo '    }' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
     echo '}' >> /etc/nginx/sites-available/$WIKI_DOMAIN_NAME
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/$WIKI_DOMAIN_NAME.dhparam ]; then
-            if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                ${PROJECT_NAME}-addcert -h $WIKI_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-            else
-                ${PROJECT_NAME}-addcert -e $WIKI_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-            fi
-            check_certificates $WIKI_DOMAIN_NAME
-        fi
-    fi
+    create_site_certificate $WIKI_DOMAIN_NAME
 
     configure_php
 
@@ -8049,16 +8059,7 @@ function install_blog {
     echo '    }' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
     echo '}' >> /etc/nginx/sites-available/$FULLBLOG_DOMAIN_NAME
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/$FULLBLOG_DOMAIN_NAME.dhparam ]; then
-            if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                ${PROJECT_NAME}-addcert -h $FULLBLOG_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-            else
-                ${PROJECT_NAME}-addcert -e $FULLBLOG_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-            fi
-            check_certificates $FULLBLOG_DOMAIN_NAME
-        fi
-    fi
+    create_site_certificate $FULLBLOG_DOMAIN_NAME
 
     configure_php
 
@@ -8647,12 +8648,7 @@ function install_gnu_social {
 
     configure_php
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/$MICROBLOG_DOMAIN_NAME.dhparam ]; then
-            ${PROJECT_NAME}-addcert -e $MICROBLOG_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-            check_certificates $MICROBLOG_DOMAIN_NAME
-        fi
-    fi
+    create_site_certificate $MICROBLOG_DOMAIN_NAME 'yes'
 
     # Ensure that the database gets backed up locally, if remote
     # backups are not being used
@@ -9397,12 +9393,7 @@ function install_hubzilla {
 
     configure_php
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/$HUBZILLA_DOMAIN_NAME.dhparam ]; then
-            ${PROJECT_NAME}-addcert -e $HUBZILLA_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-            check_certificates $HUBZILLA_DOMAIN_NAME
-        fi
-    fi
+    create_site_certificate $HUBZILLA_DOMAIN_NAME 'yes'
 
     if [ ! -d $HUBZILLA_PATH/view/tpl/smarty3 ]; then
         mkdir $HUBZILLA_PATH/view/tpl/smarty3
@@ -9689,7 +9680,7 @@ function install_mediagoblin {
     else
         sed -i "s|Mediagoblin onion domain.*|Mediagoblin onion domain:${MEDIAGOBLIN_ONION_HOSTNAME}|g" $COMPLETION_FILE
     fi
-    
+
     # web config
     MEDIAGOBLIN_VIRTUAL_HOST=/etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
     nginx_http_redirect $MEDIAGOBLIN_DOMAIN_NAME
@@ -9759,7 +9750,7 @@ function install_mediagoblin {
     else
         echo -n '' > $MEDIAGOBLIN_VIRTUAL_HOST
     fi
-    
+
     echo 'server {' >> $MEDIAGOBLIN_VIRTUAL_HOST
     echo "  listen 127.0.0.1:${MEDIAGOBLIN_ONION_PORT} default_server;" >> $MEDIAGOBLIN_VIRTUAL_HOST
     echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
@@ -9821,18 +9812,7 @@ function install_mediagoblin {
     echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
     echo '}' >> $MEDIAGOBLIN_VIRTUAL_HOST
 
-    if [ ! -f /etc/ssl/certs/$MEDIAGOBLIN_DOMAIN_NAME.dhparam ]; then
-        if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-            ${PROJECT_NAME}-addcert -h $MEDIAGOBLIN_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-        else
-            ${PROJECT_NAME}-addcert -e $MEDIAGOBLIN_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-            if [ ! "$?" = "0" ]; then
-                echo $'Lets Encrypt failed for this domain, so try making a self-signed cert'
-                ${PROJECT_NAME}-addcert -h $MEDIAGOBLIN_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-            fi          
-        fi
-        check_certificates $MEDIAGOBLIN_DOMAIN_NAME
-    fi
+    create_site_certificate $MEDIAGOBLIN_DOMAIN_NAME
 
     nginx_ensite $MEDIAGOBLIN_DOMAIN_NAME
     systemctl restart php5-fpm
@@ -10522,19 +10502,7 @@ function install_sip_turn {
         VOIP_TURN_NONCE="$(openssl rand -base64 32 | cut -c1-30)"
     fi
 
-    # create a certificate if needed
-    if [ ! -f /etc/ssl/certs/$DEFAULT_DOMAIN_NAME.pem ]; then
-        if [ ! -f /etc/ssl/certs/$DEFAULT_DOMAIN_NAME.crt ]; then
-            if [ ! -f /etc/ssl/certs/$DEFAULT_DOMAIN_NAME.dhparam ]; then
-                if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                    ${PROJECT_NAME}-addcert -h $DEFAULT_DOMAIN_NAME --dhkey $DH_KEYLENGTH
-                else
-                    ${PROJECT_NAME}-addcert -e $DEFAULT_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
-                fi
-                check_certificates $DEFAULT_DOMAIN_NAME
-            fi
-        fi
-    fi
+    create_site_certificate $DEFAULT_DOMAIN_NAME
 
     echo '##' > /etc/turnserver/turnserver.conf
     echo '# TurnServer configuration file.' >> /etc/turnserver/turnserver.conf
