@@ -9571,7 +9571,8 @@ function install_mediagoblin {
         return
     fi
 
-    apt-get -y install git-core python python-dev python-lxml python-imaging python-virtualenv npm nodejs-legacy automake
+    apt-get -y install git-core python python3-dev python3-lxml python3-pil
+	apt-get -y install python3-virtualenv npm nodejs-legacy automake
 
     #apt-get -y install postgresql postgresql-client python-psycopg2
     #apt-get -y install python-gst-1.0 libjpeg62-turbo-dev gstreamer1.0-plugins-base python-gobject
@@ -9592,6 +9593,8 @@ function install_mediagoblin {
     git_clone $MEDIAGOBLIN_REPO $MEDIAGOBLIN_WORKING_DIRECTORY
     cd $MEDIAGOBLIN_WORKING_DIRECTORY
     git checkout $MEDIAGOBLIN_COMMIT -b $MEDIAGOBLIN_COMMIT
+	git submodule init
+	git submodule update
 
     if ! grep -q "Mediagoblin commit" $COMPLETION_FILE; then
         echo "Mediagoblin commit:$MEDIAGOBLIN_COMMIT" >> $COMPLETION_FILE
@@ -9599,17 +9602,18 @@ function install_mediagoblin {
         sed -i "s/Mediagoblin commit.*/Mediagoblin commit:$MEDIAGOBLIN_COMMIT/g" $COMPLETION_FILE
     fi
 
-    ./bootstrap.sh
+    chown -hR mediagoblin:www-data $MEDIAGOBLIN_WORKING_DIRECTORY
+    su -c "cd $MEDIAGOBLIN_WORKING_DIRECTORY && ./bootstrap.sh" - mediagoblin
     if [ ! "$?" = "0" ]; then
         exit 278826
     fi
 
-    ./configure --with-python3 --without-virtualenv
+    su -c "cd $MEDIAGOBLIN_WORKING_DIRECTORY && ./configure --with-python3" - mediagoblin
     if [ ! "$?" = "0" ]; then
         exit 462826
     fi
 
-    make
+    su -c "cd $MEDIAGOBLIN_WORKING_DIRECTORY && make" - mediagoblin
     if [ ! "$?" = "0" ]; then
         exit 738229
     fi
@@ -9650,7 +9654,7 @@ function install_mediagoblin {
     echo 'User=mediagoblin' >> /etc/systemd/system/mediagoblin.service
     echo 'Group=mediagoblin' >> /etc/systemd/system/mediagoblin.service
     echo "WorkingDirectory=$MEDIAGOBLIN_WORKING_DIRECTORY" >> /etc/systemd/system/mediagoblin.service
-    echo "ExecStart=$MEDIAGOBLIN_WORKING_DIRECTORY/lazyserver.sh  --server-name=fcgi fcgi_host=127.0.0.1 fcgi_port=26543" >> /etc/systemd/system/mediagoblin.service
+    echo "ExecStart=$MEDIAGOBLIN_WORKING_DIRECTORY/lazyserver.sh --server-name=fcgi fcgi_host=127.0.0.1 fcgi_port=26543" >> /etc/systemd/system/mediagoblin.service
     echo 'Restart=always' >> /etc/systemd/system/mediagoblin.service
     echo 'Environment="USER=mediagoblin","HOME=/var/lib/mediagoblin"' >> /etc/systemd/system/mediagoblin.service
     echo '' >> /etc/systemd/system/mediagoblin.service
@@ -9678,92 +9682,92 @@ function install_mediagoblin {
         echo 'server {' >> $MEDIAGOBLIN_VIRTUAL_HOST
         echo '  listen 443 ssl;' >> $MEDIAGOBLIN_VIRTUAL_HOST
         echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # Stock useful config options, but ignore them :)' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  include /etc/nginx/mime.types;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  autoindex off;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  default_type  application/octet-stream;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  sendfile on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        nginx_limits $MEDIAGOBLIN_DOMAIN_NAME '20m'
-        nginx_ssl $MEDIAGOBLIN_DOMAIN_NAME
-        nginx_disable_sniffing $MEDIAGOBLIN_DOMAIN_NAME
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # Gzip' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  gzip on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  gzip_min_length 1024;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  gzip_buffers 4 32k;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  gzip_types text/plain application/x-javascript text/javascript text/xml text/css;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  #####################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # Mounting MediaGoblin stuff' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # This is the section you should read' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  #####################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo "  server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  access_log /var/log/nginx/mediagoblin.log;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  error_log /var/log/nginx/mediagoblin.error.log;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # MediaGoblins stock static files: CSS, JS, etc.' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  location /mgoblin_static/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/mediagoblin/static/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # Instance specific media:' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  location /mgoblin_media/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/user_dev/media/public/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # Theme static files (usually symlinked in)' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  location /theme_static/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/user_dev/theme_static/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # Plugin static files (usually symlinked in)' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  location /plugin_static/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/user_dev/plugin_static/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  # Mounting MediaGoblin itself via FastCGI.' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  location / {' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '    fastcgi_pass 127.0.0.1:26543;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '    include /etc/nginx/fastcgi_params;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '    # our understanding vs nginxs handling of script_name vs' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '      # path_info dont match :)' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '    fastcgi_param PATH_INFO $fastcgi_script_name;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '    fastcgi_param SCRIPT_NAME "";' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '}' >> $MEDIAGOBLIN_VIRTUAL_HOST
-        echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    else
-        echo -n '' > $MEDIAGOBLIN_VIRTUAL_HOST
-    fi
+		echo '  # Stock useful config options, but ignore them :)' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  include /etc/nginx/mime.types;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  autoindex off;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  default_type  application/octet-stream;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  sendfile on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		nginx_limits $MEDIAGOBLIN_DOMAIN_NAME '20m'
+		nginx_ssl $MEDIAGOBLIN_DOMAIN_NAME
+		nginx_disable_sniffing $MEDIAGOBLIN_DOMAIN_NAME
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # Gzip' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  gzip on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  gzip_min_length 1024;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  gzip_buffers 4 32k;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  gzip_types text/plain application/x-javascript text/javascript text/xml text/css;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  #####################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # Mounting MediaGoblin stuff' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # This is the section you should read' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  #####################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo "  server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  access_log /var/log/nginx/mediagoblin.log;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  error_log /var/log/nginx/mediagoblin.error.log;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # MediaGoblins stock static files: CSS, JS, etc.' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  location /mgoblin_static/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/mediagoblin/static/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # Instance specific media:' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  location /mgoblin_media/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/user_dev/media/public/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # Theme static files (usually symlinked in)' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  location /theme_static/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/user_dev/theme_static/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # Plugin static files (usually symlinked in)' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  location /plugin_static/ {' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo "    alias $MEDIAGOBLIN_WORKING_DIRECTORY/user_dev/plugin_static/;" >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  # Mounting MediaGoblin itself via FastCGI.' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  location / {' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '    fastcgi_pass 127.0.0.1:26543;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '    include /etc/nginx/fastcgi_params;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '    # our understanding vs nginxs handling of script_name vs' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '      # path_info dont match :)' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '    fastcgi_param PATH_INFO $fastcgi_script_name;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '    fastcgi_param SCRIPT_NAME "";' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '  }' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '}' >> $MEDIAGOBLIN_VIRTUAL_HOST
+		echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	else
+		echo -n '' > $MEDIAGOBLIN_VIRTUAL_HOST
+	fi
 
-    echo 'server {' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo "  listen 127.0.0.1:${MEDIAGOBLIN_ONION_PORT} default_server;" >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  # Stock useful config options, but ignore them :)' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  include /etc/nginx/mime.types;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  autoindex off;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  default_type  application/octet-stream;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  sendfile on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    nginx_limits $MEDIAGOBLIN_DOMAIN_NAME '20m'
-    nginx_disable_sniffing $MEDIAGOBLIN_DOMAIN_NAME
-    echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  # Gzip' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  gzip on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  gzip_min_length 1024;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  gzip_buffers 4 32k;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  gzip_types text/plain application/x-javascript text/javascript text/xml text/css;' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  #####################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  # Mounting MediaGoblin stuff' >> $MEDIAGOBLIN_VIRTUAL_HOST
-    echo '  # This is the section you should read' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo 'server {' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo "  listen 127.0.0.1:${MEDIAGOBLIN_ONION_PORT} default_server;" >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  # Stock useful config options, but ignore them :)' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  #################################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  include /etc/nginx/mime.types;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  autoindex off;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  default_type  application/octet-stream;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  sendfile on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	nginx_limits $MEDIAGOBLIN_DOMAIN_NAME '20m'
+	nginx_disable_sniffing $MEDIAGOBLIN_DOMAIN_NAME
+	echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  # Gzip' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  gzip on;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  gzip_min_length 1024;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  gzip_buffers 4 32k;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  gzip_types text/plain application/x-javascript text/javascript text/xml text/css;' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  #####################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  # Mounting MediaGoblin stuff' >> $MEDIAGOBLIN_VIRTUAL_HOST
+	echo '  # This is the section you should read' >> $MEDIAGOBLIN_VIRTUAL_HOST
     echo '  #####################################' >> $MEDIAGOBLIN_VIRTUAL_HOST
     echo '' >> $MEDIAGOBLIN_VIRTUAL_HOST
     echo "  server_name $MEDIAGOBLIN_ONION_HOSTNAME;" >> $MEDIAGOBLIN_VIRTUAL_HOST
