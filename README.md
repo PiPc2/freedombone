@@ -3,7 +3,7 @@
 The Freedombone system can be installed onto a Beaglebone Black, or any system capable of running Debian Jessie, and allows you to host your own email and web services. With Freedombone you can enjoy true freedom and independence in the cloud. It comes in a variety of flavours.
 
  - **Full install**: Installs eveything
- - **Mailbox**: An email server with GPG encryption and mailing list
+ - **Mailbox**: An email server with GPG encryption
  - **Cloud**: Share files, maintain a calendar and collaborate on document editing
  - **Social**: Social networking with Hubzilla and GNU Social
  - **Media**: Runs media services such as DLNA to play music or videos on your devices
