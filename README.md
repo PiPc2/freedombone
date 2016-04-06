@@ -172,7 +172,6 @@ On your internet router, typically under firewall settings, open the following p
     | Email   |        993 |
     | VoIP    |      64738 |
     | Tox     |      33445 |
-    | IPFS    |       4001 |
 
 Keydrives
 =========
