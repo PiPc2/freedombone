@@ -1552,6 +1552,23 @@ function nginx_ssl {
     echo "    ssl_ciphers '$SSL_CIPHERS';" >> $filename
 }
 
+function rss_reader_modifications {
+    # modify the rss reader to use a socks5 proxy rather than a http proxy
+    if [ ! -d $RSS_READER_PATH ]; then
+        return
+    fi
+    
+    # ensure that socks5 proxy is used
+    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/plugins/af_unburn/init.php; then
+        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/plugins/af_unburn/init.php
+    fi
+    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/include/functions.php; then
+        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/include/functions.php
+    fi
+    chown -R www-data:www-data $RSS_READER_PATH
+    chmod a+x $RSS_READER_PATH
+}
+
 function set_repo_commit {
     repo_dir=$1
     repo_commit_name=$2
@@ -1608,13 +1625,7 @@ function set_repo_commit {
                     make install
                 fi
                 if [[ $repo_dir == $RSS_READER_PATH ]]; then
-                    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/plugins/af_unburn/init.php; then
-                        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/plugins/af_unburn/init.php
-                    fi
-                    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/include/functions.php; then
-                        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/include/functions.php
-                    fi
-                    chown -R www-data:www-data $RSS_READER_PATH
+                    rss_reader_modifications
                 fi
                 if [[ $repo_dir == *"inadyn" ]]; then
                     ./configure
@@ -7262,9 +7273,9 @@ function install_irc_client {
     echo '    use_ssl = "yes";' >> /home/$MY_USERNAME/.irssi/config
     echo '    ssl_verify = "no";' >> /home/$MY_USERNAME/.irssi/config
     echo '    autoconnect = "yes";' >> /home/$MY_USERNAME/.irssi/config
-	if [ $IRC_PASSWORD ]; then
-		echo "    password = \"${IRC_PASSWORD}\";" >> /home/$MY_USERNAME/.irssi/config
-	fi
+    if [ $IRC_PASSWORD ]; then
+        echo "    password = \"${IRC_PASSWORD}\";" >> /home/$MY_USERNAME/.irssi/config
+    fi
     echo '  }' >> /home/$MY_USERNAME/.irssi/config
     echo ');' >> /home/$MY_USERNAME/.irssi/config
     echo '' >> /home/$MY_USERNAME/.irssi/config
@@ -8318,7 +8329,7 @@ function install_rss_reader {
         echo "  define('SMTP_LOGIN', '');" >> $RSS_READER_PATH/config.php
         echo "  define('SMTP_PASSWORD', '');" >> $RSS_READER_PATH/config.php
         echo "  define('SMTP_SECURE', '');" >> $RSS_READER_PATH/config.php
-        echo "  define('CHECK_FOR_UPDATES', true);" >> $RSS_READER_PATH/config.php
+        echo "  define('CHECK_FOR_UPDATES', false);" >> $RSS_READER_PATH/config.php
         echo "  define('ENABLE_GZIP_OUTPUT', false);" >> $RSS_READER_PATH/config.php
         echo "  define('PLUGINS', 'auth_internal, note, gnusocial');" >> $RSS_READER_PATH/config.php
         echo "  define('LOG_DESTINATION', 'sql');" >> $RSS_READER_PATH/config.php
@@ -8336,16 +8347,7 @@ function install_rss_reader {
     RSS_READER_ADMIN_PASSWORD_HASH=$(echo -n "${RSS_READER_ADMIN_PASSWORD}" | sha1sum | awk -F ' ' '{print $1}')
     mysql -u root --password="$MARIADB_PASSWORD" -e "update ttrss_users set pwd_hash = 'SHA1:${RSS_READER_ADMIN_PASSWORD_HASH}', salt= '' WHERE login = 'admin';" ttrss
 
-    # ensure that socks5 proxy is used
-    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/plugins/af_unburn/init.php; then
-        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/plugins/af_unburn/init.php
-    fi
-    if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/include/functions.php; then
-        sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/include/functions.php
-    fi
-
-    chown -R www-data:www-data $RSS_READER_PATH
-    chmod a+x $RSS_READER_PATH
+    rss_reader_modifications    
 
     configure_php
 
