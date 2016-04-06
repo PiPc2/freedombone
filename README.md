@@ -182,18 +182,16 @@ After installing for the first time it's a good idea to create some keydrives. T
 This is the traditional security model in which you carry your full keyring on an encrypted USB drive. To make a master keydrive first format a USB drive as a LUKS encrypted drive. In Ubuntu this can be done from the *Disk Utility* application. Then plug it into the Freedombone system, then from your local machine run:
 
     ssh myusername@mydomainname -p 2222
-    sudo control
 
-Select *Backup and Restore* then *Backup GPG key to USB (master keydrive)*.
+Select *Administrator controls* then *Backup and Restore* then *Backup GPG key to USB (master keydrive)*.
 
 **Fragment keydrives**
 
 This breaks your GPG key into a number of fragments and randomly selects one to add to the USB drive. First format a USB drive as a LUKS encrypted drive. In Ubuntu this can be done from the *Disk Utility* application. Plug it into the Freedombone system then from your local machine run the following commands:
 
     ssh myusername@mydomainname -p 2222
-    sudo control
 
-Select *Backup and Restore* then *Backup GPG key to USB (fragment keydrive)*.
+Select *Administrator controls* then *Backup and Restore* then *Backup GPG key to USB (fragment keydrive)*.
 
 Fragments are randomly assigned and so you will need at least three or four keydrives to have enough fragments to reconstruct your original key in a worst case scenario. You can store fragments for different Freedombone systems on the same encrypted USB drive, so you can help to ensure that your friends can also recover their systems. This might be called *"the web of backups"* or *"the web of encryption"*. Since you can only write a single key fragment from your Freedombone system to a given USB drive each friend doesn't have enough information to decrypt your backups or steal your identity, even if they turn evil. This is based on the assumption that it may be difficult to get three or more friends to conspire against you all at once.
 
@@ -206,6 +204,5 @@ Administering the system
 To administer the system after installation log in via ssh, become the root user and then launch the control panel.
 
     ssh fbone@freedombone.local -p 2222
-    sudo control
 
-From there you will be able to perform various tasks, such as backups, adding and removing users and so on. You can also do this via commands, which are typically installed as /usr/local/bin/freedombone* and the corresponding manpages.
+Select *Administrator controls* and from there you will be able to perform various tasks, such as backups, adding and removing users and so on. You can also do this via commands, which are typically installed as /usr/local/bin/freedombone* and the corresponding manpages.
