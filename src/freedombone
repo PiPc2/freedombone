@@ -239,6 +239,15 @@ OWNCLOUD_ADMIN_PASSWORD=
 OWNCLOUD_PATH=/var/www/owncloud
 OWNCLOUD_UPGRADE_PATH=/root/owncloud_upgrade
 
+SYNCTHING_ID=
+SYNCTHING_CONFIG_PATH=/root/.config/syncthing
+SYNCTHING_CONFIG_FILE=$SYNCTHING_CONFIG_PATH/config.xml
+SYNCTHING_RELAY_SERVER='https://relays.syncthing.net/endpoint'
+SYNCTHING_RELEASES='https://api.github.com/repos/syncthing/syncthing/releases?per_page=30'
+SYNCTHING_PORT=22000
+SYNCTHING_SHARED_DATA=/var/lib/syncthing/SyncShared
+SYNCTHING_USER_IDS_FILE='.syncthingids'
+
 # Domain name for your wiki
 WIKI_DOMAIN_NAME=
 WIKI_ADMIN_PASSWORD=
@@ -1071,6 +1080,27 @@ function read_configuration {
         if [[ $CONFIGURATION_FILE != "/root/${PROJECT_NAME}.cfg" ]]; then
             cp $CONFIGURATION_FILE /root/${PROJECT_NAME}.cfg
         fi
+        if grep -q "SYNCTHING_ID" $CONFIGURATION_FILE; then
+            SYNCTHING_ID=$(grep "SYNCTHING_ID" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "SYNCTHING_CONFIG_PATH" $CONFIGURATION_FILE; then
+            SYNCTHING_CONFIG_PATH=$(grep "SYNCTHING_CONFIG_PATH" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "SYNCTHING_CONFIG_FILE" $CONFIGURATION_FILE; then
+            SYNCTHING_CONFIG_FILE=$(grep "SYNCTHING_CONFIG_FILE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "SYNCTHING_RELAY_SERVER" $CONFIGURATION_FILE; then
+            SYNCTHING_RELAY_SERVER=$(grep "SYNCTHING_RELAY_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "SYNCTHING_RELEASES" $CONFIGURATION_FILE; then
+            SYNCTHING_RELEASES=$(grep "SYNCTHING_RELEASES" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "SYNCTHING_PORT" $CONFIGURATION_FILE; then
+            SYNCTHING_PORT=$(grep "SYNCTHING_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
+        if grep -q "SYNCTHING_SHARED_DATA" $CONFIGURATION_FILE; then
+            SYNCTHING_SHARED_DATA=$(grep "SYNCTHING_SHARED_DATA" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+        fi
         if grep -q "VOIP_TURN_PORT" $CONFIGURATION_FILE; then
             VOIP_TURN_PORT=$(grep "VOIP_TURN_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
         fi
@@ -1557,7 +1587,7 @@ function rss_reader_modifications {
     if [ ! -d $RSS_READER_PATH ]; then
         return
     fi
-    
+
     # ensure that socks5 proxy is used
     if ! grep -q "CURLOPT_PROXYTYPE" $RSS_READER_PATH/plugins/af_unburn/init.php; then
         sed -i '/curl_setopt($ch, CURLOPT_PROXY, _CURL_HTTP_PROXY);/a \\t\t\t\t\tcurl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5);' $RSS_READER_PATH/plugins/af_unburn/init.php
@@ -1614,13 +1644,13 @@ function set_repo_commit {
                     systemctl restart gogs
                 fi
                 if [[ $repo_dir == *"toxcore" ]]; then
-					sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' $rootdir/etc/systemd/system/tox-bootstrapd.service
-					autoreconf -i
-					./configure --enable-daemon
-					make
-					make install
-					systemctl daemon-reload
-					systemctl restart tox-bootstrapd.service
+                    sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' $rootdir/etc/systemd/system/tox-bootstrapd.service
+                    autoreconf -i
+                    ./configure --enable-daemon
+                    make
+                    make install
+                    systemctl daemon-reload
+                    systemctl restart tox-bootstrapd.service
                 fi
                 if [[ $repo_dir == *"toxic" ]]; then
                     make
@@ -6213,6 +6243,49 @@ function upgrade_owncloud_start {
     fi
 }
 
+function install_syncthing {
+    if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        return
+    fi
+    if grep -Fxq "install_syncthing" $COMPLETION_FILE; then
+        return
+    fi
+
+    apt-get -y install curl
+
+    curl -s https://syncthing.net/release-key.txt | apt-key add -
+    echo "deb http://apt.syncthing.net/ syncthing release" | tee /etc/apt/sources.list.d/syncthing.list
+    apt-get update
+    apt-get -y install syncthing
+
+    # This probably does need to run as root so that it can access the Sync directories
+    # in each user's home directory
+    echo '[Unit]' > /etc/systemd/system/syncthing.service
+    echo 'Description=Syncthing - Open Source Continuous File Synchronization' >> /etc/systemd/system/syncthing.service
+    echo 'Documentation=man:syncthing(1)' >> /etc/systemd/system/syncthing.service
+    echo 'After=network.target' >> /etc/systemd/system/syncthing.service
+    echo 'Wants=syncthing-inotify@.service' >> /etc/systemd/system/syncthing.service
+    echo '' >> /etc/systemd/system/syncthing.service
+    echo '[Service]' >> /etc/systemd/system/syncthing.service
+    echo 'User=root' >> /etc/systemd/system/syncthing.service
+    echo 'ExecStart=/usr/bin/syncthing -no-browser -no-restart -logflags=0' >> /etc/systemd/system/syncthing.service
+    echo 'Restart=on-failure' >> /etc/systemd/system/syncthing.service
+    echo 'SuccessExitStatus=3 4' >> /etc/systemd/system/syncthing.service
+    echo 'RestartForceExitStatus=3 4' >> /etc/systemd/system/syncthing.service
+    echo '' >> /etc/systemd/system/syncthing.service
+    echo '[Install]' >> /etc/systemd/system/syncthing.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/syncthing.service
+    systemctl enable syncthing
+    systemctl daemon-reload
+    systemctl start syncthing
+
+    if ! grep -q "syncthing" /etc/crontab; then
+        echo "* *     * * *   root    ${PROJECT_NAME}-syncthing > /dev/null" >> /etc/crontab
+    fi
+    
+    echo 'install_syncthing' >> $COMPLETION_FILE
+}
+
 function upgrade_owncloud_finish {
     # copies data from a temporary upgrade directory to the new
     # owncloud install
@@ -7345,7 +7418,7 @@ function install_irc_server {
     if [ ! $IRC_PASSWORD ]; then
         IRC_PASSWORD="$(openssl rand -base64 32 | cut -c1-10)"
     fi
-    
+
     echo '**************************************************' > /etc/ngircd/motd
     echo $'*           F R E E D O M B O N E   I R C        *' >> /etc/ngircd/motd
     echo '*                                                *' >> /etc/ngircd/motd
@@ -8349,7 +8422,7 @@ function install_rss_reader {
     RSS_READER_ADMIN_PASSWORD_HASH=$(echo -n "${RSS_READER_ADMIN_PASSWORD}" | sha1sum | awk -F ' ' '{print $1}')
     mysql -u root --password="$MARIADB_PASSWORD" -e "update ttrss_users set pwd_hash = 'SHA1:${RSS_READER_ADMIN_PASSWORD_HASH}', salt= '' WHERE login = 'admin';" ttrss
 
-    rss_reader_modifications    
+    rss_reader_modifications
 
     configure_php
 
@@ -9668,7 +9741,7 @@ function install_mediagoblin {
     chown -hR mediagoblin:www-data /var/log/mediagoblin
     mkdir /var/run/mediagoblin
     chown -hR mediagoblin:www-data /var/run/mediagoblin
-    
+
     if [ ! -f $MEDIAGOBLIN_WORKING_DIRECTORY/mediagoblin.ini ]; then
         echo $'mediagoblin.ini not found'
         exit 737529
@@ -10835,7 +10908,8 @@ script_for_attaching_usb_drive
 install_web_server
 install_web_server_access_control
 configure_firewall_for_web_server
-install_owncloud_official_deb
+install_syncthing
+#install_owncloud_official_deb
 upgrade_golang
 install_gogs
 install_xmpp

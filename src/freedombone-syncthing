@@ -1,0 +1,273 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Checks for changed syncthing device IDs within user home directories
+# and then recreates the syncthing configuration file accordingly
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+NO_OF_ARGS=$#
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=$PROJECT_NAME-syncthing
+export TEXTDOMAINDIR="/usr/share/locale"
+
+# File which keeps track of what has already been installed
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
+SYNCTHING_ID=
+SYNCTHING_CONFIG_PATH=/root/.config/syncthing
+SYNCTHING_CONFIG_FILE=$SYNCTHING_CONFIG_PATH/config.xml
+SYNCTHING_RELAY_SERVER='https://relays.syncthing.net/endpoint'
+SYNCTHING_RELEASES='https://api.github.com/repos/syncthing/syncthing/releases?per_page=30'
+SYNCTHING_PORT=22000
+SYNCTHING_SHARED_DATA=/var/lib/syncthing/SyncShared
+SYNCTHING_USER_IDS_FILE='.syncthingids'
+CHANGED=
+TEMP_IDS_FILE=/root/.synthingids
+
+function new_syncthing_id {
+    for i in {1..8}
+    do
+        v=""
+        for j in {1..2}
+        do
+            v2=`echo "obase=16;$RANDOM" | bc`
+            v=$v$v2
+        done
+        v=$(echo "$v" | cut -c1-7)
+        if [[ ${i} < 8 ]]; then
+            v=$v"-"
+        fi
+        echo -n "$v"
+    done
+    echo "$v"
+}
+
+function create_syncthing_config {
+    if grep -q "Syncthing ID" $COMPLETION_FILE; then
+        SYNCTHING_ID=$(cat $COMPLETION_FILE | grep "Syncthing ID" | awk -F ':' '{print $2}')
+    else
+        if [ -f $SYNCTHING_CONFIG_FILE ]; then
+            SYNCTHING_ID=$(cat $SYNCTHING_CONFIG_FILE | grep "device id=" | head -n 1 | awk -F '"' '{print $2}')
+        else
+            SYNCTHING_ID=$(new_syncthing_id)            
+        fi      
+    fi
+
+    if ! grep -q "Syncthing ID" $COMPLETION_FILE; then
+        echo "Syncthing ID:$SYNCTHING_ID" >> $COMPLETION_FILE
+    else
+        sed -i "s|Syncthing ID.*|Syncthing ID:$SYNCTHING_ID|g" $COMPLETION_FILE
+    fi
+
+    if [ ! -d $SYNCTHING_CONFIG_PATH ]; then
+        mkdir -p $SYNCTHING_CONFIG_PATH
+    fi
+    if [ ! -d $SYNCTHING_SHARED_DATA ]; then
+        mkdir -p $SYNCTHING_SHARED_DATA
+    fi
+
+    echo '<configuration version="12">' > $SYNCTHING_CONFIG_FILE
+
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+            echo "    <folder id=\"$USERNAME\" path=\"/home/$USERNAME/Sync/\" ro=\"false\" rescanIntervalS=\"60\" ignorePerms=\"false\" autoNormalize=\"true\">" >> $SYNCTHING_CONFIG_FILE
+            # include any specified device IDs for this user
+            if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
+                echo "" > $TEMP_IDS_FILE
+                while read -r line || [[ -n "$line" ]]; do
+                    if [[ $line != *"#"* && $line != *"*"* && $line != *'/'*  && $line == *"-"* ]]; then
+                        if [ ${#line} -gt 10 ]; then
+                            if ! grep -q "$line" $TEMP_IDS_FILE; then
+                                echo "        <device id=\"$line\"></device>" >> $SYNCTHING_CONFIG_FILE
+                                echo "$line" >> $TEMP_IDS_FILE
+                            fi
+                        fi
+                    fi
+                done < /home/$USERNAME/$SYNCTHING_USER_IDS_FILE
+                rm $TEMP_IDS_FILE
+            fi
+            echo "        <device id=\"$SYNCTHING_ID\"></device>" >> $SYNCTHING_CONFIG_FILE
+            echo '        <minDiskFreePct>1</minDiskFreePct>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <versioning></versioning>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <copiers>0</copiers>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <pullers>0</pullers>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <hashers>0</hashers>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <order>random</order>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <ignoreDelete>false</ignoreDelete>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <scanProgressIntervalS>0</scanProgressIntervalS>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <pullerSleepS>0</pullerSleepS>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <pullerPauseS>0</pullerPauseS>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <maxConflicts>10</maxConflicts>' >> $SYNCTHING_CONFIG_FILE
+            echo '        <disableSparseFiles>false</disableSparseFiles>' >> $SYNCTHING_CONFIG_FILE
+            echo '    </folder>' >> $SYNCTHING_CONFIG_FILE
+        fi
+    done
+
+    echo "    <folder id=\"shared\" path=\"$SYNCTHING_SHARED_DATA/\" ro=\"false\" rescanIntervalS=\"60\" ignorePerms=\"false\" autoNormalize=\"true\">" >> $SYNCTHING_CONFIG_FILE
+    # all user devices may access this shared directory
+    echo "" > $TEMP_IDS_FILE
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+            if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
+                while read -r line || [[ -n "$line" ]]; do
+                    if [[ $line != *"#"* && $line != *"*"* && $line != *'/'*  && $line == *"-"* ]]; then
+                        if [ ${#line} -gt 10 ]; then
+                            if ! grep -q "$line" $TEMP_IDS_FILE; then
+                                echo "        <device id=\"$line\"></device>" >> $SYNCTHING_CONFIG_FILE
+                                echo "$line" >> $TEMP_IDS_FILE
+                            fi
+                        fi
+                    fi
+                done < /home/$USERNAME/$SYNCTHING_USER_IDS_FILE
+            fi
+        fi
+    done
+    rm $TEMP_IDS_FILE
+    echo "        <device id=\"$SYNCTHING_ID\"></device>" >> $SYNCTHING_CONFIG_FILE
+    echo '        <minDiskFreePct>1</minDiskFreePct>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <versioning></versioning>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <copiers>0</copiers>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <pullers>0</pullers>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <hashers>0</hashers>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <order>random</order>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <ignoreDelete>false</ignoreDelete>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <scanProgressIntervalS>0</scanProgressIntervalS>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <pullerSleepS>0</pullerSleepS>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <pullerPauseS>0</pullerPauseS>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <maxConflicts>10</maxConflicts>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <disableSparseFiles>false</disableSparseFiles>' >> $SYNCTHING_CONFIG_FILE
+    echo '    </folder>' >> $SYNCTHING_CONFIG_FILE
+
+    
+    echo "    <device id=\"$SYNCTHING_ID\" name=\"${PROJECT_NAME}\" compression=\"metadata\" introducer=\"false\">" >> $SYNCTHING_CONFIG_FILE
+    echo '        <address>dynamic</address>' >> $SYNCTHING_CONFIG_FILE
+    echo '    </device>' >> $SYNCTHING_CONFIG_FILE
+
+    echo "" > $TEMP_IDS_FILE
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+            if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
+                while read -r line || [[ -n "$line" ]]; do
+                    if [[ $line != *"#"* && $line != *"*"* && $line != *'/'*  && $line == *"-"* ]]; then
+                        if [ ${#line} -gt 10 ]; then
+                            if ! grep -q "$line" $TEMP_IDS_FILE; then
+                                echo "    <device id=\"$line\" name=\"${USERNAME}\" compression=\"metadata\" introducer=\"false\">" >> $SYNCTHING_CONFIG_FILE
+                                echo '        <address>dynamic</address>' >> $SYNCTHING_CONFIG_FILE
+                                echo '    </device>' >> $SYNCTHING_CONFIG_FILE
+                                echo "$line" >> $TEMP_IDS_FILE
+                            fi
+                        fi
+                    fi
+                done < /home/$USERNAME/$SYNCTHING_USER_IDS_FILE
+            fi
+        fi
+    done
+    rm $TEMP_IDS_FILE   
+
+    echo '    <options>' >> $SYNCTHING_CONFIG_FILE
+    echo "        <listenAddress>tcp://0.0.0.0:$SYNCTHING_PORT</listenAddress>" >> $SYNCTHING_CONFIG_FILE
+    echo '        <globalAnnounceServer>default</globalAnnounceServer>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <globalAnnounceEnabled>true</globalAnnounceEnabled>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <localAnnounceEnabled>true</localAnnounceEnabled>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <localAnnouncePort>21027</localAnnouncePort>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <localAnnounceMCAddr>[ff12::8384]:21027</localAnnounceMCAddr>' >> $SYNCTHING_CONFIG_FILE
+    echo "        <relayServer>dynamic+$SYNCTHING_RELAY_SERVER</relayServer>" >> $SYNCTHING_CONFIG_FILE
+    echo '        <maxSendKbps>0</maxSendKbps>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <maxRecvKbps>0</maxRecvKbps>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <reconnectionIntervalS>60</reconnectionIntervalS>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <relaysEnabled>true</relaysEnabled>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <relayReconnectIntervalM>10</relayReconnectIntervalM>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <startBrowser>true</startBrowser>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <upnpEnabled>true</upnpEnabled>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <upnpLeaseMinutes>60</upnpLeaseMinutes>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <upnpRenewalMinutes>30</upnpRenewalMinutes>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <upnpTimeoutSeconds>10</upnpTimeoutSeconds>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <urAccepted>-1</urAccepted>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <urUniqueID></urUniqueID>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <urURL>https://data.syncthing.net/newdata</urURL>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <urPostInsecurely>false</urPostInsecurely>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <urInitialDelayS>1800</urInitialDelayS>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <restartOnWakeup>true</restartOnWakeup>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <autoUpgradeIntervalH>12</autoUpgradeIntervalH>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <keepTemporariesH>24</keepTemporariesH>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <cacheIgnoredFiles>true</cacheIgnoredFiles>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <progressUpdateIntervalS>5</progressUpdateIntervalS>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <symlinksEnabled>true</symlinksEnabled>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <limitBandwidthInLan>false</limitBandwidthInLan>' >> $SYNCTHING_CONFIG_FILE
+    echo '        <minHomeDiskFreePct>1</minHomeDiskFreePct>' >> $SYNCTHING_CONFIG_FILE
+    echo "        <releasesURL>$SYNCTHING_RELEASES</releasesURL>" >> $SYNCTHING_CONFIG_FILE
+    echo '    </options>' >> $SYNCTHING_CONFIG_FILE
+    echo '</configuration>' >> $SYNCTHING_CONFIG_FILE
+
+    # give each user account a file containing the device id for this server
+    # This allows it to appear within the user control panel
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+            echo "$SYNCTHING_ID" > /home/$USERNAME/.syncthing-server-id
+            chown $USERNAME:$USERNAME /home/$USERNAME/.syncthing-server-id
+        fi
+    done
+}
+
+function user_devices_changed {
+    CHANGED=
+    if [ ! -f $SYNCTHING_CONFIG_FILE ]; then
+        CHANGED=1
+        return
+    fi
+    
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+            if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
+                while read -r line || [[ -n "$line" ]]; do
+                    if [[ $line != *"#"* && $line != *"*"* && $line != *'/'*  && $line == *"-"* ]]; then
+                        if [ ${#line} -gt 10 ]; then
+                            if ! grep -q "$line" $SYNCTHING_CONFIG_FILE; then
+                                CHANGED=1
+                            fi
+                        fi
+                    fi
+                done < /home/$USERNAME/$SYNCTHING_USER_IDS_FILE
+            fi
+        fi
+    done
+}
+
+user_devices_changed
+if [ $CHANGED ]; then
+    create_syncthing_config
+    systemctl restart syncthing
+fi
+
+exit 0
