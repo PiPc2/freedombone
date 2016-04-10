@@ -36,6 +36,9 @@ export TEXTDOMAINDIR="/usr/share/locale"
 MY_EMAIL_ADDRESS=$USER@$HOSTNAME
 GPG_ID=$(gpg --fingerprint $MY_EMAIL_ADDRESS | grep -i "pub" | head -n 1 | awk -F '/' '{print $2}' | awk -F ' ' '{print $1}')
 
+SYNCTHING_CONFIG_FILE=~/.syncthingids
+SYNCTHING_ID=$(cat ~/.syncthing-server-id)
+
 function any_key {
     echo ' '
     read -n1 -r -p $"Press any key to continue..." key
@@ -539,6 +542,144 @@ function smtp_proxy {
     fi
 }
 
+function syncthing_create_ids_file {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    SYNCTHING_ID=$(cat ~/.syncthing-server-id)
+    if [ ! -f $SYNCTHING_CONFIG_FILE ]; then
+        echo $'# Your syncthing configuration file' > $SYNCTHING_CONFIG_FILE
+        echo '#' >> $SYNCTHING_CONFIG_FILE
+        echo $"# The ${PROJECT_NAME} syncthing ID is: $SYNCTHING_ID" >> $SYNCTHING_CONFIG_FILE
+        echo '#' >> $SYNCTHING_CONFIG_FILE
+        echo '# Paste the IDs of your devices below' >> $SYNCTHING_CONFIG_FILE
+        echo '#' >> $SYNCTHING_CONFIG_FILE      
+    fi
+}
+
+function syncthing_manual_edit {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+    syncthing_create_ids_file
+    editor $SYNCTHING_CONFIG_FILE
+}
+
+function syncthing_show_id {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    SYNCTHING_ID=$(cat ~/.syncthing-server-id)
+    dialog --title $"Device ID for ${PROJECT_NAME}" \
+           --backtitle $"Freedombone User Control Panel" \
+           --msgbox $"Within your syncthing user interface add this device ID:\n\n$SYNCTHING_ID" 8 78   
+}
+
+function syncthing_add_id {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    syncthing_create_ids_file
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title $"Add a Syncthing device ID" \
+           --form $"Paste the device ID for your laptop/desktop/netbook/phone/tablet below" 9 80 2 \
+           $"Device ID:" 1 1 "" 1 26 80 80 \
+           $"Description (optional):" 2 1 "" 2 26 80 80 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    SYNCTHING_DEVICE_ID=$(cat $data | sed -n 1p)
+    SYNCTHING_DESCRIPTION=$(cat $data | sed -n 2p)
+
+    if [ ${#SYNCTHING_DEVICE_ID} -lt 10 ]; then
+        return
+    fi 
+    
+    if [[ $SYNCTHING_DEVICE_ID == *"#"* || $SYNCTHING_DEVICE_ID == *"*"* || $SYNCTHING_DEVICE_ID == *'/'*  || $SYNCTHING_DEVICE_ID != *"-"* ]]; then
+        dialog --title $"Add a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That doesn't look like a device ID" 6 50
+        return
+    fi
+
+    if grep -q "$SYNCTHING_DEVICE_ID" $SYNCTHING_CONFIG_FILE; then
+        dialog --title $"Add a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That ID has already been added" 6 50
+        return
+    fi
+    
+    if [ ${#SYNCTHING_DESCRIPTION} -gt 0 ]; then
+        echo "# $SYNCTHING_DESCRIPTION" >> $SYNCTHING_CONFIG_FILE
+    fi  
+    echo "$SYNCTHING_DEVICE_ID" >> $SYNCTHING_CONFIG_FILE
+
+    # force an update of the configuration
+    touch ~/.syncthing-update
+
+    dialog --title $"Add a Syncthing device ID" \
+           --backtitle $"Freedombone User Control Panel" \
+           --msgbox $"The ID was added" 6 50
+}
+
+function syncthing_remove_id {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    syncthing_create_ids_file
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title $"Remove a Syncthing device ID" \
+           --form $"Paste the device ID which is to be removed below" 8 80 1 \
+           $"Device ID:" 1 1 "" 1 14 80 80 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    SYNCTHING_DEVICE_ID=$(cat $data | sed -n 1p)
+
+    if [ ${#SYNCTHING_DEVICE_ID} -lt 10 ]; then
+        return
+    fi 
+    
+    if [[ $SYNCTHING_DEVICE_ID == *"#"* || $SYNCTHING_DEVICE_ID == *"*"* || $SYNCTHING_DEVICE_ID == *'/'*  || $SYNCTHING_DEVICE_ID != *"-"* ]]; then
+        dialog --title $"Remove a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That doesn't look like a device ID" 6 50
+        return
+    fi
+
+    if ! grep -q "$SYNCTHING_DEVICE_ID" $SYNCTHING_CONFIG_FILE; then
+        dialog --title $"Remove a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That ID wasn't registered anyway" 6 50
+        return
+    fi
+    
+    sed -i "/$SYNCTHING_DEVICE_ID/d" $SYNCTHING_CONFIG_FILE
+
+    # force an update of the configuration
+    touch ~/.syncthing-update
+
+    dialog --title $"Remove a Syncthing device ID" \
+           --backtitle $"Freedombone User Control Panel" \
+           --msgbox $"The ID was removed" 6 50
+}
+
 function menu_encryption_keys {
     while true
     do
@@ -603,6 +744,34 @@ function menu_email {
     done
 }
 
+function menu_syncthing {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone User Control Panel" \
+               --title $"File Synchronization" \
+               --radiolist $"Choose an operation:" 12 70 6 \
+               1 $"Show device ID for ${PROJECT_NAME}" off \
+               2 $"Add an ID for another machine or device" off \
+               3 $"Remove an ID for another machine or device" off \
+               4 $"Manually edit device IDs" off \
+               5 $"Back to main menu" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) syncthing_show_id;;
+            2) syncthing_add_id;;
+            3) syncthing_remove_id;;
+            4) syncthing_manual_edit;;
+            5) break;;
+        esac
+    done
+}
+
 function menu_admin {
     if [ ! -f /etc/sudoers ]; then
         clear
@@ -616,64 +785,46 @@ function menu_admin {
     fi
 }
 
-function syncthing_devices {
-	if [ ! -f ~/.syncthing-server-id ]; then
-		return
-	fi
-	
-	SYNCTHING_CONFIG_FILE=~/.syncthingids
-	SYNCTHING_ID=$(cat ~/.syncthing-server-id)
-	if [ ! -f $SYNCTHING_CONFIG_FILE ]; then
-		echo $'# Your syncthing configuration file' > $SYNCTHING_CONFIG_FILE
-		echo '#' >> $SYNCTHING_CONFIG_FILE
-		echo $"# The ${PROJECT_NAME} syncthing ID is: $SYNCTHING_ID" >> $SYNCTHING_CONFIG_FILE
-		echo '#' >> $SYNCTHING_CONFIG_FILE
-		echo '# Paste the IDs of your devices below' >> $SYNCTHING_CONFIG_FILE
-		echo '#' >> $SYNCTHING_CONFIG_FILE      
-	fi
-	editor $SYNCTHING_CONFIG_FILE
-}
-
 function menu_top_level {
-	while true
-	do
-		data=$(tempfile 2>/dev/null)
-		trap "rm -f $data" 0 1 2 5 15
-		dialog --backtitle $"Freedombone User Control Panel" \
-			   --title $"User Control Panel" \
-			   --radiolist $"Choose an operation:" 19 50 12 \
-			   1 $"Use Email" off \
-			   2 $"Change Email Filtering Rules" off \
-			   3 $"Use Tox Chat" off \
-			   4 $"Use XMPP Chat" off \
-			   5 $"Use IRC" off \
-			   6 $"Browse the Web" off \
-			   7 $"Syncthing devices" off \
-			   8 $"Your Encryption Keys" off \
-			   9 $"Set an outgoing email proxy" off \
-			   10 $"Administrator controls" off \
-			   11 $"Exit to the command line" off \
-			   12 $"Log out" on 2> $data
-		sel=$?
-		case $sel in
-			1) exit 1;;
-			255) exit 1;;
-		esac
-		case $(cat $data) in
-			1) mutt;;
-			2) menu_email;;
-			3) toxic --force-tcp --SOCKS5-proxy 127.0.0.1 9050;;
-			4) torify profanity;;
-			5) torify irssi;;
-			6) torify elinks;;
-			7) syncthing_devices;;
-			8) menu_encryption_keys;;
-			9) smtp_proxy;;
-			10) menu_admin;;
-			11) break;;
-			12) kill -HUP `pgrep -s 0 -o`;;
-		esac
-	done
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone User Control Panel" \
+               --title $"User Control Panel" \
+               --radiolist $"Choose an operation:" 19 50 12 \
+               1 $"Use Email" off \
+               2 $"Change Email Filtering Rules" off \
+               3 $"Use Tox Chat" off \
+               4 $"Use XMPP Chat" off \
+               5 $"Use IRC" off \
+               6 $"Browse the Web" off \
+               7 $"File Synchronization" off \
+               8 $"Your Encryption Keys" off \
+               9 $"Set an outgoing email proxy" off \
+               10 $"Administrator controls" off \
+               11 $"Exit to the command line" off \
+               12 $"Log out" on 2> $data
+        sel=$?
+        case $sel in
+            1) exit 1;;
+            255) exit 1;;
+        esac
+        case $(cat $data) in
+            1) mutt;;
+            2) menu_email;;
+            3) toxic --force-tcp --SOCKS5-proxy 127.0.0.1 9050;;
+            4) torify profanity;;
+            5) torify irssi;;
+            6) torify elinks;;
+            7) menu_syncthing;;
+            8) menu_encryption_keys;;
+            9) smtp_proxy;;
+            10) menu_admin;;
+            11) break;;
+            12) kill -HUP `pgrep -s 0 -o`;;
+        esac
+    done
 }
 
 menu_top_level
