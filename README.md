@@ -4,7 +4,7 @@ The Freedombone system can be installed onto a Beaglebone Black, or any system c
 
  - **Full install**: Installs eveything
  - **Mailbox**: An email server with GPG encryption
- - **Cloud**: Share files, maintain a calendar and collaborate on document editing
+ - **Cloud**: Sync and share files. Never lose important files again
  - **Social**: Social networking with Hubzilla and GNU Social
  - **Media**: Runs media services such as DLNA to play music or videos on your devices
  - **Writer**: Host your blog and wiki
