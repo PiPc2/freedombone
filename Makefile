@@ -7,6 +7,8 @@ all:
 debug:
 translations:
 	bash -c "./translate make"
+rmtranslations:
+	bash -c "./translate remove"
 alltranslations:
 	bash -c "./translate translations"
 source:
