@@ -100,10 +100,6 @@ function update_domains {
     if grep -q "Blog domain" $COMPLETION_FILE; then
         FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
     fi
-    OWNCLOUD_DOMAIN_NAME='owncloud'
-    if grep -q "Owncloud domain" $COMPLETION_FILE; then
-        OWNCLOUD_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Owncloud domain" | awk -F ':' '{print $2}')
-    fi
     MEDIAGOBLIN_DOMAIN_NAME='mediagoblin'
     if grep -q "Mediagoblin domain" $COMPLETION_FILE; then
         MEDIAGOBLIN_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Mediagoblin domain" | awk -F ':' '{print $2}')
@@ -299,280 +295,295 @@ function backup_users {
                 backup_directory_to_usb /home/$USERNAME/.fin fin/$USERNAME
             fi
 
-            # Backup user configs
-            if [ -d /home/$USERNAME/.config ]; then
-                echo $"Backing up config files for $USERNAME"
-                backup_directory_to_usb /home/$USERNAME/.config config/$USERNAME
-            fi
+            # Backup syncthing
+            if [ -d /home/$USERNAME/Sync ]; then
+                echo $"Backing up syncthing files for $USERNAME"
+                backup_directory_to_usb /home/$USERNAME/Sync syncthing/$USERNAME
+				# ensure that device IDs will be backed up as part of user config settings
+				if [ ! -d /home/$USERNAME/.config/syncthing ]; then
+					mkdir -p /home/$USERNAME/.config/syncthing
+					chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+				fi					
+				if [ -f /home/$USERNAME/.syncthing-server-id ]; then
+					cp /home/$USERNAME/.syncthing-server-id /home/$USERNAME/.config/syncthing
+					chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+				fi				
+				if [ -f /home/$USERNAME/.syncthingids ]; then
+					cp /home/$USERNAME/.syncthingids /home/$USERNAME/.config/syncthing
+					chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+				fi				
+			fi
+			
+			# Backup user configs
+			if [ -d /home/$USERNAME/.config ]; then
+				echo $"Backing up config files for $USERNAME"
+				backup_directory_to_usb /home/$USERNAME/.config config/$USERNAME
+			fi
+			
+			# Backup user local
+			if [ -d /home/$USERNAME/.local ]; then
+				echo $"Backing up local files for $USERNAME"
+				backup_directory_to_usb /home/$USERNAME/.local local/$USERNAME
+			fi
 
-            # Backup user local
-            if [ -d /home/$USERNAME/.local ]; then
-                echo $"Backing up local files for $USERNAME"
-                backup_directory_to_usb /home/$USERNAME/.local local/$USERNAME
-            fi
+			# Backup mutt
+			if [ -f /home/$USERNAME/.muttrc ]; then
+				echo $"Backing up Mutt settings for $USERNAME"
+				if [ ! -d /home/$USERNAME/tempbackup ]; then
+					mkdir -p /home/$USERNAME/tempbackup
+				fi
+				cp /home/$USERNAME/.muttrc /home/$USERNAME/tempbackup
+				if [ -f /etc/Muttrc ]; then
+					cp /etc/Muttrc /home/$USERNAME/tempbackup
+				fi
+				backup_directory_to_usb /home/$USERNAME/tempbackup mutt/$USERNAME
+			fi
 
-            # Backup mutt
-            if [ -f /home/$USERNAME/.muttrc ]; then
-                echo $"Backing up Mutt settings for $USERNAME"
-                if [ ! -d /home/$USERNAME/tempbackup ]; then
-                    mkdir -p /home/$USERNAME/tempbackup
-                fi
-                cp /home/$USERNAME/.muttrc /home/$USERNAME/tempbackup
-                if [ -f /etc/Muttrc ]; then
-                    cp /etc/Muttrc /home/$USERNAME/tempbackup
-                fi
-                backup_directory_to_usb /home/$USERNAME/tempbackup mutt/$USERNAME
-            fi
+			# Backup email
+			if [ -d /home/$USERNAME/Maildir ]; then
+				echo $"Creating an email archive for $USERNAME"
+				if [ ! -d /root/tempbackupemail/$USERNAME ]; then
+					mkdir -p /root/tempbackupemail/$USERNAME
+				fi
+				tar -czvf /root/tempbackupemail/$USERNAME/maildir.tar.gz /home/$USERNAME/Maildir
+				echo $"Backing up emails for $USERNAME"
+				backup_directory_to_usb /root/tempbackupemail/$USERNAME mail/$USERNAME
+			fi
 
-            # Backup email
-            if [ -d /home/$USERNAME/Maildir ]; then
-                echo $"Creating an email archive for $USERNAME"
-                if [ ! -d /root/tempbackupemail/$USERNAME ]; then
-                    mkdir -p /root/tempbackupemail/$USERNAME
-                fi
-                tar -czvf /root/tempbackupemail/$USERNAME/maildir.tar.gz /home/$USERNAME/Maildir
-                echo $"Backing up emails for $USERNAME"
-                backup_directory_to_usb /root/tempbackupemail/$USERNAME mail/$USERNAME
-            fi
+			# Backup spamassassin
+			if [ -d /home/$USERNAME/.spamassassin ]; then
+				echo $"Backing up spamassassin settings for $USERNAME"
+				backup_directory_to_usb /home/$USERNAME/.spamassassin spamassassin/$USERNAME
+			fi
 
-            # Backup spamassassin
-            if [ -d /home/$USERNAME/.spamassassin ]; then
-                echo $"Backing up spamassassin settings for $USERNAME"
-                backup_directory_to_usb /home/$USERNAME/.spamassassin spamassassin/$USERNAME
-            fi
-
-            # Backup procmail
-            if [ -f /home/$USERNAME/.procmailrc ]; then
-                echo $"Backing up procmail settings for $USERNAME"
-                if [ ! -d /home/$USERNAME/tempbackup ]; then
-                    mkdir -p /home/$USERNAME/tempbackup
-                fi
-                cp /home/$USERNAME/.procmailrc /home/$USERNAME/tempbackup
-                backup_directory_to_usb /home/$USERNAME/tempbackup procmail/$USERNAME
-            fi
-        fi
-    done
+			# Backup procmail
+			if [ -f /home/$USERNAME/.procmailrc ]; then
+				echo $"Backing up procmail settings for $USERNAME"
+				if [ ! -d /home/$USERNAME/tempbackup ]; then
+					mkdir -p /home/$USERNAME/tempbackup
+				fi
+				cp /home/$USERNAME/.procmailrc /home/$USERNAME/tempbackup
+				backup_directory_to_usb /home/$USERNAME/tempbackup procmail/$USERNAME
+			fi
+		fi
+	done
 }
 
 function backup_directories {
-    # directories to be backed up (source,dest)
-    backup_dirs=(
-        "none,                               none,       /etc/letsencrypt,                                letsencrypt"
-        "none,                               none,       /var/lib/dokuwiki,                               wiki"
-        "none,                               none,       /etc/dokuwiki,                                   wiki2"
-        "none,                               none,       /etc/ssl,                                        ssl"
-        "/etc/share/tt-rss,                  ttrss,      /root/tempttrssdata,                             ttrss"
-        "none,                               none,       /var/spool/mlmmj,                                mailinglist"
-        "none,                               none,       /var/lib/prosody,                                xmpp"
-        "none,                               none,       /etc/nginx/sites-available,                      web"
-        "none,                               none,       /home/$ADMIN_USERNAME/.ipfs,                     ipfs"
-        "none,                               none,       /var/cache/minidlna,                             dlna"
-        "/home/git/go/src/github.com/gogits, gogs,       /root/tempgogsdata,                              gogsdata"
-        "none,                               none,       /home/git/go/src/github.com/gogits/gogs/custom,  gogs"
-        "none,                               none,       /home/git/gogs-repositories,                     gogsrepos"
-        "none,                               none,       /home/git/.ssh,                                  gogsssh"
-        "none,                               none,       /var/lib/tox-bootstrapd,                         tox"
-        "/var/www/${MICROBLOG_DOMAIN_NAME},  gnusocial,  /root/tempgnusocialdata,                         gnusocialdata"
-        "none,                               none,       /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs,        gnusocial"
-        "/var/www/owncloud,                  owncloud,   /root/tempownclouddata,                          ownclouddata"
-        "none,                               none,       /var/www/owncloud/data,                          owncloudfiles"
-        "none,                               none,       /var/www/owncloud/config,                        owncloudconfig"
-        "/var/www/${HUBZILLA_DOMAIN_NAME},   hubzilla,   /root/temphubzilladata,                          hubzilladata"
-        "none,                               none,       /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs,         hubzilla"
-        "none,                               none,       /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs,         blog"
-        "none,                               none,       /var/lib/tor,                                    tor"
-        "none,                               none,       /var/www/${MEDIAGOBLIN_DOMAIN_NAME}/htdocs,      mediagoblin"
-    )
+	# directories to be backed up (source,dest)
+	backup_dirs=(
+		"none,                               none,       /etc/letsencrypt,                                letsencrypt"
+		"none,                               none,       /var/lib/dokuwiki,                               wiki"
+		"none,                               none,       /etc/dokuwiki,                                   wiki2"
+		"none,                               none,       /etc/ssl,                                        ssl"
+		"/etc/share/tt-rss,                  ttrss,      /root/tempttrssdata,                             ttrss"
+		"none,                               none,       /var/spool/mlmmj,                                mailinglist"
+		"none,                               none,       /var/lib/prosody,                                xmpp"
+		"none,                               none,       /etc/nginx/sites-available,                      web"
+		"none,                               none,       /home/$ADMIN_USERNAME/.ipfs,                     ipfs"
+		"none,                               none,       /var/cache/minidlna,                             dlna"
+		"/home/git/go/src/github.com/gogits, gogs,       /root/tempgogsdata,                              gogsdata"
+		"none,                               none,       /home/git/go/src/github.com/gogits/gogs/custom,  gogs"
+		"none,                               none,       /home/git/gogs-repositories,                     gogsrepos"
+		"none,                               none,       /home/git/.ssh,                                  gogsssh"
+		"none,                               none,       /var/lib/tox-bootstrapd,                         tox"
+		"/var/www/${MICROBLOG_DOMAIN_NAME},  gnusocial,  /root/tempgnusocialdata,                         gnusocialdata"
+		"none,                               none,       /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs,        gnusocial"
+		"none,                               none,       /var/lib/syncthing/SyncShared,                   syncthingshared"
+		"none,                               none,       /root/.config/syncthing,                         syncthingconfig"
+		"/var/www/${HUBZILLA_DOMAIN_NAME},   hubzilla,   /root/temphubzilladata,                          hubzilladata"
+		"none,                               none,       /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs,         hubzilla"
+		"none,                               none,       /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs,         blog"
+		"none,                               none,       /var/lib/tor,                                    tor"
+		"none,                               none,       /var/www/${MEDIAGOBLIN_DOMAIN_NAME}/htdocs,      mediagoblin"
+	)
 
-    for dr in "${backup_dirs[@]}"
-    do
-        # if this directory exists then backup the given database
-        required_directory=$(echo $dr | awk -F ',' '{print $1}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        database_name=$(echo $dr | awk -F ',' '{print $2}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+	for dr in "${backup_dirs[@]}"
+	do
+		# if this directory exists then backup the given database
+		required_directory=$(echo $dr | awk -F ',' '{print $1}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+		database_name=$(echo $dr | awk -F ',' '{print $2}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
-        if [[ "$database_name" == *"hubzilla"* ]]; then
-            suspend_site ${HUBZILLA_DOMAIN_NAME}
-        fi
-        if [[ "$database_name" == *"gnusocial"* ]]; then
-            suspend_site ${MICROBLOG_DOMAIN_NAME}
-        fi
-        if [[ "$database_name" == *"owncloud"* ]]; then
-            suspend_site ${OWNCLOUD_DOMAIN_NAME}
-        fi
-        if [[ "$database_name" == *"gogs"* ]]; then
-            suspend_site ${GIT_DOMAIN_NAME}
-        fi
-        if [[ "$database_name" == *"ttrss"* ]]; then
-            suspend_site ${RSS_READER_DOMAIN_NAME}
-        fi
+		if [[ "$database_name" == *"hubzilla"* ]]; then
+			suspend_site ${HUBZILLA_DOMAIN_NAME}
+		fi
+		if [[ "$database_name" == *"gnusocial"* ]]; then
+			suspend_site ${MICROBLOG_DOMAIN_NAME}
+		fi
+		if [[ "$database_name" == *"gogs"* ]]; then
+			suspend_site ${GIT_DOMAIN_NAME}
+		fi
+		if [[ "$database_name" == *"ttrss"* ]]; then
+			suspend_site ${RSS_READER_DOMAIN_NAME}
+		fi
 
-        if [[ $required_directory != "none" ]]; then
-            if [ -d $required_directory ]; then
-                if [[ $database_name != "none" ]]; then
-                    backup_database $database_name
-                fi
-            fi
-        fi
+		if [[ $required_directory != "none" ]]; then
+			if [ -d $required_directory ]; then
+				if [[ $database_name != "none" ]]; then
+					backup_database $database_name
+				fi
+			fi
+		fi
 
-        # if this directory exists then back it up to the given destination
-        source_directory=$(echo $dr | awk -F ',' '{print $3}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        if [ -d $source_directory ]; then
-            dest_directory=$(echo $dr | awk -F ',' '{print $4}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-            echo $"Backing up $source_directory to $dest_directory"
-            backup_directory_to_usb $source_directory $dest_directory
-        fi
+		# if this directory exists then back it up to the given destination
+		source_directory=$(echo $dr | awk -F ',' '{print $3}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+		if [ -d $source_directory ]; then
+			dest_directory=$(echo $dr | awk -F ',' '{print $4}'  | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+			echo $"Backing up $source_directory to $dest_directory"
+			backup_directory_to_usb $source_directory $dest_directory
+		fi
 
-        restart_site
-    done
+		restart_site
+	done
 }
 
 function remove_backup_directory {
-    if [ $1 ]; then
-        if [[ $1 == "remove" ]]; then
-            if [ -d $USB_MOUNT/backup ]; then
-                rm -rf $USB_MOUNT/backup
-                echo $'Existing backup directory removed'
-                unmount_drive
-                exit 0
-            fi
-        fi
-    fi
+	if [ $1 ]; then
+		if [[ $1 == "remove" ]]; then
+			if [ -d $USB_MOUNT/backup ]; then
+				rm -rf $USB_MOUNT/backup
+				echo $'Existing backup directory removed'
+				unmount_drive
+				exit 0
+			fi
+		fi
+	fi
 }
 
 function prepare_directories {
-    # Some miscellaneous preparation for backing up directories
-    if [ -d /home/git/go/src/github.com/gogits ]; then
-        mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/$ADMIN_USERNAME
-    fi
-    if [ -d /var/lib/tox-bootstrapd ]; then
-        cp /etc/tox-bootstrapd.conf /var/lib/tox-bootstrapd
-        if [ -d /var/lib/tox-bootstrapd/Maildir ]; then
-            rm -rf /var/lib/tox-bootstrapd/Maildir
-        fi
-    fi
+	# Some miscellaneous preparation for backing up directories
+	if [ -d /home/git/go/src/github.com/gogits ]; then
+		mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/$ADMIN_USERNAME
+	fi
+	if [ -d /var/lib/tox-bootstrapd ]; then
+		cp /etc/tox-bootstrapd.conf /var/lib/tox-bootstrapd
+		if [ -d /var/lib/tox-bootstrapd/Maildir ]; then
+			rm -rf /var/lib/tox-bootstrapd/Maildir
+		fi
+	fi
 }
 
 function backup_configuration {
-    echo $"Backing up ${PROJECT_NAME} configuration files"
-    if [ ! -d /root/tempbackupconfig ]; then
-        mkdir -p /root/tempbackupconfig
-    fi
-    cp -f $CONFIG_FILE /root/tempbackupconfig
-    cp -f $COMPLETION_FILE /root/tempbackupconfig
-    if [ -f $BACKUP_EXTRA_DIRECTORIES ]; then
-        cp -f $BACKUP_EXTRA_DIRECTORIES /root/tempbackupconfig
-    fi
-    # nginx password hashes
-    if [ -f /etc/nginx/.htpasswd ]; then
-        cp -f /etc/nginx/.htpasswd /root/tempbackupconfig/htpasswd
-    fi
-    backup_directory_to_usb /root/tempbackupconfig config
+	echo $"Backing up ${PROJECT_NAME} configuration files"
+	if [ ! -d /root/tempbackupconfig ]; then
+		mkdir -p /root/tempbackupconfig
+	fi
+	cp -f $CONFIG_FILE /root/tempbackupconfig
+	cp -f $COMPLETION_FILE /root/tempbackupconfig
+	if [ -f $BACKUP_EXTRA_DIRECTORIES ]; then
+		cp -f $BACKUP_EXTRA_DIRECTORIES /root/tempbackupconfig
+	fi
+	# nginx password hashes
+	if [ -f /etc/nginx/.htpasswd ]; then
+		cp -f /etc/nginx/.htpasswd /root/tempbackupconfig/htpasswd
+	fi
+	backup_directory_to_usb /root/tempbackupconfig config
 }
 
 function backup_admin_readme {
-    if [ -f /home/$ADMIN_USERNAME/README ]; then
-        echo $"Backing up README"
-        if [ ! -d /home/$ADMIN_USERNAME/tempbackup ]; then
-            mkdir -p /home/$ADMIN_USERNAME/tempbackup
-        fi
-        cp -f /home/$ADMIN_USERNAME/README /home/$ADMIN_USERNAME/tempbackup
-        backup_directory_to_usb /home/$ADMIN_USERNAME/tempbackup readme
-    fi
+	if [ -f /home/$ADMIN_USERNAME/README ]; then
+		echo $"Backing up README"
+		if [ ! -d /home/$ADMIN_USERNAME/tempbackup ]; then
+			mkdir -p /home/$ADMIN_USERNAME/tempbackup
+		fi
+		cp -f /home/$ADMIN_USERNAME/README /home/$ADMIN_USERNAME/tempbackup
+		backup_directory_to_usb /home/$ADMIN_USERNAME/tempbackup readme
+	fi
 }
 
 function backup_voip {
-    if [ -f /etc/mumble-server.ini ]; then
-        echo $"Backing up VoIP settings"
-        if [ ! -d /root/tempvoipbackup ]; then
-            mkdir -p /root/tempvoipbackup
-        fi
-        cp -f /etc/mumble-server.ini /root/tempvoipbackup
-        cp -f /var/lib/mumble-server/mumble-server.sqlite /root/tempvoipbackup
-        cp -f /etc/sipwitch.conf /root/tempvoipbackup
-        backup_directory_to_usb /root/tempvoipbackup voip
-    fi
+	if [ -f /etc/mumble-server.ini ]; then
+		echo $"Backing up VoIP settings"
+		if [ ! -d /root/tempvoipbackup ]; then
+			mkdir -p /root/tempvoipbackup
+		fi
+		cp -f /etc/mumble-server.ini /root/tempvoipbackup
+		cp -f /var/lib/mumble-server/mumble-server.sqlite /root/tempvoipbackup
+		cp -f /etc/sipwitch.conf /root/tempvoipbackup
+		backup_directory_to_usb /root/tempvoipbackup voip
+	fi
 }
 
 function backup_mariadb {
-    if [ ${#DATABASE_PASSWORD} -gt 1 ]; then
-        if [ ! -d /root/tempmariadb ]; then
-            mkdir /root/tempmariadb
-        fi
-        mysqldump --lock-tables --password="$DATABASE_PASSWORD" mysql user > /root/tempmariadb/mysql.sql
-        if [ ! -s /root/tempmariadb/mysql.sql ]; then
-            echo $"Unable to backup mysql settings"
-            rm -rf /root/tempmariadb
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
-            exit 8
-        fi
-        echo "$DATABASE_PASSWORD" > /root/tempmariadb/db
-        chmod 400 /root/tempmariadb/db
-        backup_directory_to_usb /root/tempmariadb mariadb
-    fi
+	if [ ${#DATABASE_PASSWORD} -gt 1 ]; then
+		if [ ! -d /root/tempmariadb ]; then
+			mkdir /root/tempmariadb
+		fi
+		mysqldump --lock-tables --password="$DATABASE_PASSWORD" mysql user > /root/tempmariadb/mysql.sql
+		if [ ! -s /root/tempmariadb/mysql.sql ]; then
+			echo $"Unable to backup mysql settings"
+			rm -rf /root/tempmariadb
+			umount $USB_MOUNT
+			rm -rf $USB_MOUNT
+			exit 8
+		fi
+		echo "$DATABASE_PASSWORD" > /root/tempmariadb/db
+		chmod 400 /root/tempmariadb/db
+		backup_directory_to_usb /root/tempmariadb mariadb
+	fi
 }
 
 function valid_backup_destination {
-    destination_dir="$1"
-    is_valid="yes"
+	destination_dir="$1"
+	is_valid="yes"
 
-    if [[ "$destination_dir" == "hubzilla" || \
-                "$destination_dir" == "hubzilladata" || \
-                "$destination_dir" == "gogs" || \
-                "$destination_dir" == "gogsrepos" || \
-                "$destination_dir" == "gogsssh" || \
-                "$destination_dir" == "gnusocial" || \
-                "$destination_dir" == "gnusocialdata" || \
-                "$destination_dir" == "mariadb" || \
-                "$destination_dir" == "config" || \
-                "$destination_dir" == "letsencrypt" || \
-                "$destination_dir" == "wiki" || \
-                "$destination_dir" == "wiki2" || \
-                "$destination_dir" == "xmpp" || \
-                "$destination_dir" == "ipfs" || \
-                "$destination_dir" == "dlna" || \
-                "$destination_dir" == "tox" || \
-                "$destination_dir" == "ssl" || \
-                "$destination_dir" == "ttrss" || \
-                "$destination_dir" == "blog" || \
-                "$destination_dir" == "owncloudfiles" || \
-                "$destination_dir" == "owncloudconfig" || \
-                "$destination_dir" == "ownclouddata" || \
-                "$destination_dir" == "mediagoblin" || \
-                "$destination_dir" == "mailinglist" ]]; then
-        is_valid="no"
-    fi
+	if [[ "$destination_dir" == "hubzilla" || \
+				"$destination_dir" == "hubzilladata" || \
+				"$destination_dir" == "gogs" || \
+				"$destination_dir" == "gogsrepos" || \
+				"$destination_dir" == "gogsssh" || \
+				"$destination_dir" == "gnusocial" || \
+				"$destination_dir" == "gnusocialdata" || \
+				"$destination_dir" == "mariadb" || \
+				"$destination_dir" == "config" || \
+				"$destination_dir" == "letsencrypt" || \
+				"$destination_dir" == "wiki" || \
+				"$destination_dir" == "wiki2" || \
+				"$destination_dir" == "xmpp" || \
+				"$destination_dir" == "ipfs" || \
+				"$destination_dir" == "dlna" || \
+				"$destination_dir" == "tox" || \
+				"$destination_dir" == "ssl" || \
+				"$destination_dir" == "ttrss" || \
+				"$destination_dir" == "blog" || \
+				"$destination_dir" == "syncthingconfig" || \
+				"$destination_dir" == "syncthingshared" || \
+				"$destination_dir" == "syncthing" || \
+				"$destination_dir" == "mediagoblin" || \
+				"$destination_dir" == "mailinglist" ]]; then
+		is_valid="no"
+	fi
 
-    echo $is_valid
+	echo $is_valid
 }
 
 function backup_extra_directories {
-    if [ ! -f $BACKUP_EXTRA_DIRECTORIES ]; then
-        return
-    fi
+	if [ ! -f $BACKUP_EXTRA_DIRECTORIES ]; then
+		return
+	fi
 
-    echo $"Backing up some additional directories"
-    while read backup_line
-    do
-        backup_dir=$(echo "$backup_line" | awk -F ',' '{print $1}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        if [ -d "$backup_dir" ]; then
-            destination_dir=$(echo "$backup_line" | awk -F ',' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-            if [[ $(valid_backup_destination "$destination_dir") == "yes" ]]; then
-                backup_directory_to_usb "$backup_dir" "$destination_dir"
-            else
-                echo $"WARNING: The backup directory $destination_dir is already used."
-                echo $"Choose a different destination name for backing up $backup_dir"
-            fi
-        else
-            echo $"WARNING: Directory $backup_dir does not exist"
-        fi
-    done <$BACKUP_EXTRA_DIRECTORIES
+	echo $"Backing up some additional directories"
+	while read backup_line
+	do
+		backup_dir=$(echo "$backup_line" | awk -F ',' '{print $1}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+		if [ -d "$backup_dir" ]; then
+			destination_dir=$(echo "$backup_line" | awk -F ',' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+			if [[ $(valid_backup_destination "$destination_dir") == "yes" ]]; then
+				backup_directory_to_usb "$backup_dir" "$destination_dir"
+			else
+				echo $"WARNING: The backup directory $destination_dir is already used."
+				echo $"Choose a different destination name for backing up $backup_dir"
+			fi
+		else
+			echo $"WARNING: Directory $backup_dir does not exist"
+		fi
+	done <$BACKUP_EXTRA_DIRECTORIES
 }
 
 # has the remove option been set ?
 remove_option=$2
 if [[ $1 == "remove" ]]; then
-    remove_option=$1
+	remove_option=$1
 fi
 
 mount_drive $1 $2

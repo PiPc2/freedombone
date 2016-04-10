@@ -693,47 +693,79 @@ function restore_hubzilla {
     fi
 }
 
-function restore_owncloud {
+function restore_syncthing {
     if [[ $RESTORE_APP != 'all' ]]; then
-        if [[ $RESTORE_APP != 'owncloud' ]]; then
+        if [[ $RESTORE_APP != 'syncthing' ]]; then
             return
         fi
     fi
-    OWNCLOUD_PATH=/var/www/owncloud
-    if grep -q "Owncloud domain" $COMPLETION_FILE; then
-        OWNCLOUD_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Owncloud domain" | awk -F ':' '{print $2}')
-        restore_database_from_friend owncloud $OWNCLOUD_DOMAIN_NAME
 
-        if [ -d $SERVER_DIRECTORY/backup/owncloudfiles ]; then
-            echo $"Restoring Owncloud installation"
-            restore_directory_from_friend /root/tempowncloudfiles owncloudfiles
-            cp -r /root/tempowncloudfiles/* /
-            if [ ! "$?" = "0" ]; then
-                exit 1458
-            fi
-            rm -rf /root/tempowncloudfiles
+    if [ -f /etc/systemd/system/syncthing.service ]; then
+        systemctl stop syncthing
+        systemctl stop cron
+    fi
+    
+    if [ -d $SERVER_DIRECTORY/backup/syncthingconfig ]; then
+        echo $"Restoring syncthing configuration"
+        restore_directory_from_friend /root/tempsyncthingconfig syncthingconfig
+        cp -r /root/tempsyncthingconfig/* /
+        if [ ! "$?" = "0" ]; then
+            unmount_drive
+            systemctl start syncthing
+            systemctl start cron
+            exit 6833
         fi
+        rm -rf /root/tempsyncthingconfig
+    fi
 
-        if [ -d $SERVER_DIRECTORY/backup/owncloudconfig ]; then
-            echo $"Restoring Owncloud installation"
-            restore_directory_from_friend /root/tempowncloudconfig owncloudconfig
-            cp -r /root/tempowncloudconfig/* /
-            if [ ! "$?" = "0" ]; then
-                exit 2571
-            fi
-            rm -rf /root/tempowncloudconfig
+    if [ -d $SERVER_DIRECTORY/backup/syncthingshared ]; then
+        echo $"Restoring syncthing shared files"
+        restore_directory_from_friend /root/tempsyncthingshared syncthingshared
+        cp -r /root/tempsyncthingshared/* /
+        if [ ! "$?" = "0" ]; then
+            unmount_drive
+            systemctl start syncthing
+            systemctl start cron
+            exit 37904
         fi
+        rm -rf /root/tempsyncthingshared
+    fi
 
-        chown -R www-data:www-data $OWNCLOUD_PATH
-        chown root:root $OWNCLOUD_PATH/config/config.php
-
-        # re-index files
-        for d in /home/*/ ; do
-            USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+    if [ -d $SERVER_DIRECTORY/backup/syncthing ]; then
+        for d in $SERVER_DIRECTORY/backup/syncthing/*/ ; do
+            USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
             if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
-                $OWNCLOUD_PATH/occ files:scan $USERNAME
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring syncthing files for $USERNAME"
+                restore_directory_from_friend /root/tempsyncthing syncthing/$USERNAME
+                cp -r /root/tempsyncthing/home/$USERNAME/Sync /home/$USERNAME/
+                if [ ! "$?" = "0" ]; then
+                    rm -rf /root/tempsyncthing
+                    unmount_drive
+                    systemctl start syncthing
+                    systemctl start cron
+                    exit 68438
+                fi
+                rm -rf /root/tempsyncthing
+
+                # restore device IDs from config settings
+                if [ -f /home/$USERNAME/.config/syncthing/.syncthing-server-id ]; then
+                    cp /home/$USERNAME/.config/syncthing/.syncthing-server-id /home/$USERNAME/.syncthing-server-id
+                    chown $USERNAME:$USERNAME /home/$USERNAME/.syncthing-server-id
+                fi
+                if [ -f /home/$USERNAME/.config/syncthing/.syncthingids ]; then
+                    cp /home/$USERNAME/.config/syncthing/.syncthingids /home/$USERNAME/.syncthingids
+                    chown $USERNAME:$USERNAME /home/$USERNAME/.syncthingids
+                fi              
             fi
         done
+    fi
+
+    if [ -f /etc/systemd/system/syncthing.service ]; then
+        systemctl start syncthing
+        systemctl start cron
     fi
 }
 
@@ -1014,7 +1046,7 @@ restore_xmpp
 restore_gnu_social
 restore_hubzilla
 restore_rss_reader
-restore_owncloud
+restore_syncthing
 restore_mediagoblin
 restore_gogs
 restore_wiki
