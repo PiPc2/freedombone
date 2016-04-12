@@ -6874,13 +6874,17 @@ function install_irc_client {
     echo '  {' >> /home/$MY_USERNAME/.irssi/config
     if [[ $ONION_ONLY == 'no' ]]; then
         echo "    address = \"${DEFAULT_DOMAIN_NAME}\";" >> /home/$MY_USERNAME/.irssi/config
+        echo "    port = \"${IRC_PORT}\";" >> /home/$MY_USERNAME/.irssi/config
+        echo '    use_ssl = "yes";' >> /home/$MY_USERNAME/.irssi/config
     else
         IRC_ONION_HOSTNAME=$(cat $COMPLETION_FILE | grep "IRC onion domain" | awk -F ':' '{print $2}')
         echo "    address = \"${IRC_ONION_HOSTNAME}\";" >> /home/$MY_USERNAME/.irssi/config
+        echo "    port = \"${IRC_ONION_PORT}\";" >> /home/$MY_USERNAME/.irssi/config 
+        echo '    use_ssl = "no";' >> /home/$MY_USERNAME/.irssi/config
+        sed -i "s/;Ports =.*/Ports = $IRC_PORT, $IRC_ONION_PORT/1" /etc/ngircd/ngircd.conf
+        systemctl restart ngircd
     fi
     echo '    chatnet = "Freedombone";' >> /home/$MY_USERNAME/.irssi/config
-    echo "    port = \"${IRC_PORT}\";" >> /home/$MY_USERNAME/.irssi/config
-    echo '    use_ssl = "yes";' >> /home/$MY_USERNAME/.irssi/config
     echo '    ssl_verify = "no";' >> /home/$MY_USERNAME/.irssi/config
     echo '    autoconnect = "yes";' >> /home/$MY_USERNAME/.irssi/config
     if [ $IRC_PASSWORD ]; then
@@ -7011,7 +7015,19 @@ function install_irc_server {
         echo "IRC onion domain:$IRC_ONION_HOSTNAME" >> $COMPLETION_FILE
     fi
 
-    systemctl restart ngircd
+    systemctl stop ngircd
+    if [ ! -f /lib/systemd/system/ngircd.service ]; then
+        echo $'No systemd daemon found for ngircd'
+        exit 82528
+    fi
+    
+    if [[ $ONION_ONLY == 'no' ]]; then
+        sed -i 's|ExecStart.*|ExecStart=/usr/sbin/ngircd|g' /lib/systemd/system/ngircd.service
+    else
+        sed -i 's|ExecStart.*|ExecStart=/usr/bin/torify /usr/sbin/ngircd|g' /lib/systemd/system/ngircd.service
+    fi  
+    systemctl daemon-reload
+    systemctl start ngircd
 
     # keep the daemon running
     echo '' >> /usr/bin/$WATCHDOG_SCRIPT_NAME
