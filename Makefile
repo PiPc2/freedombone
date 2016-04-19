@@ -16,8 +16,8 @@ source:
 	gzip -f9n ../${APP}_${VERSION}.orig.tar
 install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
-	mkdir -p ${DESTDIR}/etc/freedombone
-	cp -r image_build/* ${DESTDIR}/etc/freedombone
+	mkdir -p ${DESTDIR}/etc/${APP}
+	cp -r image_build/* ${DESTDIR}/etc/${APP}
 	install -m 755 src/* ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
@@ -43,7 +43,7 @@ uninstall:
 	rm -f ${PREFIX}/bin/restore
 	rm -f ${PREFIX}/bin/restorefromfriend
 	rm -f ${PREFIX}/bin/meshweb
-	rm -rf /etc/freedombone
+	rm -rf /etc/${APP}
 	bash -c "./translate uninstall"
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log
