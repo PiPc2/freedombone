@@ -1,0 +1,141 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Wifi configuration tools
+
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-wifi
+export TEXTDOMAINDIR="/usr/share/locale"
+
+CONFIGURATION_FILE=$HOME/${PROJECT_NAME}.cfg
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
+WIFI_DEVICE=wlan0
+WIFI_TYPE='wpa2-psk'
+WIFI_SSID=
+WIFI_PASSPHRASE=
+
+function wifi_get_psk {
+    ssid=$1
+    passphrase=$2
+
+    psk=$(wpa_passphrase "$ssid" "$passphrase" | grep 'psk=' | sed -n 2p | awk -F '=' '{print $2}')
+    echo $psk
+}
+
+function wifi_wpa2_psk {
+    ssid=$1
+    passphrase=$2
+    psk=$(wifi_get_psk "$ssid" "$passphrase")
+    echo "auto $WIFI_DEVICE" > /etc/network/interfaces.d/wifi
+    echo 'iface $WIFI_DEVICE inet dhcp' >> /etc/network/interfaces.d/wifi
+    echo "    wpa-ssid $ssid" >> /etc/network/interfaces.d/wifi
+    echo "    wpa-psk $psk" >> /etc/network/interfaces.d/wifi
+}
+
+function wifi_none {
+    ssid=$1
+    echo "auto $WIFI_DEVICE" > /etc/network/interfaces.d/wifi
+    echo 'iface $WIFI_DEVICE inet dhcp' >> /etc/network/interfaces.d/wifi
+    echo "    wireless-essid $ssid" >> /etc/network/interfaces.d/wifi
+}
+
+function show_help {
+    echo ''
+    echo $"${PROJECT_NAME}-wifi -d [device] -t [type] -s [ssid] -p [passphrase]"
+    echo ''
+    echo $'Wifi configuration tool'
+    echo ''
+    echo $'     --help                   Show help'
+    echo $'  -d --device [name]          Device name'
+    echo $'  -t --type [wpa2-psk|none]   Security type'
+    echo $'  -s --ssid [id]              Set SSID'
+    echo $'  -p --passphrase [text]      Set passphrase'
+    echo ''
+    exit 0
+}
+
+while [[ $# > 1 ]]
+do
+    key="$1"
+
+    case $key in
+        --help)
+            show_help
+            ;;
+        -d|--device)
+            shift
+            WIFI_DEVICE=${1}            
+            ;;
+        -t|--type)
+            shift
+            WIFI_TYPE=${1}          
+            ;;
+        -s|--ssid)
+            shift
+            WIFI_SSID=${1}          
+            ;;
+        -p|--pass|--passphrase)
+            shift
+            WIFI_PASSPHRASE=${1}            
+            ;;
+        *)
+            # unknown option
+            ;;
+    esac
+    shift
+done
+
+if [ ! $WIFI_SSID ]; then
+    echo $'No SSID given'
+    exit 1
+fi
+
+if [[ $WIFI_TYPE != 'none' ]]; then
+    if [ ! $WIFI_PASSPHRASE ]; then
+        echo $'No wifi passphrase was given'
+        exit 2
+    fi  
+fi
+
+if [[ $WIFI_TYPE == 'wpa2-psk' ]]; then
+    if [ ! -d /etc/wpa_supplicant ]; then
+        echo $'wpasupplicant package is not installed'
+        exit 3
+    fi  
+    wifi_wpa2_psk "$WIFI_SSID" "$WIFI_PASSPHRASE"
+    exit 0
+fi
+
+if [[ $WIFI_TYPE == 'none' ]]; then
+    wifi_none "$WIFI_SSID"
+    exit 0
+fi
+
+exit 0
