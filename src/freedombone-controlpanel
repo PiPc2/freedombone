@@ -60,10 +60,27 @@ SMTP_PROXY_PORT=465
 SMTP_PROXY_USERNAME=''
 SMTP_PROXY_PASSWORD=''
 
+WIFI_INTERFACE=wlan0
+WIFI_SSID=
+WIFI_TYPE='wpa2-psk'
+WIFI_PASSPHRASE=
+
 USB_DRIVE=sdb
 # get default USB from config file
 CONFIGURATION_FILE=/root/${PROJECT_NAME}.cfg
 if [ -f $CONFIGURATION_FILE ]; then
+    if grep -q "WIFI_INTERFACE=" $CONFIGURATION_FILE; then
+        WIFI_INTERFACE=$(cat $CONFIGURATION_FILE | grep "WIFI_INTERFACE=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "WIFI_TYPE=" $CONFIGURATION_FILE; then
+        WIFI_TYPE=$(cat $CONFIGURATION_FILE | grep "WIFI_TYPE=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "WIFI_SSID=" $CONFIGURATION_FILE; then
+        WIFI_SSID=$(cat $CONFIGURATION_FILE | grep "WIFI_SSID=" | awk -F '=' '{print $2}')
+    fi
+    if grep -q "WIFI_PASSPHRASE=" $CONFIGURATION_FILE; then
+        WIFI_PASSPHRASE=$(cat $CONFIGURATION_FILE | grep "WIFI_PASSPHRASE=" | awk -F '=' '{print $2}')
+    fi
     if grep -q "USB_DRIVE=" $CONFIGURATION_FILE; then
         USB_DRIVE=$(cat $CONFIGURATION_FILE | grep "USB_DRIVE=" | awk -F '=' '{print $2}')
         if [[ $USB_DRIVE == *"dev"* ]]; then
@@ -1654,6 +1671,90 @@ Enter a static local IP address for this system.\n\nIt will typically be 192.168
     fi
 }
 
+function wifi_settings {
+    PREV_WIFI_INTERFACE=$WIFI_INTERFACE
+    PREV_WIFI_SSID=$WIFI_SSID
+    PREV_WIFI_TYPE=$WIFI_TYPE
+    PREV_WIFI_PASSPHRASE=$WIFI_PASSPHRASE
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Wifi Settings" \
+           --form $"\nIf you wish to use wifi rather than wired ethernet then enter the details below, otherwise just select Ok:" 15 55 5 \
+           $"Interface:" 1 1 "$WIFI_INTERFACE" 1 16 16 15 \
+           $"SSID:" 2 1 "$WIFI_SSID" 2 16 30 30 \
+           $"Type:" 3 1 "$WIFI_TYPE" 3 16 16 15 \
+           $"Passphrase:" 4 1 "$WIFI_PASSPHRASE" 4 16 30 30 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    NEW_WIFI_INTERFACE=$(cat $data | sed -n 1p)
+    NEW_WIFI_SSID=$(cat $data | sed -n 2p)
+    NEW_WIFI_TYPE=$(cat $data | sed -n 3p)
+    NEW_WIFI_PASSPHRASE=$(cat $data | sed -n 4p)
+
+    if [[ $NEW_WIFI_TYPE != 'none' && $NEW_WIFI_TYPE != 'wpa2-psk' ]]; then
+        return
+    fi
+    
+    if [[ $NEW_WIFI_TYPE != 'none' ]]; then
+        if [ ! $NEW_WIFI_PASSPHRASE ]; then
+            return
+        fi
+        if [ ${#NEW_WIFI_PASSPHRASE} -lt 2 ]; then
+            return
+        fi  
+        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE -p $NEW_WIFI_PASSPHRASE
+    else
+        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE     
+    fi
+
+    if [[ $PREV_WIFI_INTERFACE != $NEW_WIFI_INTERFACE || $PREV_WIFI_SSID != $NEW_WIFI_SSID || $PREV_WIFI_TYPE != $NEW_WIFI_TYPE || $PREV_WIFI_PASSPHRASE != $NEW_WIFI_PASSPHRASE ]]; then
+        dialog --title $"Wifi Settings" \
+               --backtitle $"Freedombone Control Panel" \
+               --defaultno \
+               --yesno $"\nWifi settings changed. Restart networking (you will be disconnected)?" 10 60
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+
+        WIFI_INTERFACE=$NEW_WIFI_INTERFACE
+        WIFI_SSID=$NEW_WIFI_SSID
+        WIFI_TYPE=$NEW_WIFI_TYPE
+        WIFI_PASSPHRASE=$NEW_WIFI_PASSPHRASE
+        
+        # update the configuration
+        if ! grep -q "WIFI_INTERFACE=" $CONFIGURATION_FILE; then
+            echo "WIFI_INTERFACE=$WIFI_INTERFACE" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|WIFI_INTERFACE=.*|WIFI_INTERFACE=$WIFI_INTERFACE|g" $CONFIGURATION_FILE
+        fi
+        if ! grep -q "WIFI_TYPE=" $CONFIGURATION_FILE; then
+            echo "WIFI_TYPE=$WIFI_TYPE" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|WIFI_TYPE=.*|WIFI_TYPE=$WIFI_TYPE|g" $CONFIGURATION_FILE
+        fi
+        if ! grep -q "WIFI_SSID=" $CONFIGURATION_FILE; then
+            echo "WIFI_SSID=$WIFI_SSID" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|WIFI_SSID=.*|WIFI_SSID=$WIFI_SSID|g" $CONFIGURATION_FILE
+        fi
+        if ! grep -q "WIFI_PASSPHRASE=" $CONFIGURATION_FILE; then
+            echo "WIFI_PASSPHRASE=$WIFI_PASSPHRASE" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|WIFI_PASSPHRASE=.*|WIFI_PASSPHRASE=$WIFI_PASSPHRASE|g" $CONFIGURATION_FILE
+        fi
+        
+        systemctl restart networking
+    fi  
+}
+
 function menu_backup_restore {
     while true
     do
@@ -1836,7 +1937,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 28 70 21 \
+               --radiolist $"Choose an operation:" 29 70 22 \
                1 $"About this system" off \
                2 $"Backup and Restore" off \
                3 $"Reset Tripwire" off \
@@ -1854,10 +1955,11 @@ function menu_top_level {
                15 $"Change the name of this system" off \
                16 $"Set the TLS date/time source" off \
                17 $"Set a static local IP address" off \
-               18 $"Check for updates" off \
-               19 $"Power off the system" off \
-               20 $"Restart the system" off \
-               21 $"Exit" on 2> $data
+               18 $"Wifi Settings" off \
+               19 $"Check for updates" off \
+               20 $"Power off the system" off \
+               21 $"Restart the system" off \
+               22 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -1881,10 +1983,11 @@ function menu_top_level {
             15) change_system_name;;
             16) set_tls_time_source;;
             17) set_static_IP;;
-            18) check_for_updates;;
-            19) shut_down_system;;
-            20) restart_system;;
-            21) break;;
+            18) wifi_settings;;
+            19) check_for_updates;;
+            20) shut_down_system;;
+            21) restart_system;;
+            22) break;;
         esac
     done
 }
