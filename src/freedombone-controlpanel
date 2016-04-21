@@ -64,11 +64,15 @@ WIFI_INTERFACE=wlan0
 WIFI_SSID=
 WIFI_TYPE='wpa2-psk'
 WIFI_PASSPHRASE=
+WIFI_HOTSPOT='no'
 
 USB_DRIVE=sdb
 # get default USB from config file
 CONFIGURATION_FILE=/root/${PROJECT_NAME}.cfg
 if [ -f $CONFIGURATION_FILE ]; then
+    if grep -q "WIFI_HOTSPOT=" $CONFIGURATION_FILE; then
+        WIFI_HOTSPOT=$(cat $CONFIGURATION_FILE | grep "WIFI_HOTSPOT=" | awk -F '=' '{print $2}')
+    fi
     if grep -q "WIFI_INTERFACE=" $CONFIGURATION_FILE; then
         WIFI_INTERFACE=$(cat $CONFIGURATION_FILE | grep "WIFI_INTERFACE=" | awk -F '=' '{print $2}')
     fi
@@ -1672,6 +1676,7 @@ Enter a static local IP address for this system.\n\nIt will typically be 192.168
 }
 
 function wifi_settings {
+    PREV_WIFI_HOTSPOT=$WIFI_HOTSPOT
     PREV_WIFI_INTERFACE=$WIFI_INTERFACE
     PREV_WIFI_SSID=$WIFI_SSID
     PREV_WIFI_TYPE=$WIFI_TYPE
@@ -1681,11 +1686,12 @@ function wifi_settings {
     trap "rm -f $data" 0 1 2 5 15
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Wifi Settings" \
-           --form $"\nIf you wish to use wifi rather than wired ethernet then enter the details below, otherwise just select Ok:" 15 55 5 \
+           --form $"\nIf you wish to use wifi rather than wired ethernet then enter the details below, otherwise just select Ok:" 16 55 6 \
            $"Interface:" 1 1 "$WIFI_INTERFACE" 1 16 16 15 \
            $"SSID:" 2 1 "$WIFI_SSID" 2 16 30 30 \
            $"Type:" 3 1 "$WIFI_TYPE" 3 16 16 15 \
            $"Passphrase:" 4 1 "$WIFI_PASSPHRASE" 4 16 30 30 \
+           $"Hotspot:" 5 1 "$WIFI_HOTSPOT" 5 16 16 15 \
            2> $data
     sel=$?
     case $sel in
@@ -1696,6 +1702,7 @@ function wifi_settings {
     NEW_WIFI_SSID=$(cat $data | sed -n 2p)
     NEW_WIFI_TYPE=$(cat $data | sed -n 3p)
     NEW_WIFI_PASSPHRASE=$(cat $data | sed -n 4p)
+    NEW_WIFI_HOTSPOT=$(cat $data | sed -n 5p)
 
     if [[ $NEW_WIFI_TYPE != 'none' && $NEW_WIFI_TYPE != 'wpa2-psk' ]]; then
         return
@@ -1707,10 +1714,17 @@ function wifi_settings {
         fi
         if [ ${#NEW_WIFI_PASSPHRASE} -lt 2 ]; then
             return
-        fi  
-        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE -p $NEW_WIFI_PASSPHRASE
+        fi
+
+        HOTSPOT='no'
+        if [[ $NEW_WIFI_HOTSPOT == $'Y' || $NEW_WIFI_HOTSPOT == $'yes' || $NEW_WIFI_HOTSPOT == $'y' ]]; then
+            apt-get -y install hostapd bridge-utils
+            HOTSPOT='yes'
+        fi
+        
+        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE -p $NEW_WIFI_PASSPHRASE --hotspot $HOTSPOT
     else
-        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE     
+        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE --hotspot $HOTSPOT
     fi
 
     if [[ $PREV_WIFI_INTERFACE != $NEW_WIFI_INTERFACE || $PREV_WIFI_SSID != $NEW_WIFI_SSID || $PREV_WIFI_TYPE != $NEW_WIFI_TYPE || $PREV_WIFI_PASSPHRASE != $NEW_WIFI_PASSPHRASE ]]; then
@@ -1750,8 +1764,13 @@ function wifi_settings {
         else
             sed -i "s|WIFI_PASSPHRASE=.*|WIFI_PASSPHRASE=$WIFI_PASSPHRASE|g" $CONFIGURATION_FILE
         fi
+        if ! grep -q "WIFI_HOTSPOT=" $CONFIGURATION_FILE; then
+            echo "WIFI_HOTSPOT=$WIFI_HOTSPOT" >> $CONFIGURATION_FILE
+        else
+            sed -i "s|WIFI_HOTSPOT=.*|WIFI_HOTSPOT=$WIFI_HOTSPOT|g" $CONFIGURATION_FILE
+        fi
         
-        systemctl restart networking
+        systemctl restart network-manager
     fi  
 }
 

@@ -40,6 +40,7 @@ WIFI_INTERFACE=wlan0
 WIFI_TYPE='wpa2-psk'
 WIFI_SSID=
 WIFI_PASSPHRASE=
+WIFI_HOTSPOT='no'
 
 function wifi_get_psk {
     ssid=$1
@@ -47,6 +48,90 @@ function wifi_get_psk {
 
     psk=$(wpa_passphrase "$ssid" "$passphrase" | grep 'psk=' | sed -n 2p | awk -F '=' '{print $2}')
     echo $psk
+}
+
+function hotspot_off {
+    if [ ! -f /etc/hostapd/hostapd.conf ]; then
+        return
+    fi
+    systemctl stop hostapd
+
+    rm /etc/hostapd/hostapd.conf
+
+    if [ -f /etc/network/interfaces_old ]; then
+        cp /etc/network/interfaces_old /etc/network/interfaces
+    else
+        echo '# interfaces(5) file used by ifup(8) and ifdown(8)' > /etc/network/interfaces
+        echo '# Include files from /etc/network/interfaces.d:' >> /etc/network/interfaces
+        echo 'source-directory /etc/network/interfaces.d' >> /etc/network/interfaces
+    fi
+    
+    systemctl restart network-manager
+}
+
+function hotspot_on {
+    if [ ! -f /etc/default/hostapd ]; then
+        echo $'/etc/default/hostapd was not found'
+        exit 67241
+    fi
+    if [ ${#WIFI_PASSPHRASE} -lt 8 ]; then
+        echo $'Wifi hotspot passphrase is too short'
+        exit 25719
+    fi
+    
+    sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
+
+    echo '### Wireless network name ###' > /etc/hostapd/hostapd.conf
+    echo "interface=$WIFI_INTERFACE" >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '### Set your bridge name ###' >> /etc/hostapd/hostapd.conf
+    echo 'bridge=br0' >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+    echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+    echo "ssid=$WIFI_SSID" >> /etc/hostapd/hostapd.conf
+    echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+    echo 'channel=6' >> /etc/hostapd/hostapd.conf
+    echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+    echo "wpa_passphrase=$WIFI_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Key management algorithms ##' >> /etc/hostapd/hostapd.conf
+    echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Set cipher suites (encryption algorithms) ##' >> /etc/hostapd/hostapd.conf
+    echo '## TKIP = Temporal Key Integrity Protocol' >> /etc/hostapd/hostapd.conf
+    echo '## CCMP = AES in Counter mode with CBC-MAC' >> /etc/hostapd/hostapd.conf
+    echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+    echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Shared Key Authentication ##'
+    echo 'auth_algs=1'
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Accept all MAC address ###' >> /etc/hostapd/hostapd.conf
+    echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+
+    if ! grep -q "# Hotspot" /etc/network/interfaces; then
+        cp /etc/network/interfaces /etc/network/interfaces_old
+    fi
+    
+    echo '# Hotspot' > /etc/network/interfaces
+    echo 'auto lo br0' >> /etc/network/interfaces
+    echo 'iface lo inet loopback' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo "# wireless $WIFI_INTERFACE" >> /etc/network/interfaces
+    echo "allow-hotplug $WIFI_INTERFACE" >> /etc/network/interfaces
+    echo "iface $WIFI_INTERFACE inet manual" >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo '# eth0 connected to the ISP router' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' >> /etc/network/interfaces
+    echo 'iface eth0 inet manual' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo '# Setup bridge' >> /etc/network/interfaces
+    echo 'iface br0 inet static' >> /etc/network/interfaces
+    echo "    bridge_ports $WIFI_INTERFACE eth0" >> /etc/network/interfaces
+
+    systemctl restart network-manager
+    systemctl restart hostapd
 }
 
 function wifi_wpa2_psk {
@@ -77,6 +162,7 @@ function show_help {
     echo $'  -t --type [wpa2-psk|none]        Security type'
     echo $'  -s --ssid [id]                   Set SSID'
     echo $'  -p --passphrase [text]           Set passphrase'
+    echo $'     --hotspot [yes|no]            Create a hotspot'
     echo ''
     exit 0
 }
@@ -105,6 +191,10 @@ do
             shift
             WIFI_PASSPHRASE=${1}            
             ;;
+        --hostpot)
+            shift
+            WIFI_HOTSPOT=${1}            
+            ;;
         *)
             # unknown option
             ;;
@@ -115,6 +205,13 @@ done
 if [ ! $WIFI_SSID ]; then
     echo $'No SSID given'
     exit 1
+fi
+
+if [[ $WIFI_HOTSPOT != 'no' ]]; then
+    hotspot_on
+    exit 0
+else
+    hotspot_off
 fi
 
 if [[ $WIFI_TYPE != 'none' ]]; then
