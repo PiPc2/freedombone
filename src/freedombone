@@ -8866,7 +8866,7 @@ function install_webmail {
 
     apt-get -y install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
     apt-get -y install php5-dev imagemagick php5-imagick php5-sqlite php-auth-sasl php-net-smtp php-mime-type
-    apt-get -y install php-mail-mime php-mail-mimedecode php-net-ldap3
+    apt-get -y install php-mail-mime php-mail-mimedecode php-net-ldap3 php5-pspell
     pear install Net_IDNA2
     
     if [ ! -f $WEBMAIL_PATH/index.php ]; then
@@ -8897,7 +8897,8 @@ function install_webmail {
         fi
     fi
     create_database webmail "$WEBMAIL_ADMIN_PASSWORD"
-
+    mysql -u root --password="$MARIADB_PASSWORD" -D webmail < $WEBMAIL_PATH/SQL/mysql.initial.sql
+    
     if [ ! -d /var/www/$DEFAULT_DOMAIN_NAME/htdocs ]; then
         mkdir -p /var/www/$DEFAULT_DOMAIN_NAME/htdocs
     fi  
@@ -8921,35 +8922,36 @@ function install_webmail {
     echo 'server {' > /etc/nginx/sites-available/webmail
     echo "  listen 127.0.0.1:$WEBMAIL_ONION_PORT default_server;" >> /etc/nginx/sites-available/webmail
     echo "  server_name $WEBMAIL_ONION_HOSTNAME;" >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
+    echo "  root ${WEBMAIL_PATH};" >> /etc/nginx/sites-available/webmail
+    echo '  index index.php index.html index.htm;' >> /etc/nginx/sites-available/webmail
     echo '  access_log off;' >> /etc/nginx/sites-available/webmail
     echo '  error_log off;' >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
-    echo "  root ${WEBMAIL_PATH};" >> /etc/nginx/sites-available/webmail
-    echo '  index index.php;' >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
-    echo '  location ~ \.php {' >> /etc/nginx/sites-available/webmail
-    echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/webmail
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/webmail
-    echo '  }' >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
-    echo '  location ~ \.php {' >> /etc/nginx/sites-available/webmail
-    echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/webmail
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/webmail
-    echo '  }' >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
     echo '  location / {' >> /etc/nginx/sites-available/webmail
-    echo '    try_files $uri $uri/ @webmail;' >> /etc/nginx/sites-available/webmail
+    echo '    try_files $uri $uri/ /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/webmail
     echo '  }' >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
-    echo '  location @webmail {' >> /etc/nginx/sites-available/webmail
-    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> /etc/nginx/sites-available/webmail
+    echo '  error_page 404 /404.html;' >> /etc/nginx/sites-available/webmail
+    echo '  error_page 500 502 503 504 /50x.html;' >> /etc/nginx/sites-available/webmail
+    echo '  location = /50x.html {' >> /etc/nginx/sites-available/webmail
+    echo "    root ${WEBMAIL_PATH};" >> /etc/nginx/sites-available/webmail
     echo '  }' >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
-    echo '  location ~ /\.(git) {' >> /etc/nginx/sites-available/webmail
+    echo '  location ~ ^/(README.md|INSTALL|LICENSE|CHANGELOG|UPGRADING)$ {' >> /etc/nginx/sites-available/webmail
     echo '    deny all;' >> /etc/nginx/sites-available/webmail
     echo '  }' >> /etc/nginx/sites-available/webmail
-    echo '' >> /etc/nginx/sites-available/webmail
+    echo '  location ~ ^/(config|temp|logs)/ {' >> /etc/nginx/sites-available/webmail
+    echo '    deny all;' >> /etc/nginx/sites-available/webmail
+    echo '  }' >> /etc/nginx/sites-available/webmail
+    echo '  location ~ /\. {' >> /etc/nginx/sites-available/webmail
+    echo '    deny all;' >> /etc/nginx/sites-available/webmail
+    echo '    access_log off;' >> /etc/nginx/sites-available/webmail
+    echo '    log_not_found off;' >> /etc/nginx/sites-available/webmail
+    echo '  }' >> /etc/nginx/sites-available/webmail
+    echo '  location ~ \.php$ {' >> /etc/nginx/sites-available/webmail
+    echo '    try_files $uri =404;' >> /etc/nginx/sites-available/webmail
+    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/webmail
+    echo '    fastcgi_index index.php;' >> /etc/nginx/sites-available/webmail
+    echo '    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/webmail
+    echo '    include fastcgi_params;' >> /etc/nginx/sites-available/webmail
+    echo '  }' >> /etc/nginx/sites-available/webmail
     echo '  add_header X-Frame-Options DENY;' >> /etc/nginx/sites-available/webmail
     echo '  add_header X-Content-Type-Options nosniff;' >> /etc/nginx/sites-available/webmail
     echo '  client_max_body_size 15m;' >> /etc/nginx/sites-available/webmail
