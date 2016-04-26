@@ -42,7 +42,8 @@ WIFI_SSID=
 WIFI_PASSPHRASE=
 WIFI_HOTSPOT='no'
 WIFI_CONFIG=/etc/wpa_supplicant/wpa_supplicant.conf
-WIFI_NETWORKS_FILE=/root/${PROJECT_NAME}-wifi.cfg
+WIFI_NETWORKS_FILE=~/${PROJECT_NAME}-wifi.cfg
+NETWORKS_INTERACTIVE=
 
 function wifi_get_psk {
     ssid=$1
@@ -196,7 +197,7 @@ function wifi_none {
     systemctl restart network-manager
 }
 
-function create_networks_from_file {
+function networks_from_file {
     if [ ! -f $WIFI_NETWORKS_FILE ]; then
         exit 4
     fi
@@ -259,6 +260,54 @@ function create_networks_from_file {
     systemctl restart network-manager
 }
 
+function create_networks_interactive {
+	if [ -f $WIFI_NETWORKS_FILE ]; then
+		rm $WIFI_NETWORKS_FILE
+	fi
+
+	wifi_ctr=0
+	wifi_networks_done=
+    while [ ! $wifi_networks_done ]
+    do
+		data=$(tempfile 2>/dev/null)
+		trap "rm -f $data" 0 1 2 5 15
+		dialog --backtitle $"Freedombone Configuration" \
+			   --title $"Wifi Settings ${wifi_ctr}" \
+			   --form $"\nIf you wish to use wifi and have a Free Software compatible adapter (eg. Atheros) rather than wired ethernet then enter the details below, otherwise just select Ok:" 15 55 4 \
+			   $"SSID:" 1 1 "$WIFI_SSID" 1 16 30 30 \
+			   $"Type:" 2 1 "$WIFI_TYPE" 2 16 10 10 \
+			   $"Passphrase:" 3 1 "$WIFI_PASSPHRASE" 3 16 30 30 \
+			   2> $data
+		sel=$?
+		case $sel in
+			1) return;;
+			255) return;;
+		esac
+		WIFI_SSID=$(cat $data | sed -n 1p)
+		WIFI_TYPE=$(cat $data | sed -n 2p)
+		WIFI_PASSPHRASE=$(cat $data | sed -n 3p)
+
+		# if these fields are empty then there are no more wifi networks
+		if [ ${#WIFI_SSID} -lt 2 ]; then
+			wifi_networks_done='yes'
+			continue
+		fi	
+		if [ ${#WIFI_TYPE} -lt 2 ]; then
+			wifi_networks_done='yes'
+			continue
+		fi
+		
+		# update the wifi networks file
+		echo '' >> $WIFI_NETWORKS_FILE
+		echo "$WIFI_SSID" >> $WIFI_NETWORKS_FILE
+		echo "$WIFI_TYPE" >> $WIFI_NETWORKS_FILE
+		if [ ${#WIFI_PASSPHRASE} -gt 1 ]; then
+			echo "$WIFI_PASSPHRASE" >> $WIFI_NETWORKS_FILE
+		fi
+		wifi_ctr=$((wifi_ctr + 1))
+	done
+}
+
 function show_help {
     echo ''
     echo $"${PROJECT_NAME}-wifi -i [interface] -t [type] -s [ssid] -p [passphrase]"
@@ -271,6 +320,8 @@ function show_help {
     echo $'  -s --ssid [id]                   Set SSID'
     echo $'  -p --passphrase [text]           Set passphrase'
     echo $'     --hotspot [yes|no]            Create a hotspot'
+    echo $'     --networks [filename]         File containing wifi networks'
+    echo $'     --createnetworks [filename]   Create file containing wifi networks'
     echo ''
     exit 0
 }
@@ -307,6 +358,11 @@ do
             shift
             WIFI_NETWORKS_FILE=${1}
             ;;
+        --networksinteractive)
+            shift
+			NETWORKS_INTERACTIVE='yes'
+            WIFI_NETWORKS_FILE=${1}
+            ;;
         *)
             # unknown option
             ;;
@@ -314,42 +370,47 @@ do
     shift
 done
 
+if [ $NETWORKS_INTERACTIVE ]; then
+	create_networks_interactive
+	exit 0
+fi
+
 if [ -f $WIFI_NETWORKS_FILE ]; then
-    create_networks_from_file
-    exit 0
+	networks_from_file
+	exit 0
 fi
 
 if [ ! $WIFI_SSID ]; then
-    echo $'No SSID given'
-    exit 1
+	echo $'No SSID given'
+	exit 1
 fi
 
 if [[ $WIFI_HOTSPOT != 'no' ]]; then
-    hotspot_on
-    exit 0
+	hotspot_on
+	exit 0
 else
-    hotspot_off
+	hotspot_off
 fi
 
 if [[ $WIFI_TYPE != 'none' ]]; then
-    if [ ! $WIFI_PASSPHRASE ]; then
-        echo $'No wifi passphrase was given'
-        exit 2
-    fi
+	if [ ! $WIFI_PASSPHRASE ]; then
+		echo $'No wifi passphrase was given'
+		exit 2
+	fi
 fi
 
 if [[ $WIFI_TYPE == 'wpa2-psk' ]]; then
-    if [ ! -d /etc/wpa_supplicant ]; then
-        echo $'wpasupplicant package is not installed'
-        exit 3
-    fi
-    wifi_wpa2_psk "$WIFI_SSID" "$WIFI_PASSPHRASE"
-    exit 0
+	if [ ! -d /etc/wpa_supplicant ]; then
+		echo $'wpasupplicant package is not installed'
+		exit 3
+	fi
+	wifi_wpa2_psk "$WIFI_SSID" "$WIFI_PASSPHRASE"
+	exit 0
 fi
 
 if [[ $WIFI_TYPE == 'none' ]]; then
-    wifi_none "$WIFI_SSID"
-    exit 0
+	wifi_none "$WIFI_SSID"
+	exit 0
 fi
 
 exit 0

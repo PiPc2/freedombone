@@ -65,6 +65,7 @@ WIFI_SSID=
 WIFI_TYPE='wpa2-psk'
 WIFI_PASSPHRASE=
 WIFI_HOTSPOT='no'
+WIFI_NETWORKS_FILE=~/${PROJECT_NAME}-wifi.cfg
 
 USB_DRIVE=sdb
 # get default USB from config file
@@ -1684,94 +1685,15 @@ Enter a static local IP address for this system.\n\nIt will typically be 192.168
 }
 
 function wifi_settings {
-    PREV_WIFI_HOTSPOT=$WIFI_HOTSPOT
-    PREV_WIFI_INTERFACE=$WIFI_INTERFACE
-    PREV_WIFI_SSID=$WIFI_SSID
-    PREV_WIFI_TYPE=$WIFI_TYPE
-    PREV_WIFI_PASSPHRASE=$WIFI_PASSPHRASE
-
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --backtitle $"Freedombone Control Panel" \
-           --title $"Wifi Settings" \
-           --form $"\nIf you wish to use wifi and have a Free Software compatible adapter (eg. Atheros) rather than wired ethernet then enter the details below, otherwise just select Ok:" 17 55 6 \
-           $"Interface:" 1 1 "$WIFI_INTERFACE" 1 16 6 6 \
-           $"SSID:" 2 1 "$WIFI_SSID" 2 16 30 30 \
-           $"Type:" 3 1 "$WIFI_TYPE" 3 16 10 10 \
-           $"Passphrase:" 4 1 "$WIFI_PASSPHRASE" 4 16 30 30 \
-           $"Hotspot:" 5 1 "$WIFI_HOTSPOT" 5 16 6 6 \
-           2> $data
-    sel=$?
-    case $sel in
-        1) return;;
-        255) return;;
-    esac
-    NEW_WIFI_INTERFACE=$(cat $data | sed -n 1p)
-    NEW_WIFI_SSID=$(cat $data | sed -n 2p)
-    NEW_WIFI_TYPE=$(cat $data | sed -n 3p)
-    NEW_WIFI_PASSPHRASE=$(cat $data | sed -n 4p)
-    NEW_WIFI_HOTSPOT=$(cat $data | sed -n 5p)
-
-    if [[ $NEW_WIFI_TYPE != 'none' && $NEW_WIFI_TYPE != 'wpa2-psk' ]]; then
-        return
-    fi
-    
-    if [[ $NEW_WIFI_TYPE != 'none' ]]; then
-        if [ ! $NEW_WIFI_PASSPHRASE ]; then
-            return
-        fi
-        if [ ${#NEW_WIFI_PASSPHRASE} -lt 2 ]; then
-            return
-        fi
-
-        HOTSPOT='no'
-        if [[ $NEW_WIFI_HOTSPOT == $'Y' || $NEW_WIFI_HOTSPOT == $'y' || $NEW_WIFI_HOTSPOT == $'yes' || $NEW_WIFI_HOTSPOT == $'Yes' || $NEW_WIFI_HOTSPOT == $'true' || $NEW_WIFI_HOTSPOT == $'on' || $NEW_WIFI_HOTSPOT == $'True' || $NEW_WIFI_HOTSPOT == '1' ]]; then
-            HOTSPOT='yes'
-        fi      
-        
-        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE -p $NEW_WIFI_PASSPHRASE --hotspot $HOTSPOT
-    else
-        ${PROJECT_NAME}-wifi -i $NEW_WIFI_INTERFACE -s $NEW_WIFI_SSID -t $NEW_WIFI_TYPE --hotspot $HOTSPOT
-    fi
-
-    if [[ $PREV_WIFI_INTERFACE != $NEW_WIFI_INTERFACE || $PREV_WIFI_SSID != $NEW_WIFI_SSID || $PREV_WIFI_TYPE != $NEW_WIFI_TYPE || $PREV_WIFI_PASSPHRASE != $NEW_WIFI_PASSPHRASE ]]; then
+    TEMP_WIFI_NETWORKS_FILE=~/.temp-${PROJECT_NAME}-wifi.cfg
+    ${PROJECT_NAME}-wifi --networksinteractive $TEMP_WIFI_NETWORKS_FILE
+    if [ -f $TEMP_WIFI_NETWORKS_FILE ]; then
+        cp $TEMP_WIFI_NETWORKS_FILE $WIFI_NETWORKS_FILE
+        rm $TEMP_WIFI_NETWORKS_FILE
+        ${PROJECT_NAME}-wifi --networks $WIFI_NETWORKS_FILE
         dialog --title $"Wifi Settings" \
                --msgbox $"Wifi settings were changed" 6 40
-
-        WIFI_INTERFACE=$NEW_WIFI_INTERFACE
-        WIFI_SSID=$NEW_WIFI_SSID
-        WIFI_TYPE=$NEW_WIFI_TYPE
-        WIFI_PASSPHRASE=$NEW_WIFI_PASSPHRASE
-        
-        # update the configuration
-        if ! grep -q "WIFI_INTERFACE=" $CONFIGURATION_FILE; then
-            echo "WIFI_INTERFACE=$WIFI_INTERFACE" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|WIFI_INTERFACE=.*|WIFI_INTERFACE=$WIFI_INTERFACE|g" $CONFIGURATION_FILE
-        fi
-        if ! grep -q "WIFI_TYPE=" $CONFIGURATION_FILE; then
-            echo "WIFI_TYPE=$WIFI_TYPE" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|WIFI_TYPE=.*|WIFI_TYPE=$WIFI_TYPE|g" $CONFIGURATION_FILE
-        fi
-        if ! grep -q "WIFI_SSID=" $CONFIGURATION_FILE; then
-            echo "WIFI_SSID=$WIFI_SSID" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|WIFI_SSID=.*|WIFI_SSID=$WIFI_SSID|g" $CONFIGURATION_FILE
-        fi
-        if ! grep -q "WIFI_PASSPHRASE=" $CONFIGURATION_FILE; then
-            echo "WIFI_PASSPHRASE=$WIFI_PASSPHRASE" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|WIFI_PASSPHRASE=.*|WIFI_PASSPHRASE=$WIFI_PASSPHRASE|g" $CONFIGURATION_FILE
-        fi
-        if ! grep -q "WIFI_HOTSPOT=" $CONFIGURATION_FILE; then
-            echo "WIFI_HOTSPOT=$WIFI_HOTSPOT" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|WIFI_HOTSPOT=.*|WIFI_HOTSPOT=$WIFI_HOTSPOT|g" $CONFIGURATION_FILE
-        fi
-        
-        systemctl restart network-manager
-    fi  
+    fi
 }
 
 function menu_backup_restore {
@@ -1919,6 +1841,41 @@ function menu_media {
     done
 }
 
+function hotspot_settings {
+    # TODO  
+}
+
+function menu_wifi {
+    hotspot_state=$'off'
+    if [ -f /etc/hostapd/hostapd.conf ]; then
+        hotspot_state=$'on'
+    fi
+    
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"Wifi Menu" \
+               --radiolist $"Choose an operation:" 12 70 4 \
+               1 $"Configure wifi networks" off \
+               2 $"Manually edit wifi networks file" off \
+               3 $"Hotspot settings" off \
+               4 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) wifi_settings;;
+            2) editor $WIFI_NETWORKS_FILE;;
+            3) hotspot_settings;;
+            4) break;;
+        esac
+    done
+}
+
 function menu_irc {
     if [ ! -d /etc/ngircd ]; then
         dialog --title $"IRC Menu" \
@@ -1974,7 +1931,7 @@ function menu_top_level {
                15 $"Change the name of this system" off \
                16 $"Set the TLS date/time source" off \
                17 $"Set a static local IP address" off \
-               18 $"Wifi Settings" off \
+               18 $"Wifi menu" off \
                19 $"Check for updates" off \
                20 $"Power off the system" off \
                21 $"Restart the system" off \
@@ -2002,7 +1959,7 @@ function menu_top_level {
             15) change_system_name;;
             16) set_tls_time_source;;
             17) set_static_IP;;
-            18) wifi_settings;;
+            18) menu_wifi;;
             19) check_for_updates;;
             20) shut_down_system;;
             21) restart_system;;
