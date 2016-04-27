@@ -1696,6 +1696,95 @@ function wifi_settings {
     fi
 }
 
+function hotspot_settings {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Hotspot Settings" \
+           --form $"" 10 60 4 \
+           $"Enabled (yes/no):" 1 1 "$WIFI_HOTSPOT" 1 24 5 5 \
+           $"SSID:" 2 1 "$WIFI_SSID" 2 24 256 256 \
+           $"Type (wpa2-psk/none):" 3 1 "$WIFI_TYPE" 3 24 10 10 \
+           $"Passphrase:" 4 1 "$WIFI_PASSPHRASE" 4 24 256 256 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    TEMP_WIFI_HOTSPOT=$(cat $data | sed -n 1p)
+    TEMP_WIFI_SSID=$(cat $data | sed -n 2p)
+    TEMP_WIFI_TYPE=$(cat $data | sed -n 3p)    
+    TEMP_WIFI_PASSPHRASE=$(cat $data | sed -n 4p)
+
+    if [ ${#TEMP_WIFI_SSID} -lt 2 ]; then
+        return
+    fi
+    if [ ${#TEMP_WIFI_TYPE} -lt 2 ]; then
+        return
+    fi
+
+    WIFI_EXTRA=''
+    if [[ $TEMP_WIFI_HOTSPOT == $'yes' || $TEMP_WIFI_HOTSPOT == $'y' || $TEMP_WIFI_HOTSPOT == $'on' ]]; then
+        TEMP_WIFI_HOTSPOT='yes'
+    else
+        TEMP_WIFI_HOTSPOT='no'      
+        WIFI_EXTRA='--networks $WIFI_NETWORKS_FILE'
+    fi
+
+    if [[ $TEMP_WIFI_TYPE != $'none' ]]; then
+        if [ ! $TEMP_WIFI_PASSPHRASE ]; then
+            dialog --title $"Wifi Settings" \
+                   --msgbox $"No wifi hotspot passphrase was given" 6 40
+            return
+        fi
+        if [ ${#TEMP_WIFI_PASSPHRASE} -lt 2 ]; then
+            dialog --title $"Wifi Settings" \
+                   --msgbox $"Wifi hotspot passphrase was too short" 6 40
+            return
+        fi
+        
+        WIFI_HOTSPOT=$TEMP_WIFI_HOTSPOT
+        WIFI_SSID=$TEMP_WIFI_SSID
+        WIFI_TYPE=$TEMP_WIFI_TYPE
+        WIFI_PASSPHRASE=$TEMP_WIFI_PASSPHRASE
+        
+        ${PROJECT_NAME}-wifi -i $WIFI_INTERFACE -s $WIFI_SSID -t $WIFI_TYPE -p $WIFI_PASSPHRASE --hotspot $WIFI_HOTSPOT $WIFI_EXTRA
+    else
+        WIFI_HOTSPOT=$TEMP_WIFI_HOTSPOT
+        WIFI_SSID=$TEMP_WIFI_SSID
+        WIFI_TYPE=$TEMP_WIFI_TYPE
+        WIFI_PASSPHRASE=$TEMP_WIFI_PASSPHRASE
+        
+        ${PROJECT_NAME}-wifi -i $WIFI_INTERFACE -s $WIFI_SSID -t $WIFI_TYPE --hotspot $WIFI_HOTSPOT $WIFI_EXTRA
+    fi
+
+    # store any changes
+    if ! grep -q "WIFI_HOTSPOT" $CONFIGURATION_FILE; then
+        echo "WIFI_HOTSPOT=$WIFI_HOTSPOT" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|WIFI_HOTSPOT=.*|WIFI_HOTSPOT=$WIFI_HOTSPOT|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "WIFI_SSID" $CONFIGURATION_FILE; then
+        echo "WIFI_SSID=$WIFI_SSID" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|WIFI_SSID=.*|WIFI_SSID=$WIFI_SSID|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "WIFI_TYPE" $CONFIGURATION_FILE; then
+        echo "WIFI_TYPE=$WIFI_TYPE" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|WIFI_TYPE=.*|WIFI_SSID=$WIFI_TYPE|g" $CONFIGURATION_FILE
+    fi
+    if ! grep -q "WIFI_PASSPHRASE" $CONFIGURATION_FILE; then
+        echo "WIFI_PASSPHRASE=$WIFI_PASSPHRASE" >> $CONFIGURATION_FILE
+    else
+        sed -i "s|WIFI_PASSPHRASE=.*|WIFI_PASSPHRASE=$WIFI_PASSPHRASE|g" $CONFIGURATION_FILE
+    fi
+    
+    dialog --title $"Wifi Settings" \
+           --msgbox $"Hotspot settings were changed" 6 40
+}
+
 function menu_backup_restore {
     while true
     do
@@ -1781,207 +1870,203 @@ function menu_users {
         case $sel in
             1) break;;
             255) break;;
-        esac
-        case $(cat $data) in
-            1) add_user;;
-            2) delete_user;;
-            3) change_password;;
-            4) change_ssh_public_key;;
-            5) break;;
-        esac
-    done
+esac
+case $(cat $data) in
+    1) add_user;;
+    2) delete_user;;
+    3) change_password;;
+    4) change_ssh_public_key;;
+    5) break;;
+esac
+done
 }
 
-function menu_hubzilla {
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Hubzilla" \
-               --radiolist $"Choose an operation:" 13 70 4 \
-               1 $"Set channel directory server" off \
-               2 $"Renew SSL certificate" off \
-               3 $"Back to main menu" on 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat $data) in
-            1) hubzilla_channel_directory_server;;
-            2) hubzilla_renew_cert;;
-            3) break;;
-        esac
-    done
-}
+ function menu_hubzilla {
+     while true
+     do
+         data=$(tempfile 2>/dev/null)
+         trap "rm -f $data" 0 1 2 5 15
+         dialog --backtitle $"Freedombone Control Panel" \
+                --title $"Hubzilla" \
+                --radiolist $"Choose an operation:" 13 70 4 \
+                1 $"Set channel directory server" off \
+                2 $"Renew SSL certificate" off \
+                3 $"Back to main menu" on 2> $data
+         sel=$?
+         case $sel in
+             1) break;;
+             255) break;;
+         esac
+         case $(cat $data) in
+             1) hubzilla_channel_directory_server;;
+             2) hubzilla_renew_cert;;
+             3) break;;
+         esac
+     done
+ }
 
-function menu_media {
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Media Menu" \
-               --radiolist $"Choose an operation:" 13 70 3 \
-               1 $"Attach a drive containing playable media" off \
-               2 $"Remove a drive containing playable media" off \
-               3 $"Exit" on 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat $data) in
-            1) remove-music
-               attach-music;;
-            2) remove-music;;
-            3) break;;
-        esac
-    done
-}
+ function menu_media {
+     while true
+     do
+         data=$(tempfile 2>/dev/null)
+         trap "rm -f $data" 0 1 2 5 15
+         dialog --backtitle $"Freedombone Control Panel" \
+                --title $"Media Menu" \
+                --radiolist $"Choose an operation:" 13 70 3 \
+                1 $"Attach a drive containing playable media" off \
+                2 $"Remove a drive containing playable media" off \
+                3 $"Exit" on 2> $data
+         sel=$?
+         case $sel in
+             1) break;;
+             255) break;;
+         esac
+         case $(cat $data) in
+             1) remove-music
+                attach-music;;
+             2) remove-music;;
+             3) break;;
+         esac
+     done
+ }
 
-function hotspot_settings {
-    # TODO  
-}
+ function menu_wifi {
+     hotspot_state=$'off'
+     if [ -f /etc/hostapd/hostapd.conf ]; then
+         hotspot_state=$'on'
+     fi
+     
+     while true
+     do
+         data=$(tempfile 2>/dev/null)
+         trap "rm -f $data" 0 1 2 5 15
+         dialog --backtitle $"Freedombone Control Panel" \
+                --title $"Wifi Menu" \
+                --radiolist $"Choose an operation:" 12 70 4 \
+                1 $"Configure wifi networks" off \
+                2 $"Manually edit wifi networks file" off \
+                3 $"Hotspot settings" off \
+                4 $"Exit" on 2> $data
+         sel=$?
+         case $sel in
+             1) break;;
+             255) break;;
+         esac
+         case $(cat $data) in
+             1) wifi_settings;;
+             2) editor $WIFI_NETWORKS_FILE;;
+             3) hotspot_settings;;
+             4) break;;
+         esac
+     done
+ }
 
-function menu_wifi {
-    hotspot_state=$'off'
-    if [ -f /etc/hostapd/hostapd.conf ]; then
-        hotspot_state=$'on'
-    fi
-    
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Wifi Menu" \
-               --radiolist $"Choose an operation:" 12 70 4 \
-               1 $"Configure wifi networks" off \
-               2 $"Manually edit wifi networks file" off \
-               3 $"Hotspot settings" off \
-               4 $"Exit" on 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat $data) in
-            1) wifi_settings;;
-            2) editor $WIFI_NETWORKS_FILE;;
-            3) hotspot_settings;;
-            4) break;;
-        esac
-    done
-}
+ function menu_irc {
+     if [ ! -d /etc/ngircd ]; then
+         dialog --title $"IRC Menu" \
+                --msgbox $"No IRC server is installed" 6 70
+         return
+     fi
+     
+     while true
+     do
+         data=$(tempfile 2>/dev/null)
+         trap "rm -f $data" 0 1 2 5 15
+         dialog --backtitle $"Freedombone Control Panel" \
+                --title $"IRC Menu" \
+                --radiolist $"Choose an operation:" 14 70 4 \
+                1 $"Set a password for all IRC users" off \
+                2 $"Show current IRC login password" off \
+                3 $"Exit" on 2> $data
+         sel=$?
+         case $sel in
+             1) break;;
+             255) break;;
+         esac
+         case $(cat $data) in
+             1) irc_set_global_password;;
+             2) irc_show_password;;
+             3) break;;
+         esac
+     done
+ }
 
-function menu_irc {
-    if [ ! -d /etc/ngircd ]; then
-        dialog --title $"IRC Menu" \
-               --msgbox $"No IRC server is installed" 6 70
-        return
-    fi
-    
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"IRC Menu" \
-               --radiolist $"Choose an operation:" 14 70 4 \
-               1 $"Set a password for all IRC users" off \
-               2 $"Show current IRC login password" off \
-               3 $"Exit" on 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat $data) in
-            1) irc_set_global_password;;
-            2) irc_show_password;;
-            3) break;;
-        esac
-    done
-}
+ function menu_top_level {
+     while true
+     do
+         data=$(tempfile 2>/dev/null)
+         trap "rm -f $data" 0 1 2 5 15
+         dialog --backtitle $"Freedombone Control Panel" \
+                --title $"Control Panel" \
+                --radiolist $"Choose an operation:" 29 70 22 \
+                1 $"About this system" off \
+                2 $"Backup and Restore" off \
+                3 $"Reset Tripwire" off \
+                4 $"Logging on/off" off \
+                5 $"Ping enable/disable" off \
+                6 $"Manage Users" off \
+                7 $"Email Filtering Rules" off \
+                8 $"Outgoing Email Proxy" off \
+                9 $"Security Settings" off \
+                10 $"Set the main repository (repo mirrors)" off \
+                11 $"Hubzilla" off \
+                12 $"Media menu" off \
+                13 $"IRC menu" off \
+                14 $"Change your blog avatar" off \
+                15 $"Change the name of this system" off \
+                16 $"Set the TLS date/time source" off \
+                17 $"Set a static local IP address" off \
+                18 $"Wifi menu" off \
+                19 $"Check for updates" off \
+                20 $"Power off the system" off \
+                21 $"Restart the system" off \
+                22 $"Exit" on 2> $data
+         sel=$?
+         case $sel in
+             1) exit 1;;
+             255) exit 1;;
+         esac
+         case $(cat $data) in
+             1) show_about;;
+             2) menu_backup_restore;;
+             3) reset_tripwire;;
+             4) logging_on_off;;
+             5) ping_enable_disable;;
+             6) menu_users;;
+             7) menu_email;;
+             8) smtp_proxy;;
+             9) security_settings;;
+             10) set_main_repo;;
+             11) menu_hubzilla;;
+             12) menu_media;;
+             13) menu_irc;;
+             14) change_blog_avatar;;
+             15) change_system_name;;
+             16) set_tls_time_source;;
+             17) set_static_IP;;
+             18) menu_wifi;;
+             19) check_for_updates;;
+             20) shut_down_system;;
+             21) restart_system;;
+             22) break;;
+         esac
+     done
+ }
 
-function menu_top_level {
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 29 70 22 \
-               1 $"About this system" off \
-               2 $"Backup and Restore" off \
-               3 $"Reset Tripwire" off \
-               4 $"Logging on/off" off \
-               5 $"Ping enable/disable" off \
-               6 $"Manage Users" off \
-               7 $"Email Filtering Rules" off \
-               8 $"Outgoing Email Proxy" off \
-               9 $"Security Settings" off \
-               10 $"Set the main repository (repo mirrors)" off \
-               11 $"Hubzilla" off \
-               12 $"Media menu" off \
-               13 $"IRC menu" off \
-               14 $"Change your blog avatar" off \
-               15 $"Change the name of this system" off \
-               16 $"Set the TLS date/time source" off \
-               17 $"Set a static local IP address" off \
-               18 $"Wifi menu" off \
-               19 $"Check for updates" off \
-               20 $"Power off the system" off \
-               21 $"Restart the system" off \
-               22 $"Exit" on 2> $data
-        sel=$?
-        case $sel in
-            1) exit 1;;
-            255) exit 1;;
-        esac
-        case $(cat $data) in
-            1) show_about;;
-            2) menu_backup_restore;;
-            3) reset_tripwire;;
-            4) logging_on_off;;
-            5) ping_enable_disable;;
-            6) menu_users;;
-            7) menu_email;;
-            8) smtp_proxy;;
-            9) security_settings;;
-            10) set_main_repo;;
-            11) menu_hubzilla;;
-            12) menu_media;;
-            13) menu_irc;;
-            14) change_blog_avatar;;
-            15) change_system_name;;
-            16) set_tls_time_source;;
-            17) set_static_IP;;
-            18) menu_wifi;;
-            19) check_for_updates;;
-            20) shut_down_system;;
-            21) restart_system;;
-            22) break;;
-        esac
-    done
-}
+ if [[ $USER != 'root' ]]; then
+     # show the user version of the control panel
+     freedombone-controlpanel-user
+     exit 0
+ fi
 
-if [[ $USER != 'root' ]]; then
-    # show the user version of the control panel
-    freedombone-controlpanel-user
-    exit 0
-fi
+ if [ ! -f $COMPLETION_FILE ]; then
+     echo $'This command should only be run on an installed Freedombone system'
+     exit 1
+ fi
 
-if [ ! -f $COMPLETION_FILE ]; then
-    echo $'This command should only be run on an installed Freedombone system'
-    exit 1
-fi
-
-ADMIN_USER=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-read_repo_servers
-menu_top_level
-clear
-cat /etc/motd
-exit 0
+ ADMIN_USER=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+ read_repo_servers
+ menu_top_level
+ clear
+ cat /etc/motd
+ exit 0
