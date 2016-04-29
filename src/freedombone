@@ -89,6 +89,8 @@ SSH_PORT=2222
 IRC_PORT=6697
 IRC_ONION_PORT=6697
 
+GO_VERSION=1.5
+
 # password used for accessing your repo mirrors
 MY_MIRRORS_PASSWORD=
 # friend's repo mirrors
@@ -2635,6 +2637,16 @@ function create_mirrors {
     echo 'create_mirrors' >> $COMPLETION_FILE
 }
 
+function select_go_version {
+	if [ ! -d $HOME/.gvm/scripts ]; then
+		echo $'GVM was not installed'
+		exit 629532
+	fi
+    cd $HOME/.gvm/scripts
+    gvm use go${GO_VERSION} --default
+    systemctl set-environment GOPATH=$GOPATH	
+}
+
 function mesh_cjdns_tools {
     if grep -Fxq "mesh_cjdns_tools" $COMPLETION_FILE; then
         return
@@ -2646,31 +2658,30 @@ function mesh_cjdns_tools {
         mesh_cjdns
     fi
 
+	select_go_version
+
     apt-get -y install golang mercurial
     if [ ! -f ~/.bashrc ]; then
         touch ~/.bashrc
     fi
-
-    export GOPATH=/home/git/go
+	
     if [ ! -d /home/git ]; then
         # add a gogs user account
         adduser --disabled-login --gecos 'Gogs' git
 
         # install Go
-        export GOPATH=/home/git/go
-        if ! grep -q "export GOPATH=/home/git/go" ~/.bashrc; then
-            echo 'export GOPATH=/home/git/go' >> ~/.bashrc
+        if ! grep -q "export GOPATH=" ~/.bashrc; then
+            echo "export GOPATH=$GOPATH" >> ~/.bashrc
         fi
-        systemctl set-environment GOPATH=/home/git/go
-        if ! grep -q "systemctl set-environment GOPATH=/home/git/go" ~/.bashrc; then
-            echo 'systemctl set-environment GOPATH=/home/git/go' >> ~/.bashrc
+        systemctl set-environment GOPATH=$GOPATH
+        if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
+            echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
         fi
         if [ ! -d $GOPATH ]; then
             mkdir -p $GOPATH
         fi
     fi
 
-    export GOPATH=$GOPATH
     if ! grep -q "export GOPATH=" ~/.bashrc; then
         echo "export GOPATH=$GOPATH" >> ~/.bashrc
     fi
@@ -6309,12 +6320,12 @@ function upgrade_golang {
     gvm install go1.4
     gvm use go1.4
     export GOROOT_BOOTSTRAP=$GOROOT
-    gvm install go1.5
+    gvm install go${GO_VERSION}
     if [ ! "$?" = "0" ]; then
         echo $'Unable to upgrade golang'
         exit 529252
     fi
-    gvm use go1.5 --default
+    gvm use go${GO_VERSION} --default
 
     if ! grep -q "gvm commit" $COMPLETION_FILE; then
         echo "gvm commit:$GVM_COMMIT" >> $COMPLETION_FILE
@@ -6333,8 +6344,7 @@ function install_gogs {
         return
     fi
 
-    export GOPATH=/home/git/go
-    systemctl set-environment GOPATH=/home/git/go
+    select_go_version
 
     # update to the next commit
     set_repo_commit $GOPATH/src/github.com/gogits/gogs "Gogs commit" "$GOGS_COMMIT" $GIT_DOMAIN_REPO
@@ -6354,13 +6364,12 @@ function install_gogs {
 
     # install Go
     apt-get -y install golang libpam0g-dev
-    export GOPATH=/home/git/go
-    if ! grep -q "export GOPATH=/home/git/go" ~/.bashrc; then
-        echo 'export GOPATH=/home/git/go' >> ~/.bashrc
+    if ! grep -q "export GOPATH=" ~/.bashrc; then
+        echo "export GOPATH=$GOPATH" >> ~/.bashrc
     fi
-    systemctl set-environment GOPATH=/home/git/go
-    if ! grep -q "systemctl set-environment GOPATH=/home/git/go" ~/.bashrc; then
-        echo 'systemctl set-environment GOPATH=/home/git/go' >> ~/.bashrc
+    systemctl set-environment GOPATH=$GOPATH
+    if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
+        echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
     fi
     if [ ! -d $GOPATH ]; then
         mkdir -p $GOPATH
@@ -6430,7 +6439,7 @@ function install_gogs {
         echo $'Check "Enable Register Confirmation"' >> /home/$MY_USERNAME/README
         echo $'Check "Enable Mail Notification"' >> /home/$MY_USERNAME/README
         echo '' >> /home/$MY_USERNAME/README
-        echo $'After the initial install edit /home/git/go/src/github.com/gogits/gogs/custom/conf/app.ini' >> /home/$MY_USERNAME/README
+        echo $"After the initial install edit ${GOPATH}/src/github.com/gogits/gogs/custom/conf/app.ini" >> /home/$MY_USERNAME/README
         echo $'and within the [server] section set:' >> /home/$MY_USERNAME/README
         echo "  DOMAIN = $GIT_DOMAIN_NAME" >> /home/$MY_USERNAME/README
         echo "  ROOT_URL = http://$GIT_DOMAIN_NAME/" >> /home/$MY_USERNAME/README
@@ -6456,14 +6465,14 @@ function install_gogs {
 
     create_database gogs "$GOGS_ADMIN_PASSWORD"
 
-    chmod 600 /home/git/go/src/github.com/gogits/gogs/custom/conf/app.ini
+    chmod 600 $GOPATH/src/github.com/gogits/gogs/custom/conf/app.ini
 
     chown -R git:git /home/git
     cp $GOPATH/src/github.com/gogits/gogs/scripts/systemd/gogs.service /etc/systemd/system
     sed -i 's|#After=mysqld.service|After=mysqld.service|g' /etc/systemd/system/gogs.service
     sed -i "s|WorkingDirectory=.*|WorkingDirectory=$GOPATH/src/github.com/gogits/gogs|g" /etc/systemd/system/gogs.service
     sed -i "s|ExecStart=.*|ExecStart=$GOPATH/src/github.com/gogits/gogs/gogs web|g" /etc/systemd/system/gogs.service
-    sed -i "s|Environment.*|Environment=\"USER=git\" \"HOME=/home/git\" \"GOPATH=/home/git/go\"|g" /etc/systemd/system/gogs.service
+    sed -i "s|Environment.*|Environment=\"USER=git\" \"HOME=/home/git\" \"GOPATH=$GOPATH\"|g" /etc/systemd/system/gogs.service
     systemctl enable gogs
     systemctl daemon-reload
     systemctl restart gogs
@@ -10079,11 +10088,10 @@ function install_ipfs {
         return
     fi
 
-    export GOPATH=/home/git/go
-    systemctl set-environment GOPATH=/home/git/go
+    select_go_version
 
     # update to the next commit
-    set_repo_commit /home/git/go/src/github.com/ipfs/go-ipfs "ipfs commit" "$IPFS_COMMIT" $IPFS_REPO
+    set_repo_commit $GOPATH/src/github.com/ipfs/go-ipfs "ipfs commit" "$IPFS_COMMIT" $IPFS_REPO
 
     if grep -Fxq "install_ipfs" $COMPLETION_FILE; then
         return
@@ -10096,21 +10104,19 @@ function install_ipfs {
         adduser --disabled-login --gecos 'Gogs' git
 
         # install Go
-        export GOPATH=/home/git/go
-        if ! grep -q "export GOPATH=/home/git/go" ~/.bashrc; then
-            echo 'export GOPATH=/home/git/go' >> ~/.bashrc
+        if ! grep -q "export GOPATH=" ~/.bashrc; then
+            echo "export GOPATH=$GOPATH" >> ~/.bashrc
         fi
-        systemctl set-environment GOPATH=/home/git/go
-        if ! grep -q "systemctl set-environment GOPATH=/home/git/go" ~/.bashrc; then
-            echo 'systemctl set-environment GOPATH=/home/git/go' >> ~/.bashrc
+        systemctl set-environment GOPATH=$GOPATH
+        if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
+            echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
         fi
-        export GOPATH=/home/git/go
         if [ ! -d $GOPATH ]; then
             mkdir -p $GOPATH
         fi
     fi
 
-    IPFS_PATH=/home/git/go/bin
+    IPFS_PATH=$GOPATH/bin
     export PATH="$GOPATH/bin:$PATH:"
     if ! grep -q 'GOPATH/bin' ~/.bashrc; then
         echo 'export PATH="$GOPATH/bin:$PATH:";' >> ~/.bashrc
@@ -10118,7 +10124,7 @@ function install_ipfs {
 
     # set gopath for the user
     if ! grep -q "GOPATH=" /home/$MY_USERNAME/.bashrc; then
-        echo 'export GOPATH=/home/git/go' >> /home/$MY_USERNAME/.bashrc
+        echo "export GOPATH=$GOPATH" >> /home/$MY_USERNAME/.bashrc
         echo 'export PATH="$GOPATH/bin:$PATH:";' >> /home/$MY_USERNAME/.bashrc
         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
     fi
@@ -10129,7 +10135,7 @@ function install_ipfs {
         exit 8242
     fi
 
-    cd /home/git/go/src/$IPFS_GO_REPO2
+    cd $GOPATH/src/$IPFS_GO_REPO2
     git checkout $IPFS_COMMIT -b $IPFS_COMMIT
     if ! grep -q "ipfs commit" $COMPLETION_FILE; then
         echo "ipfs commit:$IPFS_COMMIT" >> $COMPLETION_FILE
@@ -10171,7 +10177,7 @@ function install_ipfs {
     echo "WorkingDirectory=/home/$MY_USERNAME" >> /etc/systemd/system/ipfs.service
     echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> /etc/systemd/system/ipfs.service
     echo 'Restart=on-failure' >> /etc/systemd/system/ipfs.service
-    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=/home/git/go\"" >> /etc/systemd/system/ipfs.service
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\"" >> /etc/systemd/system/ipfs.service
     echo '' >> /etc/systemd/system/ipfs.service
     echo '[Install]' >> /etc/systemd/system/ipfs.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ipfs.service
