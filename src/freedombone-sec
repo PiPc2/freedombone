@@ -573,6 +573,18 @@ function update_ciphersuite {
 	exit 0
 }
 
+function gpg_pubkey_from_email {
+	key_owner_username=$1
+	key_email_address=$2
+	key_id=
+	if [[ $key_owner_username != "root" ]]; then
+		key_id=$(su -c "gpg --list-keys $key_email_address | grep 'pub '" - $key_owner_username | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+	else
+		key_id=$(gpg --list-keys $key_email_address | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+	fi
+	echo $key_id
+}
+
 function enable_monkeysphere {
 	monkey=
 	dialog --title $"GPG based authentication" \
@@ -591,9 +603,21 @@ function enable_monkeysphere {
 				   --msgbox $"$MY_USERNAME does not currently have any ids within ~/.monkeysphere/authorized_user_ids" 6 40
 			exit 0
 		fi
+
+		MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_USERNAME@$HOSTNAME")
+		if [ ${#MY_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
+			echo $'monkeysphere unable to get GPG key ID for user $MY_USERNAME'
+			exit 52825
+		fi
+
 		sed -i 's|#AuthorizedKeysFile|AuthorizedKeysFile|g' /etc/ssh/sshd_config
 		sed -i 's|AuthorizedKeysFile.*|AuthorizedKeysFile /var/lib/monkeysphere/authorized_keys/%u|g' /etc/ssh/sshd_config
 		monkeysphere-authentication update-users
+
+		# The admin user is the identity certifier
+		fpr=$(gpg --with-colons --fingerprint $MY_GPG_PUBLIC_KEY_ID | grep fpr | head -n 1 | awk -F ':' '{print $10}')
+		monkeysphere-authentication add-identity-certifier $fpr
+
 	else
 		sed -i 's|#AuthorizedKeysFile|AuthorizedKeysFile|g' /etc/ssh/sshd_config
 		sed -i 's|AuthorizedKeysFile.*|AuthorizedKeysFile %h/.ssh/authorized_keys|g' /etc/ssh/sshd_config
