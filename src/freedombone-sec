@@ -63,6 +63,11 @@ REGENERATE_DH_KEYS="no"
 DH_KEYLENGTH=2048
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
+MY_USERNAME=
+if grep -q "MY_USERNAME" $CONFIGURATION_FILE; then
+	MY_USERNAME=$(grep "MY_USERNAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+fi
+
 function get_protocols_from_website {
   if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
 	  return
@@ -568,17 +573,56 @@ function update_ciphersuite {
 	exit 0
 }
 
+function enable_monkeysphere {
+	monkey=
+	dialog --title $"GPG based authentication" \
+		   --backtitle $"Freedombone Security Configuration" \
+		   --defaultno \
+		   --yesno $"\nEnable GPG based authentication with monkeysphere ?" 7 60
+	sel=$?
+	case $sel in
+		0) monkey='yes';;
+		255) exit 0;;
+	esac
+
+	if [ $monkey ]; then
+		if [ ! -f /home/$MY_USERNAME/.monkeysphere/authorized_user_ids ]; then
+			dialog --title $"GPG based authentication" \
+				   --msgbox $"$MY_USERNAME does not currently have any ids within ~/.monkeysphere/authorized_user_ids" 6 40
+			exit 0
+		fi
+		sed -i 's|#AuthorizedKeysFile|AuthorizedKeysFile|g' /etc/ssh/sshd_config
+		sed -i 's|AuthorizedKeysFile.*|AuthorizedKeysFile /var/lib/monkeysphere/authorized_keys/%u|g' /etc/ssh/sshd_config
+		monkeysphere-authentication update-users
+	else
+		sed -i 's|#AuthorizedKeysFile|AuthorizedKeysFile|g' /etc/ssh/sshd_config
+		sed -i 's|AuthorizedKeysFile.*|AuthorizedKeysFile %h/.ssh/authorized_keys|g' /etc/ssh/sshd_config
+	fi
+
+	systemctl restart ssh
+
+	if [ $monkey ]; then
+		dialog --title $"GPG based authentication" \
+			   --msgbox $"GPG based authentication was enabled" 6 40
+	else
+		dialog --title $"GPG based authentication" \
+			   --msgbox $"GPG based authentication was disabled" 6 40
+	fi
+	exit 0
+}
+
 function housekeeping {
   cmd=(dialog --separate-output \
 			  --backtitle "Freedombone Security Configuration" \
 			  --title "Housekeeping options" \
-			  --checklist "If you don't need to do any of these things then just press Enter:" 13 76 16)
+			  --checklist "If you don't need to do any of these things then just press Enter:" 17 76 17)
   options=(1 "Regenerate ssh host keys" off
 		   2 "Regenerate Diffie-Hellman keys" off
 		   3 "Renew a StartSSL certificate" off
 		   4 "Update cipersuite" off
 		   5 "Create a new Let's Encrypt certificate" off
-		   6 "Renew Let's Encrypt certificate" off)
+		   6 "Renew Let's Encrypt certificate" off
+		   7 "Enable GPG based authentication (monkeysphere)" off)
   choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
   clear
   for choice in $choices
@@ -601,6 +645,9 @@ function housekeeping {
 		;;
 	  6)
 		renew_letsencrypt
+		;;
+	  7)
+		enable_monkeysphere
 		;;
 	esac
   done
