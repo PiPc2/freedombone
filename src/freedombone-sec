@@ -636,6 +636,51 @@ function enable_monkeysphere {
 	exit 0
 }
 
+function register_website {
+	domain="$1"
+
+	if [[ ${domain} == *".local" ]]; then
+		echo $"Can't register local domains"
+		return
+	fi
+
+	if [ ! -f /etc/ssl/private/${domain}.key ]; then
+		echo $"No SSL/TLS private key found for ${domain}"
+		return
+	fi
+
+	if [ ! -f /etc/nginx/sites-available/${domain} ]; then
+		echo $"No virtual host found for ${domain}"
+		return
+	fi
+
+	monkeysphere-host import-key /etc/ssl/private/${domain}.key https://${domain}
+	monkeysphere-host publish-key
+	echo "0"
+}
+
+function register_website_interactive {
+  data=$(tempfile 2>/dev/null)
+  trap "rm -f $data" 0 1 2 5 15
+  dialog --title $"Register a website with monkeysphere" \
+		 --backtitle $"Freedombone Security Settings" \
+		 --inputbox $"Enter the website domain name (without https://)" 8 60 2>$data
+  sel=$?
+  case $sel in
+	  0)
+		  domain=$(<$data)
+		  register_website "$domain"
+		  if [ ! "$?" = "0" ]; then
+			  dialog --title $"Register a website with monkeysphere" \
+					 --msgbox "$?" 6 40
+		  else
+			  dialog --title $"Register a website with monkeysphere" \
+					 --msgbox $"$domain has been registered" 6 40
+		  fi
+		  ;;
+  esac
+}
+
 function housekeeping {
   cmd=(dialog --separate-output \
 			  --backtitle "Freedombone Security Configuration" \
@@ -647,7 +692,8 @@ function housekeeping {
 		   4 "Update cipersuite" off
 		   5 "Create a new Let's Encrypt certificate" off
 		   6 "Renew Let's Encrypt certificate" off
-		   7 "Enable GPG based authentication (monkeysphere)" off)
+		   7 "Enable GPG based authentication (monkeysphere)" off
+		   8 "Register a website with monkeysphere" off)
   choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
   clear
   for choice in $choices
@@ -673,6 +719,9 @@ function housekeeping {
 		;;
 	  7)
 		enable_monkeysphere
+		;;
+	  8)
+		register_website
 		;;
 	esac
   done
@@ -859,25 +908,6 @@ function refresh_gpg_keys {
 			su -c 'gpg --refresh-keys' - $USERNAME
 		fi
 	done
-	exit 0
-}
-
-function register_website {
-	domain="$1"
-	if [[ ${domain} == *".local" ]]; then
-		echo $"Can't register local domains"
-		exit 82438
-	fi
-	if [ ! -f /etc/ssl/private/${domain}.key ]; then
-		echo $"No SSL/TLS private key found for ${domain}"
-		exit 62852
-	fi
-	if [ ! -f /etc/nginx/sites-available/${domain} ]; then
-		echo $"No virtual host found for ${domain}"
-		exit 25625
-	fi
-	monkeysphere-host import-key /etc/ssl/private/${domain}.key https://${domain}
-	monkeysphere-host publish-key
 	exit 0
 }
 
