@@ -335,6 +335,20 @@ function interactive_setup {
   clear
 }
 
+function send_monkeysphere_server_keys_to_users {
+	monkeysphere_server_keys=$(monkeysphere-host show-key | grep $"OpenPGP fingerprint" | awk -F ' ' '{print $3}')
+	for d in /home/*/ ; do
+		USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+		if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+			if [ ! -d /home/$USERNAME/.monkeysphere ]; then
+				mkdir /home/$USERNAME/.monkeysphere
+			fi
+			echo $monkeysphere_server_keys > /home/$USERNAME/.monkeysphere/server_keys
+			chown -R $USERNAME:$USERNAME /home/$USERNAME/.monkeysphere
+		fi
+	done
+}
+
 function regenerate_ssh_host_keys {
   if [[ $REGENERATE_SSH_HOST_KEYS == "yes" ]]; then
 	  rm -f /etc/ssh/ssh_host_*
@@ -352,7 +366,8 @@ function regenerate_ssh_host_keys {
 	  monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$DEFAULT_DOMAIN_NAME
 	  SSH_ONION_HOSTNAME=$(cat ${COMPLETION_FILE} | grep 'ssh onion domain' | awk -F ':' '{print $2}')
 	  monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$SSH_ONION_HOSTNAME
-	  monkeysphere-host publish-key --all
+	  monkeysphere-host publish-key
+	  send_monkeysphere_server_keys_to_users
 	  echo $'updated monkeysphere ssh host key'
 	  systemctl restart ssh
   fi
@@ -618,7 +633,8 @@ function enable_monkeysphere {
 		# The admin user is the identity certifier
 		fpr=$(gpg --with-colons --fingerprint $MY_GPG_PUBLIC_KEY_ID | grep fpr | head -n 1 | awk -F ':' '{print $10}')
 		monkeysphere-authentication add-identity-certifier $fpr
-		monkeysphere-host publish-key --all
+		monkeysphere-host publish-key
+		send_monkeysphere_server_keys_to_users
 	else
 		sed -i 's|#AuthorizedKeysFile|AuthorizedKeysFile|g' /etc/ssh/sshd_config
 		sed -i 's|AuthorizedKeysFile.*|AuthorizedKeysFile %h/.ssh/authorized_keys|g' /etc/ssh/sshd_config
