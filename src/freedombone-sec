@@ -64,9 +64,6 @@ DH_KEYLENGTH=2048
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
 MY_USERNAME=
-if grep -q "MY_USERNAME" $CONFIGURATION_FILE; then
-	MY_USERNAME=$(grep "MY_USERNAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-fi
 
 function get_protocols_from_website {
   if [ ! -f $WEBSITES_DIRECTORY/$1 ]; then
@@ -614,6 +611,10 @@ function enable_monkeysphere {
 	esac
 
 	if [ $monkey ]; then
+		if grep -q "MY_USERNAME" $CONFIGURATION_FILE; then
+			MY_USERNAME=$(grep "MY_USERNAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+
 		if [ ! -f /home/$MY_USERNAME/.monkeysphere/authorized_user_ids ]; then
 			dialog --title $"GPG based authentication" \
 				   --msgbox $"$MY_USERNAME does not currently have any ids within ~/.monkeysphere/authorized_user_ids" 6 40
@@ -927,6 +928,33 @@ function refresh_gpg_keys {
 	exit 0
 }
 
+function monkeysphere_sign_server_keys {
+	server_keys_file=/home/$USER/.monkeysphere/server_keys
+	if [ ! -f $server_keys_file ]; then
+		exit 0
+	fi
+
+	keys_signed=
+	while read line; do
+		echo $line
+		if [ ${#line} -gt 2 ]; then
+			fpr=$(gpg --with-colons --fingerprint "$line" | grep fpr | head -n 1 | awk -F ':' '{print $10}')
+			if [ ${#fpr} -gt 2 ]; then
+				gpg --sign-key $fpr
+				if [ "$?" = "0" ]; then
+					gpg --update-trustdb
+					keys_signed=1
+				fi
+			fi
+		fi
+	done <$server_keys_file
+
+	if [ $keys_signed ]; then
+		rm $server_keys_file
+	fi
+	exit 0
+}
+
 function show_help {
   echo ''
   echo "${PROJECT_NAME}-sec"
@@ -938,6 +966,7 @@ function show_help {
   echo $'  -e --export              Export security settings to a file'
   echo $'  -i --import              Import security settings from a file'
   echo $'  -r --refresh             Refresh GPG keys for all users'
+  echo $'  -s --sign                Sign monkeysphere server keys'
   echo $'     --register [domain]   Register a https domain with monkeysphere'
   echo ''
   exit 0
@@ -972,6 +1001,11 @@ case $key in
 	--register|--reg|--site)
 	shift
 	register_website "$1"
+	;;
+	# user signs monkeysphere server keys
+	-s|--sign)
+	shift
+	monkeysphere_sign_server_keys
 	;;
 	*)
 	# unknown option
