@@ -38,87 +38,97 @@ MY_USERNAME=$1
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 
 if [ ! $MY_USERNAME ]; then
-    echo $'Please specify a username to remove'
-    exit 1
+	echo $'Please specify a username to remove'
+	exit 1
 fi
 
 if [[ $MY_USERNAME == 'git' || $MY_USERNAME == 'mirrors' ]]; then
-    echo $'Cannot remove reserved users'
-    exit 2
+	echo $'Cannot remove reserved users'
+	exit 2
 fi
 
 if [ ! -d /home/$MY_USERNAME ]; then
-    echo $"Home directory does not exist for $MY_USERNAME"
-    exit 3
+	echo $"Home directory does not exist for $MY_USERNAME"
+	exit 3
 fi
 
 if [ ! -f $COMPLETION_FILE ]; then
-    echo $"$COMPLETION_FILE not found"
-    exit 4
+	echo $"$COMPLETION_FILE not found"
+	exit 4
 fi
 
 if ! grep -q "Admin user" $COMPLETION_FILE; then
-    echo $"No admin user specified in $COMPLETION_FILE"
-    exit 5
+	echo $"No admin user specified in $COMPLETION_FILE"
+	exit 5
 fi
 
 ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
 if [ ! $ADMIN_USERNAME ]; then
-    echo $"No admin username specified in $COMPLETION_FILE"
-    exit 6
+	echo $"No admin username specified in $COMPLETION_FILE"
+	exit 6
 fi
 
 if [[ $MY_USERNAME == $ADMIN_USERNAME ]]; then
-    echo $"The administrator user cannot be removed"
-    exit 7
+	echo $"The administrator user cannot be removed"
+	exit 7
 fi
 
 echo $'>>> REMOVE USER <<<'
 read -p $"Do you really wish to remove the user '$MY_USERNAME' (y/n) ?" yn
 if [[ $yn != 'y' && $yn != 'Y' && $yn != 'yes' && $yn != 'Yes' && $yn != 'YES' ]]; then
-    echo $"User $MY_USERNAME was not removed"
-    exit 8
+	echo $"User $MY_USERNAME was not removed"
+	exit 8
 fi
 
 if grep -q "install_xmpp" $COMPLETION_FILE; then
-    ${PROJECT_NAME}-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
+	${PROJECT_NAME}-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
 fi
 
 if grep -q "Blog domain" $COMPLETION_FILE; then
-    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
-    if [ -f /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini ]; then
-        rm /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    fi
+	FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+	if [ -f /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini ]; then
+		rm /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+	fi
 fi
 
 if grep -q "install_sip" $COMPLETION_FILE; then
-    ${PROJECT_NAME}-rmsipuser $MY_USERNAME
+	${PROJECT_NAME}-rmsipuser $MY_USERNAME
 fi
 
 if grep -q "GNU Social domain" $COMPLETION_FILE; then
-    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
-    if [ -d /var/www/$MICROBLOG_DOMAIN_NAME ]; then
-        cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-        php scripts/deleteprofile.php -n $MY_USERNAME -y
-        echo $'Removed GNU Social user'
-    fi
+	MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "GNU Social domain" | awk -F ':' '{print $2}')
+	if [ -d /var/www/$MICROBLOG_DOMAIN_NAME ]; then
+		cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
+		php scripts/deleteprofile.php -n $MY_USERNAME -y
+		echo $'Removed GNU Social user'
+	fi
 fi
 
 if [ -f /etc/nginx/.htpasswd ]; then
-    if grep "${MY_USERNAME}:" /etc/nginx/.htpasswd; then
-        htpasswd -D /etc/nginx/.htpasswd $MY_USERNAME
-    fi
+	if grep "${MY_USERNAME}:" /etc/nginx/.htpasswd; then
+		htpasswd -D /etc/nginx/.htpasswd $MY_USERNAME
+	fi
 fi
 
 # remove user from SIP TURN/STUN
 if [ -d /etc/turnserver ]; then
-    sed -i "/${MY_USERNAME}:/d" /etc/turnserver/turnusers.txt
+	sed -i "/${MY_USERNAME}:/d" /etc/turnserver/turnusers.txt
+fi
+
+# remove gpg keys
+if [ -d /home/$MY_USERNAME/.gnupg ]; then
+	shred -u /home/$MY_USERNAME/.gnupg/*
+fi
+
+# remove ssh keys
+if [ -d /home/$MY_USERNAME/.ssh ]; then
+	shred -u /home/$MY_USERNAME/.ssh/*
 fi
 
 userdel -r $MY_USERNAME
 
 if [ -d /home/$MY_USERNAME ]; then
-    rm -rf /home/$MY_USERNAME
+	rm -rf /home/$MY_USERNAME
 fi
 
 echo $"User $MY_USERNAME was removed"
