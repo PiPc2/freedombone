@@ -28,12 +28,10 @@ install:
 	install -m 755 src/${APP}-restore-remote ${DESTDIR}${PREFIX}/bin/restorefromfriend
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-mesh-batman.1.gz ${DESTDIR}${PREFIX}/share/man/man1/batman.1.gz
 	install -m 644 man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
 	install -m 644 man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
 	bash -c "./translate install"
 uninstall:
-	rm -f ${PREFIX}/share/man/man1/batman.1.gz
 	rm -f ${PREFIX}/share/man/man1/backup.1.gz
 	rm -f ${PREFIX}/share/man/man1/restore.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}*.1.gz
