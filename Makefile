@@ -21,28 +21,31 @@ install:
 	install -m 755 src/* ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
+	install -m 755 src/${APP}-mesh-batman ${DESTDIR}${PREFIX}/bin/batman
 	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
 	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
 	install -m 755 src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
 	install -m 755 src/${APP}-restore-remote ${DESTDIR}${PREFIX}/bin/restorefromfriend
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	install -m 644 man/${APP}-mesh-batman.1.gz ${DESTDIR}${PREFIX}/share/man/man1/batman.1.gz
 	install -m 644 man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
 	install -m 644 man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
 	bash -c "./translate install"
 uninstall:
+	rm -f ${PREFIX}/share/man/man1/batman.1.gz
 	rm -f ${PREFIX}/share/man/man1/backup.1.gz
 	rm -f ${PREFIX}/share/man/man1/restore.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}*.1.gz
 	rm -rf ${PREFIX}/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}*
 	rm -f ${PREFIX}/bin/zeronetavahi
-	rm -f ${PREFIX}/bin/mesh
 	rm -f ${PREFIX}/bin/backup
 	rm -f ${PREFIX}/bin/backup2friends
 	rm -f ${PREFIX}/bin/restore
 	rm -f ${PREFIX}/bin/restorefromfriend
 	rm -f ${PREFIX}/bin/meshweb
+	rm -f ${PREFIX}/bin/batman
 	rm -rf /etc/${APP}
 	bash -c "./translate uninstall"
 clean:
