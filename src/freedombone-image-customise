@@ -642,6 +642,7 @@ function mesh_tox_node {
 	echo '    exit 1' >> $TEMP_SCRIPT
 	echo 'fi' >> $TEMP_SCRIPT
 	echo 'make install' >> $TEMP_SCRIPT
+	echo 'cp /usr/local/lib/libtoxcore* /usr/lib/' >> $TEMP_SCRIPT
 	echo 'exit 0' >> $TEMP_SCRIPT
 	chmod +x $TEMP_SCRIPT
 	cp $TEMP_SCRIPT $rootdir/root/
@@ -652,11 +653,12 @@ function mesh_tox_node {
 		duration=$SECONDS
 		echo $"Toxcore compile failed at $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
 		echo $'Unable to make toxcore'
+		rm $TEMP_SCRIPT
 		exit 73835
 	fi
 	duration=$SECONDS
 	echo $"Toxcore compile $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
-	chroot "$rootdir" cp /usr/local/lib/libtoxcore* /usr/lib/
+	rm $TEMP_SCRIPT
 
 	if [ ! -f $rootdir/usr/local/bin/tox-bootstrapd ]; then
 		echo $"File not found /usr/local/bin/tox-bootstrapd"
@@ -738,25 +740,33 @@ function mesh_tox_avahi {
 		exit 78252
 	fi
 
-	# install a command to obtain the Tox ID
-	git clone $TOXID_REPO $rootdir$INSTALL_DIR/toxid
+	TEMP_SCRIPT_NAME=fbtmp5328252.sh
+	TEMP_SCRIPT=/tmp/$TEMP_SCRIPT_NAME
+	echo '#!/bin/bash' > $TEMP_SCRIPT
+	echo "mkdir -p $INSTALL_DIR" >> $TEMP_SCRIPT
+	echo "git clone $TOXID_REPO $INSTALL_DIR/toxid" >> $TEMP_SCRIPT
+	echo "if [ ! -d $INSTALL_DIR/toxid ]; then" >> $TEMP_SCRIPT
+	echo '    exit 1' >> $TEMP_SCRIPT
+	echo 'fi' >> $TEMP_SCRIPT
+	echo "cd $INSTALL_DIR/toxid" >> $TEMP_SCRIPT
+	echo "make" >> $TEMP_SCRIPT
+	echo 'if [ ! "$?" = "0" ]; then' >> $TEMP_SCRIPT
+	echo '    exit 2' >> $TEMP_SCRIPT
+	echo 'fi' >> $TEMP_SCRIPT
+	echo 'make install' >> $TEMP_SCRIPT
+	echo 'toxavahi' >> $TEMP_SCRIPT
+	echo 'echo "* *     * * *   root    toxavahi > /dev/null" >> /etc/crontab' >> $TEMP_SCRIPT
+	echo 'exit 0' >> $TEMP_SCRIPT
+	chmod +x $TEMP_SCRIPT
+	cp $TEMP_SCRIPT $rootdir/root/
 
-	if [ ! -d $rootdir$INSTALL_DIR/toxid ]; then
-		echo $'toxid repo not found'
-		exit 52682
-	fi
-	cd $rootdir$INSTALL_DIR/toxid
-	chroot "$rootdir" make
+	chroot "$rootdir" /root/$TEMP_SCRIPT_NAME
 	if [ ! "$?" = "0" ]; then
-		echo $'Failed to compile toxid'
-		exit 58432
+		echo $'Unable to install toxid'
+		rm $TEMP_SCRIPT
+		exit 62835
 	fi
-	chroot "$rootdir" make install
-
-	chroot "$rootdir" toxavahi
-
-	# publish regularly
-	echo "* *     * * *   root    toxavahi > /dev/null" >> $rootdir/etc/crontab
+	rm $TEMP_SCRIPT
 
 	chroot "$rootdir" systemctl restart avahi-daemon
 }
@@ -790,18 +800,21 @@ function mesh_tox_client {
 	chroot "$rootdir" apt-get -y install libncursesw5-dev libconfig-dev libqrencode-dev
 	chroot "$rootdir" apt-get -y install libcurl4-openssl-dev libvpx-dev libopenal-dev
 
-	if [ ! -d $rootdir$INSTALL_DIR ]; then
-		mkdir -p $rootdir$INSTALL_DIR
-	fi
-	git clone $TOXIC_REPO $rootdir$INSTALL_DIR/toxic
-	cd $rootdir$INSTALL_DIR/toxic
-	git checkout $TOXIC_COMMIT -b $TOXIC_COMMIT
-
-	if ! grep -q "Toxic commit" $rootdir$COMPLETION_FILE; then
-		echo "Toxic commit:$TOXIC_COMMIT" >> $rootdir$COMPLETION_FILE
-	else
-		sed -i "s|Toxic commit.*|Toxic commit:$TOXIC_COMMIT|g" $rootdir$COMPLETION_FILE
-	fi
+	TEMP_SCRIPT_NAME=fbtmp728353.sh
+	TEMP_SCRIPT=/tmp/$TEMP_SCRIPT_NAME
+	echo '#!/bin/bash' > $TEMP_SCRIPT
+	echo "mkdir -p $INSTALL_DIR" >> $TEMP_SCRIPT
+	echo "git clone $TOXIC_REPO $INSTALL_DIR/toxic" >> $TEMP_SCRIPT
+	echo "cd $INSTALL_DIR/toxic" >> $TEMP_SCRIPT
+	echo "git checkout $TOXIC_COMMIT -b $TOXIC_COMMIT" >> $TEMP_SCRIPT
+	echo 'make' >> $TEMP_SCRIPT
+	echo 'if [ ! "$?" = "0" ]; then' >> $TEMP_SCRIPT
+	echo '    exit 1' >> $TEMP_SCRIPT
+	echo 'fi' >> $TEMP_SCRIPT
+	echo 'make install' >> $TEMP_SCRIPT
+	echo 'exit 0' >> $TEMP_SCRIPT
+	chmod +x $TEMP_SCRIPT
+	cp $TEMP_SCRIPT $rootdir/root/
 
 	if [ -f /usr/local/bin/${PROJECT_NAME} ]; then
 		TOXIC_FILE=$(cat /usr/local/bin/${PROJECT_NAME} | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
@@ -809,20 +822,16 @@ function mesh_tox_client {
 		TOXIC_FILE=$(cat /usr/bin/${PROJECT_NAME} | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
 	fi
 
-	if [ ! -d $rootdir$INSTALL_DIR/toxic ]; then
-		echo $"$INSTALL_DIR/toxic not found"
-		exit 347835
-	fi
-
 	SECONDS=0
-	chroot "$rootdir" make
-	if [ ! -f $rootdir$INSTALL_DIR/toxic/build/toxic ]; then
+	chroot "$rootdir" /root/$TEMP_SCRIPT_NAME
+	if [ ! "$?" = "0" ]; then
 		duration=$SECONDS
 		echo $"Toxic client compile failed at $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
 		echo $'Unable to make tox client'
+		rm $TEMP_SCRIPT
 		exit 74872
 	fi
-	chroot "$rootdir" make install
+	rm $TEMP_SCRIPT
 	if [ ! -f $rootdir$TOXIC_FILE ]; then
 		echo $"Tox client was not installed to $TOXIC_FILE"
 		exit 63278
