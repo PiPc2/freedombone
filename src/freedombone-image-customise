@@ -627,22 +627,95 @@ function mesh_tox_node {
 	chroot "$rootdir" apt-get -y install libsodium13 libsodium-dev libcap2-bin
 	chroot "$rootdir" apt-get -y install libconfig9 libconfig-dev
 
-	if [ ! -d $rootdir$INSTALL_DIR ]; then
-		mkdir -p $rootdir$INSTALL_DIR
-	fi
-	git clone $TOXCORE_REPO $rootdir$INSTALL_DIR/toxcore
-	if [ ! -d $rootdir$INSTALL_DIR/toxcore ]; then
-		echo $'Unable to clone toxcore'
-		exit 543335
-	fi
-	cd $rootdir$INSTALL_DIR/toxcore
-	git checkout $TOXCORE_COMMIT -b $TOXCORE_COMMIT
 
-	if ! grep -q "Toxcore commit" $rootdir$COMPLETION_FILE; then
-		echo "Toxcore commit:$TOXCORE_COMMIT" >> $rootdir$COMPLETION_FILE
-	else
-		sed -i "s|Toxcore commit.*|Toxcore commit:$TOXCORE_COMMIT|g" $rootdir$COMPLETION_FILE
+	TEMP_SCRIPT=/tmp/fbtmp37272.sh
+	echo '#!/bin/bash' > $TEMP_SCRIPT
+	echo "mkdir -p $INSTALL_DIR" >> $TEMP_SCRIPT
+	echo "git clone $TOXCORE_REPO $INSTALL_DIR/toxcore" >> $TEMP_SCRIPT
+	echo "cd $INSTALL_DIR" >> $TEMP_SCRIPT
+	echo "git checkout $TOXCORE_COMMIT -b $TOXCORE_COMMIT" >> $TEMP_SCRIPT
+	echo 'autoreconf -i' >> $TEMP_SCRIPT
+	echo './configure --enable-daemon --disable-av' >> $TEMP_SCRIPT
+	echo 'make' >> $TEMP_SCRIPT
+	echo 'if [ ! "$?" = "0" ]; then' >> $TEMP_SCRIPT
+	echo '    exit 1' >> $TEMP_SCRIPT
+	echo 'fi' >> $TEMP_SCRIPT
+	echo 'make install' >> $TEMP_SCRIPT
+	echo 'exit 0' >> $TEMP_SCRIPT
+	chmod +x $TEMP_SCRIPT
+	cp $TEMP_SCRIPT $rootdir/root/
+
+	SECONDS=0
+	chroot "$rootdir" $TEMP_SCRIPT
+	if [ ! "$?" = "0" ]; then
+		duration=$SECONDS
+		echo $"Toxcore compile failed at $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
+		echo $'Unable to make toxcore'
+		exit 73835
 	fi
+	duration=$SECONDS
+	echo $"Toxcore compile $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
+	chroot "$rootdir" cp /usr/local/lib/libtoxcore* /usr/lib/
+
+	if [ ! -f $rootdir/usr/local/bin/tox-bootstrapd ]; then
+		echo $"File not found /usr/local/bin/tox-bootstrapd"
+		exit 37825
+	fi
+
+	chroot "$rootdir" useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment $"Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
+	chroot "$rootdir" chmod 700 /var/lib/tox-bootstrapd
+
+	# remove Maildir
+	if [ -d $rootdir/var/lib/tox-bootstrapd/Maildir ]; then
+		rm -rf $rootdir/var/lib/tox-bootstrapd/Maildir
+	fi
+
+	# create configuration file
+	TOX_BOOTSTRAP_CONFIG=$rootdir/etc/tox-bootstrapd.conf
+	echo "port = $TOX_PORT" > $TOX_BOOTSTRAP_CONFIG
+	echo 'keys_file_path = "/var/lib/tox-bootstrapd/keys"' >> $TOX_BOOTSTRAP_CONFIG
+	echo 'pid_file_path = "/var/run/tox-bootstrapd/tox-bootstrapd.pid"' >> $TOX_BOOTSTRAP_CONFIG
+	echo 'enable_ipv6 = true' >> $TOX_BOOTSTRAP_CONFIG
+	echo 'enable_ipv4_fallback = true' >> $TOX_BOOTSTRAP_CONFIG
+	echo 'enable_lan_discovery = true' >> $TOX_BOOTSTRAP_CONFIG
+	echo 'enable_tcp_relay = true' >> $TOX_BOOTSTRAP_CONFIG
+	echo "tcp_relay_ports = [443, 3389, $TOX_PORT]" >> $TOX_BOOTSTRAP_CONFIG
+	echo 'enable_motd = true' >> $TOX_BOOTSTRAP_CONFIG
+	echo 'motd = "tox-bootstrapd"' >> $TOX_BOOTSTRAP_CONFIG
+
+	if [ $TOX_NODES ]; then
+		echo 'bootstrap_nodes = (' >> $TOX_BOOTSTRAP_CONFIG
+		toxcount=0
+		while [ "x${TOX_NODES[toxcount]}" != "x" ]
+		do
+			toxval_ipv4=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $1}')
+			toxval_ipv6=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $2}')
+			toxval_port=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $3}')
+			toxval_pubkey=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $4}')
+			toxval_maintainer=$(echo $TOX_NODES[toxcount] | awk -F ',' '{print $5}')
+			echo "{ // $toxval_maintainer" >> $TOX_BOOTSTRAP_CONFIG
+			if [[ $toxval_ipv6 != 'NONE' ]]; then
+				echo "  address = \"$toxval_ipv6\"" >> $TOX_BOOTSTRAP_CONFIG
+			else
+				echo "  address = \"$toxval_ipv4\"" >> $TOX_BOOTSTRAP_CONFIG
+			fi
+			echo "  port = $toxval_port" >> $TOX_BOOTSTRAP_CONFIG
+			echo "  public_key = \"$toxval_pubkey\"" >> $TOX_BOOTSTRAP_CONFIG
+			toxcount=$(( $toxcount + 1 ))
+			if [ "x${TOX_NODES[toxcount]}" != "x" ]; then
+				echo "}," >> $TOX_BOOTSTRAP_CONFIG
+			else
+				echo "}" >> $TOX_BOOTSTRAP_CONFIG
+			fi
+		done
+		echo ')' >> $TOX_BOOTSTRAP_CONFIG
+	fi
+
+	chroot "$rootdir" cp $INSTALL_DIR/other/bootstrap_daemon/tox-bootstrapd.service /etc/systemd/system/
+	chroot "$rootdir" sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' /etc/systemd/system/tox-bootstrapd.service
+
+	chroot "$rootdir" systemctl daemon-reload
+	chroot "$rootdir" systemctl enable tox-bootstrapd.service
 }
 
 function mesh_tox_avahi {
@@ -663,12 +736,28 @@ function mesh_tox_avahi {
 		echo $'No ToxID repo was specified'
 		exit 78252
 	fi
-	
+
 	# install a command to obtain the Tox ID
-	chroot "$rootdir" git clone $TOXID_REPO $INSTALL_DIR/toxid
+	git clone $TOXID_REPO $rootdir$INSTALL_DIR/toxid
+
 	if [ ! -d $rootdir$INSTALL_DIR/toxid ]; then
-		exit 63921
+		echo $'toxid repo not found'
+		exit 52682
 	fi
+	cd $rootdir$INSTALL_DIR/toxid
+	chroot "$rootdir" make
+	if [ ! "$?" = "0" ]; then
+		echo $'Failed to compile toxid'
+		exit 58432
+	fi
+	chroot "$rootdir" make install
+
+	chroot "$rootdir" toxavahi
+
+	# publish regularly
+	echo "* *     * * *   root    toxavahi > /dev/null" >> $rootdir/etc/crontab
+
+	chroot "$rootdir" systemctl restart avahi-daemon
 }
 
 function mesh_tox_client {
@@ -712,6 +801,33 @@ function mesh_tox_client {
 	else
 		sed -i "s|Toxic commit.*|Toxic commit:$TOXIC_COMMIT|g" $rootdir$COMPLETION_FILE
 	fi
+
+	if [ -f /usr/local/bin/${PROJECT_NAME} ]; then
+		TOXIC_FILE=$(cat /usr/local/bin/${PROJECT_NAME} | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
+	else
+		TOXIC_FILE=$(cat /usr/bin/${PROJECT_NAME} | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
+	fi
+
+	if [ ! -d $rootdir$INSTALL_DIR/toxic ]; then
+		echo $"$INSTALL_DIR/toxic not found"
+		exit 347835
+	fi
+
+	SECONDS=0
+	chroot "$rootdir" make
+	if [ ! -f $rootdir$INSTALL_DIR/toxic/build/toxic ]; then
+		duration=$SECONDS
+		echo $"Toxic client compile failed at $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
+		echo $'Unable to make tox client'
+		exit 74872
+	fi
+	chroot "$rootdir" make install
+	if [ ! -f $rootdir$TOXIC_FILE ]; then
+		echo $"Tox client was not installed to $TOXIC_FILE"
+		exit 63278
+	fi
+	duration=$SECONDS
+	echo $"Toxic client compile $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
 }
 
 function mesh_zeronet {
