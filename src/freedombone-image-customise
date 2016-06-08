@@ -994,15 +994,92 @@ initialise_mesh() {
 
 # User interface for USB drive installs ######################################
 
+function enable_tox_repo {
+	chroot "$rootdir" echo 'deb http://download.opensuse.org/repositories/home:/antonbatenev:/tox/Debian_8.0/ /' > /etc/apt/sources.list.d/tox.list
+	chroot "$rootdir" wget http://download.opensuse.org/repositories/home:antonbatenev:tox/Debian_8.0/Release.key
+	chroot "$rootdir" apt-key add - < Release.key
+	chroot "$rootdir" apt-get update
+	echo "Tox Repository Installed."
+}
+
+function install_syncthing {
+	if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+		return
+	fi
+
+	chroot "$rootdir" apt-get -y install curl
+
+	chroot "$rootdir" curl -s https://syncthing.net/release-key.txt | apt-key add -
+	chroot "$rootdir" echo "deb http://apt.syncthing.net/ syncthing release" | tee /etc/apt/sources.list.d/syncthing.list
+	chroot "$rootdir" apt-get update
+	chroot "$rootdir" apt-get -y install syncthing
+
+	# This probably does need to run as root so that it can access the Sync directories
+	# in each user's home directory
+	chroot "$rootdir" echo '[Unit]' > /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Description=Syncthing - Open Source Continuous File Synchronization' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Documentation=man:syncthing(1)' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'After=network.target' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Wants=syncthing-inotify@.service' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '[Service]' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'User=root' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo "Environment='all_proxy=socks5://localhost:9050'" >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'ExecStart=/usr/bin/syncthing -no-browser -no-restart -logflags=0' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Restart=on-failure' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'SuccessExitStatus=3 4' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'RestartForceExitStatus=3 4' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '[Install]' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'WantedBy=multi-user.target' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" systemctl enable syncthing
+	chroot "$rootdir" systemctl daemon-reload
+
+	if ! grep -q "syncthing" $rootdir/etc/crontab; then
+		chroot "$rootdir" echo "*/1            * *   *   *   root /usr/local/bin/freedombone-syncthing > /dev/null" >> /etc/crontab
+		chroot "$rootdir" systemctl restart cron
+	fi
+
+	echo 'install_syncthing'
+}
+
 function configure_user_interface {
 	if [[ $VARIANT != "meshclient" && $VARIANT != "usb" ]]; then
 		return
 	fi
 
+	# desktop
 	chroot "$rootdir" apt-get -y install mate-desktop-environment
+	
+	# browser
+	chroot "$rootdir" apt-get -y install iceweasel
+	
+	# Tox user interface
+	enable_tox_repo
+	chroot "$rootdir" apt-get -y install qtox
+
+	# Syncthing
+	install_syncthing
 
 	if [[ $VARIANT == "usb" ]]; then
+		# tor
 		chroot "$rootdir" apt-get -y install tor
+
+		# xmpp client
+		chroot "$rootdir" echo "deb ftp://ftp.gajim.org/debian unstable main" > /etc/apt/sources.list.d/gajim.list
+		chroot "$rootdir" apt-get update
+		chroot "$rootdir" apt-get -y install gajim-dev-keyring
+		chroot "$rootdir" apt-get -y install git python-dev python-pip gajim-nightly
+		chroot "$rootdir" mkdir /home/$GENERIC_IMAGE_USERNAME/.local/share/gajim/plugins -p
+		chroot "$rootdir" git clone https://github.com/omemo/gajim-omemo /home/$GENERIC_IMAGE_USERNAME/.local/share/gajim/plugins/gajim-omemo
+		chroot "$rootdir" pip install protobuf==2.6.1, python-axolotl==0.1.35
+		chroot "$rootdir" chown -R $GENERIC_IMAGE_USERNAME:$GENERIC_IMAGE_USERNAME /home/$GENERIC_IMAGE_USERNAME/.local
+
+		# IRC client
+		chroot "$rootdir" apt-get -y install hexchat profanity
+
+		# zeronet
+		
 		# TODO
 	fi
 }
