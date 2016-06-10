@@ -728,6 +728,55 @@ function sign_gpg_key {
 	esac
 }
 
+function gpg_key_trust {
+	data=$(tempfile 2>/dev/null)
+	trap "rm -f $data" 0 1 2 5 15
+	dialog --title $"Trust a PGP/GPG key or website domain" \
+		   --backtitle $"Freedombone User Control Panel" \
+		   --inputbox $"Enter the Key ID, address or domain to be trusted.\n\nIf you are trusting a website domain then include the https:// at the beginning.\n\nIf you are trusting an ssh key then include ssh:// before the domain name." 14 75 2>$data
+	sel=$?
+	case $sel in
+		0)
+			TRUST_ADDRESS=$(<$data)
+			if [ ${#TRUST_ADDRESS} -gt 2 ]; then
+				clear
+				gpg --search "$TRUST_ADDRESS"
+				fpr=$(gpg --with-colons --fingerprint "$TRUST_ADDRESS" | grep fpr | head -n 1 | awk -F ':' '{print $10}')
+				if [ ${#fpr} -gt 2 ]; then
+
+					data=$(tempfile 2>/dev/null)
+					trap "rm -f $data" 0 1 2 5 15
+					dialog --backtitle $"Freedombone User Control Panel" \
+						   --title $"Trust a PGP/GPG key or website domain" \
+						   --radiolist $"Set the trust level for $TRUST_ADDRESS:" 18 70 10 \
+						   1 $"I don't know or won't say" off \
+						   2 $"I do NOT trust" off \
+						   3 $"I trust marginally" on \
+						   4 $"I trust fully" off \
+						   5 $"I trust ultimately" off 2> $data
+					sel=$?
+					case $sel in
+						1) return;;
+						255) return;;
+					esac
+					TRUST_LEVEL=$(cat $data)
+					if [ ${TRUST_LEVEL} -ge 1] ; then
+						if [ ${TRUST_LEVEL} -le 5] ; then
+							echo -e "trust\n${TRUST_LEVEL}\ny\nsave\n" | gpg --command-fd 0 --edit-key $fpr
+							if [ "$?" = "0" ]; then
+								gpg --update-trustdb
+								dialog --title $"Trust a PGP/GPG key or website domain" \
+									   --backtitle $"Freedombone User Control Panel" \
+									   --msgbox $"$TRUST_ADDRESS was set to trust level ${TRUST_LEVEL}" 6 50
+							fi
+						fi
+					fi
+				fi
+			fi
+			;;
+	esac
+}
+
 function menu_encryption_keys {
 	while true
 	do
@@ -735,7 +784,7 @@ function menu_encryption_keys {
 		trap "rm -f $data" 0 1 2 5 15
 		dialog --backtitle $"Freedombone User Control Panel" \
 			   --title $"My Encryption Keys" \
-			   --radiolist $"Choose an operation:" 17 70 9 \
+			   --radiolist $"Choose an operation:" 18 70 10 \
 			   1 $"Show your PGP/GPG key" off \
 			   2 $"Publish your PGP/GPG key so that others can find it" off \
 			   3 $"Add someone's PGP/GPG key" off \
@@ -744,7 +793,8 @@ function menu_encryption_keys {
 			   6 $"Refresh your PGP/GPG keys" off \
 			   7 $"Add an ssh key for logging in" off \
 			   8 $"Remove an ssh key for logging in" off \
-			   9 $"Back to main menu" on 2> $data
+			   9 $"Set the trust level for a PGP/GPG key" off \
+			   10 $"Back to main menu" on 2> $data
 		sel=$?
 		case $sel in
 			1) break;;
@@ -759,7 +809,8 @@ function menu_encryption_keys {
 			6) refresh_gpg_keys;;
 			7) add_ssh_key;;
 			8) remove_ssh_key;;
-			9) break;;
+			9) gpg_key_trust;;
+			10) break;;
 		esac
 	done
 }
