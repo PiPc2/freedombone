@@ -9861,6 +9861,79 @@ function install_dlna_server {
 	echo 'install_dlna_server' >> $COMPLETION_FILE
 }
 
+MEDIA_SERVER_DOMAIN_NAME=
+MEDIA_SERVER_BASE_DIRECTORY=/var/www
+MEDIA_SERVER_WORKING_DIRECTORY=${MEDIA_SERVER_BASE_DIRECTORY}/mediadrop
+MEDIA_SERVER_REPO="https://github.com/mediadrop/mediadrop"
+MEDIA_SERVER_COMMIT='ad44f47d99b5d57d3396a3afb80d68a4a182dadd'
+MEDIADROP_VERSION='0.11.0'
+
+function install_media_server {
+	if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if [ ! $MEDIA_SERVER_DOMAIN_NAME ]; then
+		return
+	fi
+	# update to a new commit if needed
+	set_repo_commit $MEDIA_SERVER_WORKING_DIRECTORY "Media server commit" "$MEDIA_SERVER_COMMIT" $MEDIA_SERVER_REPO
+	if [ -d $MEDIA_SERVER_WORKING_DIRECTORY ]; then
+		chown -R www-data:www-data $MEDIA_SERVER_WORKING_DIRECTORY
+	fi
+
+	if grep -Fxq "install_media_server" $COMPLETION_FILE; then
+		return
+	fi
+
+	apt-get -y install git-core python python-dev python-lxml python-pil
+	apt-get -y install python-virtualenv npm nodejs-legacy automake
+	apt-get -y install fcgiwrap
+	apt-get -y install libjpeg-dev zlib1g-dev libfreetype6-dev libmysqlclient-dev
+	apt-get -y install python-setuptools python-virtualenv
+
+	# create directory
+	if [ ! -d $MEDIA_SERVER_BASE_DIRECTORY ]; then
+		mkdir -p $MEDIA_SERVER_BASE_DIRECTORY
+	fi
+
+	# create python environment
+	cd $MEDIA_SERVER_BASE_DIRECTORY
+	virtualenv --distribute --no-site-packages venv
+	source venv/bin/activate
+
+	# clone the repo
+	git_clone $MEDIA_SERVER_REPO $MEDIA_SERVER_WORKING_DIRECTORY
+	if [ ! -d $MEDIA_SERVER_WORKING_DIRECTORY ]; then
+		echo $'Unable to clone mediadrop'
+		exit 732581
+	fi
+	cd $MEDIA_SERVER_WORKING_DIRECTORY
+	git checkout $MEDIA_SERVER_COMMIT -b $MEDIA_SERVER_COMMIT
+	python setup.py develop
+
+	cd $MEDIA_SERVER_BASE_DIRECTORY
+	paster make-config MediaDrop deployment.ini
+	if [ ! -f deployment.ini ]; then
+		echo $'deployment.ini not created'
+		exit 726567
+	fi
+
+	# database authentication
+	sed -i "sqlalchemy.url = mysql://mediadrop_user:mysecretpassword@localhost/mediadrop?charset=utf8&use_unicode=0" deployment.ini
+
+	# initial data
+	cp -a mediadrop/data .
+	paster setup-app deployment.ini
+
+	# enable full test search
+	mysql -u root mediadrop < mediadrop/setup_triggers.sql
+
+	# launch
+	paster serve --reload deployment.ini
+
+	echo 'install_media_server' >> $COMPLETION_FILE
+}
+
 function install_mediagoblin {
 	if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
 		return
@@ -11171,6 +11244,7 @@ install_hubzilla
 #install_search_engine
 install_dlna_server
 configure_firewall_for_dlna
+#install_media_server
 #install_mediagoblin
 #install_ipfs
 repair_databases_script
