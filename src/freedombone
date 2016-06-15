@@ -194,6 +194,16 @@ MEDIAGOBLIN_COMMIT='d1ac2d52fd8859c3f32fa38e4836ffe9615e5bba'
 MEDIAGOBLIN_ADMIN_PASSWORD=
 MEDIAGOBLIN_ONION_PORT=8096
 
+#mediadrop
+MEDIA_SERVER_DOMAIN_NAME=
+MEDIA_SERVER_CODE=
+MEDIA_SERVER_BASE_DIRECTORY=/var/www/media
+MEDIA_SERVER_WORKING_DIRECTORY=${MEDIA_SERVER_BASE_DIRECTORY}/mediadrop
+MEDIA_SERVER_REPO="https://github.com/mediadrop/mediadrop"
+MEDIA_SERVER_COMMIT='ad44f47d99b5d57d3396a3afb80d68a4a182dadd'
+MEDIA_SERVER_ONION_PORT=8098
+MEDIA_SERVER_ADMIN_PASSWORD=
+
 # Domain name for microblog installation
 MICROBLOG_DOMAIN_NAME=
 MICROBLOG_CODE=
@@ -1308,6 +1318,21 @@ function read_configuration {
 		fi
 		if grep -q "HWRNG_TYPE" $CONFIGURATION_FILE; then
 			HWRNG_TYPE=$(grep "HWRNG_TYPE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "MEDIA_SERVER_ADMIN_PASSWORD" $CONFIGURATION_FILE; then
+			MEDIA_SERVER_ADMIN_PASSWORD=$(grep "MEDIA_SERVER_ADMIN_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "MEDIA_SERVER_DOMAIN_NAME" $CONFIGURATION_FILE; then
+			MEDIA_SERVER_DOMAIN_NAME=$(grep "MEDIA_SERVER_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "MEDIA_SERVER_CODE" $CONFIGURATION_FILE; then
+			MEDIA_SERVER_CODE=$(grep "MEDIA_SERVER_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "MEDIA_SERVER_REPO" $CONFIGURATION_FILE; then
+			MEDIA_SERVER_REPO=$(grep "MEDIA_SERVER_REPO" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "MEDIA_SERVER_COMMIT" $CONFIGURATION_FILE; then
+			MEDIA_SERVER_COMMIT=$(grep "MEDIA_SERVER_COMMIT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
 		fi
 		if grep -q "MEDIAGOBLIN_DOMAIN_NAME" $CONFIGURATION_FILE; then
 			MEDIAGOBLIN_DOMAIN_NAME=$(grep "MEDIAGOBLIN_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
@@ -3258,6 +3283,14 @@ function get_mariadb_password {
 				echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
 				chmod 600 $DATABASE_PASSWORD_FILE
 			fi
+		fi
+	fi
+}
+
+function get_mariadb_media_server_admin_password {
+	if [ -f /home/$MY_USERNAME/README ]; then
+		if grep -q "MariaDB media server admin password" /home/$MY_USERNAME/README; then
+			MEDIA_SERVER_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB media server admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
 		fi
 	fi
 }
@@ -9861,13 +9894,6 @@ function install_dlna_server {
 	echo 'install_dlna_server' >> $COMPLETION_FILE
 }
 
-MEDIA_SERVER_DOMAIN_NAME=
-MEDIA_SERVER_BASE_DIRECTORY=/var/www
-MEDIA_SERVER_WORKING_DIRECTORY=${MEDIA_SERVER_BASE_DIRECTORY}/mediadrop
-MEDIA_SERVER_REPO="https://github.com/mediadrop/mediadrop"
-MEDIA_SERVER_COMMIT='ad44f47d99b5d57d3396a3afb80d68a4a182dadd'
-MEDIADROP_VERSION='0.11.0'
-
 function install_media_server {
 	if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
 		return
@@ -9895,6 +9921,21 @@ function install_media_server {
 	if [ ! -d $MEDIA_SERVER_BASE_DIRECTORY ]; then
 		mkdir -p $MEDIA_SERVER_BASE_DIRECTORY
 	fi
+
+	install_mariadb
+	get_mariadb_password
+	repair_databases_script
+
+	get_mariadb_media_server_admin_password
+	if [ ! $MEDIA_SERVER_ADMIN_PASSWORD ]; then
+		if [ -f $IMAGE_PASSWORD_FILE ]; then
+			MEDIA_SERVER_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+		else
+			MEDIA_SERVER_ADMIN_PASSWORD="$(openssl rand -base64 32 | cut -c1-${MINIMUM_PASSWORD_LENGTH})"
+		fi
+	fi
+
+	create_database mediadrop "$MEDIA_SERVER_ADMIN_PASSWORD" $MY_USERNAME
 
 	# create python environment
 	cd $MEDIA_SERVER_BASE_DIRECTORY
