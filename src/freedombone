@@ -3289,8 +3289,8 @@ function get_mariadb_password {
 
 function get_mariadb_media_server_admin_password {
 	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "MariaDB media server admin password" /home/$MY_USERNAME/README; then
-			MEDIA_SERVER_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB media server admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+		if grep -q "Media server administrator password" /home/$MY_USERNAME/README; then
+			MEDIA_SERVER_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Media server administrator password" | awk -F ':' '{print $2}' | sed 's/^ *//')
 		fi
 	fi
 }
@@ -5914,7 +5914,6 @@ function create_public_mailing_list {
 	if ! grep -q "! +mlmmj_domains" /etc/exim4/conf.d/router/200_exim4-config_primary; then
 		sed -i 's/domains = ! +local_domains/domains = ! +mlmmj_domains : ! +local_domains/g' /etc/exim4/conf.d/router/200_exim4-config_primary
 	fi
-	newaliases
 	update-exim4.conf.template -r
 	update-exim4.conf
 	systemctl restart exim4
@@ -8626,7 +8625,6 @@ function install_gnu_social {
 	if ! grep -q "/var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php" /etc/aliases; then
 		echo "*: /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php" >> /etc/aliases
 	fi
-	newaliases
 
 	add_ddns_domain $MICROBLOG_DOMAIN_NAME
 
@@ -9913,9 +9911,10 @@ function install_media_server {
 
 	apt-get -y install git-core python python-dev python-lxml python-pil
 	apt-get -y install python-virtualenv npm nodejs-legacy automake
-	apt-get -y install fcgiwrap
-	apt-get -y install libjpeg-dev zlib1g-dev libfreetype6-dev libmysqlclient-dev
+	apt-get -y install fcgiwrap libmysqlclient-dev
+	apt-get -y install libjpeg-dev zlib1g-dev libfreetype6-dev
 	apt-get -y install python-setuptools python-virtualenv
+	apt-get -y install uwsgi uwsgi-plugin-python
 
 	# create directory
 	if [ ! -d $MEDIA_SERVER_BASE_DIRECTORY ]; then
@@ -9935,7 +9934,7 @@ function install_media_server {
 		fi
 	fi
 
-	create_database mediadrop "$MEDIA_SERVER_ADMIN_PASSWORD" $MY_USERNAME
+	create_database mediadrop "$MEDIA_SERVER_ADMIN_PASSWORD" mediadropadmin
 
 	# create python environment
 	cd $MEDIA_SERVER_BASE_DIRECTORY
@@ -9952,6 +9951,7 @@ function install_media_server {
 	git checkout $MEDIA_SERVER_COMMIT -b $MEDIA_SERVER_COMMIT
 	python setup.py develop
 
+	# create a configuration
 	cd $MEDIA_SERVER_BASE_DIRECTORY
 	paster make-config MediaDrop deployment.ini
 	if [ ! -f deployment.ini ]; then
@@ -9960,17 +9960,175 @@ function install_media_server {
 	fi
 
 	# database authentication
-	sed -i "sqlalchemy.url = mysql://mediadrop_user:mysecretpassword@localhost/mediadrop?charset=utf8&use_unicode=0" deployment.ini
+	sed -i "sqlalchemy.url = mysql://mediadrop:${MEDIA_SERVER_ADMIN_PASSWORD}@localhost/mediadrop?charset=utf8&use_unicode=0" deployment.ini
+
+	# faster file serve
+	sed -i 's|files_serve_method.*|files_serve_method = nginx_redirect|g' deployment.ini
 
 	# initial data
 	cp -a mediadrop/data .
 	paster setup-app deployment.ini
 
-	# enable full test search
-	mysql -u root mediadrop < mediadrop/setup_triggers.sql
+	# add uwsgi to deployment.ini
+	echo '' >> deployment.ini
+	echo '[uwsgi]' >> deployment.ini
+	echo 'socket = /tmp/uwsgi-mediadrop.soc' >> deployment.ini
+	echo 'master = true' >> deployment.ini
+	echo 'processes = 5' >> deployment.ini
+	echo "home = $MEDIA_SERVER_BASE_DIRECTORY" >> deployment.ini
+	echo 'daemonize = /var/log/uwsgi.log' >> deployment.ini
 
-	# launch
-	paster serve --reload deployment.ini
+	# enable full test search
+	mysql -u mediadrop --password="$MEDIA_SERVER_ADMIN_PASSWORD" mediadrop < mediadrop/setup_triggers.sql
+
+	chown -R mediadrop:mediadrop $MEDIA_SERVER_BASE_DIRECTORY
+
+	# script to be called by the daemon
+	echo '#!/bin/bash' > /usr/bin/start-mediadrop
+	echo "cd ${MEDIA_SERVER_WORKING_DIRECTORY}" >> /usr/bin/start-mediadrop
+	echo "uwsgi --ini-paste deployment.ini &" >> /usr/bin/start-mediadrop
+	echo "paster serve --reload deployment.ini" >> /usr/bin/start-mediadrop
+
+	# create daemon
+	echo '[Unit]' > /etc/systemd/system/mediadrop.service
+	echo 'Description=Mediadrop - media playing on the web' >> /etc/systemd/system/mediadrop.service
+	echo 'After=network.target' >> /etc/systemd/system/mediadrop.service
+	echo '' >> /etc/systemd/system/mediadrop.service
+	echo '[Service]' >> /etc/systemd/system/mediadrop.service
+	echo 'User=mediadrop' >> /etc/systemd/system/mediadrop.service
+	echo "Environment='USER=mediadrop'" >> /etc/systemd/system/mediadrop.service
+	echo "WorkingDirectory=${MEDIA_SERVER_WORKING_DIRECTORY}" >> /etc/systemd/system/searx.service
+	echo 'ExecStart=/usr/bin/start-mediadrop' >> /etc/systemd/system/mediadrop.service
+	echo 'Restart=on-failure' >> /etc/systemd/system/mediadrop.service
+	echo 'SuccessExitStatus=3 4' >> /etc/systemd/system/mediadrop.service
+	echo 'RestartForceExitStatus=3 4' >> /etc/systemd/system/mediadrop.service
+	echo '' >> /etc/systemd/system/mediadrop.service
+	echo '[Install]' >> /etc/systemd/system/mediadrop.service
+	echo 'WantedBy=multi-user.target' >> /etc/systemd/system/mediadrop.service
+	systemctl enable mediadrop
+	systemctl daemon-reload
+	systemctl start mediadrop
+
+	# onion address
+	MEDIA_SERVER_ONION_HOSTNAME=$(add_onion_service mediadrop 80 ${MEDIA_SERVER_ONION_PORT})
+	if ! grep -q "Media server onion domain" $COMPLETION_FILE; then
+		echo "Media server onion domain:${MEDIA_SERVER_ONION_HOSTNAME}" >> $COMPLETION_FILE
+	else
+		sed -i "s|Media server onion domain.*|Media server onion domain:${MEDIA_SERVER_ONION_HOSTNAME}|g" $COMPLETION_FILE
+	fi
+	if [[ $MEDIA_SERVER_ONION_HOSTNAME == *"not found"* ]]; then
+		echo $'Problem creating onion address for mediadrop'
+		exit 72963
+	fi
+
+	if [[ $ONION_ONLY == 'no' ]]; then
+		nginx_http_redirect $MEDIA_SERVER_DOMAIN_NAME
+		echo 'server {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  listen 443;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo "  server_name  $MEDIA_SERVER_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  access_log /var/log/nginx/${MEDIA_SERVER_DOMAIN_NAME}.log;' >> /etc/nginx/nginx.conf
+		echo '  error_log /var/log/nginx/${MEDIA_SERVER_DOMAIN_NAME}.log;' >> /etc/nginx/nginx.conf
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		nginx_ssl $MEDIA_SERVER_DOMAIN_NAME
+		nginx_disable_sniffing $MEDIA_SERVER_DOMAIN_NAME
+		nginx_limits $MEDIA_SERVER_DOMAIN_NAME '15m'
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  client_max_body_size 1500M;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo "  root ${$MEDIA_SERVER_WORKING_DIRECTORY}/public;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  location ~* ^/(appearance)/ {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo "      root ${$MEDIA_SERVER_WORKING_DIRECTORY}/data ;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      break;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  location ~* ^(/images\/media|images\/podcasts) {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo "      root ${$MEDIA_SERVER_WORKING_DIRECTORY}/data ;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      break;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  location ~* ^/(styles|scripts|images)/ {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      expires max;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      add_header Cache-Control "public";' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      break;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  location /__mediacore_serve__ {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo "      alias ${$MEDIA_SERVER_WORKING_DIRECTORY}/data/media;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      internal;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  location / {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      uwsgi_pass      unix:///tmp/uwsgi-mediadrop.soc;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      include         uwsgi_params;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '      uwsgi_param     SCRIPT_NAME '';' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+		echo '}' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+
+		create_site_certificate $MEDIA_SERVER_DOMAIN_NAME
+		add_ddns_domain $MEDIA_SERVER_DOMAIN_NAME
+	else
+		echo -n '' > /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	fi
+
+	echo 'server {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo "  listen 127.0.0.1:${MEDIA_SERVER_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo "  server_name  $MEDIA_SERVER_ONION_HOSTNAME;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  access_log /var/log/nginx/${MEDIA_SERVER_DOMAIN_NAME}.log;' >> /etc/nginx/nginx.conf
+	echo '  error_log /var/log/nginx/${MEDIA_SERVER_DOMAIN_NAME}.log;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  client_max_body_size 1500M;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo "  root ${$MEDIA_SERVER_WORKING_DIRECTORY}/public;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  location ~* ^/(appearance)/ {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo "      root ${$MEDIA_SERVER_WORKING_DIRECTORY}/data ;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      break;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  location ~* ^(/images\/media|images\/podcasts) {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo "      root ${$MEDIA_SERVER_WORKING_DIRECTORY}/data ;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      break;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  location ~* ^/(styles|scripts|images)/ {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      expires max;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      add_header Cache-Control "public";' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      break;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  location /__mediacore_serve__ {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo "      alias ${$MEDIA_SERVER_WORKING_DIRECTORY}/data/media;" >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      internal;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  location / {' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      uwsgi_pass      unix:///tmp/uwsgi-mediadrop.soc;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      include         uwsgi_params;' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '      uwsgi_param     SCRIPT_NAME '';' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '  }' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+	echo '}' >> /etc/nginx/sites-available/$MEDIA_SERVER_DOMAIN_NAME
+
+	nginx_ensite $MEDIA_SERVER_DOMAIN_NAME
+	systemctl restart php5-fpm
+	systemctl restart nginx
+
+	if ! grep -q "Media server domain" $COMPLETION_FILE; then
+		echo "Media server domain:$MEDIA_SERVER_DOMAIN_NAME" >> $COMPLETION_FILE
+	else
+		sed -i "s/Media server domain.*/Media server domain:$MEDIA_SERVER_DOMAIN_NAME/g" $COMPLETION_FILE
+	fi
+
+	if ! grep -q $"Media Server" /home/$MY_USERNAME/README; then
+		echo '' >> /home/$MY_USERNAME/README
+		echo '' >> /home/$MY_USERNAME/README
+		echo $'Media Server' >> /home/$MY_USERNAME/README
+		echo '============' >> /home/$MY_USERNAME/README
+		echo $"Media server administrator nickname: mediadropadmin" >> /home/$MY_USERNAME/README
+		echo $"Media server administrator password: $MEDIA_SERVER_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+		chmod 600 /home/$MY_USERNAME/README
+	fi
 
 	echo 'install_media_server' >> $COMPLETION_FILE
 }
