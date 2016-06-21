@@ -235,6 +235,41 @@ function email_rule_address {
 		   --msgbox $"Email rule for $RULE_EMAIL was added" 6 40
 }
 
+function gpg_set_trust {
+	TRUST_ADDRESS=$1
+	fpr=$(gpg --with-colons --fingerprint "$TRUST_ADDRESS" | grep fpr | head -n 1 | awk -F ':' '{print $10}')
+	if [ ${#fpr} -gt 2 ]; then
+
+		data=$(tempfile 2>/dev/null)
+		trap "rm -f $data" 0 1 2 5 15
+		dialog --backtitle $"Freedombone User Control Panel" \
+			   --title $"Trust a PGP/GPG key or website domain" \
+			   --radiolist $"Set the trust level for $TRUST_ADDRESS:" 18 70 10 \
+			   1 $"I don't know or won't say" off \
+			   2 $"I do NOT trust" off \
+			   3 $"I trust marginally" on \
+			   4 $"I trust fully" off \
+			   5 $"I trust ultimately" off 2> $data
+		sel=$?
+		case $sel in
+			1) return;;
+			255) return;;
+		esac
+		TRUST_LEVEL=$(cat $data)
+		if [ ${TRUST_LEVEL} -ge 1 ] ; then
+			if [ ${TRUST_LEVEL} -le 5 ] ; then
+				echo -e "trust\n${TRUST_LEVEL}\ny\nsave\n" | gpg --command-fd 0 --edit-key $fpr
+				if [ "$?" = "0" ]; then
+					gpg --update-trustdb
+					dialog --title $"Trust a PGP/GPG key or website domain" \
+						   --backtitle $"Freedombone User Control Panel" \
+						   --msgbox $"$TRUST_ADDRESS was set to trust level ${TRUST_LEVEL}" 6 50
+				fi
+			fi
+		fi
+	fi
+}
+
 function email_rule_subject {
 	data=$(tempfile 2>/dev/null)
 	trap "rm -f $data" 0 1 2 5 15
@@ -394,7 +429,8 @@ function add_gpg_key {
 
 				if [ $address_is_valid ]; then
 					clear
-					gpg --search-keys $ADD_EMAIL_ADDRESS
+					gpg --search-keys "$ADD_EMAIL_ADDRESS"
+					gpg_set_trust "$ADD_EMAIL_ADDRESS"
 				else
 					dialog --title $"Unrecognised email address" \
 						   --backtitle $"Freedombone User Control Panel" \
@@ -728,6 +764,7 @@ function sign_gpg_key {
 	esac
 }
 
+
 function gpg_key_trust {
 	data=$(tempfile 2>/dev/null)
 	trap "rm -f $data" 0 1 2 5 15
@@ -741,37 +778,7 @@ function gpg_key_trust {
 			if [ ${#TRUST_ADDRESS} -gt 2 ]; then
 				clear
 				gpg --search "$TRUST_ADDRESS"
-				fpr=$(gpg --with-colons --fingerprint "$TRUST_ADDRESS" | grep fpr | head -n 1 | awk -F ':' '{print $10}')
-				if [ ${#fpr} -gt 2 ]; then
-
-					data=$(tempfile 2>/dev/null)
-					trap "rm -f $data" 0 1 2 5 15
-					dialog --backtitle $"Freedombone User Control Panel" \
-						   --title $"Trust a PGP/GPG key or website domain" \
-						   --radiolist $"Set the trust level for $TRUST_ADDRESS:" 18 70 10 \
-						   1 $"I don't know or won't say" off \
-						   2 $"I do NOT trust" off \
-						   3 $"I trust marginally" on \
-						   4 $"I trust fully" off \
-						   5 $"I trust ultimately" off 2> $data
-					sel=$?
-					case $sel in
-						1) return;;
-						255) return;;
-					esac
-					TRUST_LEVEL=$(cat $data)
-					if [ ${TRUST_LEVEL} -ge 1 ] ; then
-						if [ ${TRUST_LEVEL} -le 5 ] ; then
-							echo -e "trust\n${TRUST_LEVEL}\ny\nsave\n" | gpg --command-fd 0 --edit-key $fpr
-							if [ "$?" = "0" ]; then
-								gpg --update-trustdb
-								dialog --title $"Trust a PGP/GPG key or website domain" \
-									   --backtitle $"Freedombone User Control Panel" \
-									   --msgbox $"$TRUST_ADDRESS was set to trust level ${TRUST_LEVEL}" 6 50
-							fi
-						fi
-					fi
-				fi
+				gpg_set_trust "$TRUST_ADDRESS"
 			fi
 			;;
 	esac
