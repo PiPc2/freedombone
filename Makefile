@@ -18,6 +18,7 @@ install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
 	mkdir -p ${DESTDIR}/etc/${APP}
 	cp -r image_build/* ${DESTDIR}/etc/${APP}
+	install -m 755 img/backgrounds/${APP}_mesh_background.png ${DESTDIR}${PREFIX}/share
 	install -m 755 src/* ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
@@ -32,6 +33,7 @@ install:
 	install -m 644 man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
 	bash -c "./translate install"
 uninstall:
+	rm -f ${PREFIX}/share/${APP}_mesh_background.png
 	rm -f ${PREFIX}/share/man/man1/backup.1.gz
 	rm -f ${PREFIX}/share/man/man1/restore.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}*.1.gz
