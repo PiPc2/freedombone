@@ -302,6 +302,71 @@ function configure_zeronet_forum {
 	echo $'Update of ZeroNet Forum completed' >> $INSTALL_LOG
 }
 
+function configure_zeronet_id {
+	echo $'Updating ZeroID' >> $INSTALL_LOG
+
+	cd /opt/zeronet
+	python zeronet.py --batch siteCreate 2> /opt/zeronet/zeroid.txt
+	if [ ! -f /opt/zeronet/zeroid.txt ]; then
+		echo $'Unable to create ZeroID' >> $INSTALL_LOG
+		exit 47962
+	fi
+	zeroid_address=$(cat zeroid.txt | grep "Site address" | awk -F ':' '{print $2}')
+	zeroid_private_key=$(cat zeroid.txt | grep "Site private key" | awk -F ':' '{print $2}')
+	ZERONET_ID_ADDRESS=${zeroid_address//[[:blank:]]/}
+	ZERONET_ID_PRIVATE_KEY=${zeroid_private_key//[[:blank:]]/}
+
+	if [ ${#ZERONET_ID_ADDRESS} -lt 20 ]; then
+		echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create ZeroID address' >> $INSTALL_LOG
+		exit 76352
+	fi
+
+	if [ ${#ZERONET_ID_PRIVATE_KEY} -lt 20 ]; then
+		echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create ZeroID private key' >> $INSTALL_LOG
+		exit 87356
+	fi
+
+	if [ ! -d "/opt/zeronet/data/$ZERONET_ID_ADDRESS" ]; then
+		echo $"Unable to find site directory: /opt/zeronet/data/$ZERONET_ID_ADDRESS" >> $INSTALL_LOG
+		exit 378434
+	fi
+
+	echo $"ZeroID address:     $ZERONET_ID_ADDRESS"
+	echo $"ZeroID private key: $ZERONET_ID_PRIVATE_KEY"
+	cp -r /opt/zeronet/ZeroID/* /opt/zeronet/data/$ZERONET_ID_ADDRESS
+	# TODO
+	sed -i "s///g" /opt/zeronet/data/$ZERONET_ID_ADDRESS/content.json
+	python zeronet.py siteSign $ZERONET_ID_ADDRESS $ZERONET_ID_PRIVATE_KEY --inner_path data/users/content.json
+
+	# Add an avahi service
+	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-id.service
+	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-id.service
+	echo '<service-group>' >> /tmp/zeronet-id.service
+	echo '  <name replace-wildcards="yes">%h ZeroID</name>' >> /tmp/zeronet-id.service
+	echo '  <service>' >> /tmp/zeronet-id.service
+	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-id.service
+	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-id.service
+	echo "    <txt-record>$ZERONET_URL/$ZERONET_ID_ADDRESS</txt-record>" >> /tmp/zeronet-id.service
+	echo '  </service>' >> /tmp/zeronet-id.service
+	echo '</service-group>' >> /tmp/zeronet-id.service
+	sudo cp /tmp/zeronet-id.service /etc/avahi/services/zeronet-id.service
+
+	if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
+		mkdir -p /home/$MY_USERNAME/.config/zeronet
+		chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
+	fi
+	echo "$ZERONET_URL/$ZERONET_ID_ADDRESS" > /home/$MY_USERNAME/.config/zeronet/myzeroid
+
+	sed -i "s|ZeroID address.*|ZeroID address: $ZERONET_ID_ADDRESS|g" /home/$MY_USERNAME/README
+	sed -i "s|ZeroID private key.*|ZeroID private key: $ZERONET_ID_PRIVATE_KEY|g" /home/$MY_USERNAME/README
+
+	echo $'Update of ZeroID completed' >> $INSTALL_LOG
+}
+
 function configure_toxcore {
 	echo $'Configuring toxcore' >> $INSTALL_LOG
 
@@ -382,6 +447,7 @@ if [ -f /root/.initial_mesh_setup ]; then
 	configure_zeronet_blog
 	configure_zeronet_mail
 	configure_zeronet_forum
+	configure_zeronet_id
 	configure_toxcore
 	configure_zeronet
 	disable_password_logins
