@@ -75,6 +75,8 @@ ZERONET_PORT=
 # Directory where source code is downloaded and compiled
 INSTALL_DIR=$HOME/build
 
+MESH_INSTALL_DIR=/var/lib
+
 function show_help {
 	echo ''
 	echo $"${PROJECT_NAME}-mesh-install -f [function] -r [rootdir]"
@@ -682,25 +684,25 @@ function mesh_zeronet {
 	$CHROOT_PREFIX pip install msgpack-python --upgrade
 	$CHROOT_PREFIX pip install gevent --upgrade
 
-	$CHROOT_PREFIX useradd -d /opt/zeronet/ -s /bin/false zeronet
-	git_clone $ZERONET_REPO $rootdir/opt/zeronet
-	if [ ! -d $rootdir/opt/zeronet ]; then
+	$CHROOT_PREFIX useradd -d $MESH_INSTALL_DIR/zeronet/ -s /bin/false zeronet
+	git_clone $ZERONET_REPO $rootdir$MESH_INSTALL_DIR/zeronet
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet ]; then
 		echo 'WARNING: Unable to clone zeronet'
 		return
 	fi
-	cd $rootdir/opt/zeronet
+	cd $rootdir$MESH_INSTALL_DIR/zeronet
 	git checkout $ZERONET_COMMIT -b $ZERONET_COMMIT
 	if ! grep -q "ZeroNet commit" $COMPLETION_FILE; then
 		echo "ZeroNet commit:$ZERONET_COMMIT" >> $rootdir$COMPLETION_FILE
 	else
 		sed -i "s/ZeroNet commit.*/ZeroNet commit:$ZERONET_COMMIT/g" $COMPLETION_FILE
 	fi
-	chown -R zeronet:zeronet $rootdir/opt/zeronet
+	chown -R zeronet:zeronet $rootdir$MESH_INSTALL_DIR/zeronet
 
 	# Hack to ensure that the file access port is opened
 	# This is because zeronet normally relies on an internet site
 	# to do this, but on a purely local mesh the internet isn't available
-	sed -i 's|fileserver_port = 0|fileserver_port = config.fileserver_port\n            sys.modules["main"].file_server.port_opened = True|g' $rootdir/opt/zeronet/src/Site/Site.py
+	sed -i 's|fileserver_port = 0|fileserver_port = config.fileserver_port\n            sys.modules["main"].file_server.port_opened = True|g' $rootdir$MESH_INSTALL_DIR/zeronet/src/Site/Site.py
 
 	ZERPNET_DAEMON=$rootdir/etc/systemd/system/zeronet.service
 	echo '[Unit]' > $ZERONET_DAEMON
@@ -711,8 +713,8 @@ function mesh_zeronet {
 	echo 'Type=simple' >> $ZERONET_DAEMON
 	echo 'User=zeronet' >> $ZERONET_DAEMON
 	echo 'Group=zeronet' >> $ZERONET_DAEMON
-	echo 'WorkingDirectory=/opt/zeronet' >> $ZERONET_DAEMON
-	echo 'ExecStart=/usr/bin/python zeronet.py --ip_external replace.local --trackers_file /opt/zeronet/bootstrap' >> $ZERONET_DAEMON
+	echo "WorkingDirectory=$MESH_INSTALL_DIR/zeronet" >> $ZERONET_DAEMON
+	echo "ExecStart=/usr/bin/python zeronet.py --ip_external replace.local --trackers_file $MESH_INSTALL_DIR/zeronet/bootstrap" >> $ZERONET_DAEMON
 	echo '' >> $ZERONET_DAEMON
 	echo 'TimeoutSec=300' >> $ZERONET_DAEMON
 	echo '' >> $ZERONET_DAEMON
@@ -728,19 +730,19 @@ function mesh_zeronet {
 	echo 'Type=simple' >> $TRACKER_DAEMON
 	echo 'User=tracker' >> $TRACKER_DAEMON
 	echo 'Group=tracker' >> $TRACKER_DAEMON
-	echo 'WorkingDirectory=/opt/tracker' >> $TRACKER_DAEMON
-	echo "ExecStart=/usr/bin/bttrack --port $TRACKER_PORT --dfile /opt/tracker/dstate --logfile /opt/tracker/tracker.log --nat_check 0 --scrape_allowed full --ipv6_enabled 0" >> $TRACKER_DAEMON
+	echo "WorkingDirectory=$MESH_INSTALL_DIR/tracker" >> $TRACKER_DAEMON
+	echo "ExecStart=/usr/bin/bttrack --port $TRACKER_PORT --dfile $MESH_INSTALL_DIR/tracker/dstate --logfile $MESH_INSTALL_DIR/tracker/tracker.log --nat_check 0 --scrape_allowed full --ipv6_enabled 0" >> $TRACKER_DAEMON
 	echo '' >> $TRACKER_DAEMON
 	echo 'TimeoutSec=300' >> $TRACKER_DAEMON
 	echo '' >> $TRACKER_DAEMON
 	echo '[Install]' >> $TRACKER_DAEMON
 	echo 'WantedBy=multi-user.target' >> $TRACKER_DAEMON
 
-	$CHROOT_PREFIX useradd -d /opt/tracker/ -s /bin/false tracker
-	if [ ! -d $rootdir/opt/tracker ]; then
-		mkdir $rootdir/opt/tracker
+	$CHROOT_PREFIX useradd -d $MESH_INSTALL_DIR/tracker/ -s /bin/false tracker
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/tracker ]; then
+		mkdir $rootdir$MESH_INSTALL_DIR/tracker
 	fi
-	chown -R tracker:tracker $rootdir/opt/tracker
+	chown -R tracker:tracker $rootdir$MESH_INSTALL_DIR/tracker
 
 	# publish regularly
 	echo "* *     * * *   root    zeronetavahi > /dev/null" >> $rootdir/etc/crontab
