@@ -92,12 +92,49 @@ function status {
 	batctl o
 }
 
+function stop {
+	if [ -z "$IFACE" ]; then
+		echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
+		return
+	fi
+	if [ "$EIFACE" ]; then
+		brctl delif $BRIDGE bat0
+		brctl delif $BRIDGE $EIFACE
+		ifconfig $BRIDGE down || true
+		brctl delbr $BRIDGE
+		ifconfig $EIFACE down -promisc
+	fi
+
+	avahi-autoipd -k $BRIDGE
+	avahi-autoipd -k $IFACE
+	ifconfig bat0 down -promisc
+
+	batctl if del $IFACE
+	rmmod batman-adv
+	ifconfig $IFACE mtu 1500
+	ifconfig $IFACE down
+	iwconfig $IFACE mode managed
+
+	iptables -D INPUT -p tcp --dport 548 -j ACCEPT
+	iptables -D INPUT -p udp --dport 548 -j ACCEPT
+	iptables -D INPUT -p tcp --dport 5353 -j ACCEPT
+	iptables -D INPUT -p udp --dport 5353 -j ACCEPT
+	iptables -D INPUT -p tcp --dport 5354 -j ACCEPT
+	iptables -D INPUT -p udp --dport 5354 -j ACCEPT
+	iptables -D INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT
+	iptables -D INPUT -p udp --dport $ZERONET_PORT -j ACCEPT
+	iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+
+	systemctl restart network-manager
+}
+
 function verify {
 	tempfile="$(mktemp)"
 	batctl o > $tempfile
 	if grep -q "disabled" $tempfile; then
 		echo $'B.A.T.M.A.N. not enabled'
 		rm $tempfile
+		stop
 		exit 726835
 	fi
 	echo $'B.A.T.M.A.N. is running'
@@ -169,42 +206,6 @@ function start {
 	systemctl restart avahi-daemon
 
 	verify
-}
-
-stop() {
-	if [ -z "$IFACE" ]; then
-		echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
-		return
-	fi
-	if [ "$EIFACE" ]; then
-		brctl delif $BRIDGE bat0
-		brctl delif $BRIDGE $EIFACE
-		ifconfig $BRIDGE down || true
-		brctl delbr $BRIDGE
-		ifconfig $EIFACE down -promisc
-	fi
-
-	avahi-autoipd -k $BRIDGE
-	avahi-autoipd -k $IFACE
-	ifconfig bat0 down -promisc
-
-	batctl if del $IFACE
-	rmmod batman-adv
-	ifconfig $IFACE mtu 1500
-	ifconfig $IFACE down
-	iwconfig $IFACE mode managed
-
-	iptables -D INPUT -p tcp --dport 548 -j ACCEPT
-	iptables -D INPUT -p udp --dport 548 -j ACCEPT
-	iptables -D INPUT -p tcp --dport 5353 -j ACCEPT
-	iptables -D INPUT -p udp --dport 5353 -j ACCEPT
-	iptables -D INPUT -p tcp --dport 5354 -j ACCEPT
-	iptables -D INPUT -p udp --dport 5354 -j ACCEPT
-	iptables -D INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT
-	iptables -D INPUT -p udp --dport $ZERONET_PORT -j ACCEPT
-	iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
-
-	systemctl restart network-manager
 }
 
 if ! grep -q "$IFACE" /proc/net/dev; then
