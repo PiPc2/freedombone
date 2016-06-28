@@ -51,7 +51,7 @@ To build a 64bit Qemu image:
 
     freedombone-image -t qemu-x86_64 -s 8G
 
-Other supported boards are cubieboard2, cubietruck, olinuxino-lime, olinuxino-lime2 and olinuxino-micro.
+Other supported boards are cubieboard2, cubietruck, olinuxino-lime, olinuxino-lime2, olinuxino-micro and odroid-c2.
 
 If the image build fails with an error such as "/Error reading from server. Remote end closed connection/" then you can specify a debian package mirror repository manually with:
 
