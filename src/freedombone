@@ -564,6 +564,10 @@ RSS_READER_GNUSOCIAL_COMMIT='8b92b8f5db7b0d12459c7bd86a50f48815efe642'
 # refresh gpg keys every few hours
 REFRESH_GPG_KEYS_HOURS=2
 
+# Time synchronisation
+TLSDATE_REPO="https://github.com/bashrc/tlsdate"
+TLSDATE_COMMIT='505e31540eebde8074e7dc93b29be0d848def06a'
+
 function show_help {
 	echo ''
 	echo $"${PROJECT_NAME} -c [configuration file]"
@@ -1672,6 +1676,13 @@ function set_repo_commit {
 				fi
 				if [[ $repo_dir == *"cjdns" ]]; then
 					./do
+				fi
+				if [[ $repo_dir == *"tlsdate" ]]; then
+					cd $INSTALL_DIR/tlsdate
+					make clean
+					./configure
+					make
+					make install
 				fi
 				if [[ $repo_dir == *"gpgit" ]]; then
 					cp gpgit.pl /usr/bin/gpgit.pl
@@ -4125,6 +4136,56 @@ function time_synchronisation {
 	systemctl restart cron
 
 	echo 'time_synchronisation' >> $COMPLETION_FILE
+}
+
+function time_synchronisation_tlsdate {
+	# mesh peers typically don't sync over the internet
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+
+	if [ -f /usr/local/bin/${PROJECT_NAME}-update-date ]; then
+		cp /usr/local/bin/${PROJECT_NAME}-update-date /usr/bin/updatedate
+	else
+		cp /usr/bin/${PROJECT_NAME}-update-date /usr/bin/updatedate
+	fi
+	chmod +x /usr/bin/updatedate
+
+	if [ ! -d $INSTALL_DIR ]; then
+		mkdir -p $INSTALL_DIR
+	fi
+	set_repo_commit $INSTALL_DIR/tlsdate "tlsdate commit" "$TLSDATE_COMMIT" $TLSDATE_REPO
+
+	if grep -Fxq "time_synchronisation_tlsdate" $COMPLETION_FILE; then
+		return
+	fi
+
+	apt-get -y remove tlsdate ntpdate
+	apt-get -y install build-essential autoconf libevent-dev
+
+	cd $INSTALL_DIR
+	git_clone $TLSDATE_REPO $INSTALL_DIR/tlsdate
+	cd $INSTALL_DIR/tlsdate
+	git checkout $TLSDATE_COMMIT -b $TLSDATE_COMMIT
+	./autogen.sh
+	./configure
+	if [ ! "$?" = "0" ]; then
+		echo $'Unable to configure tlsdate'
+		exit 6825277
+	fi
+	make
+	if [ ! "$?" = "0" ]; then
+		echo $'Unable to build tlsdate'
+		exit 3792726
+	fi
+	make install
+
+	if ! grep -q "updatedate" /etc/crontab; then
+		echo '*/15           * *   *   *   root /usr/bin/updatedate' >> /etc/crontab
+		systemctl restart cron
+	fi
+
+	echo 'time_synchronisation_tlsdate' >> $COMPLETION_FILE
 }
 
 function configure_firewall {
@@ -11316,7 +11377,7 @@ change_login_message
 enable_zram
 random_number_generator
 set_your_domain_name
-time_synchronisation
+time_synchronisation_tlsdate
 configure_internet_protocol
 create_git_project
 setup_wifi
