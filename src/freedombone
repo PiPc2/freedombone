@@ -38,8 +38,10 @@ export TEXTDOMAINDIR="/usr/share/locale"
 DEFAULT_LANGUAGE=$(echo $LANG)
 
 source /usr/local/bin/${PROJECT_NAME}-utils-git
+source /usr/local/bin/${PROJECT_NAME}-utils-database
 if [ -f /usr/bin/${PROJECT_NAME}-utils-git ]; then
 	source /usr/bin/${PROJECT_NAME}-utils-git
+	source /usr/bin/${PROJECT_NAME}-utils-database
 fi
 
 # username created by default within a debian image
@@ -621,37 +623,6 @@ function show_help {
 	echo $"If you wish to install everything except email then use the '$VARIANT_NONMAILBOX' variaint."
 	echo ''
 	exit 0
-}
-
-function remove_database {
-	app_name="$1"
-	if [ ! -d $INSTALL_DIR ]; then
-		mkdir $INSTALL_DIR
-	fi
-	echo "drop database ${app_name};
-						quit" > $INSTALL_DIR/batch.sql
-	chmod 600 $INSTALL_DIR/batch.sql
-	mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
-	shred -zu $INSTALL_DIR/batch.sql
-}
-
-function create_database {
-	app_name="$1"
-	app_admin_password="$2"
-	app_admin_username=$3
-	if [ ! -d $INSTALL_DIR ]; then
-		mkdir $INSTALL_DIR
-	fi
-	if [ ! $app_admin_username ]; then
-		app_admin_username=${app_name}admin
-	fi
-	echo "create database ${app_name};
-						CREATE USER '$app_admin_username@localhost' IDENTIFIED BY '${app_admin_password}';
-						GRANT ALL PRIVILEGES ON ${app_name}.* TO '$app_admin_username@localhost';
-						quit" > $INSTALL_DIR/batch.sql
-	chmod 600 $INSTALL_DIR/batch.sql
-	mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
-	shred -zu $INSTALL_DIR/batch.sql
 }
 
 function locale_setup {
@@ -2045,70 +2016,6 @@ function create_site_certificate {
 	fi
 }
 
-function backup_database_local {
-	# Makes local backups of databases which can then be automatically rolled
-	# back if corruption is detected
-	database_name=$1
-
-	backup_databases_script=/usr/bin/backupdatabases
-	echo '' >> $backup_databases_script
-	echo "# Backup the ${database_name} database" >> $backup_databases_script
-	echo "TEMPFILE=/root/${database_name}.sql" >> $backup_databases_script
-	echo 'DAILYFILE=/var/backups/${database_name}_daily.sql' >> $backup_databases_script
-	echo "mysqldump --password=\"\$MYSQL_PASSWORD\" ${database_name} > \$TEMPFILE" >> $backup_databases_script
-	echo 'FILESIZE=$(stat -c%s $TEMPFILE)' >> $backup_databases_script
-	echo 'if [ "$FILESIZE" -eq "0" ]; then' >> $backup_databases_script
-	echo '    if [ -f $DAILYFILE ]; then' >> $backup_databases_script
-	echo '        cp $DAILYFILE $TEMPFILE' >> $backup_databases_script
-	echo '' >> $backup_databases_script
-	echo '        # try to restore yesterdays database' >> $backup_databases_script
-	echo "        mysql -u root --password=\"\$MYSQL_PASSWORD\" ${database_name} -o < \$DAILYFILE" >> $backup_databases_script
-	echo '' >> $backup_databases_script
-	echo '        # Send a warning email' >> $backup_databases_script
-	echo "        echo \"Unable to create a backup of the ${database_name} database. Attempted to restore from yesterdays backup\" | mail -s \"${database_name} backup\" \$EMAIL" >> $backup_databases_script
-	echo '    else' >> $backup_databases_script
-	echo '        # Send a warning email' >> $backup_databases_script
-	echo "        echo \"Unable to create a backup of the ${database_name} database.\" | mail -s \"${database_name} backup\" \$EMAIL" >> $backup_databases_script
-	echo '    fi' >> $backup_databases_script
-	echo 'else' >> $backup_databases_script
-	echo '    chmod 600 $TEMPFILE' >> $backup_databases_script
-	echo '    mv $TEMPFILE $DAILYFILE' >> $backup_databases_script
-	echo '' >> $backup_databases_script
-	echo '    # Make the backup readable only by root' >> $backup_databases_script
-	echo '    chmod 600 $DAILYFILE' >> $backup_databases_script
-	echo 'fi' >> $backup_databases_script
-
-	weekly_backup_script=/etc/cron.weekly/backupdatabasesweekly
-	if ! grep -q "${database_name}" ${weekly_backup_script}; then
-		echo '' >> ${weekly_backup_script}
-		echo "# ${database_name}" >> ${weekly_backup_script}
-		echo "if [ -f /var/backups/${database_name}_weekly.sql ]; then" >> ${weekly_backup_script}
-		echo "  cp -f /var/backups/${database_name}_weekly.sql /var/backups/${database_name}_2weekly.sql" >> ${weekly_backup_script}
-		echo 'fi' >> ${weekly_backup_script}
-		echo "if [ -f /var/backups/${database_name}_daily.sql ]; then" >> ${weekly_backup_script}
-		echo "  cp -f /var/backups/${database_name}_daily.sql /var/backups/${database_name}_weekly.sql" >> ${weekly_backup_script}
-		echo 'fi' >> ${weekly_backup_script}
-	fi
-
-	monthly_backup_script=/etc/cron.monthly/backupdatabasesmonthly
-	if ! grep -q "${database_name}" ${monthly_backup_script}; then
-		echo '' >> ${monthly_backup_script}
-		echo "# ${database_name}" >> ${monthly_backup_script}
-		echo "if [ -f /var/backups/${database_name}_monthly.sql ]; then" >> ${monthly_backup_script}
-		echo "  cp -f /var/backups/${database_name}_monthly.sql /var/backups/${database_name}_2monthly.sql" >> ${monthly_backup_script}
-		echo 'fi' >> ${monthly_backup_script}
-		echo "if [ -f /var/backups/${database_name}_weekly.sql ]; then" >> ${monthly_backup_script}
-		echo "  cp -f /var/backups/${database_name}_weekly.sql /var/backups/${database_name}_monthly.sql" >> ${monthly_backup_script}
-		echo 'fi' >> ${monthly_backup_script}
-	fi
-
-	if ! grep -q "${database_name}" /etc/cron.hourly/repair; then
-		echo "${PROJECT_NAME}-repair-database ${database_name}" >> /etc/cron.hourly/repair
-		# remove legacy stuff
-		sed -i 's|/usr/bin/repairdatabase redmatrix||g' /etc/cron.hourly/repair
-	fi
-}
-
 function install_not_on_BBB {
 	if grep -Fxq "install_not_on_BBB" $COMPLETION_FILE; then
 		return
@@ -3245,71 +3152,6 @@ function check_hwrng {
 
 	# If a OneRNG device was installed then verify its firmware
 	#check_onerng_verification
-}
-
-function get_mariadb_password {
-	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "MariaDB password" /home/$MY_USERNAME/README; then
-			if [ -f $DATABASE_PASSWORD_FILE ]; then
-				MARIADB_PASSWORD=$(cat $DATABASE_PASSWORD_FILE)
-			else
-				MARIADB_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-				echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
-				chmod 600 $DATABASE_PASSWORD_FILE
-			fi
-		fi
-	fi
-}
-
-function get_mariadb_media_server_admin_password {
-	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "Media server administrator password" /home/$MY_USERNAME/README; then
-			MEDIA_SERVER_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Media server administrator password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		fi
-	fi
-}
-
-function get_mariadb_gnusocial_admin_password {
-	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
-			MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		fi
-		if grep -q "Microblog administrator password" /home/$MY_USERNAME/README; then
-			MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Microblog administrator password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		fi
-	fi
-}
-
-function get_mariadb_webmail_admin_password {
-	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "MariaDB webmail admin password" /home/$MY_USERNAME/README; then
-			WEBMAIL_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB webmail admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		fi
-	fi
-}
-
-function get_mariadb_rss_reader_admin_password {
-	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "RSS reader admin password" /home/$MY_USERNAME/README; then
-			RSS_READER_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "RSS reader admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		fi
-	fi
-}
-
-function get_mariadb_git_admin_password {
-	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "Gogs admin user password" /home/$MY_USERNAME/README; then
-			GIT_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Gogs admin user password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		fi
-	fi
-}
-
-function get_mariadb_hubzilla_admin_password {
-	if [ -f /home/$MY_USERNAME/README ]; then
-		if grep -q "MariaDB Hubzilla admin password" /home/$MY_USERNAME/README; then
-			HUBZILLA_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB Hubzilla admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-		fi
-	fi
 }
 
 function create_freedns_updater {
@@ -6233,114 +6075,6 @@ function configure_php {
 	sed -i "s/memory_limit = -1/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php5/cli/php.ini
 	sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
 	sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
-}
-
-function install_mariadb {
-	if grep -Fxq "install_mariadb" $COMPLETION_FILE; then
-		return
-	fi
-	apt-get -y install python-software-properties debconf-utils
-	apt-get -y install software-properties-common
-	apt-get -y update
-
-	get_mariadb_password
-	if [ ! $MARIADB_PASSWORD ]; then
-		if [ -f $IMAGE_PASSWORD_FILE ]; then
-			MARIADB_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-		else
-			MARIADB_PASSWORD="$(openssl rand -base64 32 | cut -c1-${MINIMUM_PASSWORD_LENGTH})"
-		fi
-		echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
-		chmod 600 $DATABASE_PASSWORD_FILE
-
-		echo '' >> /home/$MY_USERNAME/README
-		echo '' >> /home/$MY_USERNAME/README
-		echo 'MariaDB / MySql' >> /home/$MY_USERNAME/README
-		echo '===============' >> /home/$MY_USERNAME/README
-		echo $"Your MariaDB password is: $MARIADB_PASSWORD" >> /home/$MY_USERNAME/README
-		echo '' >> /home/$MY_USERNAME/README
-		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-		chmod 600 /home/$MY_USERNAME/README
-	fi
-
-	debconf-set-selections <<< "mariadb-server mariadb-server/root_password password $MARIADB_PASSWORD"
-	debconf-set-selections <<< "mariadb-server mariadb-server/root_password_again password $MARIADB_PASSWORD"
-	apt-get -y install mariadb-server
-	apt-get -y remove --purge apache*
-	if [ -d /etc/apache2 ]; then
-		rm -rf /etc/apache2
-		echo $'Removed Apache installation after MariaDB install'
-	fi
-
-	if [ ! -d /etc/mysql ]; then
-		echo $"ERROR: mariadb-server does not appear to have installed. $CHECK_MESSAGE"
-		exit 54
-	fi
-
-	mysqladmin -u root password "$MARIADB_PASSWORD"
-	echo 'install_mariadb' >> $COMPLETION_FILE
-}
-
-function backup_databases_script_header {
-	if [ ! -f /usr/bin/backupdatabases ]; then
-		# daily
-		echo '#!/bin/sh' > /usr/bin/backupdatabases
-		echo '' >> /usr/bin/backupdatabases
-		echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
-		echo '' >> /usr/bin/backupdatabases
-		echo -n 'MYSQL_PASSWORD=$(cat ' >> /usr/bin/backupdatabases
-		echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/backupdatabases
-		echo 'umask 0077' >> /usr/bin/backupdatabases
-		echo '' >> /usr/bin/backupdatabases
-		echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
-		echo "if [ -f $FRIENDS_SERVERS_LIST ]; then" >> /usr/bin/backupdatabases
-		echo '  exit 1' >> /usr/bin/backupdatabases
-		echo 'fi' >> /usr/bin/backupdatabases
-		chmod 600 /usr/bin/backupdatabases
-		chmod +x /usr/bin/backupdatabases
-
-		echo '#!/bin/sh' > /etc/cron.daily/backupdatabasesdaily
-		echo '/usr/bin/backupdatabases' >> /etc/cron.daily/backupdatabasesdaily
-		chmod 600 /etc/cron.daily/backupdatabasesdaily
-		chmod +x /etc/cron.daily/backupdatabasesdaily
-
-		# weekly
-		echo '#!/bin/sh' > /etc/cron.weekly/backupdatabasesweekly
-		echo '' >> /etc/cron.weekly/backupdatabasesweekly
-		echo 'umask 0077' >> /etc/cron.weekly/backupdatabasesweekly
-
-		chmod 600 /etc/cron.weekly/backupdatabasesweekly
-		chmod +x /etc/cron.weekly/backupdatabasesweekly
-
-		# monthly
-		echo '#!/bin/sh' > /etc/cron.monthly/backupdatabasesmonthly
-		echo '' >> /etc/cron.monthly/backupdatabasesmonthly
-		echo 'umask 0077' >> /etc/cron.monthly/backupdatabasesmonthly
-
-		chmod 600 /etc/cron.monthly/backupdatabasesmonthly
-		chmod +x /etc/cron.monthly/backupdatabasesmonthly
-	fi
-}
-
-function repair_databases_script {
-	if [ -f /etc/cron.hourly/repair ]; then
-		sed -i "s|/usr/bin/repairdatabase|${PROJECT_NAME}-repair-database|g" /etc/cron.hourly/repair
-	fi
-
-	if grep -Fxq "repair_databases_script" $COMPLETION_FILE; then
-		return
-	fi
-
-	if [ ! -f $DATABASE_PASSWORD_FILE ]; then
-		return
-	fi
-
-	echo '#!/bin/bash' > /etc/cron.hourly/repair
-	echo '' >> /etc/cron.hourly/repair
-	chmod 600 /etc/cron.hourly/repair
-	chmod +x /etc/cron.hourly/repair
-
-	echo 'repair_databases_script' >> $COMPLETION_FILE
 }
 
 function add_ddns_domain {
