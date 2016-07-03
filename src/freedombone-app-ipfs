@@ -1,0 +1,167 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# ipfs functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+IPFS_GO_REPO="https://github.com/ipfs/go-ipfs"
+IPFS_COMMIT='20b06a4cbce8884f5b194da6e98cb11f2c77f166'
+IPFS_PORT=4001
+
+function install_ipfs {
+	if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" ]]; then
+		return
+	fi
+
+	function_check select_go_version
+	select_go_version
+
+	# update to the next commit
+	function_check set_repo_commit
+	set_repo_commit $GOPATH/src/github.com/ipfs/go-ipfs "ipfs commit" "$IPFS_COMMIT" $IPFS_REPO
+
+	if grep -Fxq "install_ipfs" $COMPLETION_FILE; then
+		return
+	fi
+
+	apt-get -y install golang libpam0g-dev fuse
+
+	if [ ! -d /home/git ]; then
+		# add a gogs user account
+		adduser --disabled-login --gecos 'Gogs' git
+
+		# install Go
+		if ! grep -q "export GOPATH=" ~/.bashrc; then
+			echo "export GOPATH=$GOPATH" >> ~/.bashrc
+		else
+			sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" ~/.bashrc
+		fi
+		systemctl set-environment GOPATH=$GOPATH
+		if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
+			echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
+		else
+			sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
+		fi
+		if [ ! -d $GOPATH ]; then
+			mkdir -p $GOPATH
+		fi
+	fi
+
+	IPFS_PATH=$GOPATH/bin
+	export PATH="$GOPATH/bin:$PATH:"
+	if ! grep -q 'GOPATH/bin' ~/.bashrc; then
+		echo 'export PATH="$GOPATH/bin:$PATH:";' >> ~/.bashrc
+	else
+		sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
+	fi
+
+	# set gopath for the user
+	if ! grep -q "GOPATH=" /home/$MY_USERNAME/.bashrc; then
+		echo "export GOPATH=$GOPATH" >> /home/$MY_USERNAME/.bashrc
+		echo 'export PATH="$GOPATH/bin:$PATH:";' >> /home/$MY_USERNAME/.bashrc
+	else
+		sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" /home/$MY_USERNAME/.bashrc
+	fi
+	chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
+
+	IPFS_GO_REPO2=$(echo "$IPFS_GO_REPO" | sed 's|https://||g')
+	go get -u ${IPFS_GO_REPO2}/cmd/ipfs
+	if [ ! "$?" = "0" ]; then
+		exit 8242
+	fi
+
+	cd $GOPATH/src/$IPFS_GO_REPO2
+	git checkout $IPFS_COMMIT -b $IPFS_COMMIT
+	if ! grep -q "ipfs commit" $COMPLETION_FILE; then
+		echo "ipfs commit:$IPFS_COMMIT" >> $COMPLETION_FILE
+	else
+		sed -i "s/ipfs commit.*/ipfs commit:$IPFS_COMMIT/g" $COMPLETION_FILE
+	fi
+
+	# initialise
+	su -c "$IPFS_PATH/ipfs init -b 4096" - $MY_USERNAME
+	if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
+		echo "IPFS could not be initialised for user $MY_USERNAME"
+		exit 7358
+	fi
+
+	# directories to mount to
+	if [ ! -d /ipfs ]; then
+		mkdir /ipfs
+		mkdir /ipns
+		chown $MY_USERNAME:$MY_USERNAME /ipfs
+		chown $MY_USERNAME:$MY_USERNAME /ipns
+	fi
+
+	if [ -f /etc/fuse.conf ]; then
+		chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
+	fi
+	if [ -f /dev/fuse ]; then
+		chown $MY_USERNAME:$MY_USERNAME /dev/fuse
+	fi
+
+	echo '[Unit]' > /etc/systemd/system/ipfs.service
+	echo 'Description=IPFS daemon' >> /etc/systemd/system/ipfs.service
+	echo 'After=syslog.target' >> /etc/systemd/system/ipfs.service
+	echo 'After=network.target' >> /etc/systemd/system/ipfs.service
+	echo '' >> /etc/systemd/system/ipfs.service
+	echo '[Service]' >> /etc/systemd/system/ipfs.service
+	echo 'Type=simple' >> /etc/systemd/system/ipfs.service
+	echo "User=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+	echo "Group=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+	echo "WorkingDirectory=/home/$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+	echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> /etc/systemd/system/ipfs.service
+	echo 'Restart=on-failure' >> /etc/systemd/system/ipfs.service
+	echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> /etc/systemd/system/ipfs.service
+	echo '' >> /etc/systemd/system/ipfs.service
+	echo '[Install]' >> /etc/systemd/system/ipfs.service
+	echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ipfs.service
+
+	systemctl enable ipfs
+	systemctl daemon-reload
+	systemctl restart ipfs
+
+	if [ -d /etc/avahi ]; then
+		su -c "echo $($IPFS_PATH/ipfs id | grep '\"ID\":' | awk -F '\"' '{print $4}') > /tmp/ipfsid" - $MY_USERNAME
+		if [ ! -f /tmp/ipfsid ]; then
+			echo 'No IPFS identity was created'
+			exit 37895
+		fi
+		IPFS_PEER_ID=$(cat /tmp/ipfsid)
+		if [ ${#IPFS_PEER_ID} -lt 10 ]; then
+			echo 'Invalid IPFS peer ID'
+			echo "$IPFS_PEER_ID"
+			exit 74782
+		fi
+		# Add an avahi service
+		function_check create_avahi_service
+		create_avahi_service ipfs "ipfs" udp $IPFS_PORT "$IPFS_PEER_ID"
+		rm /tmp/ipfsid
+	fi
+
+	echo 'install_ipfs' >> $COMPLETION_FILE
+}

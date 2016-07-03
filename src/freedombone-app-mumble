@@ -1,0 +1,159 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Mumble application
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Password used for VoIP server
+VOIP_SERVER_PASSWORD=
+# Port on which VoIP server listens
+VOIP_PORT=64738
+
+# Location of VoIP database and configuration
+VOIP_DATABASE="mumble-server.sqlite"
+VOIP_CONFIG_FILE="mumble-server.ini"
+
+function get_voip_server_password {
+	if [ -f /home/$MY_USERNAME/README ]; then
+		if grep -q "VoIP server password" /home/$MY_USERNAME/README; then
+			if [ ! $VOIP_SERVER_PASSWORD ]; then
+				VOIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "VoIP server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+			fi
+		else
+			if grep -q "Mumble server password" /home/$MY_USERNAME/README; then
+				if [ ! $VOIP_SERVER_PASSWORD ]; then
+					VOIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Mumble server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+				fi
+			fi
+		fi
+	fi
+}
+
+function install_mumble {
+	if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+		return
+	fi
+	if grep -Fxq "install_mumble" $COMPLETION_FILE; then
+		return
+	fi
+	if grep -Fxq "install_voip" $COMPLETION_FILE; then
+		return
+	fi
+	apt-get -y install mumble-server
+
+	function_check get_voip_server_password
+	get_voip_server_password
+	if [ ! $VOIP_SERVER_PASSWORD ]; then
+		if [ -f $IMAGE_PASSWORD_FILE ]; then
+			VOIP_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+		else
+			VOIP_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+			if [ ${#VOIP_SERVER_PASSWORD} -lt $MINIMUM_PASSWORD_LENGTH ]; then
+				VOIP_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+			fi
+		fi
+	fi
+
+	# Make an ssl cert for the server
+	if [ ! -f /etc/ssl/certs/mumble.dhparam ]; then
+		${PROJECT_NAME}-addcert -h mumble --dhkey $DH_KEYLENGTH
+		function_check check_certificates
+		check_certificates mumble
+	fi
+
+	# Check that the cert was created
+	if [ ! -f /etc/ssl/certs/mumble.crt ]; then
+		echo $'VoIP server certificate not created'
+		exit 57892
+	fi
+	if [ ! -f /etc/ssl/private/mumble.key ]; then
+		echo $'VoIP server key not created'
+		exit 57893
+	fi
+	if [ ! -d /var/lib/mumble-server ]; then
+		mkdir /var/lib/mumble-server
+	fi
+	cp /etc/ssl/certs/mumble.* /var/lib/mumble-server
+	cp /etc/ssl/private/mumble.key /var/lib/mumble-server
+	chown -R mumble-server:mumble-server /var/lib/mumble-server
+
+	sed -i "s|welcometext=.*|welcometext=\"<br />Welcome to $DEFAULT_DOMAIN_NAME <b>VoIP</b>.<br />Chat freely!<br />\"|g" /etc/mumble-server.ini
+
+	if [[ $VOIP_SERVER_PASSWORD && $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
+		sed -i "s|serverpassword=.*|serverpassword=$VOIP_SERVER_PASSWORD|g" /etc/mumble-server.ini
+	fi
+
+	sed -i 's|#autobanAttempts.*|autobanAttempts = 10|g' /etc/mumble-server.ini
+	sed -i 's|#autobanTimeframe.*|autobanTimeframe = 120|g' /etc/mumble-server.ini
+	sed -i 's|#autobanTime.*|autobanTime = 300|g' /etc/mumble-server.ini
+	sed -i 's|#sendversion=.*|sendversion=False|g' /etc/mumble-server.ini
+	sed -i 's|sendversion=.*|sendversion=False|g' /etc/mumble-server.ini
+	if ! grep -q "allowping" /etc/mumble-server.ini; then
+		echo 'allowping=False' >> /etc/mumble-server.ini
+	fi
+	sed -i 's|allowping=.*|allowping=False|g' /etc/mumble-server.ini
+	sed -i 's|#sslCert=.*|sslCert=/var/lib/mumble-server/mumble.crt|g' /etc/mumble-server.ini
+	sed -i 's|#sslKey=.*|sslKey=/var/lib/mumble-server/mumble.key|g' /etc/mumble-server.ini
+	sed -i 's|#certrequired=.*|certrequired=True|g' /etc/mumble-server.ini
+	sed -i 's|users=100|users=10|g' /etc/mumble-server.ini
+	sed -i 's|#channelnestinglimit=10|channelnestinglimit=10|g' /etc/mumble-server.ini
+	sed -i 's|#textmessagelength=.*|textmessagelength=1000|g' /etc/mumble-server.ini
+	sed -i 's|textmessagelength=.*|textmessagelength=1000|g' /etc/mumble-server.ini
+	sed -i 's|#imagemessagelength=.*|imagemessagelength=131072|g' /etc/mumble-server.ini
+	sed -i 's|#allowhtml=.*|allowhtml=False|g' /etc/mumble-server.ini
+	sed -i 's|allowhtml=.*|allowhtml=False|g' /etc/mumble-server.ini
+	sed -i "s|port=.*|port=${VOIP_PORT}|g" /etc/mumble-server.ini
+
+	VOIP_ONION_HOSTNAME=$(add_onion_service voip ${VOIP_PORT} ${VOIP_PORT})
+	if ! grep -q $"VoIP onion domain" $COMPLETION_FILE; then
+		echo "VoIP onion domain:$VOIP_ONION_HOSTNAME" >> $COMPLETION_FILE
+	fi
+
+	systemctl restart mumble-server
+
+	if ! grep -q $"Mumble Server" /home/$MY_USERNAME/README; then
+		echo '' >> /home/$MY_USERNAME/README
+		echo '' >> /home/$MY_USERNAME/README
+		echo $'Mumble Server' >> /home/$MY_USERNAME/README
+		echo '=============' >> /home/$MY_USERNAME/README
+		echo $"Mumble onion domain:$VOIP_ONION_HOSTNAME" >> /home/$MY_USERNAME/README
+		echo $'Mumble server username: mumble-server' >> /home/$MY_USERNAME/README
+		if [[ $SYSTEM_TYPE != "VARIANT_MESH" ]]; then
+			echo $"Mumble server password: $VOIP_SERVER_PASSWORD" >> /home/$MY_USERNAME/README
+		fi
+		echo '' >> /home/$MY_USERNAME/README
+		echo $'To connect to the Mumble server use your username and the server password shown above.' >> /home/$MY_USERNAME/README
+		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+		chmod 600 /home/$MY_USERNAME/README
+	fi
+
+	function_check configure_firewall_for_voip
+	configure_firewall_for_voip
+	echo 'install_mumble' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

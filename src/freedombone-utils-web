@@ -1,0 +1,551 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Web related functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# default search engine for command line browser
+DEFAULT_SEARCH='https://searx.laquadrature.net'
+
+# This isn't used here, but is included for mirrors creation purposes
+LETSENCRYPT_REPO="https://github.com/letsencrypt/letsencrypt"
+
+# Whether Let's Encrypt is enabled for all sites
+LETSENCRYPT_ENABLED="no"
+LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
+
+# list of encryption protocols
+SSL_PROTOCOLS="TLSv1 TLSv1.1 TLSv1.2"
+
+# list of ciphers to use.  See bettercrypto.org recommendations
+SSL_CIPHERS="EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA256:EECDH:+CAMELLIA128:+AES128:+SSLv3:!aNULL:!eNULL:!LOW:!3DES:!MD5:!EXP:!PSK:!DSS:!RC4:!SEED:!IDEA:!ECDSA:kEDH:CAMELLIA128-SHA:AES128-SHA"
+
+NGINX_ENSITE_REPO="https://github.com/perusio/nginx_ensite"
+NGINX_ENSITE_COMMIT='fa4d72ce1c0a490442c8474e9c8dc21ed52c93d0'
+
+# memory limit for php in MB
+MAX_PHP_MEMORY=64
+
+# logging level for Nginx
+WEBSERVER_LOG_LEVEL='warn'
+
+# test a domain name to see if it's valid
+function validate_domain_name {
+	# count the number of dots in the domain name
+	dots=${TEST_DOMAIN_NAME//[^.]}
+	no_of_dots=${#dots}
+	if (( $no_of_dots > 3 )); then
+		TEST_DOMAIN_NAME=$"The domain $TEST_DOMAIN_NAME has too many subdomains. It should be of the type w.x.y.z, x.y.z or y.z"
+	fi
+	if (( $no_of_dots == 0 )); then
+		TEST_DOMAIN_NAME=$"The domain $TEST_DOMAIN_NAME has no top level domain. It should be of the type w.x.y.z, x.y.z or y.z"
+	fi
+}
+
+function nginx_disable_sniffing {
+	domain_name=$1
+	filename=/etc/nginx/sites-available/$domain_name
+	echo '    add_header X-Frame-Options DENY;' >> $filename
+	echo '    add_header X-Content-Type-Options nosniff;' >> $filename
+	echo '' >> $filename
+}
+
+function nginx_limits {
+	domain_name=$1
+	max_body='20m'
+	if [ $2 ]; then
+		max_body=$2
+	fi
+	filename=/etc/nginx/sites-available/$domain_name
+	echo "    client_max_body_size ${max_body};" >> $filename
+	echo '    client_body_buffer_size 128k;' >> $filename
+	echo '' >> $filename
+	echo '    limit_conn conn_limit_per_ip 10;' >> $filename
+	echo '    limit_req zone=req_limit_per_ip burst=10 nodelay;' >> $filename
+	echo '' >> $filename
+}
+
+function nginx_http_redirect {
+	# redirect port 80 to https
+	domain_name=$1
+	filename=/etc/nginx/sites-available/$domain_name
+	echo 'server {' > $filename
+	echo '    listen 80;' >> $filename
+	echo '    listen [::]:80;' >> $filename
+	echo "    server_name ${domain_name};" >> $filename
+	echo "    root /var/www/${domain_name}/htdocs;" >> $filename
+	echo '    access_log off;' >> $filename
+	echo "    error_log /var/log/nginx/${domain_name}_error.log $WEBSERVER_LOG_LEVEL;" >> $filename
+	function_check nginx_limits
+	nginx_limits $domain_name
+	echo '    rewrite ^ https://$server_name$request_uri? permanent;' >> $filename
+	echo '}' >> $filename
+	echo '' >> $filename
+}
+
+function nginx_ssl {
+	# creates the SSL/TLS section for a website
+	domain_name=$1
+	filename=/etc/nginx/sites-available/$domain_name
+	echo '    ssl on;' >> $filename
+	echo "    ssl_certificate /etc/ssl/certs/${domain_name}.crt;" >> $filename
+	echo "    ssl_certificate_key /etc/ssl/private/${domain_name}.key;" >> $filename
+	echo "    ssl_dhparam /etc/ssl/certs/${domain_name}.dhparam;" >> $filename
+	echo '' >> $filename
+	echo '    ssl_session_timeout 60m;' >> $filename
+	echo '    ssl_prefer_server_ciphers on;' >> $filename
+	echo "    ssl_protocols $SSL_PROTOCOLS;" >> $filename
+	echo "    ssl_ciphers '$SSL_CIPHERS';" >> $filename
+}
+
+# check an individual domain name
+function test_domain_name {
+	if [ $1 ]; then
+		TEST_DOMAIN_NAME=$1
+		function_ckeck validate_domain_name
+		validate_domain_name
+		if [[ $TEST_DOMAIN_NAME != $1 ]]; then
+			echo $TEST_DOMAIN_NAME
+			exit 8528
+		fi
+	fi
+}
+
+# Checks whether certificates were generated for the given hostname
+function check_certificates {
+	if [ ! $1 ]; then
+		return
+	fi
+	USE_LETSENCRYPT='no'
+	if [ $2 ]; then
+		USE_LETSENCRYPT=$2
+	fi
+	if [[ $USE_LETSENCRYPT == 'no' ]]; then
+		if [ ! -f /etc/ssl/private/$1.key ]; then
+			echo $"Private certificate for $CHECK_HOSTNAME was not created"
+			exit 63959
+		fi
+		if [ ! -f /etc/ssl/certs/$1.crt ]; then
+			echo $"Public certificate for $CHECK_HOSTNAME was not created"
+			exit 7679
+		fi
+	else
+		if [ ! -f /etc/letsencrypt/live/${1}/privkey.pem ]; then
+			echo $"Private certificate for $CHECK_HOSTNAME was not created"
+			exit 6282
+		fi
+		if [ ! -f /etc/letsencrypt/live/${1}/fullchain.pem ]; then
+			echo $"Public certificate for $CHECK_HOSTNAME was not created"
+			exit 5328
+		fi
+	fi
+	if [ ! -f /etc/ssl/certs/$1.dhparam ]; then
+		echo $"Diffie–Hellman parameters for $CHECK_HOSTNAME were not created"
+		exit 5989
+	fi
+}
+
+function create_site_certificate {
+	SITE_DOMAIN_NAME="$1"
+
+	# if yes then only "valid" certs are allowed, not self-signed
+	NO_SELF_SIGNED='no'
+	if [ $2 ]; then
+		NO_SELF_SIGNED="$2"
+	fi
+
+	if [[ $ONION_ONLY == "no" ]]; then
+		if [ ! -f /etc/ssl/certs/$SITE_DOMAIN_NAME.dhparam ]; then
+			if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
+				${PROJECT_NAME}-addcert -h $SITE_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+				function_check check_certificates
+				check_certificates $SITE_DOMAIN_NAME
+			else
+				${PROJECT_NAME}-addcert -e $SITE_DOMAIN_NAME -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH --email $MY_EMAIL_ADDRESS
+				if [ ! "$?" = "0" ]; then
+					if [[ $NO_SELF_SIGNED == 'no' ]]; then
+						echo $"Lets Encrypt failed for $SITE_DOMAIN_NAME, so try making a self-signed cert"
+						${PROJECT_NAME}-addcert -h $SITE_DOMAIN_NAME --dhkey $DH_KEYLENGTH
+						function_check check_certificates
+						check_certificates $SITE_DOMAIN_NAME
+					else
+						echo $"Lets Encrypt failed for $SITE_DOMAIN_NAME"
+						exit 682529
+					fi
+				else
+					function_check check_certificates
+					check_certificates $SITE_DOMAIN_NAME 'yes'
+				fi
+			fi
+		fi
+	fi
+}
+
+# script to automatically renew any Let's Encrypt certificates
+function letsencrypt_renewals {
+	if [[ $ONION_ONLY != "no" ]]; then
+		return
+	fi
+
+	renewals_script=/etc/cron.monthly/letsencrypt
+	renewals_retry_script=/etc/cron.daily/letsencrypt
+	renewal_failure_msg=$'The certificate for $LETSENCRYPT_DOMAIN could not be renewed'
+	renewal_email_title=$'${PROJECT_NAME} Lets Encrypt certificate renewal'
+
+	# the main script tries to renew once per month
+	echo '#!/bin/bash' > $renewals_script
+	echo '' >> $renewals_script
+	echo "PROJECT_NAME='${PROJECT_NAME}'" >> $renewals_script
+	echo 'COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt' >> $renewals_script
+	echo '' >> $renewals_script
+	echo 'if [ -d /etc/letsencrypt ]; then' >> $renewals_script
+	echo '    if [ -f ~/letsencrypt_failed ]; then' >> $renewals_script
+	echo '        rm ~/letsencrypt_failed' >> $renewals_script
+	echo '    fi' >> $renewals_script
+	echo -n '    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | ' >> $renewals_script
+	echo -n "awk -F ':' '{print " >> $renewals_script
+	echo -n '$2' >> $renewals_script
+	echo "}')" >> $renewals_script
+	echo '    ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME@$HOSTNAME' >> $renewals_script
+	echo '    for d in /etc/letsencrypt/live/*/ ; do' >> $renewals_script
+	echo -n '        LETSENCRYPT_DOMAIN=$(echo "$d" | ' >> $renewals_script
+	echo -n "awk -F '/' '{print " >> $renewals_script
+	echo -n '$5' >> $renewals_script
+	echo "}')" >> $renewals_script
+	echo '        if [ -f /etc/nginx/sites-available/$LETSENCRYPT_DOMAIN ]; then' >> $renewals_script
+	echo '            ${PROJECT_NAME}-renew-cert -h $LETSENCRYPT_DOMAIN -p letsencrypt' >> $renewals_script
+	echo '            if [ ! "$?" = "0" ]; then' >> $renewals_script
+	echo "                echo \"${renewal_failure_msg}\" > ~/temp_renewletsencrypt.txt" >> $renewals_script
+	echo '                echo "" >> ~/temp_renewletsencrypt.txt' >> $renewals_script
+	echo '                ${PROJECT_NAME}-renew-cert -h $LETSENCRYPT_DOMAIN -p letsencrypt 2>> ~/temp_renewletsencrypt.txt' >> $renewals_script
+	echo -n "                cat ~/temp_renewletsencrypt.txt | mail -s \"${renewal_email_title}\" " >> $renewals_script
+	echo '$ADMIN_EMAIL_ADDRESS' >> $renewals_script
+	echo '                rm ~/temp_renewletsencrypt.txt' >> $renewals_script
+	echo '                if [ ! -f ~/letsencrypt_failed ]; then' >> $renewals_script
+	echo '                    touch ~/letsencrypt_failed' >> $renewals_script
+	echo '                fi' >> $renewals_script
+	echo '            fi' >> $renewals_script
+	echo '        fi' >> $renewals_script
+	echo '    done' >> $renewals_script
+	echo 'fi' >> $renewals_script
+	chmod +x $renewals_script
+
+	# a secondary script keeps trying to renew after a failure
+	echo '#!/bin/bash' > $renewals_retry_script
+	echo '' >> $renewals_retry_script
+	echo "PROJECT_NAME='${PROJECT_NAME}'" >> $renewals_retry_script
+	echo 'COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt' >> $renewals_retry_script
+	echo '' >> $renewals_retry_script
+	echo 'if [ -d /etc/letsencrypt ]; then' >> $renewals_retry_script
+	echo '    if [ -f ~/letsencrypt_failed ]; then' >> $renewals_retry_script
+	echo '        rm ~/letsencrypt_failed' >> $renewals_retry_script
+	echo -n '        ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | ' >> $renewals_retry_script
+	echo -n "awk -F ':' '{print " >> $renewals_retry_script
+	echo -n '$2' >> $renewals_retry_script
+	echo "}')" >> $renewals_retry_script
+	echo '        ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME@$HOSTNAME' >> $renewals_retry_script
+	echo '        for d in /etc/letsencrypt/live/*/ ; do' >> $renewals_retry_script
+	echo -n '            LETSENCRYPT_DOMAIN=$(echo "$d" | ' >> $renewals_retry_script
+	echo -n "awk -F '/' '{print " >> $renewals_retry_script
+	echo -n '$5' >> $renewals_retry_script
+	echo "}')" >> $renewals_retry_script
+	echo '            if [ -f /etc/nginx/sites-available/$LETSENCRYPT_DOMAIN ]; then' >> $renewals_retry_script
+	echo '                ${PROJECT_NAME}-renew-cert -h $LETSENCRYPT_DOMAIN -p letsencrypt' >> $renewals_retry_script
+	echo '                if [ ! "$?" = "0" ]; then' >> $renewals_retry_script
+	echo "                    echo \"${renewal_failure_msg}\" > ~/temp_renewletsencrypt.txt" >> $renewals_retry_script
+	echo '                    echo "" >> ~/temp_renewletsencrypt.txt' >> $renewals_retry_script
+	echo '                    ${PROJECT_NAME}-renew-cert -h $LETSENCRYPT_DOMAIN -p letsencrypt 2>> ~/temp_renewletsencrypt.txt' >> $renewals_retry_script
+	echo -n "                    cat ~/temp_renewletsencrypt.txt | mail -s \"${renewal_email_title}\" " >> $renewals_retry_script
+	echo '$ADMIN_EMAIL_ADDRESS' >> $renewals_retry_script
+	echo '                    rm ~/temp_renewletsencrypt.txt' >> $renewals_retry_script
+	echo '                    if [ ! -f ~/letsencrypt_failed ]; then' >> $renewals_retry_script
+	echo '                        touch ~/letsencrypt_failed' >> $renewals_retry_script
+	echo '                    fi' >> $renewals_retry_script
+	echo '                fi' >> $renewals_retry_script
+	echo '            fi' >> $renewals_retry_script
+	echo '        done' >> $renewals_retry_script
+	echo '    fi' >> $renewals_retry_script
+	echo 'fi' >> $renewals_retry_script
+	chmod +x $renewals_retry_script
+}
+
+function configure_php {
+	sed -i "s/memory_limit = 128M/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php5/fpm/php.ini
+	sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini
+	sed -i "s/memory_limit = -1/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php5/cli/php.ini
+	sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
+	sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
+}
+
+function install_web_server_access_control {
+	if [ ! -f /etc/pam.d/nginx ]; then
+		echo '#%PAM-1.0' > /etc/pam.d/nginx
+		echo '@include common-auth' >> /etc/pam.d/nginx
+		echo '@include common-account' >> /etc/pam.d/nginx
+		echo '@include common-session' >> /etc/pam.d/nginx
+	fi
+}
+
+function install_dynamicdns {
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if [[ $ONION_ONLY != "no" ]]; then
+		return
+	fi
+
+	# update to the next commit
+	function_check set_repo_commit
+	set_repo_commit $INSTALL_DIR/inadyn "inadyn commit" "$INADYN_COMMIT" $INADYN_REPO
+
+	if grep -Fxq "install_dynamicdns" $COMPLETION_FILE; then
+		return
+	fi
+
+	# Here we compile from source because the current package
+	# doesn't support https, which could result in passwords
+	# being leaked
+	# Debian version 1.99.4-1
+	# https version 1.99.8
+
+	apt-get -y install build-essential curl libgnutls28-dev automake1.11
+	if [ ! -d $INSTALL_DIR/inadyn ]; then
+		git_clone $INADYN_REPO $INSTALL_DIR/inadyn
+	fi
+	if [ ! -d $INSTALL_DIR/inadyn ]; then
+		echo 'inadyn repo not cloned'
+		echo -n | openssl s_client -showcerts -connect github.com:443 -CApath /etc/ssl/certs
+		exit 6785
+	fi
+	cd $INSTALL_DIR/inadyn
+	git checkout $INADYN_COMMIT -b $INADYN_COMMIT
+	if ! grep -q "inadyn commit" $COMPLETION_FILE; then
+		echo "inadyn commit:$INADYN_COMMIT" >> $COMPLETION_FILE
+	else
+		sed -i "s/inadyn commit.*/inadyn commit:$INADYN_COMMIT/g" $COMPLETION_FILE
+	fi
+
+	./configure
+	if [ ! "$?" = "0" ]; then
+		exit 74890
+	fi
+	USE_OPENSSL=1 make
+	if [ ! "$?" = "0" ]; then
+		exit 74858
+	fi
+	make install
+	if [ ! "$?" = "0" ]; then
+		exit 3785
+	fi
+
+	# create an unprivileged user
+	#useradd -r -s /bin/false debian-inadyn
+
+	# create a configuration file
+	echo 'background' > /etc/inadyn.conf
+	echo 'verbose        1' >> /etc/inadyn.conf
+	echo 'period         300' >> /etc/inadyn.conf
+	echo 'startup-delay  60' >> /etc/inadyn.conf
+	echo 'cache-dir      /run/inadyn' >> /etc/inadyn.conf
+	echo 'logfile        /dev/null' >> /etc/inadyn.conf
+	chmod 600 /etc/inadyn.conf
+
+	echo '[Unit]' > /etc/systemd/system/inadyn.service
+	echo 'Description=inadyn (DynDNS updater)' >> /etc/systemd/system/inadyn.service
+	echo 'After=network.target' >> /etc/systemd/system/inadyn.service
+	echo '' >> /etc/systemd/system/inadyn.service
+	echo '[Service]' >> /etc/systemd/system/inadyn.service
+	echo 'ExecStart=/usr/local/sbin/inadyn --config /etc/inadyn.conf' >> /etc/systemd/system/inadyn.service
+	echo 'Restart=always' >> /etc/systemd/system/inadyn.service
+	echo 'Type=forking' >> /etc/systemd/system/inadyn.service
+	echo '' >> /etc/systemd/system/inadyn.service
+	echo '[Install]' >> /etc/systemd/system/inadyn.service
+	echo 'WantedBy=multi-user.target' >> /etc/systemd/system/inadyn.service
+	systemctl enable inadyn
+	systemctl start inadyn
+	systemctl daemon-reload
+
+	echo 'install_dynamicdns' >> $COMPLETION_FILE
+}
+
+function install_web_server {
+	if [[ $SYSTEM_TYPE == "$VARIANT_CHAT" ]]; then
+		return
+	fi
+
+	# update to the next commit
+	function_check set_repo_commit
+	set_repo_commit $INSTALL_DIR/nginx_ensite "Nginx-ensite commit" "$NGINX_ENSITE_COMMIT" $NGINX_ENSITE_REPO
+
+	if grep -Fxq "install_web_server" $COMPLETION_FILE; then
+		return
+	fi
+	# remove apache
+	apt-get -y remove --purge apache2
+	if [ -d /etc/apache2 ]; then
+		rm -rf /etc/apache2
+	fi
+	# install nginx
+	apt-get -y install nginx php5-fpm git
+
+	# limit the number of php processes
+	sed -i 's/; process.max =.*/process.max = 32/g' /etc/php5/fpm/php-fpm.conf
+	#sed -i 's/;process_control_timeout =.*/process_control_timeout = 300/g' /etc/php5/fpm/php-fpm.conf
+
+	if ! grep -q "pm.max_children" /etc/php5/fpm/php-fpm.conf; then
+		echo 'pm.max_children = 10' >> /etc/php5/fpm/php-fpm.conf
+		echo 'pm.start_servers = 2' >> /etc/php5/fpm/php-fpm.conf
+		echo 'pm.min_spare_servers = 2' >> /etc/php5/fpm/php-fpm.conf
+		echo 'pm.max_spare_servers = 5' >> /etc/php5/fpm/php-fpm.conf
+		echo 'pm.max_requests = 50' >> /etc/php5/fpm/php-fpm.conf
+	fi
+
+	if [ ! -d /etc/nginx ]; then
+		echo $"ERROR: nginx does not appear to have installed. $CHECK_MESSAGE"
+		exit 51
+	fi
+
+	# Nginx settings
+	echo 'user www-data;' > /etc/nginx/nginx.conf
+	#echo "worker_processes; $CPU_CORES" >> /etc/nginx/nginx.conf
+	echo 'pid /run/nginx.pid;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo 'events {' >> /etc/nginx/nginx.conf
+	echo '        worker_connections 50;' >> /etc/nginx/nginx.conf
+	echo '        # multi_accept on;' >> /etc/nginx/nginx.conf
+	echo '}' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo 'http {' >> /etc/nginx/nginx.conf
+	echo '        # limit the number of connections per single IP' >> /etc/nginx/nginx.conf
+	echo '        limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # limit the number of requests for a given session' >> /etc/nginx/nginx.conf
+	echo '        limit_req_zone $binary_remote_addr zone=req_limit_per_ip:10m rate=140r/s;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # if the request body size is more than the buffer size, then the entire (or partial) request body is written into a temporary file' >> /etc/nginx/nginx.conf
+	echo '        client_body_buffer_size  128k;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # headerbuffer size for the request header from client, its set for testing purpose' >> /etc/nginx/nginx.conf
+	echo '        client_header_buffer_size 3m;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # maximum number and size of buffers for large headers to read from client request' >> /etc/nginx/nginx.conf
+	echo '        large_client_header_buffers 4 256k;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # read timeout for the request body from client, its set for testing purpose' >> /etc/nginx/nginx.conf
+	echo '        client_body_timeout   3m;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # how long to wait for the client to send a request header, its set for testing purpose' >> /etc/nginx/nginx.conf
+	echo '        client_header_timeout 3m;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        ##' >> /etc/nginx/nginx.conf
+	echo '        # Basic Settings' >> /etc/nginx/nginx.conf
+	echo '        ##' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        sendfile on;' >> /etc/nginx/nginx.conf
+	echo '        tcp_nopush on;' >> /etc/nginx/nginx.conf
+	echo '        tcp_nodelay on;' >> /etc/nginx/nginx.conf
+	echo '        keepalive_timeout 65;' >> /etc/nginx/nginx.conf
+	echo '        types_hash_max_size 2048;' >> /etc/nginx/nginx.conf
+	echo '        server_tokens off;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # server_names_hash_bucket_size 64;' >> /etc/nginx/nginx.conf
+	echo '        # server_name_in_redirect off;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        include /etc/nginx/mime.types;' >> /etc/nginx/nginx.conf
+	echo '        default_type application/octet-stream;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        ##' >> /etc/nginx/nginx.conf
+	echo '        # Logging Settings' >> /etc/nginx/nginx.conf
+	echo '        ##' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        access_log /var/log/nginx/access.log;' >> /etc/nginx/nginx.conf
+	echo '        error_log /var/log/nginx/error.log;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        ###' >> /etc/nginx/nginx.conf
+	echo '        # Gzip Settings' >> /etc/nginx/nginx.conf
+	echo '        ##' >> /etc/nginx/nginx.conf
+	echo '        gzip on;' >> /etc/nginx/nginx.conf
+	echo '        gzip_disable "msie6";' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        # gzip_vary on;' >> /etc/nginx/nginx.conf
+	echo '        # gzip_proxied any;' >> /etc/nginx/nginx.conf
+	echo '        # gzip_comp_level 6;' >> /etc/nginx/nginx.conf
+	echo '        # gzip_buffers 16 8k;' >> /etc/nginx/nginx.conf
+	echo '        # gzip_http_version 1.1;' >> /etc/nginx/nginx.conf
+	echo '        # gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        ##' >> /etc/nginx/nginx.conf
+	echo '        # Virtual Host Configs' >> /etc/nginx/nginx.conf
+	echo '        ##' >> /etc/nginx/nginx.conf
+	echo '' >> /etc/nginx/nginx.conf
+	echo '        include /etc/nginx/conf.d/*.conf;' >> /etc/nginx/nginx.conf
+	echo '        include /etc/nginx/sites-enabled/*;' >> /etc/nginx/nginx.conf
+	echo '}' >> /etc/nginx/nginx.conf
+
+	# install a script to easily enable and disable nginx virtual hosts
+	if [ ! -d $INSTALL_DIR ]; then
+		mkdir $INSTALL_DIR
+	fi
+	cd $INSTALL_DIR
+	function_check git_clone
+	git_clone $NGINX_ENSITE_REPO $INSTALL_DIR/nginx_ensite
+	cd $INSTALL_DIR/nginx_ensite
+	git checkout $NGINX_ENSITE_COMMIT -b $NGINX_ENSITE_COMMIT
+	if ! grep -q "Nginx-ensite commit" $COMPLETION_FILE; then
+		echo "Nginx-ensite commit:$NGINX_ENSITE_COMMIT" >> $COMPLETION_FILE
+	else
+		sed -i "s/Nginx-ensite commit.*/Nginx-ensite commit:$NGINX_ENSITE_COMMIT/g" $COMPLETION_FILE
+	fi
+
+	make install
+	nginx_dissite default
+
+	function_check configure_firewall_for_web_access
+	configure_firewall_for_web_access
+
+	echo 'install_web_server' >> $COMPLETION_FILE
+}
+
+function install_command_line_browser {
+	if grep -Fxq "install_command_line_browser" $COMPLETION_FILE; then
+		return
+	fi
+	apt-get -y install elinks
+
+	# set the home page
+	if ! grep -q "WWW_HOME" /home/$MY_USERNAME/.bashrc; then
+		if ! grep -q 'control' /home/$MY_USERNAME/.bashrc; then
+			echo "export WWW_HOME=$DEFAULT_SEARCH" >> /home/$MY_USERNAME/.bashrc
+		else
+			sed -i "/control/i export WWW_HOME=$DEFAULT_SEARCH" /home/$MY_USERNAME/.bashrc
+		fi
+	fi
+
+	echo 'install_command_line_browser' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

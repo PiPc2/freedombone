@@ -1,0 +1,149 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Functions to set repositories
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# The Debian package repository to use.
+DEBIAN_REPO="ftp.us.debian.org"
+
+# password used for accessing your repo mirrors
+MY_MIRRORS_PASSWORD=
+# friend's repo mirrors
+FRIENDS_MIRRORS_PASSWORD=
+FRIENDS_MIRRORS_SERVER=
+FRIENDS_MIRRORS_SSH_PORT=2222
+
+function create_repo_sources {
+	if grep -Fxq "create_repo_sources" $COMPLETION_FILE; then
+		return
+	fi
+	rm -rf /var/lib/apt/lists/*
+	apt-get clean
+
+	echo "deb http://${DEBIAN_REPO}/debian/ ${DEBIAN_VERSION} main" > /etc/apt/sources.list
+	echo "deb-src http://${DEBIAN_REPO}/debian/ ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
+	echo '' >> /etc/apt/sources.list
+	echo "deb http://security.debian.org/ ${DEBIAN_VERSION}/updates main" >> /etc/apt/sources.list
+	echo "deb-src http://security.debian.org/ ${DEBIAN_VERSION}/updates main" >> /etc/apt/sources.list
+	echo '' >> /etc/apt/sources.list
+	echo "deb http://${DEBIAN_REPO}/debian/ ${DEBIAN_VERSION}-updates main" >> /etc/apt/sources.list
+	echo "deb-src http://${DEBIAN_REPO}/debian/ ${DEBIAN_VERSION}-updates main" >> /etc/apt/sources.list
+	echo '' >> /etc/apt/sources.list
+	echo "deb http://${DEBIAN_REPO}/debian/ ${DEBIAN_VERSION}-backports main" >> /etc/apt/sources.list
+	echo "deb-src http://${DEBIAN_REPO}/debian/ ${DEBIAN_VERSION}-backports main" >> /etc/apt/sources.list
+
+	apt-get update
+	apt-get -y install apt-transport-https
+
+	echo 'create_repo_sources' >> $COMPLETION_FILE
+}
+
+function read_repo_servers {
+	if [ -f $CONFIGURATION_FILE ]; then
+		if grep -q "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE; then
+			FRIENDS_MIRRORS_SERVER=$(grep "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE; then
+			FRIENDS_MIRRORS_SSH_PORT=$(grep "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
+			MY_MIRRORS_PASSWORD=$(grep "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+		if grep -q "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
+			FRIENDS_MIRRORS_PASSWORD=$(grep "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+		fi
+	fi
+
+	if [ ! $FRIENDS_MIRRORS_SERVER ]; then
+		return
+	fi
+	if [ ${#FRIENDS_MIRRORS_SERVER} -lt 2 ]; then
+		return
+	fi
+
+	MAIN_COMMAND=/usr/local/bin/${PROJECT_NAME}
+	if [ ! -f $MAIN_COMMAND ]; then
+		MAIN_COMMAND=/usr/bin/${PROJECT_NAME}
+	fi
+
+	REPOS=($(cat ${MAIN_COMMAND} | grep "_REPO=\"" | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+
+	for line in "${REPOS[@]}"
+	do
+		repo_name=$(echo "$line" | awk -F '=' '{print $1}')
+		mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
+		friends_repo_url="ssh://mirrors@${FRIENDS_MIRRORS_SERVER}:${FRIENDS_MIRRORS_SSH_PORT}/home/mirrors/${mirrors_name}"
+		${repo_name}="${friends_repo_url}"
+	done
+}
+
+# A command to create a git repository for a project
+function create_git_project {
+	if grep -Fxq "create_git_project" $COMPLETION_FILE; then
+		return
+	fi
+	apt-get -y install git
+
+	echo '#!/bin/bash' > /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'GIT_PROJECT_NAME=$1' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'if [ ! $GIT_PROJECT_NAME ]; then' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '  echo "Please specify a project name, without any spaces"' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '  exit 1' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'fi' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'if [ ! -d /home/$USER/projects/$GIT_PROJECT_NAME ]; then' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '  mkdir -p /home/$USER/projects/$GIT_PROJECT_NAME' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'fi' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'cd /home/$USER/projects/$GIT_PROJECT_NAME' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'git init --bare' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo -n 'echo "Your project has been created, ' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'use the following command to clone the repository"' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo -n "  git clone ssh://$MY_USERNAME@$DEFAULT_DOMAIN_NAME:$SSH_PORT" >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '/home/$USER/projects/$GIT_PROJECT_NAME' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo '' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	echo 'exit 0' >> /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+	chmod +x /usr/bin/$CREATE_GIT_PROJECT_COMMAND
+
+	echo 'create_git_project' >> $COMPLETION_FILE
+}
+
+function create_mirrors {
+	if [ -d /home/trove ]; then
+		userdel -r trove
+	fi
+	if grep -Fxq "create_mirrors" $COMPLETION_FILE; then
+		return
+	fi
+	${PROJECT_NAME}-mirrors
+	echo 'create_mirrors' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

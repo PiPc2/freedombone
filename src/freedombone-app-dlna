@@ -1,0 +1,125 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# DLNA application
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+function install_dlna_server {
+	if grep -Fxq "install_dlna_server" $COMPLETION_FILE; then
+		return
+	fi
+	if [[ $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	apt-get -y install minidlna
+
+	if [ ! -f /etc/minidlna.conf ]; then
+		echo $"ERROR: minidlna does not appear to have installed. $CHECK_MESSAGE"
+		exit 55
+	fi
+
+	sed -i "s|media_dir=/var/lib/minidlna|media_dir=A,/home/$MY_USERNAME/Music|g" /etc/minidlna.conf
+	if ! grep -q "/home/$MY_USERNAME/Pictures" /etc/minidlna.conf; then
+		echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
+	fi
+	if ! grep -q "/home/$MY_USERNAME/Videos" /etc/minidlna.conf; then
+		echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
+	fi
+	if ! grep -q "$USB_MOUNT/Music" /etc/minidlna.conf; then
+		echo "media_dir=A,$USB_MOUNT/Music" >> /etc/minidlna.conf
+	fi
+	if ! grep -q "$USB_MOUNT/Pictures" /etc/minidlna.conf; then
+		echo "media_dir=P,$USB_MOUNT/Pictures" >> /etc/minidlna.conf
+	fi
+	if ! grep -q "$USB_MOUNT/Videos" /etc/minidlna.conf; then
+		echo "media_dir=V,$USB_MOUNT/Videos" >> /etc/minidlna.conf
+	fi
+	sed -i 's/#root_container=./root_container=B/g' /etc/minidlna.conf
+	if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
+		sed -i 's/#network_interface=/network_interface=eth0/g' /etc/minidlna.conf
+	else
+		sed -i 's/#network_interface=/network_interface=$WIFI_INTERFACE/g' /etc/minidlna.conf
+	fi
+	sed -i "s/#friendly_name=/friendly_name=\"${PROJECT_NAME} Media\"/g" /etc/minidlna.conf
+	sed -i 's|#db_dir=/var/cache/minidlna|db_dir=/var/cache/minidlna|g' /etc/minidlna.conf
+	sed -i 's/#inotify=yes/inotify=yes/g' /etc/minidlna.conf
+	sed -i 's/#notify_interval=895/notify_interval=300/g' /etc/minidlna.conf
+	sed -i "s|#presentation_url=/|presentation_url=http://localhost:8200|g" /etc/minidlna.conf
+	service minidlna force-reload
+	service minidlna reload
+
+	sed -i 's/fs.inotify.max_user_watches*/fs.inotify.max_user_watches=65536/g' /etc/sysctl.conf
+	if ! grep -q "max_user_watches" $COMPLETION_FILE; then
+		echo 'fs.inotify.max_user_watches=65536' >> /etc/sysctl.conf
+	fi
+	/sbin/sysctl -p
+
+	function_check configure_firewall_for_dlna
+	configure_firewall_for_dlna
+	echo 'install_dlna_server' >> $COMPLETION_FILE
+}
+
+function script_for_attaching_usb_drive {
+	if grep -Fxq "script_for_attaching_usb_drive" $COMPLETION_FILE; then
+		return
+	fi
+	echo '#!/bin/bash' > /usr/bin/attach-music
+	echo 'remove-music' >> /usr/bin/attach-music
+	echo "if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/attach-music
+	echo "  mkdir $USB_MOUNT" >> /usr/bin/attach-music
+	echo 'fi' >> /usr/bin/attach-music
+	echo "mount /dev/sda1 $USB_MOUNT" >> /usr/bin/attach-music
+	echo "chown root:root $USB_MOUNT" >> /usr/bin/attach-music
+	echo "chown -R minidlna:minidlna $USB_MOUNT/*" >> /usr/bin/attach-music
+	echo 'service minidlna restart' >> /usr/bin/attach-music
+	echo 'minidlnad -R' >> /usr/bin/attach-music
+	chmod +x /usr/bin/attach-music
+	ln -s /usr/bin/attach-music /usr/bin/attach-usb
+	ln -s /usr/bin/attach-music /usr/bin/attach-videos
+	ln -s /usr/bin/attach-music /usr/bin/attach-pictures
+	ln -s /usr/bin/attach-music /usr/bin/attach-media
+
+	echo '#!/bin/bash' > /usr/bin/remove-music
+	echo "if [ -d $USB_MOUNT ]; then" >> /usr/bin/remove-music
+	echo "  umount $USB_MOUNT" >> /usr/bin/remove-music
+	echo "  rm -rf $USB_MOUNT" >> /usr/bin/remove-music
+	echo 'fi' >> /usr/bin/remove-music
+	chmod +x /usr/bin/remove-music
+	ln -s /usr/bin/remove-music /usr/bin/detach-music
+	ln -s /usr/bin/remove-music /usr/bin/detach-usb
+	ln -s /usr/bin/remove-music /usr/bin/remove-usb
+	ln -s /usr/bin/remove-music /usr/bin/detach-media
+	ln -s /usr/bin/remove-music /usr/bin/remove-media
+	ln -s /usr/bin/remove-music /usr/bin/detach-videos
+	ln -s /usr/bin/remove-music /usr/bin/remove-videos
+	ln -s /usr/bin/remove-music /usr/bin/detach-pictures
+	ln -s /usr/bin/remove-music /usr/bin/remove-pictures
+
+	echo 'script_for_attaching_usb_drive' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

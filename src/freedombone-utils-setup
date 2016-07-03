@@ -1,0 +1,368 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Setup functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Different system variants which may be specified within
+# the SYSTEM_TYPE option
+VARIANT_FULL="full"
+VARIANT_WRITER="writer"
+VARIANT_CLOUD="cloud"
+VARIANT_CHAT="chat"
+VARIANT_MAILBOX="mailbox"
+VARIANT_NONMAILBOX="nonmailbox"
+VARIANT_SOCIAL="social"
+VARIANT_MEDIA="media"
+VARIANT_DEVELOPER="developer"
+VARIANT_MESH="mesh"
+
+DEFAULT_DOMAIN_NAME=
+DEFAULT_DOMAIN_CODE=
+MY_USERNAME=
+SYSTEM_TYPE=$VARIANT_FULL
+
+# An optional configuration file which overrides some of these variables
+CONFIGURATION_FILE="${PROJECT_NAME}.cfg"
+
+# Directory where source code is downloaded and compiled
+INSTALL_DIR=$HOME/build
+
+# device name for an attached usb drive
+USB_DRIVE=/dev/sda1
+
+# Location where the USB drive is mounted to
+USB_MOUNT=/mnt/usb
+
+# Number of days to keep backups for
+BACKUP_MAX_DAYS=30
+
+# file containing a list of remote locations to backup to
+# Format: [username@friendsdomain//home/username] [ssh_password]
+# With the only space character being between the server and the password
+FRIENDS_SERVERS_LIST=/home/$MY_USERNAME/backup.list
+
+export DEBIAN_FRONTEND=noninteractive
+
+# used to limit CPU usage
+CPULIMIT='/usr/bin/cpulimit -l 20 -e'
+
+# command to create a git repository
+CREATE_GIT_PROJECT_COMMAND='create-project'
+
+# File which keeps track of what has already been installed
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
+# log file where details of remote backups are stored
+REMOTE_BACKUPS_LOG=/var/log/remotebackups.log
+
+# message if something fails to install
+CHECK_MESSAGE="Check your internet connection, /etc/network/interfaces and /etc/resolv.conf, then delete $COMPLETION_FILE, run 'rm -fR /var/lib/apt/lists/* && apt-get update --fix-missing' and run this script again. If hash sum mismatches persist then try setting $DEBIAN_REPO to a different mirror and also change /etc/apt/sources.list."
+
+# Default diffie-hellman key length in bits
+DH_KEYLENGTH=2048
+
+function initial_setup {
+	if grep -Fxq "initial_setup" $COMPLETION_FILE; then
+		return
+	fi
+
+	apt-get -y remove --purge apache*
+	apt-get -y dist-upgrade
+	apt-get -y install ca-certificates emacs24 cpulimit
+	apt-get -y install cryptsetup libgfshare-bin obnam sshpass wget
+	apt-get -y install avahi-daemon avahi-utils avahi-discover
+	apt-get -y install connect-proxy
+
+	if [ ! -d $INSTALL_DIR ]; then
+		mkdir -p $INSTALL_DIR
+	fi
+
+	echo 'initial_setup' >> $COMPLETION_FILE
+}
+
+function search_for_attached_usb_drive {
+	# If a USB drive is attached then search for email,
+	# gpg, ssh keys and emacs configuration
+	if grep -Fxq "search_for_attached_usb_drive" $COMPLETION_FILE; then
+		return
+	fi
+	if [ -b $USB_DRIVE ]; then
+		if [ ! -d $USB_MOUNT ]; then
+			echo $'Mounting USB drive'
+			mkdir $USB_MOUNT
+			mount $USB_DRIVE $USB_MOUNT
+		fi
+		if ! [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" || $SYSTEM_TYPE == "$VARIANT_MESH" || $SYSTEM_TYPE == "$VARIANT_NONMAILBOX" ]]; then
+			if [ -d $USB_MOUNT/Maildir ]; then
+				echo $'Maildir found on USB drive'
+				IMPORT_MAILDIR=$USB_MOUNT/Maildir
+			fi
+			if [ -d $USB_MOUNT/.gnupg ]; then
+				echo $'Importing GPG keyring'
+				cp -r $USB_MOUNT/.gnupg /home/$MY_USERNAME
+				chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+				GPG_KEYS_IMPORTED="yes"
+				if [ ! -f /home/$MY_USERNAME/.gnupg/secring.gpg ]; then
+					echo $'GPG files did not copy'
+					exit 73529
+				fi
+			fi
+
+			if [ -f $USB_MOUNT/.procmailrc ]; then
+				echo $'Importing procmail settings'
+				cp $USB_MOUNT/.procmailrc /home/$MY_USERNAME
+				chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.procmailrc
+			fi
+
+			if [ -f $USB_MOUNT/private_key.gpg ]; then
+				echo $'GPG private key found on USB drive'
+				MY_GPG_PRIVATE_KEY=$USB_MOUNT/private_key.gpg
+			fi
+			if [ -f $USB_MOUNT/public_key.gpg ]; then
+				echo $'GPG public key found on USB drive'
+				MY_GPG_PUBLIC_KEY=$USB_MOUNT/public_key.gpg
+			fi
+		fi
+		if [ -d $USB_MOUNT/prosody ]; then
+			if [ ! -d $XMPP_DIRECTORY ]; then
+				mkdir $XMPP_DIRECTORY
+			fi
+			cp -r $USB_MOUNT/prosody/* $XMPP_DIRECTORY
+			chown -R prosody:prosody $XMPP_DIRECTORY
+		fi
+		if [ -d $USB_MOUNT/.ssh ]; then
+			echo $'Importing ssh keys'
+			cp -r $USB_MOUNT/.ssh /home/$MY_USERNAME
+			chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
+			# for security delete the ssh keys from the usb drive
+			if [ ! -f /home/$MY_USERNAME/.ssh/id_rsa ]; then
+				echo $'ssh files did not copy'
+				exit 8
+			fi
+		fi
+		if [ -f $USB_MOUNT/.emacs ]; then
+			echo $'Importing .emacs file'
+			cp -f $USB_MOUNT/.emacs /home/$MY_USERNAME/.emacs
+			chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
+		fi
+		if [ -d $USB_MOUNT/.emacs.d ]; then
+			echo $'Importing .emacs.d directory'
+			cp -r $USB_MOUNT/.emacs.d /home/$MY_USERNAME
+			chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs.d
+		fi
+		if [ -d $USB_MOUNT/ssl ]; then
+			echo $'Importing SSL certificates'
+			cp -r $USB_MOUNT/ssl/* /etc/ssl
+			chmod 640 /etc/ssl/certs/*
+			chmod 400 /etc/ssl/private/*
+			# change ownership of some certificates
+			if [ -d /etc/prosody ]; then
+				chown prosody:prosody /etc/ssl/private/xmpp.*
+				chown prosody:prosody /etc/ssl/certs/xmpp.*
+			fi
+			if [ -d /etc/dovecot ]; then
+				chown root:dovecot /etc/ssl/certs/dovecot.*
+				chown root:dovecot /etc/ssl/private/dovecot.*
+			fi
+			if [ -f /etc/ssl/private/exim.key ]; then
+				cp /etc/ssl/private/exim.key /etc/exim4
+				cp /etc/ssl/certs/exim.crt /etc/exim4
+				cp /etc/ssl/certs/exim.dhparam /etc/exim4
+				chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+				chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+			fi
+		fi
+		if [ -d $USB_MOUNT/personal ]; then
+			echo $'Importing personal directory'
+			cp -r $USB_MOUNT/personal /home/$MY_USERNAME
+			chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/personal
+		fi
+	else
+		if [ -d $USB_MOUNT ]; then
+			umount $USB_MOUNT
+			rm -rf $USB_MOUNT
+		fi
+		echo $'No USB drive attached'
+	fi
+	echo 'search_for_attached_usb_drive' >> $COMPLETION_FILE
+}
+
+function mark_admin_user_account {
+	if ! grep -q "Admin user:" $COMPLETION_FILE; then
+		echo "Admin user:$MY_USERNAME" >> $COMPLETION_FILE
+	fi
+}
+
+function remove_instructions_from_motd {
+	sed -i '/## /d' /etc/motd
+}
+
+function remove_default_user {
+	# make sure you don't use the default user account
+	if [[ $MY_USERNAME == "debian" ]]; then
+		echo 'Do not use the default debian user account. Create a different user with: adduser [username]'
+		exit 68
+	fi
+	# remove the default debian user to prevent it from becoming an attack vector
+	if [ -d /home/debian ]; then
+		userdel -r debian
+		echo 'Default debian user account removed'
+	fi
+}
+
+function setup_firewall {
+	configure_firewall
+	configure_firewall_ping
+	configure_firewall_for_dns
+	configure_firewall_for_avahi
+}
+
+function setup_system {
+	read_configuration
+	set_default_onion_domains
+	locale_setup
+	parse_args
+	check_domains
+	install_static_network
+	remove_default_user
+	setup_firewall
+	create_repo_sources
+	configure_dns
+	initial_setup
+	install_tor
+	#resolve_dns_via_tor
+	install_command_line_browser
+	enable_ssh_via_onion
+	check_date
+	install_dynamicdns
+	randomize_cron
+	create_freedns_updater
+	mark_admin_user_account
+	enforce_good_passwords
+	install_editor
+	change_login_message
+	enable_zram
+	random_number_generator
+	set_your_domain_name
+	time_synchronisation_tlsdate
+	configure_internet_protocol
+	create_git_project
+	setup_wifi
+	configure_ssh
+	configure_ssh_onion
+	allow_ssh_to_onion_address
+	remove_instructions_from_motd
+	check_hwrng
+	search_for_attached_usb_drive
+	regenerate_ssh_keys
+	create_mirrors
+	create_upgrade_script
+	letsencrypt_renewals
+	install_watchdog_script
+	configure_avahi
+	create_avahi_onion_domains
+	#install_atheros_wifi
+	route_outgoing_traffic_through_tor
+}
+
+function setup_mesh {
+	mesh_cjdns
+	mesh_cjdns_tools
+	mesh_batman
+	mesh_babel
+}
+
+function setup_email {
+	configure_email
+	create_procmail
+	handle_admin_emails
+	spam_filtering
+	configure_imap
+	#configure_imap_client_certs
+	configure_gpg
+	refresh_gpg_keys
+	configure_backup_key
+	install_monkeysphere
+	encrypt_incoming_email
+	encrypt_outgoing_email
+	email_client
+	email_archiving
+	email_from_address
+	create_public_mailing_list
+	#create_private_mailing_list
+	encrypt_all_email
+	import_email
+}
+
+function setup_web {
+	install_web_server
+	install_web_server_access_control
+}
+
+function setup_apps {
+	install_zeronet
+	install_zeronet_blog
+	install_zeronet_mail
+	install_zeronet_forum
+	install_syncthing
+	upgrade_golang
+	install_gogs
+	install_xmpp
+	install_xmpp_client
+	install_tox_node
+	install_tox_client
+	tox_avahi
+	install_irc_server
+	install_irc_client
+	install_mumble
+	install_sip
+	update_sipwitch_daemon
+	install_wiki
+	install_sip_turn
+	install_blog
+	mark_blog_domain
+	install_gnu_social
+	expire_gnu_social_posts
+	install_gnu_social_theme
+	install_gnu_social_markdown
+	install_gnu_social_plugin_sharings
+	install_gnu_social_plugin_sharings_theme
+	install_rss_reader
+	install_rss_reader_gnusocial
+	install_rss_mobile_reader
+	install_hubzilla
+	#install_webmail
+	#install_search_engine
+	install_dlna_server
+	#install_mediagoblin
+	#install_ipfs
+	repair_databases_script
+	backup_to_friends_servers
+}
+
+# NOTE: deliberately no exit 0

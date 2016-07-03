@@ -1,0 +1,172 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Tox Application
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+TOX_PORT=33445
+TOXCORE_REPO="git://github.com/irungentoo/toxcore.git"
+TOXCORE_COMMIT='532629d486e3361c7d8d95b38293cc7d61dc4ee5'
+TOXID_REPO="https://github.com/bashrc/toxid"
+TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
+# These are some default nodes, but you can replace them with trusted nodes
+# as you prefer. See https://wiki.tox.im/Nodes
+TOX_NODES=
+#TOX_NODES=(
+#  '192.254.75.102,2607:5600:284::2,33445,951C88B7E75C867418ACDB5D273821372BB5BD652740BCDF623A4FA293E75D2F,Tox RELENG,US'
+#  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
+#)
+TOXIC_REPO="https://github.com/Tox/toxic"
+TOXIC_COMMIT='cf16849b374e484a33a4dffa3dfb937b59d537f2'
+TOXIC_FILE=/usr/local/bin/toxic
+
+function tox_avahi {
+	if [[ $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if grep -Fxq "tox_avahi" $COMPLETION_FILE; then
+		return
+	fi
+
+	if [ ! -d /etc/avahi ]; then
+		echo $'tox_avahi: avahi is not installed'
+		exit 87359
+	fi
+
+	# install a command to obtain the Tox ID
+	cd $INSTALL_DIR
+	function_check git_clone
+	git_clone $TOXID_REPO $INSTALL_DIR/toxid
+	if [ ! -d $INSTALL_DIR/toxid ]; then
+		exit 63921
+	fi
+	cd $INSTALL_DIR/toxid
+	make
+	if [ ! "$?" = "0" ]; then
+		exit 58432
+	fi
+	make install
+
+	toxavahi
+
+	# publish regularly
+	function_check cron_add_mins
+	cron_add_mins 1 'toxavahi > /dev/null'
+
+	systemctl restart avahi-daemon
+
+	echo 'tox_avahi' >> $COMPLETION_FILE
+}
+
+function install_tox_node {
+	if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+		return
+	fi
+
+	# update to the next commit
+	function_check set_repo_commit
+	set_repo_commit $INSTALL_DIR/toxcore "toxcore commit" "$TOXCORE_COMMIT" $TOXCORE_REPO
+
+	if grep -Fxq "install_tox_node" $COMPLETION_FILE; then
+		return
+	fi
+
+	${PROJECT_NAME}-mesh-install -f tox_node
+	if [ ! "$?" = "0" ]; then
+		echo $'Failed to install tox node'
+		exit 26778
+	fi
+
+	TOX_ONION_HOSTNAME=$(add_onion_service tox ${TOX_PORT} ${TOX_PORT})
+
+	if ! grep -q "tox onion domain" $COMPLETION_FILE; then
+		echo "tox onion domain:${TOX_ONION_HOSTNAME}" >> $COMPLETION_FILE
+	else
+		sed -i "s|tox onion domain.*|tox onion domain:${TOX_ONION_HOSTNAME}|g" $COMPLETION_FILE
+	fi
+
+	systemctl restart tox-bootstrapd.service
+
+	TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
+	if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
+		echo $'Could not obtain the tox node public key'
+		exit 6529
+	fi
+
+	# save the public key for later reference
+	echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
+
+	function_check configure_firewall_for_tox
+	configure_firewall_for_tox
+
+	if ! grep -q $"Your Tox node public key is" /home/$MY_USERNAME/README; then
+		echo '' >> /home/$MY_USERNAME/README
+		echo '' >> /home/$MY_USERNAME/README
+		echo 'Tox' >> /home/$MY_USERNAME/README
+		echo '===' >> /home/$MY_USERNAME/README
+		echo $"tox onion domain: ${TOX_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+		echo $"Your Tox node public key is: $TOX_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+		echo $'In the Toxic client you can connect to it with:' >> /home/$MY_USERNAME/README
+		echo "  /connect $DEFAULT_DOMAIN_NAME.local $TOX_PORT $TOX_PUBLIC_KEY" >> /home/$MY_USERNAME/README
+		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+		chmod 600 /home/$MY_USERNAME/README
+	fi
+
+	function_check configure_firewall_for_tox
+	configure_firewall_for_tox
+	echo 'install_tox_node' >> $COMPLETION_FILE
+}
+
+function install_tox_client {
+	if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+		return
+	fi
+
+	# update to the next commit
+	function_check set_repo_commit
+	set_repo_commit $INSTALL_DIR/toxic "Toxic commit" "$TOXIC_COMMIT" $TOXIC_REPO
+
+	if grep -Fxq "install_tox_client" $COMPLETION_FILE; then
+		return
+	fi
+
+	${PROJECT_NAME}-mesh-install -f tox_client
+	if [ ! "$?" = "0" ]; then
+		echo $'Could not install Tox client'
+		exit 67248
+	fi
+
+	# initial setup of username
+	#su -c "echo 'n
+	#/nick $MY_USERNAME
+	#/exit
+	#' | $TOXIC_FILE -d" - $MY_USERNAME
+
+	echo 'install_tox_client' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

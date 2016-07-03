@@ -1,0 +1,318 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# SIP functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+SIP_SERVER_PASSWORD=
+SIP_PORT=5060
+SIP_TLS_PORT=5061
+VOIP_TURN_PORT=3478
+VOIP_TURN_TLS_PORT=5349
+VOIP_TURN_NONCE=
+
+function get_sip_server_password {
+	if [ -f /home/$MY_USERNAME/README ]; then
+		if grep -q "SIP server password" /home/$MY_USERNAME/README; then
+			if [ ! $SIP_SERVER_PASSWORD ]; then
+				SIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "SIP server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+			fi
+		fi
+	fi
+}
+
+function update_sipwitch_daemon {
+	if [ ! -f /etc/init.d/sipwitch ]; then
+		return
+	fi
+	service sipwitch stop
+
+	# remove the original sipwitch daemon if it exists
+	if [ -f /etc/init.d/sipwitch ]; then
+		rm -f /etc/init.d/sipwitch
+	fi
+
+	# daemon
+	echo '[Unit]' > /etc/systemd/system/sipwitch.service
+	echo 'Description=GNU SIP Witch, a SIP telephony service daemon.' >> /etc/systemd/system/sipwitch.service
+	echo 'After=network.target' >> /etc/systemd/system/sipwitch.service
+	echo '' >> /etc/systemd/system/sipwitch.service
+	echo '[Service]' >> /etc/systemd/system/sipwitch.service
+	echo 'Type=simple' >> /etc/systemd/system/sipwitch.service
+	echo 'Group=sipwitch' >> /etc/systemd/system/sipwitch.service
+	echo 'PIDFile=/var/run/sipwitch/pidfile' >> /etc/systemd/system/sipwitch.service
+	echo 'EnvironmentFile=-/etc/conf.d/sipwitch' >> /etc/systemd/system/sipwitch.service
+	echo 'EnvironmentFile=-/etc/sipwitch.conf' >> /etc/systemd/system/sipwitch.service
+	echo 'EnvironmentFile=-/etc/default/sipwitch' >> /etc/systemd/system/sipwitch.service
+	echo 'ExecStartPre=-/bin/rm -f /var/run/sipwitch/control' >> /etc/systemd/system/sipwitch.service
+	echo "ExecStart=/usr/sbin/sipw -f \$OPTIONS -P$SIP_PORT" >> /etc/systemd/system/sipwitch.service
+	echo 'Restart=always' >> /etc/systemd/system/sipwitch.service
+	echo 'NotifyAccess=main' >> /etc/systemd/system/sipwitch.service
+	echo '' >> /etc/systemd/system/sipwitch.service
+	echo '[Install]' >> /etc/systemd/system/sipwitch.service
+	echo 'WantedBy=multi-user.target' >> /etc/systemd/system/sipwitch.service
+
+	systemctl enable sipwitch
+	systemctl daemon-reload
+	systemctl start sipwitch
+}
+
+function install_sip {
+	if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+		return
+	fi
+	if grep -Fxq "install_sip" $COMPLETION_FILE; then
+		return
+	fi
+
+	apt-get -y install sipwitch
+
+	function_check get_sip_server_password
+	get_sip_server_password
+	if [ ! $SIP_SERVER_PASSWORD ]; then
+		if [ -f $IMAGE_PASSWORD_FILE ]; then
+			SIP_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+		else
+			SIP_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+		fi
+	fi
+
+	echo '<?xml version="1.0"?>' > /etc/sipwitch.conf
+	echo '<sipwitch>' >> /etc/sipwitch.conf
+	echo '<provision>' >> /etc/sipwitch.conf
+
+	echo "<user id=\"$MY_USERNAME\">" >> /etc/sipwitch.conf
+	echo '<extension>201</extension>' >> /etc/sipwitch.conf
+	echo "<secret>$SIP_SERVER_PASSWORD</secret>" >> /etc/sipwitch.conf
+	echo "<display>$MY_USERNAME 201</display>" >> /etc/sipwitch.conf
+	echo '</user>' >> /etc/sipwitch.conf
+
+	echo '</provision>' >> /etc/sipwitch.conf
+	echo '<access>' >> /etc/sipwitch.conf
+	echo '</access>' >> /etc/sipwitch.conf
+	echo '<stack>' >> /etc/sipwitch.conf
+	echo "  <localnames>$DEFAULT_DOMAIN_NAME</localnames>" >> /etc/sipwitch.conf
+	echo '  <mapped>200</mapped>' >> /etc/sipwitch.conf
+	echo '  <threading>2</threading>' >> /etc/sipwitch.conf
+	echo '  <interface>*</interface>' >> /etc/sipwitch.conf
+	echo '  <dumping>false</dumping>' >> /etc/sipwitch.conf
+	echo '  <system>system</system>' >> /etc/sipwitch.conf
+	echo '  <anon>anonymous</anon>' >> /etc/sipwitch.conf
+	echo '</stack>' >> /etc/sipwitch.conf
+	echo '<timers>' >> /etc/sipwitch.conf
+	echo '  <!-- ring every 4 seconds -->' >> /etc/sipwitch.conf
+	echo '  <ring>4</ring>' >> /etc/sipwitch.conf
+	echo '  <!-- call forward no answer after x rings -->' >> /etc/sipwitch.conf
+	echo '  <cfna>4</cfna>' >> /etc/sipwitch.conf
+	echo '  <!-- call reset to clear cid in stack, 6 seconds -->' >> /etc/sipwitch.conf
+	echo '  <reset>6</reset>' >> /etc/sipwitch.conf
+	echo '</timers>' >> /etc/sipwitch.conf
+	echo '<!-- we have 2xx numbers plus space for external users -->' >> /etc/sipwitch.conf
+	echo '<registry>' >> /etc/sipwitch.conf
+	echo '  <prefix>200</prefix>' >> /etc/sipwitch.conf
+	echo '  <range>100</range>' >> /etc/sipwitch.conf
+	echo '  <keysize>77</keysize>' >> /etc/sipwitch.conf
+	echo '  <mapped>200</mapped>' >> /etc/sipwitch.conf
+	echo '  <!-- <realm>GNU Telephony</realm> -->' >> /etc/sipwitch.conf
+	echo '</registry>' >> /etc/sipwitch.conf
+	echo '<routing>' >> /etc/sipwitch.conf
+	echo '</routing>' >> /etc/sipwitch.conf
+	echo '</sipwitch>' >> /etc/sipwitch.conf
+
+	sed -i 's|#PLUGINS=|PLUGINS=|g' /etc/default/sipwitch
+	sed -i 's|PLUGINS=.*|PLUGINS="zeroconf subscriber forward"|g' /etc/default/sipwitch
+	groupadd sipwitch
+	usermod -aG sipwitch $MY_USERNAME
+
+	SIP_ONION_HOSTNAME=$(add_onion_service sip ${SIP_PORT} ${SIP_PORT})
+	if ! grep -q $"SIP onion domain" $COMPLETION_FILE; then
+		echo "SIP onion domain:$SIP_ONION_HOSTNAME" >> $COMPLETION_FILE
+	fi
+
+	if ! grep -q $"SIP Server" /home/$MY_USERNAME/README; then
+		echo '' >> /home/$MY_USERNAME/README
+		echo '' >> /home/$MY_USERNAME/README
+		echo $'SIP Server' >> /home/$MY_USERNAME/README
+		echo '==========' >> /home/$MY_USERNAME/README
+		echo $"SIP onion_domain: $SIP_ONION_HOSTNAME" >> /home/$MY_USERNAME/README
+		echo $"SIP server username: $MY_USERNAME" >> /home/$MY_USERNAME/README
+		echo $"SIP server extension: 201" >> /home/$MY_USERNAME/README
+		echo $"SIP server password: $SIP_SERVER_PASSWORD" >> /home/$MY_USERNAME/README
+		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+		chmod 600 /home/$MY_USERNAME/README
+	fi
+
+	function_check configure_firewall_for_sip4
+	configure_firewall_for_sip4
+	echo 'install_sip' >> $COMPLETION_FILE
+}
+
+function install_sip_turn {
+	if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_DEVELOPER" ]]; then
+		return
+	fi
+	if grep -Fxq "install_sip_turn" $COMPLETION_FILE; then
+		return
+	fi
+
+	apt-get -y install turnserver
+
+	# create a nonce if needed
+	if [ ! $VOIP_TURN_NONCE ]; then
+		VOIP_TURN_NONCE="$(create_password 30)"
+	fi
+
+	function_check create_site_certificate
+	create_site_certificate $DEFAULT_DOMAIN_NAME
+
+	echo '##' > /etc/turnserver/turnserver.conf
+	echo '# TurnServer configuration file.' >> /etc/turnserver/turnserver.conf
+	echo '#' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Public IPv4 address of any relayed address (if not set, no relay for IPv4).' >> /etc/turnserver/turnserver.conf
+	echo '## To have multiple address, separate addresses with a comma' >> /etc/turnserver/turnserver.conf
+	echo '## (i.e. listen_address = { "172.16.0.1", "172.17.0.1" }).' >> /etc/turnserver/turnserver.conf
+	echo "listen_address = { \"192.168.0.1\" }" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Public IPv6 address of any relayed address (if not set, no relay for IPv6).' >> /etc/turnserver/turnserver.conf
+	echo '## To have multiple address, separate address with a comma' >> /etc/turnserver/turnserver.conf
+	echo '## (i.e. listen_addressv6 = { "2001:db8:1::1", "2001:db8:2::1" }).' >> /etc/turnserver/turnserver.conf
+	echo "#listen_addressv6 = { \"2001:db8::1\" }" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## UDP listening port.' >> /etc/turnserver/turnserver.conf
+	echo "udp_port = $VOIP_TURN_PORT" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## TCP listening port.' >> /etc/turnserver/turnserver.conf
+	echo "tcp_port = $VOIP_TURN_PORT" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## TLS listening port.' >> /etc/turnserver/turnserver.conf
+	echo "tls_port = $VOIP_TURN_TLS_PORT" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## TLS support.' >> /etc/turnserver/turnserver.conf
+	echo 'tls = true' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## DTLS support. It is an experimental feature and is not defined in TURN' >> /etc/turnserver/turnserver.conf
+	echo '## standard.' >> /etc/turnserver/turnserver.conf
+	echo 'dtls = false' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Maximum allocation port number.' >> /etc/turnserver/turnserver.conf
+	echo 'max_port = 65535' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Minimum allocation port number.' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo 'min_port = 49152' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## TURN-TCP support.' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo 'turn_tcp = true' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## TURN-TCP buffering mode:' >> /etc/turnserver/turnserver.conf
+	echo '## - true, use userspace buffering;' >> /etc/turnserver/turnserver.conf
+	echo '## - false, use kernel buffering.' >> /etc/turnserver/turnserver.conf
+	echo 'tcp_buffer_userspace = true' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## TURN-TCP maximum buffer size.' >> /etc/turnserver/turnserver.conf
+	echo 'tcp_buffer_size = 32768' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Daemon mode.' >> /etc/turnserver/turnserver.conf
+	echo 'daemon = true' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Unprivileged user.' >> /etc/turnserver/turnserver.conf
+	echo '## If you want to use this feature create a system user.' >> /etc/turnserver/turnserver.conf
+	echo '## On Linux: adduser --system --group turnserver' >> /etc/turnserver/turnserver.conf
+	echo 'unpriv_user = turnserver' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Realm value.' >> /etc/turnserver/turnserver.conf
+	echo "realm = \"$DEFAULT_DOMAIN_NAME\"" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Nonce key.' >> /etc/turnserver/turnserver.conf
+	echo "nonce_key = \"$VOIP_TURN_NONCE\"" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Max relay per username.' >> /etc/turnserver/turnserver.conf
+	echo 'max_relay_per_username = 5' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Allocation lifetime.' >> /etc/turnserver/turnserver.conf
+	echo 'allocation_lifetime = 1800' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Allocation bandwidth limitation (in KBytes/s).' >> /etc/turnserver/turnserver.conf
+	echo '## 0 value means bandwidth quota disabled.' >> /etc/turnserver/turnserver.conf
+	echo 'bandwidth_per_allocation = 150' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Restricted user bandwidth (in KBytes/s).' >> /etc/turnserver/turnserver.conf
+	echo '## 0 value means bandwidth limitation disabled.' >> /etc/turnserver/turnserver.conf
+	echo 'restricted_bandwidth = 10' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Denied addresses.' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '# disallow relaying to localhost' >> /etc/turnserver/turnserver.conf
+	echo 'denied_address {' >> /etc/turnserver/turnserver.conf
+	echo '  address = "127.0.0.1"' >> /etc/turnserver/turnserver.conf
+	echo '  mask = "8"' >> /etc/turnserver/turnserver.conf
+	echo '  port = 0' >> /etc/turnserver/turnserver.conf
+	echo '}' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '# disallow relaying to ip6-localhost' >> /etc/turnserver/turnserver.conf
+	echo 'denied_address {' >> /etc/turnserver/turnserver.conf
+	echo '  address = "::1"' >> /etc/turnserver/turnserver.conf
+	echo '  mask = "128"' >> /etc/turnserver/turnserver.conf
+	echo '  port = 0' >> /etc/turnserver/turnserver.conf
+	echo '}' >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Certification Authority file.' >> /etc/turnserver/turnserver.conf
+	echo "ca_file = \"/etc/ssl/certs/ca-certificates.crt\"" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Server certificate file.' >> /etc/turnserver/turnserver.conf
+	if [ -f /etc/ssl/certs/$DEFAULT_DOMAIN_NAME.pem ]; then
+		echo "cert_file = \"/etc/ssl/certs/$DEFAULT_DOMAIN_NAME.pem\"" >> /etc/turnserver/turnserver.conf
+	else
+		if [ -f /etc/ssl/certs/$DEFAULT_DOMAIN_NAME.crt ]; then
+			echo "cert_file = \"/etc/ssl/certs/$DEFAULT_DOMAIN_NAME.crt\"" >> /etc/turnserver/turnserver.conf
+		fi
+	fi
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Private key file.' >> /etc/turnserver/turnserver.conf
+	echo "private_key_file = \"/etc/ssl/certs/$DEFAULT_DOMAIN_NAME.key\"" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Account method.' >> /etc/turnserver/turnserver.conf
+	echo "account_method = \"file\"" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## Account file (if account_method = file).' >> /etc/turnserver/turnserver.conf
+	echo "account_file = \"/etc/turnserver/turnusers.txt\"" >> /etc/turnserver/turnserver.conf
+	echo '' >> /etc/turnserver/turnserver.conf
+	echo '## mod_tmpuser.' >> /etc/turnserver/turnserver.conf
+	echo 'mod_tmpuser = false' >> /etc/turnserver/turnserver.conf
+
+	echo "${MY_USERNAME}:password:${DEFAULT_DOMAIN_NAME}:authorized" > /etc/turnserver/turnusers.txt
+
+	systemctl restart turnserver
+
+	function_check configure_firewall_for_voip_turn
+	configure_firewall_for_voip_turn
+	echo 'install_sip_turn' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

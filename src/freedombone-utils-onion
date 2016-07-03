@@ -1,0 +1,349 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Onion functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+function wait_for_onion_service {
+	onion_service_name="$1"
+
+	sleep_ctr=0
+	while [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; do
+		sleep 1
+		sleep_ctr=$((sleep_ctr + 1))
+		if [ $sleep_ctr -gt 10 ]; then
+			break
+		fi
+	done
+
+	if [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; then
+		# restart and try a second time
+		systemctl restart tor
+		sleep_ctr=0
+		while [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; do
+			sleep 1
+			sleep_ctr=$((sleep_ctr + 1))
+			if [ $sleep_ctr -gt 10 ]; then
+				break
+			fi
+		done
+	fi
+}
+
+function add_onion_service {
+	onion_service_name="$1"
+	onion_service_port_from=$2
+	onion_service_port_to=$3
+
+	if [ -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; then
+		echo $(cat /var/lib/tor/hidden_service_${onion_service_name}/hostname)
+		return
+	fi
+
+	if [ ! -d /var/lib/tor ]; then
+		echo $"No Tor installation found. ${onion_service_name} onion site cannot be configured."
+		exit 877367
+	fi
+	if ! grep -q "hidden_service_${onion_service_name}" /etc/tor/torrc; then
+		echo "HiddenServiceDir /var/lib/tor/hidden_service_${onion_service_name}/" >> /etc/tor/torrc
+		echo "HiddenServicePort ${onion_service_port_from} 127.0.0.1:${onion_service_port_to}" >> /etc/tor/torrc
+	fi
+
+	systemctl restart tor
+
+	function_check wait_for_onion_service
+	wait_for_onion_service ${onion_service_name}
+
+	if [ ! -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; then
+		echo $"${onion_service_name} onion site hostname not found"
+		exit 76362
+	fi
+	echo $(cat /var/lib/tor/hidden_service_${onion_service_name}/hostname)
+}
+
+function set_default_onion_domains {
+	# If sites are only visible via Tor then for installation
+	# purposes assign them some default domain names
+	if [[ $ONION_ONLY == "no" ]]; then
+		return
+	fi
+
+	if [ ${#MICROBLOG_DOMAIN_NAME} -gt 1 ]; then
+		MICROBLOG_DOMAIN_NAME='microblog.local'
+	fi
+	if [ ${#FULLBLOG_DOMAIN_NAME} -gt 1 ]; then
+		FULLBLOG_DOMAIN_NAME='blog.local'
+	fi
+	if [ ${#WIKI_DOMAIN_NAME} -gt 1 ]; then
+		WIKI_DOMAIN_NAME='wiki.local'
+	fi
+	if [ ${#DEFAULT_DOMAIN_NAME} -gt 1 ]; then
+		DEFAULT_DOMAIN_NAME="${PROJECT_NAME}.local"
+	fi
+	if [ ${#GIT_DOMAIN_NAME} -gt 1 ]; then
+		GIT_DOMAIN_NAME='git.local'
+	fi
+	if [ ${#MEDIAGOBLIN_DOMAIN_NAME} -gt 1 ]; then
+		MEDIAGOBLIN_DOMAIN_NAME='media.local'
+	fi
+}
+
+function create_avahi_onion_domains {
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if [ ! -d /etc/avahi/services ]; then
+		return
+	fi
+	if [ $MICROBLOG_DOMAIN_NAME ]; then
+	    function_check create_avahi_service
+		create_avahi_service microblog http tcp $MICROBLOG_ONION_PORT
+	fi
+	if [ $FULLBLOG_DOMAIN_NAME ]; then
+	    function_check create_avahi_service
+		create_avahi_service blog http tcp $BLOG_ONION_PORT
+	fi
+	if [ $GIT_DOMAIN_NAME ]; then
+	    function_check create_avahi_service
+		create_avahi_service git http tcp $GIT_ONION_PORT
+	fi
+	if [ $WIKI_DOMAIN_NAME ]; then
+	    function_check create_avahi_service
+		create_avahi_service wiki http tcp $WIKI_ONION_PORT
+	fi
+}
+
+function allow_ssh_to_onion_address {
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if [ ! -d /home/$MY_USERNAME/.ssh ]; then
+		mkdir /home/$MY_USERNAME/.ssh
+	fi
+	if [ ! -d /etc/tor ]; then
+		echo $'Tor not found when updating ssh'
+		exit 528257
+	fi
+	if ! grep -q "onion" /home/$MY_USERNAME/.ssh/config; then
+		echo 'Host *.onion' >> /home/$MY_USERNAME/.ssh/config
+		echo 'ProxyCommand connect -R remote -5 -S 127.0.0.1:9050 %h %p' >> /home/$MY_USERNAME/.ssh/config
+	fi
+}
+
+function enable_ssh_via_onion {
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if grep -Fxq "enable_ssh_via_onion" $COMPLETION_FILE; then
+		return
+	fi
+	apt-get -y install tor connect-proxy
+	if ! grep -q 'Host *.onion' /home/$MY_USERNAME/.ssh/config; then
+		if [ ! -d /home/$MY_USERNAME/.ssh ]; then
+			mkdir /home/$MY_USERNAME/.ssh
+		fi
+		echo 'Host *.onion' >> /home/$MY_USERNAME/.ssh/config
+		echo 'ProxyCommand connect -R remote -5 -S 127.0.0.1:9050 %h %p' >> /home/$MY_USERNAME/.ssh/config
+		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
+		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh/config
+	fi
+	if ! grep -q 'Host *.onion' /root/.ssh/config; then
+		if [ ! -d /root/.ssh ]; then
+			mkdir /root/.ssh
+		fi
+		echo 'Host *.onion' >> /root/.ssh/config
+		echo 'ProxyCommand connect -R remote -5 -S 127.0.0.1:9050 %h %p' >> /root/.ssh/config
+	fi
+	echo 'enable_ssh_via_onion' >> $COMPLETION_FILE
+}
+
+function configure_ssh_onion {
+	if grep -Fxq "configure_ssh_onion" $COMPLETION_FILE; then
+		return
+	fi
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+
+	SSH_ONION_HOSTNAME=$(add_onion_service ssh ${SSH_PORT} ${SSH_PORT})
+
+	if ! grep -q "ssh onion domain" $COMPLETION_FILE; then
+		echo "ssh onion domain:${SSH_ONION_HOSTNAME}" >> $COMPLETION_FILE
+	else
+		sed -i "s|ssh onion domain.*|ssh onion domain:${SSH_ONION_HOSTNAME}|g" $COMPLETION_FILE
+	fi
+
+	echo 'configure_ssh_onion' >> $COMPLETION_FILE
+}
+
+function install_tor {
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if grep -Fxq "install_tor" $COMPLETION_FILE; then
+		return
+	fi
+	apt-get -y install tor
+	if [ ! -f /etc/tor/torrc ]; then
+		echo 'Tor failed to install'
+		exit 38259
+	fi
+	echo 'install_tor' >> $COMPLETION_FILE
+}
+
+function resolve_dns_via_tor {
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if grep -Fxq "resolve_dns_via_tor" $COMPLETION_FILE; then
+		return
+	fi
+	if [ ! -f /etc/tor/torrc ]; then
+		echo $'tor was not installed'
+		exit 52952
+	fi
+
+	# resolve DNS via tor
+	if ! grep 'DNSPort 53' /etc/tor/torrc; then
+		echo 'DNSPort 53' >> /etc/tor/torrc
+		echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
+		echo 'AutomapHostsSuffixes .exit,.onion' >> /etc/tor/torrc
+		systemctl restart tor
+	fi
+
+	# don't change resolv.conf
+	sed -i 's|, domain-name-servers||g' /etc/dhcp/dhclient.conf
+
+	# point resolv.conf to tor
+	echo 'nameserver 127.0.0.1:53' > /etc/resolv.conf
+
+	# prevent resolv.conf from changing
+	chattr +i /etc/resolv.conf
+
+	echo 'resolve_dns_via_tor' >> $COMPLETION_FILE
+}
+
+# see https://trac.torproject.org/projects/tor/wiki/doc/TransparentProxy
+# Local Redirection and Anonymizing Middlebox
+function route_outgoing_traffic_through_tor {
+	if grep -Fxq "route_outgoing_traffic_through_tor" $COMPLETION_FILE; then
+		return
+	fi
+	if [[ $ROUTE_THROUGH_TOR != "yes" ]]; then
+		return
+	fi
+	apt-get -y install tor tor-arm
+
+	### set variables
+	# Destinations you don't want routed through Tor
+	_non_tor="192.168.1.0/24 192.168.0.0/24"
+
+	# The user that Tor runs as
+	_tor_uid="debian-tor"
+
+	# Tor's TransPort
+	_trans_port="9040"
+
+	# Your internal interface
+	_int_if="eth0"
+
+	### Set iptables *nat
+	iptables -t nat -A OUTPUT -o lo -j RETURN
+	iptables -t nat -A OUTPUT -m owner --uid-owner $_tor_uid -j RETURN
+	iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 53
+
+	# Allow clearnet access for hosts in $_non_tor
+	for _clearnet in $_non_tor; do
+		iptables -t nat -A OUTPUT -d $_clearnet -j RETURN
+		iptables -t nat -A PREROUTING -i $_int_if -d $_clearnet -j RETURN
+	done
+
+	# Redirect all other pre-routing and output to Tor
+	iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports $_trans_port
+	iptables -t nat -A PREROUTING -i $_int_if -p udp --dport 53 -j REDIRECT --to-ports 53
+	iptables -t nat -A PREROUTING -i $_int_if -p tcp --syn -j REDIRECT --to-ports $_trans_port
+
+	### set iptables *filter
+	iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+	# Allow clearnet access for hosts in $_non_tor
+	for _clearnet in $_non_tor 127.0.0.0/8; do
+		iptables -A OUTPUT -d $_clearnet -j ACCEPT
+	done
+
+	# Allow only Tor output
+	iptables -A OUTPUT -m owner --uid-owner $_tor_uid -j ACCEPT
+	iptables -A OUTPUT -j REJECT
+
+	function_check save_firewall_settings
+	save_firewall_settings
+
+	if ! grep -q "fs.file-max" /etc/sysctl.conf; then
+		echo "fs.file-max=100000" >> /etc/sysctl.conf
+		/sbin/sysctl -p
+	fi
+
+	echo 'domain localdomain' > /etc/resolv.conf
+	echo 'search localdomain' >> /etc/resolv.conf
+	echo 'nameserver 127.0.0.1' >> /etc/resolv.conf
+
+	if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
+		echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc
+	fi
+
+	if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
+		echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
+	fi
+
+	if ! grep -q "TransPort" /etc/tor/torrc; then
+		echo 'TransPort 9040' >> /etc/tor/torrc
+	fi
+
+	if ! grep -q "TransListenAddress 127.0.0.1" /etc/tor/torrc; then
+		echo 'TransListenAddress 127.0.0.1' >> /etc/tor/torrc
+	fi
+
+	if ! grep -q "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+		echo "TransListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
+	fi
+
+	if ! grep -q "DNSPort" /etc/tor/torrc; then
+		echo 'DNSPort 53' >> /etc/tor/torrc
+	fi
+
+	if ! grep -q "DNSListenAddress 127.0.0.1" /etc/tor/torrc; then
+		echo 'DNSListenAddress 127.0.0.1' >> /etc/tor/torrc
+	fi
+
+	if ! grep -q "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" /etc/tor/torrc; then
+		echo "DNSListenAddress $LOCAL_NETWORK_STATIC_IP_ADDRESS" >> /etc/tor/torrc
+	fi
+
+	echo 'route_outgoing_traffic_through_tor' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

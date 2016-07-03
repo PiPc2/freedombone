@@ -1,0 +1,167 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Random number generation functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# The type of hardware random number generator being used
+# This can be empty, "beaglebone" or "onerng"
+HWRNG_TYPE=
+
+# Download location for OneRNG driver
+ONERNG_PACKAGE="onerng_3.4-1_all.deb"
+ONERNG_PACKAGE_DOWNLOAD="https://github.com/OneRNG/onerng.github.io/blob/master/sw/$ONERNG_PACKAGE?raw=true"
+# Hash for OneRNG driver
+ONERNG_PACKAGE_HASH='78f1c2f52ae573e3b398a695ece7ab9f41868252657ea269f0d5cf0bd4f2eb59'
+
+# device name for OneRNG
+ONERNG_DEVICE='ttyACM0'
+
+function check_hwrng {
+	if [[ $HWRNG_TYPE == "beaglebone" ]]; then
+		# If hardware random number generation was enabled then make sure that the device exists.
+		# if /dev/hwrng is not found then any subsequent cryptographic key generation would
+		# suffer from low entropy and might be insecure
+		if [ ! -e /dev/hwrng ]; then
+			ls /dev/hw*
+			echo $'The hardware random number generator is enabled but could not be detected on'
+			echo $'/dev/hwrng.  There may be a problem with the installation or the Beaglebone hardware.'
+			exit 75
+		fi
+	fi
+
+	# If a OneRNG device was installed then verify its firmware
+	#check_onerng_verification
+}
+
+function check_onerng_verification {
+	if grep -Fxq "check_onerng_verification" $COMPLETION_FILE; then
+		return
+	fi
+	if [[ $HWRNG_TYPE != "onerng" ]]; then
+		return
+	fi
+	echo $'Checking OneRNG firmware verification'
+	last_onerng_validation=$(cat /var/log/syslog.1 | grep "OneRNG: firmware verification" | awk '/./{line=$0} END{print line}')
+	if [[ $last_onerng_validation != *"passed OK"* ]]; then
+		last_onerng_validation=$(cat /var/log/syslog | grep "OneRNG: firmware verification" | awk '/./{line=$0} END{print line}')
+		if [[ $last_onerng_validation != *"passed OK"* ]]; then
+			echo $last_onerng_validation
+			echo $'OneRNG firmware verification failed'
+			exit 735026
+		fi
+	fi
+	echo $'OneRNG firmware verification passed'
+	# if haveged was previously installed then remove it
+	apt-get -y remove haveged
+	echo 'check_onerng_verification' >> $COMPLETION_FILE
+}
+
+function install_onerng {
+	apt-get -y install rng-tools at python-gnupg
+
+	# Move to the installation directory
+	if [ ! -d $INSTALL_DIR ]; then
+		mkdir $INSTALL_DIR
+	fi
+	cd $INSTALL_DIR
+
+	# Download the package
+	if [ ! -f $ONERNG_PACKAGE ]; then
+		wget $ONERNG_PACKAGE_DOWNLOAD
+		mv "$ONERNG_PACKAGE?raw=true" $ONERNG_PACKAGE
+	fi
+	if [ ! -f $ONERNG_PACKAGE ]; then
+		echo $"OneRNG package could not be downloaded"
+		exit 59249
+	fi
+
+	# Check the hash
+	hash=$(sha256sum $ONERNG_PACKAGE | awk -F ' ' '{print $1}')
+	if [[ $hash != $ONERNG_PACKAGE_HASH ]]; then
+		echo $"OneRNG package: $ONERNG_PACKAGE"
+		echo $"Hash does not match. This could indicate that the package has been tampered with."
+		echo $"OneRNG expected package hash: $ONERNG_PACKAGE_HASH"
+		echo $"OneRNG actual hash: $hash"
+		exit 25934
+	fi
+
+	# install the package
+	dpkg -i $ONERNG_PACKAGE
+
+	# Check that the install worked
+	if [ ! -f /etc/onerng.conf ]; then
+		echo $'OneRNG configuration file not found. The package may not have installed successfully.'
+		exit 42904
+	fi
+
+	dialog --title $"OneRNG Device" \
+		   --msgbox $"Please plug in the OneRNG device" 6 40
+
+	# check rng-tools configuration
+	if ! grep -q "/dev/$ONERNG_DEVICE" /etc/default/rng-tools; then
+		echo "HRNGDEVICE=/dev/$ONERNG_DEVICE" >> /etc/default/rng-tools
+	fi
+
+	systemctl restart rng-tools
+}
+
+function random_number_generator {
+	if grep -Fxq "random_number_generator" $COMPLETION_FILE; then
+		return
+	fi
+	if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+		# it is assumed that docker uses the random number
+		# generator of the host system
+		return
+	fi
+
+	# if the hrng type has not been set but /dev/hwrng is detected
+	if [[ $HWRNG_TYPE != "beaglebone" ]]; then
+		if [ -e /dev/hwrng ]; then
+			HWRNG_TYPE="beaglebone"
+		fi
+	fi
+
+	case $HWRNG_TYPE in
+		beaglebone)
+			apt-get -y install rng-tools
+			sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' /etc/default/rng-tools
+			;;
+		onerng)
+			function_check install_onerng
+			install_onerng
+			;;
+		*)
+			apt-get -y install haveged
+			;;
+	esac
+
+	echo 'random_number_generator' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0

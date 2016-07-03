@@ -1,0 +1,148 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Go functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+GO_VERSION=1.5
+
+GO_PACKAGE_MANAGER_REPO="https://github.com/gpmgo/gopm"
+GVM_HOME=/home/git/gvm
+GVM_REPO="https://github.com/moovweb/gvm"
+GVM_COMMIT='25ea8ae158e2861c92e2b22c458e60840157832f'
+
+function select_go_version {
+	if [ ! -d $GVM_HOME/bin ]; then
+		echo $'GVM was not installed'
+		exit 629532
+	fi
+	export GVM_ROOT=$GVM_HOME
+	if ! grep -q "GVM_ROOT=" ~/.bashrc; then
+		echo "export GVM_ROOT=$GVM_ROOT" >> ~/.bashrc
+	else
+		sed -i "s|export GVM_ROOT=.*|export GVM_ROOT=$GVM_ROOT|g" ~/.bashrc
+	fi
+	cd $GVM_ROOT/bin
+	[[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
+	gvm use go${GO_VERSION} --default
+	systemctl set-environment GOPATH=$GOPATH
+
+	if [ ${#GOPATH} -lt 2 ]; then
+		echo $'GOPATH was not set'
+		exit 629825
+	fi
+}
+
+function upgrade_golang {
+	if [[ $SYSTEM_TYPE == "$VARIANT_WRITER" || $SYSTEM_TYPE == "$VARIANT_MAILBOX" || $SYSTEM_TYPE == "$VARIANT_CLOUD" || $SYSTEM_TYPE == "$VARIANT_SOCIAL" || $SYSTEM_TYPE == "$VARIANT_MEDIA" || $SYSTEM_TYPE == "$VARIANT_CHAT" || $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+
+	# NOTE: this is annoyingly hacky and going in the opposite
+	# direction of a pure blend, but it's necessary if you want
+	# to run the latest version of gogs
+
+	# update to the next commit
+	function_check set_repo_commit
+	set_repo_commit $INSTALL_DIR/gvm "gvm commit" "$GVM_COMMIT" $GVM_REPO
+
+	if grep -Fxq "upgrade_golang" $COMPLETION_FILE; then
+		return
+	fi
+
+	export GVM_ROOT=$GVM_HOME
+
+	apt-get -y install curl git mercurial make binutils bison gcc build-essential
+	if [ ! -d $INSTALL_DIR ]; then
+		mkdir $INSTALL_DIR
+	fi
+	cd $INSTALL_DIR
+	function_check git_clone
+	git_clone $GVM_REPO gvm
+	cd $INSTALL_DIR/gvm
+	git checkout $GVM_COMMIT -b $GVM_COMMIT
+	if [ ! -f binscripts/gvm-installer ]; then
+		echo $'gvm installer not found'
+	fi
+	chmod +x binscripts/gvm-installer
+
+	if [ -d /root/.gvm ]; then
+		rm -rf /root/.gvm
+	fi
+	if [ -d $GVM_ROOT ]; then
+		rm -rf $GVM_ROOT
+	fi
+	sed -i "s|export GVM_ROOT=.*|export GVM_ROOT=$GVM_ROOT|g" ~/.bashrc
+
+	if [ ! -d /home/git ]; then
+		# add a gogs user account within which the gvm home directory will exist
+		adduser --disabled-login --gecos 'Gogs' git
+	fi
+	if [ -d /home/git/Maildir ]; then
+		rm -rf /home/git/Maildir
+	fi
+
+	# TODO: this script is all over the place
+	# and contains hardcoded github. See if you can do better
+	./binscripts/gvm-installer master /home/git
+
+	if [ ! -d $GVM_ROOT ]; then
+		echo $'Unable to install gvm'
+		exit 83537
+	fi
+
+	[[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
+	if [ ! -f $GVM_ROOT/bin/gvm ]; then
+		echo $'gvm was not installed'
+	fi
+	if ! grep -q "export GVM_ROOT=" ~/.bashrc; then
+		echo "export GVM_ROOT=$GVM_ROOT" >> ~/.bashrc
+	fi
+
+	cd $GVM_ROOT/bin
+	gvm install go1.4
+	gvm use go1.4
+	export GOROOT_BOOTSTRAP=$GOROOT
+	gvm install go${GO_VERSION}
+	if [ ! "$?" = "0" ]; then
+		echo $'Unable to upgrade golang'
+		exit 529252
+	fi
+	gvm use go${GO_VERSION} --default
+
+	chown -R git:git $GVM_HOME
+
+	if ! grep -q "gvm commit" $COMPLETION_FILE; then
+		echo "gvm commit:$GVM_COMMIT" >> $COMPLETION_FILE
+	else
+		sed -i "s/gvm commit.*/gvm commit:$GVM_COMMIT/g" $COMPLETION_FILE
+	fi
+
+	echo 'upgrade_golang' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately there is no "exit 0"
