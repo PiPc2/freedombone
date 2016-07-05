@@ -1,0 +1,240 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Add or remove apps
+#
+# License
+# =======
+#
+# Copyright (C) 2015-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-selector
+export TEXTDOMAINDIR="/usr/share/locale"
+
+PROJECT_INSTALL_DIR=/usr/local/bin
+if [ -f /usr/bin/${PROJECT_NAME} ]; then
+	PROJECT_INSTALL_DIR=/usr/bin
+fi
+
+source $PROJECT_INSTALL_DIR/${PROJECT_NAME}-vars
+
+COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
+# Array containing names of available apps
+APPS_AVAILABLE=()
+
+# Array containing 1 or 0 indicating installed apps
+APPS_INSTALLED=()
+
+# Apps selected with checklist
+APPS_CHOSEN=()
+
+function item_in_array {
+	local e
+	for e in "${@:2}"; do [[ "$e" == "$1" ]] && return 0; done
+	return 1
+}
+
+function app_is_installed {
+	app_name="$1"
+	if ! grep -Fxq "install_${app_name}" $COMPLETION_FILE; then
+		echo "0"
+	else
+		echo "1"
+	fi
+}
+
+function get_apps_installed {
+	for a in "${APPS_AVAILABLE[@]}"
+	do
+		APPS_INSTALLED+=("$(app_is_installed $a)")
+	done
+}
+
+function detect_apps {
+	FILES=$PROJECT_INSTALL_DIR/${PROJECT_NAME}-app-*
+
+	# for all the app scripts
+	for filename in $FILES
+	do
+		app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+		if [[ $(item_in_array ${app_name} ${APPS_AVAILABLE[@]}) != 0 ]]; then
+			APPS_AVAILABLE+=("${app_name}")
+			APPS_CHOSEN+=("0")
+		fi
+	done
+	get_apps_installed
+}
+
+function show_apps {
+	applist=""
+	n=1
+	app_index=0
+	for a in "${APPS_AVAILABLE[@]}"
+	do
+		if [[ $APPS_INSTALLED[$app_index] == "0" ]]; then
+			applist="$applist $n $a off"
+		else
+			applist="$applist $n $a on"
+		fi
+		n=$[n+1]
+		app_index=$[app_index+1]
+	done
+
+	choices=$(dialog --stdout --backtitle $"Freedombone" \
+					 --title $"Installed applications" \
+					 --checklist $'Choose:' \
+					 80 40 20 $applist)
+
+	if [ $? -eq 0 ]; then
+		for choice in $choices
+		do
+			app_index = $[choice-1]
+			APPS_CHOSEN[$app_index]="1"
+		done
+	else
+		exit 0
+	fi
+}
+
+function remove_apps {
+	# which apps need to be removed?
+	removals=""
+	app_index=0
+	n=0
+	for a in "${APPS_INSTALLED[@]}"
+	do
+		if [[ $APPS_INSTALLED[$app_index] == "1" ]]; then
+			if [[ $APPS_CHOSEN[$app_index] == "0" ]]; then
+				if [ ${n} -gt 0 ]; then
+					removals="$removals $APPS_AVAILABLE[$app_index]"
+				else
+					removals="$APPS_AVAILABLE[$app_index]"
+				fi
+				n=$[n+1]
+			fi
+		fi
+		app_index=$[app_index+1]
+	done
+
+	# if no apps to be removed then don't do anything
+	if [ ${n} -eq 0 ]; then
+		return
+	fi
+
+	# ask for confirmation
+	dialog --title $"Remove applications" \
+		   --backtitle $"Freedombone" \
+		   --defaultno \
+		   --yesno $"\nYou have chosen to remove $n apps.\n\n    $removals\n\nIf you choose 'yes' then this will remove both the applications and their data/messages. If you don't have a backup then you will not be able to recover the data for these applications.\n\nAre you sure that you wish to continue?" 15 60
+	sel=$?
+	case $sel in
+		1) return;;
+		255) return;;
+	esac
+
+	# remove the apps
+	read_configuration
+	for a in "${APPS_AVAILABLE[@]}"
+	do
+		if [[ $APPS_INSTALLED[$app_index] == "1" ]]; then
+			if [[ $APPS_CHOSEN[$app_index] == "0" ]]; then
+				echo $"Removing application: ${a}"
+				remove_${a}
+				echo $"${a} was removed"
+			fi
+		fi
+		app_index=$[app_index+1]
+	done
+}
+
+function install_apps {
+	# which apps need to be installed?
+	installs=""
+	app_index=0
+	n=0
+	for a in "${APPS_INSTALLED[@]}"
+	do
+		if [[ $APPS_INSTALLED[$app_index] == "0" ]]; then
+			if [[ $APPS_CHOSEN[$app_index] == "1" ]]; then
+				if [ ${n} -gt 0 ]; then
+					installs="$installs $APPS_AVAILABLE[$app_index]"
+				else
+					installs="$APPS_AVAILABLE[$app_index]"
+				fi
+				n=$[n+1]
+			fi
+		fi
+		app_index=$[app_index+1]
+	done
+
+	# if no apps to be installed then don't do anything
+	if [ ${n} -eq 0 ]; then
+		return
+	fi
+
+	# ask for confirmation
+	dialog --title $"Remove applications" \
+		   --backtitle $"Freedombone" \
+		   --defaultno \
+		   --yesno $"\nYou have chosen to install $n apps.\n\n    $installs\n\nIf you choose 'yes' then these will now be installed.\n\nAre you sure that you wish to continue?" 15 60
+	sel=$?
+	case $sel in
+		1) return;;
+		255) return;;
+	esac
+
+	# install the apps
+	read_configuration
+	for a in "${APPS_AVAILABLE[@]}"
+	do
+		if [[ $APPS_INSTALLED[$app_index] == "0" ]]; then
+			if [[ $APPS_CHOSEN[$app_index] == "1" ]]; then
+				echo $"Installing application: ${a}"
+				install_${a}
+				echo $"${a} was installed"
+			fi
+		fi
+		app_index=$[app_index+1]
+	done
+}
+
+${PROJECT_NAME}-tests
+
+detect_apps
+
+# if no applications were found
+if [[ ${#APPS_AVAILABLE[@]} == 0 ]]; then
+	exit 1
+fi
+
+show_apps
+
+clear
+
+remove_apps
+install_apps
+
+exit 0
