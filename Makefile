@@ -16,6 +16,7 @@ source:
 	gzip -f9n ../${APP}_${VERSION}.orig.tar
 install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
+	mkdir -p ${DESTDIR}/usr/share/${APP}/apps
 	mkdir -p ${DESTDIR}/etc/${APP}
 	cp -r image_build/* ${DESTDIR}/etc/${APP}
 	install -m 755 img/backgrounds/${APP}_mesh_background.png ${DESTDIR}${PREFIX}/share
@@ -27,6 +28,7 @@ install:
 	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
 	install -m 755 src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
 	install -m 755 src/${APP}-restore-remote ${DESTDIR}${PREFIX}/bin/restorefromfriend
+	mv ${DESTDIR}${PREFIX}/bin/${APP}-app-* ${DESTDIR}/usr/share/${APP}/apps
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	install -m 644 man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
