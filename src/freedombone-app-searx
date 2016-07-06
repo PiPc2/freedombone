@@ -37,7 +37,28 @@ SEARX_LOGIN_TEXT=$"Search engine login"
 SEARX_PASSWORD=
 
 function upgrade_searx {
-    echo ''
+	if ! grep -Fxq "install_searx" $COMPLETION_FILE; then
+		return
+	fi
+
+	set_repo_commit $SEARX_PATH/searx "Search engine commit" "$SEARX_COMMIT" $SEARX_REPO
+	if grep "Search engine key" $COMPLETION_FILE; then
+		if [ -f ${SEARX_PATH}/searx/searx/settings.yml ]; then
+			# note: this might change to a --tor option in a later version
+			if ! grep 'socks5://127.0.0.1:9050' ${SEARX_PATH}/searx/searx/settings.yml; then
+				echo 'outgoing: # communication with search engines' >> ${SEARX_PATH}/searx/searx/settings.yml
+				echo '    proxies:' >> ${SEARX_PATH}/searx/searx/settings.yml
+				echo '        http : socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
+				echo '        https: socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
+			fi
+			SEARX_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
+			sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings.yml
+			if [ -f /var/lib/tor/hidden_service_searx/hostname ]; then
+				SEARX_ONION_HOSTNAME=$(echo /var/lib/tor/hidden_service_searx/hostname)
+				sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings.yml
+			fi
+		fi
+	fi
 }
 
 function backup_local_searx {
@@ -77,26 +98,6 @@ function install_searx {
 	if [ ! -d /etc/nginx ]; then
 		echo $'Webserver is not installed'
 		exit 62429
-	fi
-
-	# update to a new commit if needed
-	set_repo_commit $SEARX_PATH/searx "Search engine commit" "$SEARX_COMMIT" $SEARX_REPO
-	if grep "Search engine key" $COMPLETION_FILE; then
-		if [ -f ${SEARX_PATH}/searx/searx/settings.yml ]; then
-			# note: this might change to a --tor option in a later version
-			if ! grep 'socks5://127.0.0.1:9050' ${SEARX_PATH}/searx/searx/settings.yml; then
-				echo 'outgoing: # communication with search engines' >> ${SEARX_PATH}/searx/searx/settings.yml
-				echo '    proxies:' >> ${SEARX_PATH}/searx/searx/settings.yml
-				echo '        http : socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
-				echo '        https: socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
-			fi
-			SEARX_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
-			sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings.yml
-			if [ -f /var/lib/tor/hidden_service_searx/hostname ]; then
-				SEARX_ONION_HOSTNAME=$(echo /var/lib/tor/hidden_service_searx/hostname)
-				sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings.yml
-			fi
-		fi
 	fi
 
 	if grep -Fxq "install_searx" $COMPLETION_FILE; then

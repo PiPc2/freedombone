@@ -47,9 +47,38 @@ SHARINGS_COMMIT='d5c6c7f855d9afff9086c09ea706f38c859bc0d4'
 SHARINGS_THEME_REPO="http://git.lasindias.club/manuel/SharingsTheme"
 SHARINGS_THEME_COMMIT='7106c7ef03'
 
-function upgrade_gnusocial {
-    echo ''
+function gnusocial_running_script {
+	if ! grep -Fxq "install_gnusocial" $COMPLETION_FILE; then
+		return
+	fi
+
+	# check that the daemon is running
+	echo '#!/bin/bash' > /etc/cron.hourly/gnusocial-daemons
+	echo 'daemon_lines=$(ps aux | grep "scripts/queuedaemon.php" | grep "/var/www")' >> /etc/cron.hourly/gnusocial-daemons
+	echo 'if [[ $daemon_lines != *"/var/www/"* ]]; then' >> /etc/cron.hourly/gnusocial-daemons
+
+	echo "    ADMIN_USER=\$(cat $COMPLETION_FILE | grep 'Admin user' | awk -F ':' '{print \$2}')" >> /etc/cron.hourly/gnusocial-daemons
+	echo '    MY_EMAIL_ADDRESS=$ADMIN_USER@$HOSTNAME' >> /etc/cron.hourly/gnusocial-daemons
+	echo '    echo "Restarting GNU Social daemons" | mail -s "GNU Social daemons not found" $MY_EMAIL_ADDRESS' >> /etc/cron.hourly/gnusocial-daemons
+	echo "    cd /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs" >> /etc/cron.hourly/gnusocial-daemons
+	echo '    scripts/startdaemons.sh' >> /etc/cron.hourly/gnusocial-daemons
+	echo 'fi' >> /etc/cron.hourly/gnusocial-daemons
+	chmod +x /etc/cron.hourly/gnusocial-daemons
 }
+
+function upgrade_gnusocial {
+	if ! grep -Fxq "install_gnusocial_main" $COMPLETION_FILE; then
+		return
+	fi
+
+	# update to the next commit
+	function_check set_repo_commit
+	set_repo_commit /var/www/$MICROBLOG_DOMAIN_NAME/htdocs "GNU Social commit" "$MICROBLOG_COMMIT" $MICROBLOG_REPO
+
+	function_check gnusocial_running_script
+	gnusocial_running_script
+}
+
 
 function backup_local_gnusocial {
 	echo ''
@@ -87,26 +116,12 @@ function install_gnusocial_main {
 		exit 7359
 	fi
 
-	# update to the next commit
-	function_check set_repo_commit
-	set_repo_commit /var/www/$MICROBLOG_DOMAIN_NAME/htdocs "GNU Social commit" "$MICROBLOG_COMMIT" $MICROBLOG_REPO
-
-	# add a script to check that the daemon is running
-	echo '#!/bin/bash' > /etc/cron.hourly/gnusocial-daemons
-	echo 'daemon_lines=$(ps aux | grep "scripts/queuedaemon.php" | grep "/var/www")' >> /etc/cron.hourly/gnusocial-daemons
-	echo 'if [[ $daemon_lines != *"/var/www/"* ]]; then' >> /etc/cron.hourly/gnusocial-daemons
-
-	echo "    ADMIN_USER=\$(cat $COMPLETION_FILE | grep 'Admin user' | awk -F ':' '{print \$2}')" >> /etc/cron.hourly/gnusocial-daemons
-	echo '    MY_EMAIL_ADDRESS=$ADMIN_USER@$HOSTNAME' >> /etc/cron.hourly/gnusocial-daemons
-	echo '    echo "Restarting GNU Social daemons" | mail -s "GNU Social daemons not found" $MY_EMAIL_ADDRESS' >> /etc/cron.hourly/gnusocial-daemons
-	echo "    cd /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs" >> /etc/cron.hourly/gnusocial-daemons
-	echo '    scripts/startdaemons.sh' >> /etc/cron.hourly/gnusocial-daemons
-	echo 'fi' >> /etc/cron.hourly/gnusocial-daemons
-	chmod +x /etc/cron.hourly/gnusocial-daemons
-
 	if grep -Fxq "install_gnusocial_main" $COMPLETION_FILE; then
 		return
 	fi
+
+	function_check gnusocial_running_script
+	gnusocial_running_script
 
 	function_check install_mariadb
 	install_mariadb
