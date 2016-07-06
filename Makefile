@@ -16,6 +16,7 @@ source:
 	gzip -f9n ../${APP}_${VERSION}.orig.tar
 install:
 	mkdir -p ${DESTDIR}${PREFIX}/bin
+	mkdir -p ${DESTDIR}/usr/share/${APP}/base
 	mkdir -p ${DESTDIR}/usr/share/${APP}/apps
 	mkdir -p ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -p ${DESTDIR}/etc/${APP}
@@ -29,6 +30,7 @@ install:
 	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
 	install -m 755 src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
 	install -m 755 src/${APP}-restore-remote ${DESTDIR}${PREFIX}/bin/restorefromfriend
+	mv ${DESTDIR}${PREFIX}/bin/${APP}-base-* ${DESTDIR}/usr/share/${APP}/base
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-app-* ${DESTDIR}/usr/share/${APP}/apps
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-utils-* ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
@@ -42,6 +44,7 @@ uninstall:
 	rm -f ${PREFIX}/share/man/man1/restore.1.gz
 	rm -f ${PREFIX}/share/man/man1/${APP}*.1.gz
 	rm -rf ${PREFIX}/share/${APP}
+	rm -rf /usr/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}*
 	rm -f ${PREFIX}/bin/zeronetavahi
 	rm -f ${PREFIX}/bin/backup
