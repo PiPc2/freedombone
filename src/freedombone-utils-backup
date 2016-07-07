@@ -96,4 +96,70 @@ function backup_to_friends_servers {
 	chmod +x /etc/cron.daily/backuptofriends
 }
 
+function backup_mount_drive {
+	if [ $1 ]; then
+		USB_DRIVE=/dev/${1}1
+	fi
+
+	# get the admin user
+	ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+	if [ $2 ]; then
+		ADMIN_USERNAME=$2
+	fi
+	ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
+
+	# check that the backup destination is available
+	if [ ! -b $USB_DRIVE ]; then
+		echo $"Please attach a USB drive"
+		exit 1
+	fi
+
+	# unmount if already mounted
+	umount -f $USB_MOUNT
+	if [ ! -d $USB_MOUNT ]; then
+		mkdir $USB_MOUNT
+	fi
+	if [ -f /dev/mapper/encrypted_usb ]; then
+		rm -rf /dev/mapper/encrypted_usb
+	fi
+	cryptsetup luksClose encrypted_usb
+
+	# mount the encrypted backup drive
+	cryptsetup luksOpen $USB_DRIVE encrypted_usb
+	if [ "$?" = "0" ]; then
+		USB_DRIVE=/dev/mapper/encrypted_usb
+	fi
+	mount $USB_DRIVE $USB_MOUNT
+	if [ ! "$?" = "0" ]; then
+		echo $"There was a problem mounting the USB drive to $USB_MOUNT"
+		rm -rf $USB_MOUNT
+		exit 783452
+	fi
+}
+
+function backup_unmount_drive {
+	if [ $1 ]; then
+		USB_DRIVE=${1}
+		if [ $2 ]; then
+			USB_MOUNT=${2}
+		fi
+	fi
+	sync
+	umount $USB_MOUNT
+	if [ ! "$?" = "0" ]; then
+		echo $"Unable to unmount the drive. This means that the backup did not work"
+		rm -rf $USB_MOUNT
+		exit 9
+	fi
+	rm -rf $USB_MOUNT
+	if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
+		echo $"Unmount encrypted USB"
+		cryptsetup luksClose encrypted_usb
+	fi
+	if [ -f /dev/mapper/encrypted_usb ]; then
+		rm -rf /dev/mapper/encrypted_usb
+	fi
+	echo $"Backup to USB drive is complete. You can now unplug it."
+}
+
 # NOTE: deliberately no exit 0
