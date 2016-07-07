@@ -41,380 +41,389 @@ HUBZILLA_COMMIT='2d79e75788aa71664a379c4cea0b6bfe3ab87ad0'
 HUBZILLA_ADDONS_COMMIT='67b40c7a40f328a93ee030eb15e9e1261f3cba64'
 
 function upgrade_hubzilla {
-	if ! grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
-		return
-	fi
-	HUBZILLA_PATH=/var/www/$HUBZILLA_DOMAIN_NAME/htdocs
+    if ! grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
+        return
+    fi
+    HUBZILLA_PATH=/var/www/$HUBZILLA_DOMAIN_NAME/htdocs
 
-	function_check set_repo_commit
-	set_repo_commit $HUBZILLA_PATH "Hubzilla commit" "$HUBZILLA_COMMIT" $HUBZILLA_REPO
-	set_repo_commit $HUBZILLA_PATH/addon "Hubzilla addons commit" "$HUBZILLA_ADDONS_COMMIT" $HUBZILLA_ADDONS_REPO
-	if [ -d $HUBZILLA_PATH/redmatrix-themes1 ]; then
-		cd $HUBZILLA_PATH/redmatrix-themes1
-		git stash
-		git pull
-		cp -r $HUBZILLA_PATH/redmatrix-themes1/* $HUBZILLA_PATH/view/theme/
-		chown -R www-data:www-data $HUBZILLA_PATH
-	fi
+    function_check set_repo_commit
+    set_repo_commit $HUBZILLA_PATH "Hubzilla commit" "$HUBZILLA_COMMIT" $HUBZILLA_REPO
+    set_repo_commit $HUBZILLA_PATH/addon "Hubzilla addons commit" "$HUBZILLA_ADDONS_COMMIT" $HUBZILLA_ADDONS_REPO
+    if [ -d $HUBZILLA_PATH/redmatrix-themes1 ]; then
+        cd $HUBZILLA_PATH/redmatrix-themes1
+        git stash
+        git pull
+        cp -r $HUBZILLA_PATH/redmatrix-themes1/* $HUBZILLA_PATH/view/theme/
+        chown -R www-data:www-data $HUBZILLA_PATH
+    fi
 }
 
 function backup_local_hubzilla {
-	echo ''
+    echo $"Backing up Hubzilla"
+
+    function_check backup_database_local
+    backup_database_local hubzilla
+
+    function_check backup_directory_to_usb
+    backup_directory_to_usb /root/temphubzilladata hubzilladata
+    backup_directory_to_usb /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs hubzilla
+
+    echo $"Hubzilla backup complete"
 }
 
 function backup_remote_hubzilla {
-	echo ''
+    echo -n ''
 }
 
 function remove_hubzilla {
-	if ! grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
-		return
-	fi
-	nginx_dissite $HUBZILLA_DOMAIN_NAME
-	if [ -d /var/www/$HUBZILLA_DOMAIN_NAME ]; then
-		rm -rf /var/www/$HUBZILLA_DOMAIN_NAME
-	fi
-	if [ -f /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME ]; then
-		rm /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-	fi
-	function_check drop_database
-	drop_database hubzilla
-	function_check remove_onion_service
-	remove_onion_service hubzilla ${HUBZILLA_ONION_PORT}
-	sed -i '/install_hubzilla/d' $COMPLETION_FILE
-	sed -i '/Hubzilla /d' $COMPLETION_FILE
+    if ! grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
+        return
+    fi
+    nginx_dissite $HUBZILLA_DOMAIN_NAME
+    if [ -d /var/www/$HUBZILLA_DOMAIN_NAME ]; then
+        rm -rf /var/www/$HUBZILLA_DOMAIN_NAME
+    fi
+    if [ -f /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+    fi
+    function_check drop_database
+    drop_database hubzilla
+    function_check remove_onion_service
+    remove_onion_service hubzilla ${HUBZILLA_ONION_PORT}
+    sed -i '/install_hubzilla/d' $COMPLETION_FILE
+    sed -i '/Hubzilla /d' $COMPLETION_FILE
 }
 
 function install_hubzilla {
-	if [ ! $HUBZILLA_DOMAIN_NAME ]; then
-		return
-	fi
+    if [ ! $HUBZILLA_DOMAIN_NAME ]; then
+        return
+    fi
 
-	if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
-		return
-	fi
+    if grep -Fxq "install_hubzilla" $COMPLETION_FILE; then
+        return
+    fi
 
-	HUBZILLA_PATH=/var/www/$HUBZILLA_DOMAIN_NAME/htdocs
+    HUBZILLA_PATH=/var/www/$HUBZILLA_DOMAIN_NAME/htdocs
 
-	function_check install_mariadb
-	install_mariadb
+    function_check install_mariadb
+    install_mariadb
 
-	function_check get_mariadb_password
-	get_mariadb_password
+    function_check get_mariadb_password
+    get_mariadb_password
 
-	function_check repair_databases_script
-	repair_databases_script
+    function_check repair_databases_script
+    repair_databases_script
 
-	apt-get -y install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
-	apt-get -y install php5-dev imagemagick php5-imagick
-	apt-get -y install php5-memcached
+    apt-get -y install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
+    apt-get -y install php5-dev imagemagick php5-imagick
+    apt-get -y install php5-memcached
 
-	if [ ! -d /var/www/$HUBZILLA_DOMAIN_NAME ]; then
-		mkdir /var/www/$HUBZILLA_DOMAIN_NAME
-	fi
-	if [ ! -d $HUBZILLA_PATH ]; then
-		mkdir $HUBZILLA_PATH
-	fi
+    if [ ! -d /var/www/$HUBZILLA_DOMAIN_NAME ]; then
+        mkdir /var/www/$HUBZILLA_DOMAIN_NAME
+    fi
+    if [ ! -d $HUBZILLA_PATH ]; then
+        mkdir $HUBZILLA_PATH
+    fi
 
-	if [ ! -f $HUBZILLA_PATH/index.php ]; then
-		cd $INSTALL_DIR
-		function_check git_clone
-		git_clone $HUBZILLA_REPO hubzilla
-		git checkout $HUBZILLA_COMMIT -b $HUBZILLA_COMMIT
-		if ! grep -q "Hubzilla commit" $COMPLETION_FILE; then
-			echo "Hubzilla commit:$HUBZILLA_COMMIT" >> $COMPLETION_FILE
-		else
-			sed -i "s/Hubzilla commit.*/Hubzilla commit:$HUBZILLA_COMMIT/g" $COMPLETION_FILE
-		fi
+    if [ ! -f $HUBZILLA_PATH/index.php ]; then
+        cd $INSTALL_DIR
+        function_check git_clone
+        git_clone $HUBZILLA_REPO hubzilla
+        git checkout $HUBZILLA_COMMIT -b $HUBZILLA_COMMIT
+        if ! grep -q "Hubzilla commit" $COMPLETION_FILE; then
+            echo "Hubzilla commit:$HUBZILLA_COMMIT" >> $COMPLETION_FILE
+        else
+            sed -i "s/Hubzilla commit.*/Hubzilla commit:$HUBZILLA_COMMIT/g" $COMPLETION_FILE
+        fi
 
-		rm -rf $HUBZILLA_PATH
-		mv hubzilla $HUBZILLA_PATH
+        rm -rf $HUBZILLA_PATH
+        mv hubzilla $HUBZILLA_PATH
 
-		git_clone $HUBZILLA_ADDONS_REPO $HUBZILLA_PATH/addon
-		cd $HUBZILLA_PATH/addon
-		git checkout $HUBZILLA_ADDONS_COMMIT -b $HUBZILLA_ADDONS_COMMIT
-		if ! grep -q "Hubzilla addons commit" $COMPLETION_FILE; then
-			echo "Hubzilla addons commit:$HUBZILLA_ADDONS_COMMIT" >> $COMPLETION_FILE
-		else
-			sed -i "s/Hubzilla addons commit.*/Hubzilla addons commit:$HUBZILLA_ADDONS_COMMIT/g" $COMPLETION_FILE
-		fi
+        git_clone $HUBZILLA_ADDONS_REPO $HUBZILLA_PATH/addon
+        cd $HUBZILLA_PATH/addon
+        git checkout $HUBZILLA_ADDONS_COMMIT -b $HUBZILLA_ADDONS_COMMIT
+        if ! grep -q "Hubzilla addons commit" $COMPLETION_FILE; then
+            echo "Hubzilla addons commit:$HUBZILLA_ADDONS_COMMIT" >> $COMPLETION_FILE
+        else
+            sed -i "s/Hubzilla addons commit.*/Hubzilla addons commit:$HUBZILLA_ADDONS_COMMIT/g" $COMPLETION_FILE
+        fi
 
-		# some extra themes
-		git_clone $HUBZILLA_THEMES_REPO $HUBZILLA_PATH/redmatrix-themes1
-		cp -r $HUBZILLA_PATH/redmatrix-themes1/* $HUBZILLA_PATH/view/theme/
+        # some extra themes
+        git_clone $HUBZILLA_THEMES_REPO $HUBZILLA_PATH/redmatrix-themes1
+        cp -r $HUBZILLA_PATH/redmatrix-themes1/* $HUBZILLA_PATH/view/theme/
 
-		chown -R www-data:www-data $HUBZILLA_PATH
-	fi
+        chown -R www-data:www-data $HUBZILLA_PATH
+    fi
 
-	HUBZILLA_ONION_HOSTNAME=
-	if [[ $ONION_ONLY != "no" ]]; then
-		HUBZILLA_ONION_HOSTNAME=$(add_onion_service hubzilla 80 ${HUBZILLA_ONION_PORT})
-		echo "Hubzilla onion domain:${HUBZILLA_ONION_HOSTNAME}" >> $COMPLETION_FILE
-	fi
+    HUBZILLA_ONION_HOSTNAME=
+    if [[ $ONION_ONLY != "no" ]]; then
+        HUBZILLA_ONION_HOSTNAME=$(add_onion_service hubzilla 80 ${HUBZILLA_ONION_PORT})
+        echo "Hubzilla onion domain:${HUBZILLA_ONION_HOSTNAME}" >> $COMPLETION_FILE
+    fi
 
-	function_check get_mariadb_hubzilla_admin_password
-	get_mariadb_hubzilla_admin_password
-	if [ ! $HUBZILLA_ADMIN_PASSWORD ]; then
-		if [ -f $IMAGE_PASSWORD_FILE ]; then
-			HUBZILLA_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-		else
-			HUBZILLA_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-		fi
-		echo '' >> /home/$MY_USERNAME/README
-		echo '' >> /home/$MY_USERNAME/README
-		echo 'Hubzilla' >> /home/$MY_USERNAME/README
-		echo '========' >> /home/$MY_USERNAME/README
-		if [[ $ONION_ONLY == 'no' ]]; then
-			echo $"Open https://$HUBZILLA_DOMAIN_NAME and register a new user" >> /home/$MY_USERNAME/README
-		else
-			echo $"Open http://$HUBZILLA_ONION_HOSTNAME and register a new user" >> /home/$MY_USERNAME/README
-		fi
-		echo $"Your MariaDB Hubzilla admin password is: $HUBZILLA_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
-		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-		chmod 600 /home/$MY_USERNAME/README
-	fi
+    function_check get_mariadb_hubzilla_admin_password
+    get_mariadb_hubzilla_admin_password
+    if [ ! $HUBZILLA_ADMIN_PASSWORD ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            HUBZILLA_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            HUBZILLA_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+        echo '' >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo 'Hubzilla' >> /home/$MY_USERNAME/README
+        echo '========' >> /home/$MY_USERNAME/README
+        if [[ $ONION_ONLY == 'no' ]]; then
+            echo $"Open https://$HUBZILLA_DOMAIN_NAME and register a new user" >> /home/$MY_USERNAME/README
+        else
+            echo $"Open http://$HUBZILLA_ONION_HOSTNAME and register a new user" >> /home/$MY_USERNAME/README
+        fi
+        echo $"Your MariaDB Hubzilla admin password is: $HUBZILLA_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    fi
 
-	function_check create_database
-	create_database hubzilla "$HUBZILLA_ADMIN_PASSWORD"
+    function_check create_database
+    create_database hubzilla "$HUBZILLA_ADMIN_PASSWORD"
 
-	if ! grep -q "$HUBZILLA_PATH" /etc/crontab; then
-		echo "12,22,32,42,52 * *   *   *   root cd $HUBZILLA_PATH; /usr/bin/timeout 500 /usr/bin/php include/poller.php" >> /etc/crontab
-	fi
+    if ! grep -q "$HUBZILLA_PATH" /etc/crontab; then
+        echo "12,22,32,42,52 * *   *   *   root cd $HUBZILLA_PATH; /usr/bin/timeout 500 /usr/bin/php include/poller.php" >> /etc/crontab
+    fi
 
-	function check add_ddns_domain
-	add_ddns_domain $HUBZILLA_DOMAIN_NAME
+    function check add_ddns_domain
+    add_ddns_domain $HUBZILLA_DOMAIN_NAME
 
-	if [[ $ONION_ONLY == "no" ]]; then
-		function_check nginx_http_redirect
-		nginx_http_redirect $HUBZILLA_DOMAIN_NAME
-		echo 'server {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    root $HUBZILLA_PATH;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    server_name $HUBZILLA_DOMAIN_NAME;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    error_log /var/log/nginx/${HUBZILLA_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    charset utf-8;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    access_log off;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		function_check nginx_limits
-		nginx_limits $HUBZILLA_DOMAIN_NAME
-		function_check nginx_ssl
-		nginx_ssl $HUBZILLA_DOMAIN_NAME
-		function_check nginx_disable_sniffing
-		nginx_disable_sniffing $HUBZILLA_DOMAIN_NAME
-		echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location / {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        allow all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        expires 30d;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # block these file types' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # or a unix socket' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~ /\. {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '      deny  all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '}' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-	else
-		echo 'server {' > /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    listen 127.0.0.1:${HUBZILLA_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    root $HUBZILLA_PATH;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    server_name $HUBZILLA_ONION_HOSTNAME;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    error_log /var/log/nginx/${HUBZILLA_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    charset utf-8;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    access_log off;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		nginx_limits $HUBZILLA_DOMAIN_NAME
-		nginx_disable_sniffing $HUBZILLA_DOMAIN_NAME
-		echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location / {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        allow all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        expires 30d;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # block these file types' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # or a unix socket' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~ /\. {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '      deny  all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-		echo '}' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-	fi
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $HUBZILLA_DOMAIN_NAME
+        echo 'server {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    root $HUBZILLA_PATH;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    server_name $HUBZILLA_DOMAIN_NAME;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    error_log /var/log/nginx/${HUBZILLA_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    charset utf-8;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    access_log off;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        function_check nginx_limits
+        nginx_limits $HUBZILLA_DOMAIN_NAME
+        function_check nginx_ssl
+        nginx_ssl $HUBZILLA_DOMAIN_NAME
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $HUBZILLA_DOMAIN_NAME
+        echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location / {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        allow all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        expires 30d;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # block these file types' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # or a unix socket' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~ /\. {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '      deny  all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '}' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+    else
+        echo 'server {' > /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    listen 127.0.0.1:${HUBZILLA_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    root $HUBZILLA_PATH;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    server_name $HUBZILLA_ONION_HOSTNAME;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    error_log /var/log/nginx/${HUBZILLA_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    charset utf-8;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    access_log off;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        nginx_limits $HUBZILLA_DOMAIN_NAME
+        nginx_disable_sniffing $HUBZILLA_DOMAIN_NAME
+        echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location / {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        allow all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        expires 30d;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # block these file types' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # or a unix socket' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~ /\. {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '      deny  all;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+        echo '}' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
+    fi
 
-	function_check configure_php
-	configure_php
+    function_check configure_php
+    configure_php
 
-	function_check create_site_certificate
-	create_site_certificate $HUBZILLA_DOMAIN_NAME 'yes'
+    function_check create_site_certificate
+    create_site_certificate $HUBZILLA_DOMAIN_NAME 'yes'
 
-	if [ ! -d $HUBZILLA_PATH/view/tpl/smarty3 ]; then
-		mkdir $HUBZILLA_PATH/view/tpl/smarty3
-	fi
-	if [ ! -d "$HUBZILLA_PATH/store" ]; then
-		mkdir "$HUBZILLA_PATH/store"
-	fi
-	if [ ! -d "$HUBZILLA_PATH/store/[data]" ]; then
-		mkdir "$HUBZILLA_PATH/store/[data]"
-	fi
-	if [ ! -d "$HUBZILLA_PATH/store/[data]/smarty3" ]; then
-		mkdir "$HUBZILLA_PATH/store/[data]/smarty3"
-		chmod 777 "$HUBZILLA_PATH/store/[data]/smarty3"
-	fi
-	chmod 777 $HUBZILLA_PATH/view/tpl
-	chown -R www-data:www-data "$HUBZILLA_PATH/store"
-	chmod 777 $HUBZILLA_PATH/view/tpl/smarty3
+    if [ ! -d $HUBZILLA_PATH/view/tpl/smarty3 ]; then
+        mkdir $HUBZILLA_PATH/view/tpl/smarty3
+    fi
+    if [ ! -d "$HUBZILLA_PATH/store" ]; then
+        mkdir "$HUBZILLA_PATH/store"
+    fi
+    if [ ! -d "$HUBZILLA_PATH/store/[data]" ]; then
+        mkdir "$HUBZILLA_PATH/store/[data]"
+    fi
+    if [ ! -d "$HUBZILLA_PATH/store/[data]/smarty3" ]; then
+        mkdir "$HUBZILLA_PATH/store/[data]/smarty3"
+        chmod 777 "$HUBZILLA_PATH/store/[data]/smarty3"
+    fi
+    chmod 777 $HUBZILLA_PATH/view/tpl
+    chown -R www-data:www-data "$HUBZILLA_PATH/store"
+    chmod 777 $HUBZILLA_PATH/view/tpl/smarty3
 
-	# Ensure that the database gets backed up locally, if remote
-	# backups are not being used
-	function_check backup_databases_script_header
-	backup_databases_script_header
+    # Ensure that the database gets backed up locally, if remote
+    # backups are not being used
+    function_check backup_databases_script_header
+    backup_databases_script_header
 
-	function_check backup_database_local
-	backup_database_local hubzilla
+    function_check backup_database_local
+    backup_database_local hubzilla
 
-	chown -R www-data:www-data $HUBZILLA_PATH
+    chown -R www-data:www-data $HUBZILLA_PATH
 
-	function_check nginx_ensite
-	nginx_ensite $HUBZILLA_DOMAIN_NAME
+    function_check nginx_ensite
+    nginx_ensite $HUBZILLA_DOMAIN_NAME
 
-	# initialize the database
-	if [ ! -f $HUBZILLA_PATH/install/schema_mysql.sql ]; then
-		echo $'No database schema found for hubzilla'
-		exit 252782
-	fi
-	function_check initialise_database
-	initialise_database hubzilla $HUBZILLA_PATH/install/schema_mysql.sql
+    # initialize the database
+    if [ ! -f $HUBZILLA_PATH/install/schema_mysql.sql ]; then
+        echo $'No database schema found for hubzilla'
+        exit 252782
+    fi
+    function_check initialise_database
+    initialise_database hubzilla $HUBZILLA_PATH/install/schema_mysql.sql
 
-	# create the config file
-	echo '<?php' > $HUBZILLA_PATH/.htconfig.php
-	echo "\$db_host = 'localhost';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$db_port = '0';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$db_user = 'root';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$db_pass = '${MARIADB_PASSWORD}';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$db_data = 'hubzilla';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$db_type = '0';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$default_timezone = 'Europe/London';" >> $HUBZILLA_PATH/.htconfig.php
-	if [[ $ONION_ONLY == 'no' ]]; then
-		echo "\$a->config['system']['baseurl'] = 'https://${HUBZILLA_DOMAIN_NAME}';" >> $HUBZILLA_PATH/.htconfig.php
-	else
-		echo "\$a->config['system']['baseurl'] = 'http://${HUBZILLA_ONION_HOSTNAME}';" >> $HUBZILLA_PATH/.htconfig.php
-	fi
-	echo "\$a->config['system']['sitename'] = \"Hubzilla\";" >> $HUBZILLA_PATH/.htconfig.php
-	HUBZILLA_LOCATION_HASH="$(create_password 30)"
-	echo "\$a->config['system']['location_hash'] = '${HUBZILLA_LOCATION_HASH}';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['register_policy'] = REGISTER_OPEN;" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['register_text'] = '';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['admin_email'] = '${MY_EMAIL_ADDRESS}';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['verify_email'] = 1;" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['access_policy'] = ACCESS_PRIVATE;" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['sellpage'] = '';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['max_import_size'] = 200000;" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['php_path'] = '/usr/bin/php';" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['directory_mode']  = DIRECTORY_MODE_NORMAL;" >> $HUBZILLA_PATH/.htconfig.php
-	echo "\$a->config['system']['theme'] = 'redbasic';" >> $HUBZILLA_PATH/.htconfig.php
-	chown www-data:www-data $HUBZILLA_PATH/.htconfig.php
-	chmod 755 $HUBZILLA_PATH/.htconfig.php
+    # create the config file
+    echo '<?php' > $HUBZILLA_PATH/.htconfig.php
+    echo "\$db_host = 'localhost';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$db_port = '0';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$db_user = 'root';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$db_pass = '${MARIADB_PASSWORD}';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$db_data = 'hubzilla';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$db_type = '0';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$default_timezone = 'Europe/London';" >> $HUBZILLA_PATH/.htconfig.php
+    if [[ $ONION_ONLY == 'no' ]]; then
+        echo "\$a->config['system']['baseurl'] = 'https://${HUBZILLA_DOMAIN_NAME}';" >> $HUBZILLA_PATH/.htconfig.php
+    else
+        echo "\$a->config['system']['baseurl'] = 'http://${HUBZILLA_ONION_HOSTNAME}';" >> $HUBZILLA_PATH/.htconfig.php
+    fi
+    echo "\$a->config['system']['sitename'] = \"Hubzilla\";" >> $HUBZILLA_PATH/.htconfig.php
+    HUBZILLA_LOCATION_HASH="$(create_password 30)"
+    echo "\$a->config['system']['location_hash'] = '${HUBZILLA_LOCATION_HASH}';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['register_policy'] = REGISTER_OPEN;" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['register_text'] = '';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['admin_email'] = '${MY_EMAIL_ADDRESS}';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['verify_email'] = 1;" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['access_policy'] = ACCESS_PRIVATE;" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['sellpage'] = '';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['max_import_size'] = 200000;" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['php_path'] = '/usr/bin/php';" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['directory_mode']  = DIRECTORY_MODE_NORMAL;" >> $HUBZILLA_PATH/.htconfig.php
+    echo "\$a->config['system']['theme'] = 'redbasic';" >> $HUBZILLA_PATH/.htconfig.php
+    chown www-data:www-data $HUBZILLA_PATH/.htconfig.php
+    chmod 755 $HUBZILLA_PATH/.htconfig.php
 
-	systemctl restart php5-fpm
-	systemctl restart nginx
-	systemctl restart cron
+    systemctl restart php5-fpm
+    systemctl restart nginx
+    systemctl restart cron
 
-	${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$HUBZILLA_DOMAIN_NAME" -g hubzilla --public no
+    ${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$HUBZILLA_DOMAIN_NAME" -g hubzilla --public no
 
-	echo "Hubzilla domain:${HUBZILLA_DOMAIN_NAME}" >> $COMPLETION_FILE
-	echo 'install_hubzilla' >> $COMPLETION_FILE
+    echo "Hubzilla domain:${HUBZILLA_DOMAIN_NAME}" >> $COMPLETION_FILE
+    echo 'install_hubzilla' >> $COMPLETION_FILE
 }
 
 # NOTE: deliberately there is no "exit 0"
