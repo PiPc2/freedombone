@@ -1204,34 +1204,49 @@ function restore_voip {
 	fi
 	if [ -d $USB_MOUNT/backup/voip ]; then
 		echo $"Restoring VoIP settings"
-		restore_directory_from_usb /root/tempvoip voip
-		cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
+		temp_restore_dir=/root/tempvoip
+		restore_directory_from_usb $temp_restore_dir voip
+		cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
 		if [ ! "$?" = "0" ]; then
-			rm -rf /root/tempvoip
+			rm -rf $temp_restore_dir
 			set_user_permissions
 			backup_unmount_drive
 			exit 3679
 		fi
-		cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/sipwitch.conf /etc/sipwitch.conf
+		cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/mumble-server.sqlite /var/lib/mumble-server/
 		if [ ! "$?" = "0" ]; then
-			rm -rf /root/tempvoip
-			set_user_permissions
-			backup_unmount_drive
-			exit 3679
-		fi
-		cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.sqlite /var/lib/mumble-server/
-		if [ ! "$?" = "0" ]; then
-			rm -rf /root/tempvoip
+			rm -rf $temp_restore_dir
 			set_user_permissions
 			backup_unmount_drive
 			exit 276
 		fi
-		rm -rf /root/tempvoip
+		rm -rf $temp_restore_dir
 		cp /etc/ssl/certs/mumble* /var/lib/mumble-server
 		cp /etc/ssl/private/mumble* /var/lib/mumble-server
 		chown -R mumble-server:mumble-server /var/lib/mumble-server
-		service sipwitch restart
 		service mumble-server restart
+	fi
+}
+
+function restore_sip {
+	if [[ $RESTORE_APP != 'all' ]]; then
+		if [[ $RESTORE_APP != 'sip' ]]; then
+			return
+		fi
+	fi
+	if [ -d $USB_MOUNT/backup/sip ]; then
+		echo $"Restoring SIP settings"
+		temp_restore_dir=/root/tempsip
+		restore_directory_from_usb $temp_restore_dir sip
+		cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/sipwitch.conf /etc/sipwitch.conf
+		if [ ! "$?" = "0" ]; then
+			rm -rf $temp_restore_dir
+			set_user_permissions
+			backup_unmount_drive
+			exit 3679
+		fi
+		rm -rf $temp_restore_dir
+		service sipwitch restart
 	fi
 }
 
@@ -1269,6 +1284,26 @@ function get_restore_app {
 	fi
 }
 
+function restore_apps {
+	FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+
+	APPS_COMPLETED=()
+
+	# for all the app scripts
+	for filename in $FILES
+	do
+		app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+		if [[ $(item_in_array ${app_name} ${APPS_COMPLETED[@]}) != 0 ]]; then
+			function_check app_is_installed
+			if [[ "$(app_is_installed $a)" == "1" ]]; then
+				APPS_COMPLETED+=("${app_name}")
+				function_check restore_local_${app_name}
+				restore_local_${app_name}
+			fi
+		fi
+	done
+}
+
 get_restore_app ${2}
 backup_mount_drive ${1} ${ADMIN_USERNAME} ${2}
 check_backup_exists
@@ -1285,7 +1320,6 @@ restore_gpg
 restore_procmail
 restore_spamassassin
 restore_admin_readme
-restore_ipfs
 restore_user_ssh_keys
 restore_user_config
 restore_user_emacs
@@ -1295,6 +1329,8 @@ restore_user_local
 restore_certs
 restore_personal_settings
 restore_mailing_list
+
+restore_ipfs
 restore_xmpp
 restore_gnusocial
 restore_hubzilla
@@ -1308,7 +1344,10 @@ restore_cjdns
 restore_email
 restore_dlna
 restore_voip
+restore_sip
 restore_tox
+
+restore_apps
 set_user_permissions
 backup_unmount_drive
 
