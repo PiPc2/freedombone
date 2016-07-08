@@ -50,26 +50,102 @@ function upgrade_gogs {
 }
 
 function backup_local_gogs {
-	if grep -q "Gogs domain" $COMPLETION_FILE; then
-		if [ -d /home/git/gogs-repositories ]; then
-			GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
+	if ! grep -q "Gogs domain" $COMPLETION_FILE; then
+		return
+	fi
 
-			echo $"Backing up gogs"
+	if [ ! -d /home/git/gogs-repositories ]; then
+		return
+	fi
 
-			function_check backup_database_to_usb
-			backup_database_to_usb gogs
+	GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
 
-			function_check backup_directory_to_usb
-			backup_directory_to_usb $GOPATH/src/github.com/gogits/gogs/custom gogs
-			backup_directory_to_usb /home/git/gogs-repositories gogsrepos
-			backup_directory_to_usb /home/git/.ssh gogsssh
+	echo $"Backing up gogs"
 
-			echo $"Gogs backup complete"
+	function_check backup_database_to_usb
+	backup_database_to_usb gogs
+
+	function_check backup_directory_to_usb
+	backup_directory_to_usb $GOPATH/src/github.com/gogits/gogs/custom gogs
+	backup_directory_to_usb /home/git/gogs-repositories gogsrepos
+	backup_directory_to_usb /home/git/.ssh gogsssh
+
+	echo $"Gogs backup complete"
+}
+
+function restore_local_gogs {
+	if ! grep -q "Gogs domain" $COMPLETION_FILE; then
+		return
+	fi
+	if [ ! -d /home/git/gogs-repositories ]; then
+		return
+	fi
+
+	GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
+
+	export GVM_ROOT=$GVM_HOME
+	if [ -d $GVM_ROOT/bin ]; then
+		cd $GVM_ROOT/bin
+		[[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
+		gvm use go${GO_VERSION} --default
+		systemctl set-environment GOPATH=$GOPATH
+	fi
+
+	if [ ${#GIT_DOMAIN_NAME} -gt 2 ]; then
+		function_check restore_database
+		restore_database gogs ${GIT_DOMAIN_NAME}
+		temp_restore_dir=/root/tempgogs
+		if [ -d $USB_MOUNT/backup/gogs ]; then
+			echo $"Restoring Gogs settings"
+			if [ ! -d $GOPATH/src/github.com/gogits/gogs/custom ]; then
+				mkdir -p $GOPATH/src/github.com/gogits/gogs/custom
+			fi
+			cp -r ${temp_restore_dir}/$GOPATH/src/github.com/gogits/gogs/custom/* $GOPATH/src/github.com/gogits/gogs/custom
+			if [ ! "$?" = "0" ]; then
+				function_check set_user_permissions
+				set_user_permissions
+				function_check backup_unmount_drive
+				backup_unmount_drive
+				exit 981
+			fi
+			echo $"Restoring Gogs repos"
+			function_check restore_directory_from_usb
+			restore_directory_from_usb ${temp_restore_dir}repos gogsrepos
+			cp -r ${temp_restore_dir}repos/home/git/gogs-repositories/* /home/git/gogs-repositories/
+			if [ ! "$?" = "0" ]; then
+				function_check set_user_permissions
+				set_user_permissions
+				function_check backup_unmount_drive
+				backup_unmount_drive
+				exit 67574
+			fi
+			echo $"Restoring Gogs authorized_keys"
+			function_check restore_directory_from_usb
+			restore_directory_from_usb ${temp_restore_dir}ssh gogsssh
+			if [ ! -d /home/git/.ssh ]; then
+				mkdir /home/git/.ssh
+			fi
+			cp -r ${temp_restore_dir}ssh/home/git/.ssh/* /home/git/.ssh/
+			if [ ! "$?" = "0" ]; then
+				function_check set_user_permissions
+				set_user_permissions
+				function_check backup_unmount_drive
+				backup_unmount_drive
+				exit 8463
+			fi
+			rm -rf ${temp_restore_dir}
+			rm -rf ${temp_restore_dir}repos
+			rm -rf ${temp_restore_dir}ssh
+			chown -R git:git /home/git
 		fi
 	fi
 }
 
 function backup_remote_gogs {
+	echo -n ''
+}
+
+function restore_remote_gogs {
 	echo -n ''
 }
 
