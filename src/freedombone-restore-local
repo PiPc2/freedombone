@@ -38,6 +38,13 @@ RESTORE_APP='all'
 export TEXTDOMAIN=${PROJECT_NAME}-restore-local
 export TEXTDOMAINDIR="/usr/share/locale"
 
+# include utils which allow function_check and drive mount
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+  source $f
+done
+
 USB_DRIVE=/dev/sdb1
 USB_MOUNT=/mnt/usb
 
@@ -53,8 +60,11 @@ fi
 GO_VERSION=$(cat /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-go | grep 'GO_VERSION=' | head -n 1 | awk -F '=' '{print $2}')
 GVM_HOME=$(cat /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-go | grep 'GVM_HOME=' | head -n 1 | awk -F '=' '{print $2}')
 
-ADMIN_USERNAME=
+ADMIN_USERNAME=''
 ADMIN_NAME=
+if [ -f $COMPLETION_FILE ]; then
+	ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+fi
 
 # MariaDB password
 DATABASE_PASSWORD=$(cat /root/dbpass)
@@ -66,61 +76,8 @@ GIT_DOMAIN_NAME=
 WIKI_DOMAIN_NAME=
 FULLBLOG_DOMAIN_NAME=
 
-function mount_drive {
-	if [ $1 ]; then
-		USB_DRIVE=/dev/${1}1
-	fi
-
-	if [ $2 ]; then
-		RESTORE_APP=$2
-	fi
-
-	# get the admin user
-	ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-	if [ $3 ]; then
-		ADMIN_USERNAME=$3
-	fi
-	ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
-
-	# check that the backup destination is available
-	if [ ! -b $USB_DRIVE ]; then
-		echo $"Please attach a USB drive"
-		exit 1
-	fi
-
-	# unmount if already mounted
-	umount -f $USB_MOUNT
-	if [ ! -d $USB_MOUNT ]; then
-		mkdir $USB_MOUNT
-	fi
-	if [ -f /dev/mapper/encrypted_usb ]; then
-		rm -rf /dev/mapper/encrypted_usb
-	fi
-	cryptsetup luksClose encrypted_usb
-
-	# mount the encrypted backup drive
-	cryptsetup luksOpen $USB_DRIVE encrypted_usb
-	if [ "$?" = "0" ]; then
-		USB_DRIVE=/dev/mapper/encrypted_usb
-	fi
-	mount $USB_DRIVE $USB_MOUNT
-	if [ ! "$?" = "0" ]; then
-		echo $"There was a problem mounting the USB drive to $USB_MOUNT"
-		rm -rf $USB_MOUNT
-		exit 2
-	fi
-}
-
-function unmount_drive {
-	sync
-	umount $USB_MOUNT
-	if [ ! "$?" = "0" ]; then
-		echo $"Unable to unmount the drive. This means that the backup did not work"
-		rm -rf $USB_MOUNT
-		exit 9
-	fi
-	rm -rf $USB_MOUNT
-
+# after user files have been restored permissions may need to be set
+function set_user_permissions {
 	echo $"Setting permissions"
 	for d in /home/*/ ; do
 		USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
@@ -128,20 +85,13 @@ function unmount_drive {
 			chown -R $USERNAME:$USERNAME /home/$USERNAME
 		fi
 	done
-
-	if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
-		echo $"Unmount encrypted USB"
-		cryptsetup luksClose encrypted_usb
-	fi
-	if [ -f /dev/mapper/encrypted_usb ]; then
-		rm -rf /dev/mapper/encrypted_usb
-	fi
 }
 
 function check_backup_exists {
 	if [ ! -d $USB_MOUNT/backup ]; then
 		echo $"No backup directory found on the USB drive."
-		unmount_drive
+		set_user_permissions
+		backup_unmount_drive
 		exit 2
 	fi
 }
@@ -150,7 +100,8 @@ function check_admin_user {
 	echo $"Checking that admin user exists"
 	if [ ! -d /home/$ADMIN_USERNAME ]; then
 		echo $"Username $ADMIN_USERNAME not found. Reinstall ${PROJECT_NAME} with this username."
-		unmount_drive
+		set_user_permissions
+		backup_unmount_drive
 		exit 295
 	fi
 }
@@ -176,13 +127,15 @@ function restore_database {
 		if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
 			echo $"Unable to restore ${1} database"
 			rm -rf /root/temp${1}data
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 503
 		fi
 		mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
 		if [ ! "$?" = "0" ]; then
 			echo "$mysqlsuccess"
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 964
 		fi
 		shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
@@ -201,7 +154,8 @@ function restore_database {
 						rm -rf /etc/share/tt-rss
 						mv /root/temp${1}/etc/share/tt-rss /etc/share/
 						if [ ! "$?" = "0" ]; then
-							unmount_drive
+							set_user_permissions
+							backup_unmount_drive
 							exit 528
 						fi
 						if [ -d /etc/letsencrypt/live/${2} ]; then
@@ -222,7 +176,8 @@ function restore_database {
 					rm -rf /var/www/${2}/htdocs
 					mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
 					if [ ! "$?" = "0" ]; then
-						unmount_drive
+						set_user_permissions
+						backup_unmount_drive
 						exit 683
 					fi
 					if [ -d /etc/letsencrypt/live/${2} ]; then
@@ -278,7 +233,8 @@ function restore_configuration {
 
 		cp -f /root/tempconfig/root/${PROJECT_NAME}.cfg $CONFIG_FILE
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			rm -rf /root/tempconfig
 			exit 5294
 		fi
@@ -289,7 +245,8 @@ function restore_configuration {
 
 		cp -f /root/tempconfig/root/${PROJECT_NAME}-completed.txt $COMPLETION_FILE
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			rm -rf /root/tempconfig
 			exit 6382
 		fi
@@ -297,7 +254,8 @@ function restore_configuration {
 		if [ -f /root/tempconfig${BACKUP_EXTRA_DIRECTORIES} ]; then
 			cp -f /root/tempconfig${BACKUP_EXTRA_DIRECTORIES} ${BACKUP_EXTRA_DIRECTORIES}
 			if [ ! "$?" = "0" ]; then
-				unmount_drive
+				set_user_permissions
+				backup_unmount_drive
 				rm -rf /root/tempconfig
 				exit 62121
 			fi
@@ -316,7 +274,8 @@ function same_admin_user {
 	PREV_ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
 	if [[ "$PREV_ADMIN_USERNAME" != "$ADMIN_USERNAME" ]]; then
 		echo $"The admin username has changed from $PREV_ADMIN_USERNAME to $ADMIN_USERNAME. To restore you will first need to install a new ${PROJECT_NAME} system with an initial admin user named $PREV_ADMIN_USERNAME"
-		unmount_drive
+		set_user_permissions
+		backup_unmount_drive
 		exit 73265
 	fi
 }
@@ -345,7 +304,8 @@ function restore_mariadb {
 			fi
 			if [ ! "$?" = "0" ]; then
 				echo "$mysqlsuccess"
-				unmount_drive
+				set_user_permissions
+				backup_unmount_drive
 				exit 962
 			fi
 			echo $"Restarting database"
@@ -409,7 +369,8 @@ function restore_mutt_settings {
 				fi
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempmutt
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 276
 				fi
 				rm -rf /root/tempmutt
@@ -436,14 +397,16 @@ function restore_gpg {
 				cp -r /root/tempgnupg/home/$USERNAME/.gnupg /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempgnupg
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 276
 				fi
 				rm -rf /root/tempgnupg
 				if [[ "$USERNAME" == "$ADMIN_USERNAME" ]]; then
 					cp -r /home/$USERNAME/.gnupg /root
 					if [ ! "$?" = "0" ]; then
-						unmount_drive
+						set_user_permissions
+						backup_unmount_drive
 						exit 283
 					fi
 				fi
@@ -470,7 +433,8 @@ function restore_procmail {
 				cp -f /root/tempprocmail/home/$USERNAME/tempbackup/.procmailrc /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempprocmail
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 276
 				fi
 				rm -rf /root/tempprocmail
@@ -498,7 +462,8 @@ function restore_spamassassin {
 					cp -rf /root/tempspamassassin/home/$USERNAME/.spamassassin /home/$USERNAME/
 					if [ ! "$?" = "0" ]; then
 						rm -rf /root/tempspamassassin
-						unmount_drive
+						set_user_permissions
+						backup_unmount_drive
 						exit 276
 					fi
 					rm -rf /root/tempspamassassin
@@ -529,7 +494,8 @@ function restore_admin_readme {
 		cp -f /root/tempreadme/home/$ADMIN_USERNAME/tempbackup/README /home/$ADMIN_USERNAME/
 		if [ ! "$?" = "0" ]; then
 			rm -rf /root/tempreadme
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 276
 		fi
 		rm -rf /root/tempreadme
@@ -548,7 +514,8 @@ function restore_ipfs {
 		cp -rf /root/tempipfs/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
 		if [ ! "$?" = "0" ]; then
 			rm -rf /root/tempipfs
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 276
 		fi
 		rm -rf /root/tempipfs
@@ -573,7 +540,8 @@ function restore_user_ssh_keys {
 				cp -r /root/tempssh/home/$USERNAME/.ssh /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempssh
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 664
 				fi
 				rm -rf /root/tempssh
@@ -600,7 +568,8 @@ function restore_user_config {
 				cp -r /root/tempconfig/home/$USERNAME/.config /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempconfig
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 664
 				fi
 				rm -rf /root/tempconfig
@@ -627,7 +596,8 @@ function restore_user_emacs {
 				cp -r /root/tempemacs/home/$USERNAME/.emacs.d /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempemacs
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 664
 				fi
 				cp -f /root/tempemacs/home/$USERNAME/.emacs.d/dotemacs /home/$USERNAME/.emacs
@@ -667,7 +637,8 @@ function restore_user_monkeysphere {
 				cp -r /root/tempmonkeysphere/home/$USERNAME/.monkeysphere /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempmonkeysphere
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 664
 				fi
 				rm -rf /root/tempmonkeysphere
@@ -704,7 +675,8 @@ function restore_user_fin {
 				cp -r /root/tempfin/home/$USERNAME/.fin /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempfin
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 664
 				fi
 				rm -rf /root/tempfin
@@ -731,7 +703,8 @@ function restore_user_local {
 				cp -r /root/templocal/home/$USERNAME/.local /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/templocal
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 664
 				fi
 				rm -rf /root/templocal
@@ -752,7 +725,8 @@ function restore_certs {
 		restore_directory_from_usb /root/tempssl ssl
 		cp -r /root/tempssl/etc/ssl/* /etc/ssl
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 276
 		fi
 		rm -rf /root/tempssl
@@ -804,7 +778,8 @@ function restore_personal_settings {
 					fi
 					mv /root/temppersonal/home/$USERNAME/personal /home/$USERNAME
 					if [ ! "$?" = "0" ]; then
-						unmount_drive
+						set_user_permissions
+						backup_unmount_drive
 						exit 184
 					fi
 					rm -rf /root/temppersonal
@@ -825,7 +800,8 @@ function restore_mailing_list {
 		restore_directory_from_usb /root/tempmailinglist mailinglist
 		cp -r /root/tempmailinglist/root/spool/mlmmj/* /var/spool/mlmmj
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 526
 		fi
 		rm -rf /root/tempmailinglist
@@ -843,7 +819,8 @@ function restore_xmpp {
 		restore_directory_from_usb /root/tempxmpp xmpp
 		cp -r /root/tempxmpp/var/lib/prosody/* /var/lib/prosody
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 725
 		fi
 		rm -rf /root/tempxmpp
@@ -929,7 +906,8 @@ function restore_syncthing {
 		restore_directory_from_usb /root/tempsyncthingconfig syncthingconfig
 		cp -r /root/tempsyncthingconfig/* /
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			systemctl start syncthing
 			systemctl start cron
 			exit 6833
@@ -942,7 +920,8 @@ function restore_syncthing {
 		restore_directory_from_usb /root/tempsyncthingshared syncthingshared
 		cp -r /root/tempsyncthingshared/* /
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			systemctl start syncthing
 			systemctl start cron
 			exit 37904
@@ -962,7 +941,8 @@ function restore_syncthing {
 				cp -r /root/tempsyncthing/home/$USERNAME/Sync /home/$USERNAME/
 				if [ ! "$?" = "0" ]; then
 					rm -rf /root/tempsyncthing
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					systemctl start syncthing
 					systemctl start cron
 					exit 68438
@@ -1002,7 +982,8 @@ function restore_mediagoblin {
 		restore_directory_from_usb /root/tempmediagoblin mediagoblin
 		cp -r /root/tempmediagoblin/* /
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 67843
 		fi
 		rm -rf /root/tempmediagoblin
@@ -1033,14 +1014,16 @@ function restore_gogs {
 			fi
 			cp -r /root/tempgogs/$GOPATH/src/github.com/gogits/gogs/custom/* $GOPATH/src/github.com/gogits/gogs/custom
 			if [ ! "$?" = "0" ]; then
-				unmount_drive
+				set_user_permissions
+				backup_unmount_drive
 				exit 981
 			fi
 			echo $"Restoring Gogs repos"
 			restore_directory_from_usb /root/tempgogsrepos gogsrepos
 			cp -r /root/tempgogsrepos/home/git/gogs-repositories/* /home/git/gogs-repositories/
 			if [ ! "$?" = "0" ]; then
-				unmount_drive
+				set_user_permissions
+				backup_unmount_drive
 				exit 67574
 			fi
 			echo $"Restoring Gogs authorized_keys"
@@ -1050,7 +1033,8 @@ function restore_gogs {
 			fi
 			cp -r /root/tempgogsssh/home/git/.ssh/* /home/git/.ssh/
 			if [ ! "$?" = "0" ]; then
-				unmount_drive
+				set_user_permissions
+				backup_unmount_drive
 				exit 8463
 			fi
 			rm -rf /root/tempgogs
@@ -1072,13 +1056,15 @@ function restore_wiki {
 		restore_directory_from_usb /root/tempwiki wiki
 		cp -r /root/tempwiki/var/lib/dokuwiki/* /var/lib/dokuwiki/
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 868
 		fi
 		restore_directory_from_usb /root/tempwiki2 wiki2
 		cp -r /root/tempwiki2/etc/dokuwiki/* /etc/dokuwiki/
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 869
 		fi
 		rm -rf /root/tempwiki
@@ -1107,13 +1093,15 @@ function restore_blog {
 		rm -rf /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs
 		cp -r /root/tempblog/var/www/${FULLBLOG_DOMAIN_NAME}/htdocs /var/www/${FULLBLOG_DOMAIN_NAME}/
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 593
 		fi
 		rm -rf /root/tempblog
 		if [ ! -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content ]; then
 			echo $"No content directory found after restoring blog"
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 287
 		fi
 		chown -R www-data:www-data /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs
@@ -1148,7 +1136,8 @@ function restore_cjdns {
 		rm -rf /etc/cjdns
 		cp -r /root/tempcjdns/etc/cjdns /etc/
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 8472
 		fi
 		rm -rf /root/tempcjdns
@@ -1175,7 +1164,8 @@ function restore_email {
 				fi
 				tar -xzvf /root/tempmail/root/tempbackupemail/$USERNAME/maildir.tar.gz -C /
 				if [ ! "$?" = "0" ]; then
-					unmount_drive
+					set_user_permissions
+					backup_unmount_drive
 					exit 927
 				fi
 				rm -rf /root/tempmail
@@ -1197,7 +1187,8 @@ function restore_dlna {
 			cp -r /root/tempdlna/var/cache/minidlna/* /var/cache/minidlna/
 			if [ ! "$?" = "0" ]; then
 				rm -rf /root/tempdlna
-				unmount_drive
+				set_user_permissions
+				backup_unmount_drive
 				exit 982
 			fi
 			rm -rf /root/tempdlna
@@ -1217,19 +1208,22 @@ function restore_voip {
 		cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
 		if [ ! "$?" = "0" ]; then
 			rm -rf /root/tempvoip
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 3679
 		fi
 		cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/sipwitch.conf /etc/sipwitch.conf
 		if [ ! "$?" = "0" ]; then
 			rm -rf /root/tempvoip
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 3679
 		fi
 		cp -f /root/tempvoip/home/$ADMIN_USERNAME/tempbackup/mumble-server.sqlite /var/lib/mumble-server/
 		if [ ! "$?" = "0" ]; then
 			rm -rf /root/tempvoip
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 276
 		fi
 		rm -rf /root/tempvoip
@@ -1251,14 +1245,16 @@ function restore_tox {
 		echo $"Restoring Tox node settings"
 		restore_directory_from_usb / tox
 		if [ ! "$?" = "0" ]; then
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 6393
 		fi
 		cp /var/lib/tox-bootstrapd/tox-bootstrapd.conf /etc/tox-bootstrapd.conf
 		systemctl restart tox-bootstrapd.service
 		if [ ! "$?" = "0" ]; then
 			systemctl status tox-bootstrapd.service
-			unmount_drive
+			set_user_permissions
+			backup_unmount_drive
 			exit 59369
 		fi
 	fi
@@ -1274,7 +1270,7 @@ function get_restore_app {
 }
 
 get_restore_app ${2}
-mount_drive ${1} ${2}
+backup_mount_drive ${1} ${ADMIN_USERNAME} ${2}
 check_backup_exists
 check_admin_user
 copy_gpg_keys
@@ -1313,7 +1309,8 @@ restore_email
 restore_dlna
 restore_voip
 restore_tox
-unmount_drive
+set_user_permissions
+backup_unmount_drive
 
 echo $"Restore from USB drive is complete. You can now unplug it."
 
