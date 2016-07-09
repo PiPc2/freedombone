@@ -55,7 +55,86 @@ function backup_local_syncthing {
 	fi
 }
 
+function restore_local_syncthing {
+	if [ -f /etc/systemd/system/syncthing.service ]; then
+		systemctl stop syncthing
+		systemctl stop cron
+	fi
+
+	temp_restore_dir=/root/tempsyncthing
+	if [ -d $USB_MOUNT/backup/syncthingconfig ]; then
+		echo $"Restoring syncthing configuration"
+		function_check restore_directory_from_usb
+		restore_directory_from_usb ${temp_restore_dir}config syncthingconfig
+		cp -r ${temp_restore_dir}config/* /
+		if [ ! "$?" = "0" ]; then
+			set_user_permissions
+			backup_unmount_drive
+			systemctl start syncthing
+			systemctl start cron
+			exit 6833
+		fi
+		rm -rf ${temp_restore_dir}config
+	fi
+
+	if [ -d $USB_MOUNT/backup/syncthingshared ]; then
+		echo $"Restoring syncthing shared files"
+		restore_directory_from_usb ${temp_restore_dir}shared syncthingshared
+		cp -r ${temp_restore_dir}shared/* /
+		if [ ! "$?" = "0" ]; then
+			set_user_permissions
+			backup_unmount_drive
+			systemctl start syncthing
+			systemctl start cron
+			exit 37904
+		fi
+		rm -rf ${temp_restore_dir}shared
+	fi
+
+	if [ -d $USB_MOUNT/backup/syncthing ]; then
+		for d in $USB_MOUNT/backup/syncthing/*/ ; do
+			USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+			if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+				if [ ! -d /home/$USERNAME ]; then
+					${PROJECT_NAME}-adduser $USERNAME
+				fi
+				echo $"Restoring syncthing files for $USERNAME"
+				restore_directory_from_usb ${temp_restore_dir} syncthing/$USERNAME
+				cp -r ${temp_restore_dir}/home/$USERNAME/Sync /home/$USERNAME/
+				if [ ! "$?" = "0" ]; then
+					rm -rf ${temp_restore_dir}
+					set_user_permissions
+					backup_unmount_drive
+					systemctl start syncthing
+					systemctl start cron
+					exit 68438
+				fi
+				rm -rf ${temp_restore_dir}
+
+				# restore device IDs from config settings
+				if [ -f /home/$USERNAME/.config/syncthing/.syncthing-server-id ]; then
+					cp /home/$USERNAME/.config/syncthing/.syncthing-server-id /home/$USERNAME/.syncthing-server-id
+					chown $USERNAME:$USERNAME /home/$USERNAME/.syncthing-server-id
+				fi
+				if [ -f /home/$USERNAME/.config/syncthing/.syncthingids ]; then
+					cp /home/$USERNAME/.config/syncthing/.syncthingids /home/$USERNAME/.syncthingids
+					chown $USERNAME:$USERNAME /home/$USERNAME/.syncthingids
+				fi
+			fi
+		done
+	fi
+
+	if [ -f /etc/systemd/system/syncthing.service ]; then
+		systemctl start syncthing
+		systemctl start cron
+	fi
+}
+
 function backup_remote_syncthing {
+	echo -n ''
+}
+
+function restore_remote_syncthing {
 	echo -n ''
 }
 
