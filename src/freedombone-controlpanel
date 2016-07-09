@@ -33,6 +33,12 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-controlpanel
 export TEXTDOMAINDIR="/usr/share/locale"
 
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+  source $f
+done
+
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 SELECTED_USERNAME=
 SIP_CONFIGURATION_FILE=/etc/sipwitch.conf
@@ -1097,91 +1103,46 @@ function backup_data {
 }
 
 function restore_from_usb {
-	while true
+	detect_apps
+	applist="all"
+	n=1
+	app_index=0
+	for a in "${APPS_INSTALLED_NAMES[@]}"
 	do
-		data=$(tempfile 2>/dev/null)
-		trap "rm -f $data" 0 1 2 5 15
-		dialog --backtitle $"Freedombone Control Panel" \
-			   --title $"Restore from USB backup" \
-			   --radiolist $"Choose an application to restore:" 32 70 28 \
-			   1 $"Everything" off \
-			   2 $"Return to the backup and restore menu" on \
-			   3 $"Configuration files" off \
-			   4 $"MariaDB settings" off \
-			   5 $"Let's Encrypt account" off \
-			   6 $"Mutt email client settings" off \
-			   7 $"GPG keys" off \
-			   8 $"Email processing rules" off \
-			   9 $"Spam filtering rules" off \
-			   10 $"Administrator's README file" off \
-			   11 $"IPFS" off \
-			   12 $"SSH keys" off \
-			   13 $"User configuration files" off \
-			   14 $"User local files" off \
-			   15 $"User fin files" off \
-			   16 $"SSL/TLS certificates" off \
-			   17 $"Personal settings" off \
-			   18 $"Mailing List" off \
-			   19 $"XMPP chat" off \
-			   20 $"GNU Social" off \
-			   21 $"Hubzilla" off \
-			   22 $"Syncthing" off \
-			   23 $"Gogs" off \
-			   24 $"Wiki" off \
-			   25 $"Blog" off \
-			   26 $"CJDNS" off \
-			   27 $"Email" off \
-			   28 $"DLNA" off \
-			   29 $"VoIP" off \
-			   30 $"RSS reader" off \
-			   31 $"Tox" off \
-			   32 $"Mediagoblin" off 2> $data
-		sel=$?
-		case $sel in
-			1) break;;
-			255) break;;
-		esac
-
-		if [ $(cat $data) -ne 2 ]; then
-			clear
-		fi
-
-		case $(cat $data) in
-			1) ${PROJECT_NAME}-restore-local $USB_DRIVE;;
-			2) return;;
-			3) ${PROJECT_NAME}-restore-local $USB_DRIVE configuration;;
-			4) ${PROJECT_NAME}-restore-local $USB_DRIVE mariadb;;
-			5) ${PROJECT_NAME}-restore-local $USB_DRIVE letsencrypt;;
-			6) ${PROJECT_NAME}-restore-local $USB_DRIVE mutt;;
-			7) ${PROJECT_NAME}-restore-local $USB_DRIVE gpg;;
-			8) ${PROJECT_NAME}-restore-local $USB_DRIVE procmail;;
-			9) ${PROJECT_NAME}-restore-local $USB_DRIVE spamassassin;;
-			10) ${PROJECT_NAME}-restore-local $USB_DRIVE readme;;
-			11) ${PROJECT_NAME}-restore-local $USB_DRIVE ipfs;;
-			12) ${PROJECT_NAME}-restore-local $USB_DRIVE ssh;;
-			13) ${PROJECT_NAME}-restore-local $USB_DRIVE userconfig;;
-			14) ${PROJECT_NAME}-restore-local $USB_DRIVE userlocal;;
-			15) ${PROJECT_NAME}-restore-local $USB_DRIVE userfin;;
-			16) ${PROJECT_NAME}-restore-local $USB_DRIVE certs;;
-			17) ${PROJECT_NAME}-restore-local $USB_DRIVE personal;;
-			18) ${PROJECT_NAME}-restore-local $USB_DRIVE mailinglist;;
-			19) ${PROJECT_NAME}-restore-local $USB_DRIVE xmpp;;
-			20) ${PROJECT_NAME}-restore-local $USB_DRIVE gnusocial;;
-			21) ${PROJECT_NAME}-restore-local $USB_DRIVE hubzilla;;
-			22) ${PROJECT_NAME}-restore-local $USB_DRIVE syncthing;;
-			23) ${PROJECT_NAME}-restore-local $USB_DRIVE gogs;;
-			24) ${PROJECT_NAME}-restore-local $USB_DRIVE wiki;;
-			25) ${PROJECT_NAME}-restore-local $USB_DRIVE blog;;
-			26) ${PROJECT_NAME}-restore-local $USB_DRIVE cjdns;;
-			27) ${PROJECT_NAME}-restore-local $USB_DRIVE email;;
-			28) ${PROJECT_NAME}-restore-local $USB_DRIVE dlna;;
-			29) ${PROJECT_NAME}-restore-local $USB_DRIVE voip;;
-			30) ${PROJECT_NAME}-restore-local $USB_DRIVE ttrss;;
-			31) ${PROJECT_NAME}-restore-local $USB_DRIVE tox;;
-			32) ${PROJECT_NAME}-restore-local $USB_DRIVE mediagoblin;;
-		esac
+		applist="$applist $n $a off"
+		n=$[n+1]
+		app_index=$[app_index+1]
 	done
-	any_key
+
+	choices=$(dialog --stdout --backtitle $"Freedombone" \
+					 --title $"Restore apps" \
+					 --checklist $'Choose:' \
+					 80 40 20 $applist)
+
+	if [ $? -eq 0 ]; then
+		clear
+		ctr=0
+		for choice in $choices
+		do
+			app_index = $[choice-1]
+			app_name=${APPS_INSTALLED_NAMES[app_index]}
+			if [[ "${app_name}" == 'all' ]]; then
+				${PROJECT_NAME}-restore-local $USB_DRIVE
+			else
+				${PROJECT_NAME}-restore-local $USB_DRIVE "${app_name}"
+			fi
+			if [ ! "$?" = "0" ]; then
+				dialog --title $"Restore apps from USB" \
+					   --msgbox $"Restore of ${app_name} failed with code $?" 6 40
+				return
+			fi
+			ctr=$((ctr + 1))
+		done
+		if [ $ctr -gt 0 ]; then
+			dialog --title $"Restore apps from USB" \
+				   --msgbox $"Restore complete" 6 40
+		fi
+	fi
 }
 
 function restore_from_remote {
