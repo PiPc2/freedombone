@@ -150,7 +150,77 @@ function backup_remote_syncthing {
 }
 
 function restore_remote_syncthing {
-	echo -n ''
+	if [ -f /etc/systemd/system/syncthing.service ]; then
+		systemctl stop syncthing
+		systemctl stop cron
+	fi
+
+	if [ -d $SERVER_DIRECTORY/backup/syncthingconfig ]; then
+		echo $"Restoring syncthing configuration"
+		temp_restore_dir=/root/tempsyncthingconfig
+		function_check restore_directory_from_friend
+		restore_directory_from_friend $temp_restore_dir syncthingconfig
+		cp -r $temp_restore_dir/* /
+		if [ ! "$?" = "0" ]; then
+			systemctl start syncthing
+			systemctl start cron
+			exit 6833
+		fi
+		rm -rf $temp_restore_dir
+	fi
+
+	if [ -d $SERVER_DIRECTORY/backup/syncthingshared ]; then
+		echo $"Restoring syncthing shared files"
+		temp_restore_dir=/root/tempsyncthingshared
+		function_check restore_directory_from_friend
+		restore_directory_from_friend $temp_restore_dir syncthingshared
+		cp -r $temp_restore_dir/* /
+		if [ ! "$?" = "0" ]; then
+			systemctl start syncthing
+			systemctl start cron
+			exit 37904
+		fi
+		rm -rf $temp_restore_dir
+	fi
+
+	if [ -d $SERVER_DIRECTORY/backup/syncthing ]; then
+		for d in $SERVER_DIRECTORY/backup/syncthing/*/ ; do
+			USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+			if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+				if [ ! -d /home/$USERNAME ]; then
+					${PROJECT_NAME}-adduser $USERNAME
+				fi
+				echo $"Restoring syncthing files for $USERNAME"
+				temp_restore_dir=/root/tempsyncthing
+				function_check restore_directory_from_friend
+				restore_directory_from_friend $temp_restore_dir syncthing/$USERNAME
+				cp -r $temp_restore_dir/home/$USERNAME/Sync /home/$USERNAME/
+				if [ ! "$?" = "0" ]; then
+					rm -rf $temp_restore_dir
+					systemctl start syncthing
+					systemctl start cron
+					exit 68438
+				fi
+				rm -rf $temp_restore_dir
+
+				# restore device IDs from config settings
+				if [ -f /home/$USERNAME/.config/syncthing/.syncthing-server-id ]; then
+					cp /home/$USERNAME/.config/syncthing/.syncthing-server-id /home/$USERNAME/.syncthing-server-id
+					chown $USERNAME:$USERNAME /home/$USERNAME/.syncthing-server-id
+				fi
+				if [ -f /home/$USERNAME/.config/syncthing/.syncthingids ]; then
+					cp /home/$USERNAME/.config/syncthing/.syncthingids /home/$USERNAME/.syncthingids
+					chown $USERNAME:$USERNAME /home/$USERNAME/.syncthingids
+				fi
+				echo $"Restore of syncthing files for $USERNAME complete"
+			fi
+		done
+	fi
+
+	if [ -f /etc/systemd/system/syncthing.service ]; then
+		systemctl start syncthing
+		systemctl start cron
+	fi
 }
 
 function remove_syncthing {
