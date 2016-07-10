@@ -382,4 +382,178 @@ function backup_apps {
 	done
 }
 
+function restore_apps {
+	localremote=$1
+	FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+
+	RESTORE_APPS_COMPLETED=()
+
+	# for all the app scripts
+	for filename in $FILES
+	do
+		app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+		if [[ $RESTORE_APP == 'all' || $RESTORE_APP == "${app_name}"  ]]; then
+			if [[ $(item_in_array ${app_name} ${RESTORE_APPS_COMPLETED[@]}) != 0 ]]; then
+				function_check app_is_installed
+				if [[ "$(app_is_installed $a)" == "1" ]]; then
+					RESTORE_APPS_COMPLETED+=("${app_name}")
+					function_check restore_${localremote}_${app_name}
+					restore_${localremote}_${app_name}
+				fi
+			fi
+		fi
+	done
+}
+
+function restore_database_from_friend {
+	DATABASE_PASSWORD=
+	RESTORE_SUBDIR="root"
+
+	if [ -d $SERVER_DIRECTORY/backup/${1} ]; then
+		echo $"Restoring ${1} database"
+		restore_directory_from_friend /root/temp${1}data ${1}data
+		if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
+			echo $"Unable to restore ${1} database"
+			rm -rf /root/temp${1}data
+			exit 503
+		fi
+		mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+		if [ ! "$?" = "0" ]; then
+			echo "$mysqlsuccess"
+			exit 964
+		fi
+		shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
+		rm -rf /root/temp${1}data
+		echo $"Restoring ${1} installation"
+		restore_directory_from_friend /root/temp${1} ${1}
+		RESTORE_SUBDIR="var"
+		if [ ${1} ]; then
+
+			# special handling of ttrss
+			if [[ ${2} == "ttrss" ]]; then
+				if [ -d /etc/share/tt-rss ]; then
+					rm -rf /etc/share/tt-rss
+					mv /root/temp${1}/etc/share/tt-rss /etc/share/
+					if [ ! "$?" = "0" ]; then
+						exit 639
+					fi
+					if [ -d /etc/letsencrypt/live/${2} ]; then
+						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+					else
+						# Ensure that the bundled SSL cert is being used
+						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+						fi
+					fi
+				fi
+			fi
+
+			if [ -d /var/www/${2}/htdocs ]; then
+				if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
+					rm -rf /var/www/${2}/htdocs
+					mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
+					if [ ! "$?" = "0" ]; then
+						exit 683
+					fi
+					if [ -d /etc/letsencrypt/live/${2} ]; then
+						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+					else
+						# Ensure that the bundled SSL cert is being used
+						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+						fi
+					fi
+				fi
+			fi
+		fi
+	fi
+}
+
+function restore_database {
+	RESTORE_SUBDIR="root"
+
+	if [ -d $USB_MOUNT/backup/${1} ]; then
+		echo $"Restoring ${1} database"
+		function_check restore_directory_from_usb
+		restore_directory_from_usb "/root/temp${1}data" "${1}data"
+		if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
+			echo $"Unable to restore ${1} database"
+			rm -rf /root/temp${1}data
+			function_check set_user_permissions
+			set_user_permissions
+			function_check backup_unmount_drive
+			backup_unmount_drive
+			exit 503
+		fi
+		mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+		if [ ! "$?" = "0" ]; then
+			echo "$mysqlsuccess"
+			function_check set_user_permissions
+			set_user_permissions
+			function_check set_user_permissions
+			backup_unmount_drive
+			exit 964
+		fi
+		shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
+		rm -rf /root/temp${1}data
+		echo $"Restoring ${1} installation"
+		if [ ! -d /root/temp${1} ]; then
+			mkdir /root/temp${1}
+		fi
+		function_check restore_directory_from_usb
+		restore_directory_from_usb "/root/temp${1}" "${1}"
+		RESTORE_SUBDIR="var"
+		if [ ${2} ]; then
+			# special handline of ttrss
+			if [[ ${2} == "ttrss" ]]; then
+				if [ -d /etc/share/tt-rss ]; then
+					if [ -d /root/temp${1}/etc/share/tt-rss ]; then
+						rm -rf /etc/share/tt-rss
+						mv /root/temp${1}/etc/share/tt-rss /etc/share/
+						if [ ! "$?" = "0" ]; then
+							function_check set_user_permissions
+							set_user_permissions
+							function_check backup_unmount_drive
+							backup_unmount_drive
+							exit 528
+						fi
+						if [ -d /etc/letsencrypt/live/${2} ]; then
+							ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+							ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+						else
+							# Ensure that the bundled SSL cert is being used
+							if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+								sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+							fi
+						fi
+					fi
+				fi
+			fi
+
+			if [ -d /var/www/${2}/htdocs ]; then
+				if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
+					rm -rf /var/www/${2}/htdocs
+					mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
+					if [ ! "$?" = "0" ]; then
+						set_user_permissions
+						backup_unmount_drive
+						exit 683
+					fi
+					if [ -d /etc/letsencrypt/live/${2} ]; then
+						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+					else
+						# Ensure that the bundled SSL cert is being used
+						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+						fi
+					fi
+				fi
+			fi
+		fi
+	fi
+}
+
 # NOTE: deliberately no exit 0

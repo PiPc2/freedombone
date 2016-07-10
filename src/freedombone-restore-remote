@@ -105,72 +105,6 @@ function copy_gpg_keys {
 	cp -r /home/$ADMIN_USERNAME/.gnupg /root
 }
 
-function restore_database_from_friend {
-	DATABASE_PASSWORD=
-	RESTORE_SUBDIR="root"
-
-	if [ -d $SERVER_DIRECTORY/backup/${1} ]; then
-		echo $"Restoring ${1} database"
-		restore_directory_from_friend /root/temp${1}data ${1}data
-		if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
-			echo $"Unable to restore ${1} database"
-			rm -rf /root/temp${1}data
-			exit 503
-		fi
-		mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
-		if [ ! "$?" = "0" ]; then
-			echo "$mysqlsuccess"
-			exit 964
-		fi
-		shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
-		rm -rf /root/temp${1}data
-		echo $"Restoring ${1} installation"
-		restore_directory_from_friend /root/temp${1} ${1}
-		RESTORE_SUBDIR="var"
-		if [ ${1} ]; then
-
-			# special handling of ttrss
-			if [[ ${2} == "ttrss" ]]; then
-				if [ -d /etc/share/tt-rss ]; then
-					rm -rf /etc/share/tt-rss
-					mv /root/temp${1}/etc/share/tt-rss /etc/share/
-					if [ ! "$?" = "0" ]; then
-						exit 639
-					fi
-					if [ -d /etc/letsencrypt/live/${2} ]; then
-						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
-						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
-					else
-						# Ensure that the bundled SSL cert is being used
-						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
-							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
-						fi
-					fi
-				fi
-			fi
-
-			if [ -d /var/www/${2}/htdocs ]; then
-				if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
-					rm -rf /var/www/${2}/htdocs
-					mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
-					if [ ! "$?" = "0" ]; then
-						exit 683
-					fi
-					if [ -d /etc/letsencrypt/live/${2} ]; then
-						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
-						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
-					else
-						# Ensure that the bundled SSL cert is being used
-						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
-							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
-						fi
-					fi
-				fi
-			fi
-		fi
-	fi
-}
-
 function restore_configuration {
 	if [[ $RESTORE_APP != 'all' ]]; then
 		if [[ $RESTORE_APP != 'configuration' ]]; then
@@ -695,26 +629,6 @@ function restore_email {
 	done
 }
 
-function restore_dlna {
-	if [[ $RESTORE_APP != 'all' ]]; then
-		if [[ $RESTORE_APP != 'dlna' ]]; then
-			return
-		fi
-	fi
-	if [ -d /var/cache/minidlna ]; then
-		if [ -d $SERVER_DIRECTORY/backup/dlna ]; then
-			echo $"Restoring DLNA cache"
-			temp_restore_dir=/root/tempdlna
-			restore_directory_from_friend $temp_restore_dir dlna
-			cp -r $temp_restore_dir/var/cache/minidlna/* /var/cache/minidlna/
-			if [ ! "$?" = "0" ]; then
-				exit 982
-			fi
-			rm -rf $temp_restore_dir
-		fi
-	fi
-}
-
 # Social key management
 # Recover any key fragments and reconstruct the gpg key
 ${PROJECT_NAME}-recoverkey -u ${ADMIN_USERNAME} -l $BACKUP_LIST
@@ -737,7 +651,8 @@ restore_certs
 restore_personal_settings
 restore_mailing_list
 restore_email
-#restore_apps remote
+restore_apps remote
+set_user_permissions
 
 echo $"*** Remote restore was successful ***"
 
