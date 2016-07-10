@@ -136,7 +136,40 @@ function backup_remote_blog {
 }
 
 function restore_remote_blog {
-	echo -n ''
+	if [ -d $SERVER_DIRECTORY/backup/blog ]; then
+		FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
+		echo $"Restoring blog installation $FULLBLOG_DOMAIN_NAME"
+		temp_restore_dir=/root/tempblog
+		mkdir $temp_restore_dir
+		function_check restore_directory_from_friend
+		restore_directory_from_friend $temp_restore_dir blog
+		rm -rf /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs
+		cp -r $temp_restore_dir/var/www/${FULLBLOG_DOMAIN_NAME}/htdocs /var/www/${FULLBLOG_DOMAIN_NAME}/
+		if [ ! "$?" = "0" ]; then
+			exit 593
+		fi
+		rm -rf $temp_restore_dir
+		if [ ! -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content ]; then
+			echo $"No content directory found after restoring blog"
+			exit 287
+		fi
+		# Ensure that the bundled SSL cert is being used
+		if [ -f /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.bundle.crt ]; then
+			sed -i "s|${FULLBLOG_DOMAIN_NAME}.crt|${FULLBLOG_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${FULLBLOG_DOMAIN_NAME}
+		fi
+		for d in /home/*/ ; do
+			USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+			if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+				if [ -d /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/uncategorized/post ]; then
+					mv /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/*.md /var/www/${FULLBLOG_DOMAIN_NAME}/htdocs/content/$USERNAME/blog/uncategorized/post
+				fi
+		done
+		if [ -d /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME} ]; then
+			ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${FULLBLOG_DOMAIN_NAME}.key
+			ln -s /etc/letsencrypt/live/${FULLBLOG_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${FULLBLOG_DOMAIN_NAME}.pem
+		fi
+		echo $"Restore of blog complete"
+	fi
 }
 
 function remove_blog {
