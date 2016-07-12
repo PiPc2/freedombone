@@ -255,7 +255,48 @@ function configure_firewall_for_syncthing {
 	echo 'configure_firewall_for_syncthing' >> $COMPLETION_FILE
 }
 
+function mesh_install_syncthing {
+	chroot "$rootdir" wget -q https://syncthing.net/release-key.txt -O- | apt-key add -
+
+	echo "deb http://apt.syncthing.net/ syncthing release" | tee $rootdir/etc/apt/sources.list.d/syncthing.list
+	chroot "$rootdir" apt-get update
+	chroot "$rootdir" apt-get -y --force-yes install syncthing
+
+	# This probably does need to run as root so that it can access the Sync directories
+	# in each user's home directory
+	chroot "$rootdir" echo '[Unit]' > /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Description=Syncthing - Open Source Continuous File Synchronization' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Documentation=man:syncthing(1)' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'After=network.target' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Wants=syncthing-inotify@.service' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '[Service]' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'User=root' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo "Environment='all_proxy=socks5://localhost:9050'" >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'ExecStart=/usr/bin/syncthing -no-browser -no-restart -logflags=0' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'Restart=on-failure' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'SuccessExitStatus=3 4' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'RestartForceExitStatus=3 4' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo '[Install]' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" echo 'WantedBy=multi-user.target' >> /etc/systemd/system/syncthing.service
+	chroot "$rootdir" systemctl enable syncthing
+	chroot "$rootdir" systemctl daemon-reload
+
+	if ! grep -q "syncthing" $rootdir/etc/crontab; then
+		chroot "$rootdir" echo "*/1            * *   *   *   root /usr/local/bin/${PROJECT_NAME}-syncthing > /dev/null" >> /etc/crontab
+		chroot "$rootdir" systemctl restart cron
+	fi
+
+	echo 'mesh_install_syncthing'
+}
+
 function install_syncthing {
+	if [ $INSTALLING_MESH ]; then
+		mesh_install_syncthing
+		return
+	fi
+
 	if grep -Fxq "install_syncthing" $COMPLETION_FILE; then
 		return
 	fi

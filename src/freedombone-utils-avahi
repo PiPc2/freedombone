@@ -54,6 +54,46 @@ function create_avahi_service {
 	echo '</service-group>' >> /etc/avahi/services/${service_name}.service
 }
 
+function mesh_avahi {
+	chroot "$rootdir" apt-get -y install avahi-utils avahi-autoipd avahi-dnsconfd
+
+	decarray=( 1 2 3 4 5 6 7 8 9 0 )
+	PEER_ID=${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}
+	sed -i "s|#host-name=.*|host-name=P$PEER_ID|g" $rootdir/etc/avahi/avahi-daemon.conf
+
+	if [ ! -d $rootdir/etc/avahi/services ]; then
+		mkdir -p $rootdir/etc/avahi/services
+	fi
+
+	# remove an avahi service which isn't used
+	if [ -f $rootdir/etc/avahi/services/udisks.service ]; then
+		rm $rootdir/etc/avahi/services/udisks.service
+	fi
+
+	# Add an ssh service
+	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > $rootdir/etc/avahi/services/ssh.service
+	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> $rootdir/etc/avahi/services/ssh.service
+	echo '<service-group>' >> $rootdir/etc/avahi/services/ssh.service
+	echo '  <name replace-wildcards="yes">%h SSH</name>' >> $rootdir/etc/avahi/services/ssh.service
+	echo '  <service>' >> $rootdir/etc/avahi/services/ssh.service
+	echo '    <type>_ssh._tcp</type>' >> $rootdir/etc/avahi/services/ssh.service
+	echo "    <port>$SSH_PORT</port>" >> $rootdir/etc/avahi/services/ssh.service
+	echo '  </service>' >> $rootdir/etc/avahi/services/ssh.service
+	echo '</service-group>' >> $rootdir/etc/avahi/services/ssh.service
+
+	# keep the daemon running
+	WATCHDOG_SCRIPT_NAME="keepon"
+	echo '' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	echo '# keep avahi daemon running' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	echo 'AVAHI_RUNNING=$(pgrep avahi-daemon > /dev/null && echo Running)' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	echo 'if [ ! $AVAHI_RUNNING ]; then' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	echo '  systemctl start avahi-daemon' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	echo '  echo -n $CURRENT_DATE >> $LOGFILE' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	echo '  echo " Avahi daemon restarted" >> $LOGFILE' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	echo 'fi' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+	chmod +x $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+}
+
 function configure_avahi {
 	if grep -Fxq "configure_avahi" $COMPLETION_FILE; then
 		return

@@ -48,7 +48,7 @@ ZERONET_ID_REPO="https://github.com/HelloZeroNet/ZeroID"
 ZERONET_ID_COMMIT='ccf14fdc96fa9cdb2ddd8a7ab283a8e17a4f234b'
 
 function reconfigure_zeronet {
-    echo -n ''
+	echo -n ''
 }
 
 function upgrade_zeronet {
@@ -454,7 +454,170 @@ function install_zeronet_main {
 	echo 'install_zeronet_main' >> $COMPLETION_FILE
 }
 
+function mesh_zeronet {
+	# obtain commits from the main file
+	ZERONET_COMMIT_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+	if [ ${#ZERONET_COMMIT_MAIN} -gt 10 ]; then
+		ZERONET_COMMIT=$ZERONET_COMMIT_MAIN
+	fi
+	if [ ! $ZERONET_COMMIT ]; then
+		echo $'No Tox commit was specified'
+		exit 37046
+	fi
+
+	ZERONET_REPO_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+	if [ ${#ZERONET_REPO_MAIN} -gt 5 ]; then
+		ZERONET_REPO=$ZERONET_REPO_MAIN
+	fi
+	if [ ! $ZERONET_REPO ]; then
+		echo $'No Tox commit was specified'
+		exit 37046
+	fi
+
+	ZERONET_PORT_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_PORT=" | head -n 1 | awk -F '=' '{print $2}')
+	if [ ${#ZERONET_PORT_MAIN} -gt 1 ]; then
+		ZERONET_PORT=$ZERONET_PORT_MAIN
+	fi
+	if [ ! $ZERONET_PORT ]; then
+		echo $'No zeronet port was specified'
+		exit 67433
+	fi
+
+	chroot "$rootdir" apt-get -y install python python-msgpack python-gevent
+	chroot "$rootdir" apt-get -y install python-pip bittornado
+	chroot "$rootdir" pip install msgpack-python --upgrade
+
+	chroot "$rootdir" useradd -d $MESH_INSTALL_DIR/zeronet/ -s /bin/false zeronet
+	git clone $ZERONET_REPO $rootdir$MESH_INSTALL_DIR/zeronet
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet ]; then
+		echo 'WARNING: Unable to clone zeronet'
+		return
+	fi
+	cd $rootdir$MESH_INSTALL_DIR/zeronet
+	git checkout $ZERONET_COMMIT -b $ZERONET_COMMIT
+	if ! grep -q "ZeroNet commit" $COMPLETION_FILE; then
+		echo "ZeroNet commit:$ZERONET_COMMIT" >> $rootdir$COMPLETION_FILE
+	else
+		sed -i "s/ZeroNet commit.*/ZeroNet commit:$ZERONET_COMMIT/g" $COMPLETION_FILE
+	fi
+	chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+
+	# Hack to ensure that the file access port is opened
+	# This is because zeronet normally relies on an internet site
+	# to do this, but on a purely local mesh the internet isn't available
+	sed -i 's|fileserver_port = 0|fileserver_port = config.fileserver_port\n            sys.modules["main"].file_server.port_opened = True|g' $rootdir$MESH_INSTALL_DIR/zeronet/src/Site/Site.py
+
+	ZERONET_DAEMON=$rootdir/etc/systemd/system/zeronet.service
+	echo '[Unit]' > $ZERONET_DAEMON
+	echo 'Description=Zeronet Server' >> $ZERONET_DAEMON
+	echo 'After=syslog.target' >> $ZERONET_DAEMON
+	echo 'After=network.target' >> $ZERONET_DAEMON
+	echo '[Service]' >> $ZERONET_DAEMON
+	echo 'Type=simple' >> $ZERONET_DAEMON
+	echo 'User=zeronet' >> $ZERONET_DAEMON
+	echo 'Group=zeronet' >> $ZERONET_DAEMON
+	echo "WorkingDirectory=$MESH_INSTALL_DIR/zeronet" >> $ZERONET_DAEMON
+	echo "ExecStart=/usr/bin/python zeronet.py --ip_external replace.local --trackers_file $MESH_INSTALL_DIR/zeronet/bootstrap" >> $ZERONET_DAEMON
+	echo '' >> $ZERONET_DAEMON
+	echo 'TimeoutSec=300' >> $ZERONET_DAEMON
+	echo '' >> $ZERONET_DAEMON
+	echo '[Install]' >> $ZERONET_DAEMON
+	echo 'WantedBy=multi-user.target' >> $ZERONET_DAEMON
+
+	TRACKER_DAEMON=$rootdir/etc/systemd/system/tracker.service
+	echo '[Unit]' > $TRACKER_DAEMON
+	echo 'Description=Torrent Tracker' >> $TRACKER_DAEMON
+	echo 'After=syslog.target' >> $TRACKER_DAEMON
+	echo 'After=network.target' >> $TRACKER_DAEMON
+	echo '[Service]' >> $TRACKER_DAEMON
+	echo 'Type=simple' >> $TRACKER_DAEMON
+	echo 'User=tracker' >> $TRACKER_DAEMON
+	echo 'Group=tracker' >> $TRACKER_DAEMON
+	echo "WorkingDirectory=$MESH_INSTALL_DIR/tracker" >> $TRACKER_DAEMON
+	echo "ExecStart=/usr/bin/bttrack --port $TRACKER_PORT --dfile $MESH_INSTALL_DIR/tracker/dstate --logfile $MESH_INSTALL_DIR/tracker/tracker.log --nat_check 0 --scrape_allowed full --ipv6_enabled 0" >> $TRACKER_DAEMON
+	echo '' >> $TRACKER_DAEMON
+	echo 'TimeoutSec=300' >> $TRACKER_DAEMON
+	echo '' >> $TRACKER_DAEMON
+	echo '[Install]' >> $TRACKER_DAEMON
+	echo 'WantedBy=multi-user.target' >> $TRACKER_DAEMON
+
+	chroot "$rootdir" useradd -d $MESH_INSTALL_DIR/tracker/ -s /bin/false tracker
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/tracker ]; then
+		mkdir $rootdir$MESH_INSTALL_DIR/tracker
+	fi
+	chroot "$rootdir" chown -R tracker:tracker $MESH_INSTALL_DIR/tracker
+
+	# publish regularly
+	echo "* *     * * *   root    zeronetavahi > /dev/null" >> $rootdir/etc/crontab
+
+	chroot "$rootdir" systemctl enable tracker.service
+	chroot "$rootdir" systemctl enable zeronet.service
+}
+
+function mesh_zeronet_blog {
+	ZERONET_BLOG_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_BLOG_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+	ZERONET_BLOG_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_BLOG_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+
+	git clone $ZERONET_BLOG_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroBlog
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroBlog ]; then
+		echo $'ZeroBlog repo could not be cloned'
+		exit 6739
+	fi
+	cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroBlog
+	git checkout $ZERONET_BLOG_COMMIT -b $ZERONET_BLOG_COMMIT
+	chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
+function mesh_zeronet_mail {
+	ZERONET_MAIL_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_MAIL_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+	ZERONET_MAIL_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_MAIL_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+
+	git clone $ZERONET_MAIL_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroMail
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroMail ]; then
+		echo $'ZeroMail repo could not be cloned'
+		exit 78493
+	fi
+	cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroMail
+	git checkout $ZERONET_MAIL_COMMIT -b $ZERONET_MAIL_COMMIT
+	chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
+function mesh_zeronet_forum {
+	ZERONET_FORUM_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_FORUM_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+	ZERONET_FORUM_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_FORUM_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+
+	git clone $ZERONET_FORUM_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroTalk
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroTalk ]; then
+		echo $'ZeroTalk repo could not be cloned'
+		exit 78252
+	fi
+	cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroTalk
+	git checkout $ZERONET_FORUM_COMMIT -b $ZERONET_FORUM_COMMIT
+	chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
+function mesh_zeronet_id {
+	ZERONET_ID_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_ID_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+	ZERONET_ID_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_ID_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+
+	git clone $ZERONET_ID_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroID
+	if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroID ]; then
+		echo $'ZeroID repo could not be cloned'
+		exit 37936
+	fi
+	cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroID
+	git checkout $ZERONET_ID_COMMIT -b $ZERONET_ID_COMMIT
+	chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
 function install_zeronet {
+	if [ $INSTALLING_MESH ]; then
+		mesh_zeronet
+		mesh_zeronet_blog
+		mesh_zeronet_mail
+		mesh_zeronet_forum
+		return
+	fi
 	if grep -Fxq "install_zeronet" $COMPLETION_FILE; then
 		return
 	fi
