@@ -44,11 +44,11 @@ ZERONET_USER_HOME=/home/zeronet
 MY_USERNAME=$USER
 
 if [ ! -d $ZERONET_INSTALL ]; then
-    if [ -d /home/$MY_USERNAME/zeronet ]; then
-        ZERONET_INSTALL=/home/$MY_USERNAME/zeronet
-    else
-        exit 0
-    fi
+	if [ -d /home/$MY_USERNAME/zeronet ]; then
+		ZERONET_INSTALL=/home/$MY_USERNAME/zeronet
+	else
+		exit 0
+	fi
 fi
 
 BLOGS_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-blogs
@@ -71,284 +71,314 @@ ZERONET_MAIL_STR=$"ZeroNet Mail"
 ZERONET_FORUM_STR=$"ZeroNet Forum"
 NO_USERS_STR=$"No users found"
 
+# contains the output of the avahi command
+TEMPFILE_BASE=/tmp/tmpzeronetavahibase.txt
+TEMPFILE=/tmp/tmpzeronetavahi.txt
+
+function ipfs_bootstrap {
+	cat $TEMPFILE_BASE | grep "IPFS\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+	state=0
+	address=""
+	peer=""
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [ ${state} -eq "3" ]; then
+			if [[ $line == *"txt ="* ]]; then
+				ipfs_peer_id=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}' | awk -F '"' '{print $2}')
+				ipfs bootstrap add /ip4/${address}/tcp/${IPFS_PORT}/ipfs/${ipfs_peer_id}
+				state=0
+			fi
+		fi
+		if [ ${state} -eq "2" ]; then
+			if [[ $line == *"address ="* ]]; then
+				address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=3
+			fi
+		fi
+		if [ ${state} -eq "1" ]; then
+			if [[ $line == *"hostname ="* ]]; then
+				peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=2
+			fi
+		fi
+		if [[ $line == *"IPFS"* && $line == "= "* ]]; then
+			state=1
+		fi
+	done < "$TEMPFILE"
+}
+
+function detect_tox_users {
+	lstox > $TEMPFILE
+	toxctr=0
+	echo '<ol type="square">' >> $TOX_USERS_FILE.new
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [[ $line != "Failed*" ]]; then
+			echo "  <li>$line</li>" >> $TOX_USERS_FILE.new
+			toxctr=$((toxctr + 1))
+		fi
+	done < "$TEMPFILE"
+	if [ $toxctr -eq "0" ]; then
+		echo "  <li>${NO_USERS_STR}</li>" >> $TOX_USERS_FILE.new
+	fi
+	echo '<ol>' >> $TOX_USERS_FILE.new
+}
+
+function assemble_web_page {
+	f="$1"
+	fhome="$2"
+	cat "${f}-header.html" "${f}.new" "${f}-footer.html" > "${f}.html"
+	rm -f "${f}.new"
+	if [ -d "${fhome}" ]; then
+		sudo chown zeronet:zeronet "$f"
+	fi
+}
+
 function create_index {
-    if [ -f $ZERONET_INDEX ]; then
-        sed -i "s|.*${MY_BLOG_STR}.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myblog)\">${MY_BLOG_STR}</a></li>|g" $ZERONET_INDEX
-        sed -i "s|.*${MY_MAIL_STR}.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/mymail)\">${MY_MAIL_STR}</a></li>|g" $ZERONET_INDEX
-        sed -i "s|.*${MY_FORUM_STR}.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myforum)\">${MY_FORUM_STR}</a></li>|g" $ZERONET_INDEX
-        return
-    fi
-    echo '<!DOCTYPE html>' > $ZERONET_INDEX
-    echo '<html>' >> $ZERONET_INDEX
-    echo '<head>' >> $ZERONET_INDEX
-    echo "<title>$WEB_PAGE_TITLE</title>" >> $ZERONET_INDEX
-    echo '</head>' >> $ZERONET_INDEX
-    echo '<body>' >> $ZERONET_INDEX
-    echo "<H1>$WEB_PAGE_TITLE</H1>" >> $ZERONET_INDEX
-    echo '' >> $ZERONET_INDEX
-    echo "<H2>Your Sites</H2>" >> $ZERONET_INDEX
-    echo '' >> $ZERONET_INDEX
-    echo '<ol type="square">' >> $ZERONET_INDEX
-    echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myblog)\">${MY_BLOG_STR}</a></li>" >> $ZERONET_INDEX
-    echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/mymail)\">${MY_MAIL_STR}</a></li>" >> $ZERONET_INDEX
-    echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myforum)\">${MY_FORUM_STR}</a></li>" >> $ZERONET_INDEX
+	if [ -f $ZERONET_INDEX ]; then
+		sed -i "s|.*${MY_BLOG_STR}.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myblog)\">${MY_BLOG_STR}</a></li>|g" $ZERONET_INDEX
+		sed -i "s|.*${MY_MAIL_STR}.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/mymail)\">${MY_MAIL_STR}</a></li>|g" $ZERONET_INDEX
+		sed -i "s|.*${MY_FORUM_STR}.*|  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myforum)\">${MY_FORUM_STR}</a></li>|g" $ZERONET_INDEX
+		return
+	fi
+	echo '<!DOCTYPE html>' > $ZERONET_INDEX
+	echo '<html>' >> $ZERONET_INDEX
+	echo '<head>' >> $ZERONET_INDEX
+	echo "<title>$WEB_PAGE_TITLE</title>" >> $ZERONET_INDEX
+	echo '</head>' >> $ZERONET_INDEX
+	echo '<body>' >> $ZERONET_INDEX
+	echo "<H1>$WEB_PAGE_TITLE</H1>" >> $ZERONET_INDEX
+	echo '' >> $ZERONET_INDEX
+	echo "<H2>Your Sites</H2>" >> $ZERONET_INDEX
+	echo '' >> $ZERONET_INDEX
+	echo '<ol type="square">' >> $ZERONET_INDEX
+	echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myblog)\">${MY_BLOG_STR}</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/mymail)\">${MY_MAIL_STR}</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"$(cat /home/$MY_USERNAME/.config/zeronet/myforum)\">${MY_FORUM_STR}</a></li>" >> $ZERONET_INDEX
 #    echo "  <li><a href=\"http://localhost:5001/webui\">File Share</a></li>" >> $ZERONET_INDEX
-    echo '</ol>' >> $ZERONET_INDEX
-    echo '' >> $ZERONET_INDEX
-    echo "<H2>On the Mesh</H2>" >> $ZERONET_INDEX
-    echo '' >> $ZERONET_INDEX
-    echo '<ol type="square">' >> $ZERONET_INDEX
-    echo "  <li><a href=\"${BLOGS_FILE}.html\">${BLOGS_STR}</a></li>" >> $ZERONET_INDEX
-    echo "  <li><a href=\"${MAIL_FILE}.html\">${MAIL_STR}</a></li>" >> $ZERONET_INDEX
-    echo "  <li><a href=\"${FORUM_FILE}.html\">${FORA_STR}</a></li>" >> $ZERONET_INDEX
-    echo "  <li><a href=\"${TOX_USERS_FILE}.html\">Tox Users</a></li>" >> $ZERONET_INDEX
-    echo '</ol>' >> $ZERONET_INDEX
-    echo '' >> $ZERONET_INDEX
-    echo '</body>' >> $ZERONET_INDEX
-    echo '</html>' >> $ZERONET_INDEX
+	echo '</ol>' >> $ZERONET_INDEX
+	echo '' >> $ZERONET_INDEX
+	echo "<H2>On the Mesh</H2>" >> $ZERONET_INDEX
+	echo '' >> $ZERONET_INDEX
+	echo '<ol type="square">' >> $ZERONET_INDEX
+	echo "  <li><a href=\"${BLOGS_FILE}.html\">${BLOGS_STR}</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"${MAIL_FILE}.html\">${MAIL_STR}</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"${FORUM_FILE}.html\">${FORA_STR}</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"${TOX_USERS_FILE}.html\">Tox Users</a></li>" >> $ZERONET_INDEX
+	echo '</ol>' >> $ZERONET_INDEX
+	echo '' >> $ZERONET_INDEX
+	echo '</body>' >> $ZERONET_INDEX
+	echo '</html>' >> $ZERONET_INDEX
 }
 
 function create_header {
-    header_file=${1}-header.html
-    if [ -f $header_file ]; then
-        return
-    fi
-    echo '<!DOCTYPE html>' > $header_file
-    echo '<html>' >> $header_file
-    echo '<head>' >> $header_file
-    echo "<title>$WEB_PAGE_TITLE - $2</title>" >> $header_file
-    echo '<meta http-equiv="refresh" content="60">' >> $header_file
-    echo '</head>' >> $header_file
-    echo '<body>' >> $header_file
-    echo "<H1>$2</H1>" >> $header_file
+	header_file=${1}-header.html
+	if [ -f $header_file ]; then
+		return
+	fi
+	echo '<!DOCTYPE html>' > $header_file
+	echo '<html>' >> $header_file
+	echo '<head>' >> $header_file
+	echo "<title>$WEB_PAGE_TITLE - $2</title>" >> $header_file
+	echo '<meta http-equiv="refresh" content="60">' >> $header_file
+	echo '</head>' >> $header_file
+	echo '<body>' >> $header_file
+	echo "<H1>$2</H1>" >> $header_file
 }
 
 function create_footer {
-    footer_file=${1}-footer.html
-    if [ -f $footer_file ]; then
-        return
-    fi
-    echo '</body>' >> $footer_file
-    echo '</html>' >> $footer_file
+	footer_file=${1}-footer.html
+	if [ -f $footer_file ]; then
+		return
+	fi
+	echo '</body>' >> $footer_file
+	echo '</html>' >> $footer_file
+}
+
+function avahi_extract_info {
+	# Create a list of bootstrap nodes
+	avahi-browse -atr > $TEMPFILE_BASE
+	cat $TEMPFILE_BASE | grep "hostname =\|address =\|port =" > $TEMPFILE
+	if [ ! -f $TEMPFILE ]; then
+		exit 1
+	fi
+}
+
+function zeronet_detect {
+	if [ -f $ZERONET_CONFIG.new ]; then
+		rm -f $ZERONET_CONFIG.new
+	fi
+
+	touch $ZERONET_CONFIG.new
+
+	state=0
+	address=""
+	peer=""
+	tracker_ctr=0
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [ ${state} -eq "1" ]; then
+			if [[ $line == *"address ="* ]]; then
+				address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				tracker_url="http://$peer:$TRACKER_PORT/announce"
+				if ! grep -q "$tracker_url" $ZERONET_CONFIG.new; then
+					echo "$tracker_url" >> $ZERONET_CONFIG.new
+					tracker_ctr=$((tracker_ctr + 1))
+				fi
+				state=0
+			fi
+		fi
+		if [[ $line == *"hostname ="* ]]; then
+			peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+			state=1
+		fi
+	done < "$TEMPFILE"
+}
+
+function zeronet_detect_blog {
+	if [ -f $BLOGS_FILE.new ]; then
+		rm -f $BLOGS_FILE.new
+	fi
+
+	cat $TEMPFILE_BASE | grep "${ZERONET_BLOG_STR}\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+	state=0
+	address=""
+	peer=""
+	echo '<ol type="square">' >> $BLOGS_FILE.new
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [ ${state} -eq "3" ]; then
+			if [[ $line == *"txt ="* ]]; then
+				blog_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				echo "  <li><a href=${blog_url}>${peer}</a></li>" >> $BLOGS_FILE.new
+				state=0
+			fi
+		fi
+		if [ ${state} -eq "2" ]; then
+			if [[ $line == *"address ="* ]]; then
+				address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=3
+			fi
+		fi
+		if [ ${state} -eq "1" ]; then
+			if [[ $line == *"hostname ="* ]]; then
+				peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=2
+			fi
+		fi
+		if [[ $line == *"${ZERONET_BLOG_STR}"* && $line == "= "* ]]; then
+			state=1
+		fi
+	done < "$TEMPFILE"
+	echo '</ol>' >> $BLOGS_FILE.new
+}
+
+function zeronet_detect_mail {
+	if [ -f $MAIL_FILE.new ]; then
+		rm -f $MAIL_FILE.new
+	fi
+
+	cat $TEMPFILE_BASE | grep "${ZERONET_MAIL_STR}\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+	state=0
+	address=""
+	peer=""
+	echo '<ol type="square">' >> $MAIL_FILE.new
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [ ${state} -eq "3" ]; then
+			if [[ $line == *"txt ="* ]]; then
+				mail_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				echo "  <li><a href=${mail_url}>${peer}</a></li>" >> $MAIL_FILE.new
+				state=0
+			fi
+		fi
+		if [ ${state} -eq "2" ]; then
+			if [[ $line == *"address ="* ]]; then
+				address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=3
+			fi
+		fi
+		if [ ${state} -eq "1" ]; then
+			if [[ $line == *"hostname ="* ]]; then
+				peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=2
+			fi
+		fi
+		if [[ $line == *"${ZERONET_MAIL_STR}"* && $line == "= "* ]]; then
+			state=1
+		fi
+	done < "$TEMPFILE"
+	echo '</ol>' >> $MAIL_FILE.new
+}
+
+function zeronet_detect_fora {
+	if [ -f $FORUM_FILE.new ]; then
+		rm -f $FORUM_FILE.new
+	fi
+
+	cat $TEMPFILE_BASE | grep "${ZERONET_FORUM_STR}\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+	state=0
+	address=""
+	peer=""
+	echo '<ol type="square">' >> $FORUM_FILE.new
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [ ${state} -eq "3" ]; then
+			if [[ $line == *"txt ="* ]]; then
+				forum_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				echo "  <li><a href=${forum_url}>${peer}</a></li>" >> $FORUM_FILE.new
+				state=0
+			fi
+		fi
+		if [ ${state} -eq "2" ]; then
+			if [[ $line == *"address ="* ]]; then
+				address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=3
+			fi
+		fi
+		if [ ${state} -eq "1" ]; then
+			if [[ $line == *"hostname ="* ]]; then
+				peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=2
+			fi
+		fi
+		if [[ $line == *"${ZERONET_FORUM_STR}"* && $line == "= "* ]]; then
+			state=1
+		fi
+	done < "$TEMPFILE"
+	echo '<ol>' >> $FORUM_FILE.new
+}
+
+function avahi_remove_info {
+	rm -f $TEMPFILE_BASE
+	rm -f $TEMPFILE
+}
+
+function zeronet_update_config {
+	if [ ${tracker_ctr} -gt "0" ]; then
+		cp -f $ZERONET_CONFIG.new $ZERONET_CONFIG
+	else
+		if [ -f $ZERONET_CONFIG ]; then
+			rm -f $ZERONET_CONFIG
+		fi
+	fi
+	rm -f $ZERONET_CONFIG.new
+	if [ -d $ZERONET_USER_HOME ]; then
+		sudo chown zeronet:zeronet $ZERONET_CONFIG
+	fi
 }
 
 if [ ! -d /etc/avahi ]; then
-    exit 0
+	exit 0
 fi
 
-# Create a list of bootstrap nodes
-TEMPFILE_BASE=/tmp/tmpzeronetavahibase.txt
-TEMPFILE=/tmp/tmpzeronetavahi.txt
-avahi-browse -atr > $TEMPFILE_BASE
-cat $TEMPFILE_BASE | grep "hostname =\|address =\|port =" > $TEMPFILE
-if [ ! -f $TEMPFILE ]; then
-    exit 1
-fi
-
-if [ -f $ZERONET_CONFIG.new ]; then
-    rm -f $ZERONET_CONFIG.new
-fi
-
-touch $ZERONET_CONFIG.new
-
-state=0
-address=""
-peer=""
-tracker_ctr=0
-while IFS='' read -r line || [[ -n "$line" ]]; do
-    if [ ${state} -eq "1" ]; then
-        if [[ $line == *"address ="* ]]; then
-            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            tracker_url="http://$peer:$TRACKER_PORT/announce"
-            if ! grep -q "$tracker_url" $ZERONET_CONFIG.new; then
-                echo "$tracker_url" >> $ZERONET_CONFIG.new
-                tracker_ctr=$((tracker_ctr + 1))
-            fi
-            state=0
-        fi
-    fi
-    if [[ $line == *"hostname ="* ]]; then
-        peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-        state=1
-    fi
-done < "$TEMPFILE"
-
-# detect blogs in the mesh
-if [ -f $BLOGS_FILE.new ]; then
-    rm -f $BLOGS_FILE.new
-fi
-
-cat $TEMPFILE_BASE | grep "${ZERONET_BLOG_STR}\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
-
-state=0
-address=""
-peer=""
-echo '<ol type="square">' >> $BLOGS_FILE.new
-while IFS='' read -r line || [[ -n "$line" ]]; do
-    if [ ${state} -eq "3" ]; then
-        if [[ $line == *"txt ="* ]]; then
-            blog_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            echo "  <li><a href=${blog_url}>${peer}</a></li>" >> $BLOGS_FILE.new
-            state=0
-        fi
-    fi
-    if [ ${state} -eq "2" ]; then
-        if [[ $line == *"address ="* ]]; then
-            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=3
-        fi
-    fi
-    if [ ${state} -eq "1" ]; then
-        if [[ $line == *"hostname ="* ]]; then
-            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=2
-        fi
-    fi
-    if [[ $line == *"${ZERONET_BLOG_STR}"* && $line == "= "* ]]; then
-        state=1
-    fi
-done < "$TEMPFILE"
-echo '</ol>' >> $BLOGS_FILE.new
-
-
-# detect mail in the mesh
-if [ -f $MAIL_FILE.new ]; then
-    rm -f $MAIL_FILE.new
-fi
-
-cat $TEMPFILE_BASE | grep "${ZERONET_MAIL_STR}\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
-
-state=0
-address=""
-peer=""
-echo '<ol type="square">' >> $MAIL_FILE.new
-while IFS='' read -r line || [[ -n "$line" ]]; do
-    if [ ${state} -eq "3" ]; then
-        if [[ $line == *"txt ="* ]]; then
-            mail_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            echo "  <li><a href=${mail_url}>${peer}</a></li>" >> $MAIL_FILE.new
-            state=0
-        fi
-    fi
-    if [ ${state} -eq "2" ]; then
-        if [[ $line == *"address ="* ]]; then
-            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=3
-        fi
-    fi
-    if [ ${state} -eq "1" ]; then
-        if [[ $line == *"hostname ="* ]]; then
-            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=2
-        fi
-    fi
-    if [[ $line == *"${ZERONET_MAIL_STR}"* && $line == "= "* ]]; then
-        state=1
-    fi
-done < "$TEMPFILE"
-echo '</ol>' >> $MAIL_FILE.new
-
-
-# detect fora in the mesh
-if [ -f $FORUM_FILE.new ]; then
-    rm -f $FORUM_FILE.new
-fi
-
-cat $TEMPFILE_BASE | grep "${ZERONET_FORUM_STR}\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
-
-state=0
-address=""
-peer=""
-echo '<ol type="square">' >> $FORUM_FILE.new
-while IFS='' read -r line || [[ -n "$line" ]]; do
-    if [ ${state} -eq "3" ]; then
-        if [[ $line == *"txt ="* ]]; then
-            forum_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            echo "  <li><a href=${forum_url}>${peer}</a></li>" >> $FORUM_FILE.new
-            state=0
-        fi
-    fi
-    if [ ${state} -eq "2" ]; then
-        if [[ $line == *"address ="* ]]; then
-            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=3
-        fi
-    fi
-    if [ ${state} -eq "1" ]; then
-        if [[ $line == *"hostname ="* ]]; then
-            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=2
-        fi
-    fi
-    if [[ $line == *"${ZERONET_FORUM_STR}"* && $line == "= "* ]]; then
-        state=1
-    fi
-done < "$TEMPFILE"
-echo '<ol>' >> $FORUM_FILE.new
-
-
-# IPFS bootstrap
-cat $TEMPFILE_BASE | grep "IPFS\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
-
-state=0
-address=""
-peer=""
-while IFS='' read -r line || [[ -n "$line" ]]; do
-    if [ ${state} -eq "3" ]; then
-        if [[ $line == *"txt ="* ]]; then
-            ipfs_peer_id=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}' | awk -F '"' '{print $2}')
-            ipfs bootstrap add /ip4/${address}/tcp/${IPFS_PORT}/ipfs/${ipfs_peer_id}
-            state=0
-        fi
-    fi
-    if [ ${state} -eq "2" ]; then
-        if [[ $line == *"address ="* ]]; then
-            address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=3
-        fi
-    fi
-    if [ ${state} -eq "1" ]; then
-        if [[ $line == *"hostname ="* ]]; then
-            peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
-            state=2
-        fi
-    fi
-    if [[ $line == *"IPFS"* && $line == "= "* ]]; then
-        state=1
-    fi
-done < "$TEMPFILE"
-
-
-# detect Tox users
-lstox > $TEMPFILE
-toxctr=0
-echo '<ol type="square">' >> $TOX_USERS_FILE.new
-while IFS='' read -r line || [[ -n "$line" ]]; do
-    if [[ $line != "Failed*" ]]; then
-        echo "  <li>$line</li>" >> $TOX_USERS_FILE.new
-        toxctr=$((toxctr + 1))
-    fi
-done < "$TEMPFILE"
-if [ $toxctr -eq "0" ]; then
-    echo "  <li>${NO_USERS_STR}</li>" >> $TOX_USERS_FILE.new
-fi
-echo '<ol>' >> $TOX_USERS_FILE.new
-
-
-rm -f $TEMPFILE_BASE
-rm -f $TEMPFILE
-
-if [ ${tracker_ctr} -gt "0" ]; then
-    cp -f $ZERONET_CONFIG.new $ZERONET_CONFIG
-else
-    if [ -f $ZERONET_CONFIG ]; then
-        rm -f $ZERONET_CONFIG
-    fi
-fi
-rm -f $ZERONET_CONFIG.new
-if [ -d $ZERONET_USER_HOME ]; then
-    sudo chown zeronet:zeronet $ZERONET_CONFIG
-fi
+avahi_extract_info
+zeronet_detect
+zeronet_detect_blog
+zeronet_detect_mail
+zeronet_detect_fora
+ipfs_bootstrap
+detect_tox_users
+avahi_remove_info
+zeronet_update_config
 
 # make some html headers and footers
 create_header $BLOGS_FILE $BLOGS_STR
@@ -363,32 +393,9 @@ create_footer $TOX_USERS_FILE
 # make the index page
 create_index
 
-# create a web page showing the available blogs
-cat ${BLOGS_FILE}-header.html ${BLOGS_FILE}.new ${BLOGS_FILE}-footer.html > ${BLOGS_FILE}.html
-rm -f ${BLOGS_FILE}.new
-if [ -d $ZERONET_USER_HOME ]; then
-    sudo chown zeronet:zeronet $BLOGS_FILE
-fi
-
-# create a web page showing the available mail contacts
-cat ${MAIL_FILE}-header.html ${MAIL_FILE}.new ${MAIL_FILE}-footer.html > ${MAIL_FILE}.html
-rm -f ${MAIL_FILE}.new
-if [ -d $ZERONET_USER_HOME ]; then
-    sudo chown zeronet:zeronet $MAIL_FILE
-fi
-
-# create a web page showing the available fora
-cat ${FORUM_FILE}-header.html ${FORUM_FILE}.new ${FORUM_FILE}-footer.html > ${FORUM_FILE}.html
-rm -f ${FORUM_FILE}.new
-if [ -d $ZERONET_USER_HOME ]; then
-    sudo chown zeronet:zeronet $FORUM_FILE
-fi
-
-# create a web page showing Tox users
-cat ${TOX_USERS_FILE}-header.html ${TOX_USERS_FILE}.new ${TOX_USERS_FILE}-footer.html > ${TOX_USERS_FILE}.html
-rm -f ${TOX_USERS_FILE}.new
-if [ -d $ZERONET_USER_HOME ]; then
-    sudo chown zeronet:zeronet $TOX_USERS_FILE
-fi
+assemble_web_page ${BLOGS_FILE} $ZERONET_USER_HOME
+assemble_web_page ${MAIL_FILE} $ZERONET_USER_HOME
+assemble_web_page ${FORUM_FILE} $ZERONET_USER_HOME
+assemble_web_page ${TOX_USERS_FILE} $ZERONET_USER_HOME
 
 exit 0
