@@ -334,6 +334,43 @@ function install_tox_client {
 }
 
 function mesh_tox_node {
+	# obtain commits from the main file
+	TOXCORE_COMMIT_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXCORE_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+	if [ ${#TOXCORE_COMMIT_MAIN} -gt 10 ]; then
+		TOXCORE_COMMIT=$TOXCORE_COMMIT_MAIN
+	fi
+	if [ ! $TOXCORE_COMMIT ]; then
+		echo $'No Tox commit was specified'
+		exit 76325
+	fi
+
+	TOXID_REPO_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXID_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+	if [ ${#TOXID_REPO_MAIN} -gt 5 ]; then
+		TOXID_REPO=$TOXID_REPO_MAIN
+	fi
+	if [ ! $TOXID_REPO ]; then
+		echo $'No ToxID repo was specified'
+		exit 78252
+	fi
+
+	TOX_PORT_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOX_PORT=" | head -n 1 | awk -F '=' '{print $2}')
+	if [ ${#TOX_PORT_MAIN} -gt 2 ]; then
+		TOX_PORT=$TOX_PORT_MAIN
+	fi
+	if [ ! $TOX_PORT ]; then
+		echo $'No Tox port was specified'
+		exit 32856
+	fi
+
+	TOXCORE_REPO_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXCORE_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+	if [ ${#TOXCORE_REPO_MAIN} -gt 10 ]; then
+		TOXCORE_REPO=$TOXCORE_REPO_MAIN
+	fi
+	if [ ! $TOXCORE_REPO ]; then
+		echo $'No Tox repo was specified'
+		exit 16865
+	fi
+
 	if [ ! $TOXCORE_COMMIT ]; then
 		echo $'No Tox commit was specified'
 		exit 76325
@@ -347,21 +384,27 @@ function mesh_tox_node {
 	chroot "$rootdir" apt-get -y install build-essential libtool autotools-dev
 	chroot "$rootdir" apt-get -y install automake checkinstall check git yasm
 	chroot "$rootdir" apt-get -y install libsodium13 libsodium-dev libcap2-bin
-	chroot "$rootdir" apt-get -y install libconfig9 libconfig-dev
+	chroot "$rootdir" apt-get -y install libconfig9 libconfig-dev autoconf
 
 	TEMP_SCRIPT_NAME=fbtmp37272.sh
 	TEMP_SCRIPT=/tmp/$TEMP_SCRIPT_NAME
 
 	mkdir -p ${rootdir}${INSTALL_DIR}
 	git clone ${TOXCORE_REPO} ${rootdir}${INSTALL_DIR}/toxcore
-	chroot "$rootdir" cd $INSTALL_DIR/toxcore && git checkout $TOXCORE_COMMIT -b $TOXCORE_COMMIT
-	chroot "$rootdir" cd $INSTALL_DIR/toxcore && autoreconf -i
-	chroot "$rootdir" cd $INSTALL_DIR/toxcore && ./configure --enable-daemon --disable-av
-	chroot "$rootdir" cd $INSTALL_DIR/toxcore && make
 	if [ ! "$?" = "0" ]; then
-		exit 429285
+		exit 429252
 	fi
-	chroot "$rootdir" cd $INSTALL_DIR/toxcore && make install
+	cd ${rootdir}$INSTALL_DIR/toxcore
+	git checkout $TOXCORE_COMMIT -b $TOXCORE_COMMIT
+
+	chroot "$rootdir" /bin/bash -x <<EOF
+cd ${INSTALL_DIR}/toxcore
+autoreconf -i
+./configure --enable-daemon --disable-av
+make
+make install
+EOF
+
 	cp $rootdir/usr/local/lib/libtoxcore* $rootdir/usr/lib/
 	cp ${rootdir}${INSTALL_DIR}/toxcore/other/bootstrap_daemon/tox-bootstrapd.service $rootdir/etc/systemd/system/
 	sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' $rootdir/etc/systemd/system/tox-bootstrapd.service
@@ -447,12 +490,13 @@ function mesh_tox_avahi {
 		echo $'Unable to clone toxid repo'
 		exit 768352
 	fi
-	chroot "$rootdir" cd $INSTALL_DIR/toxid && make
-	if [ ! "$?" = "0" ]; then
-		echo $'Unable to make toxid'
-		exit 386823
-	fi
-	chroot "$rootdir" cd $INSTALL_DIR/toxid && make install
+
+	chroot "$rootdir" /bin/bash -x <<EOF
+cd ${INSTALL_DIR}/toxid
+make
+make install
+EOF
+
 	if [ ! -f $rootdir/usr/local/bin/toxavahi ]; then
 	  exit 3621729
 	fi
