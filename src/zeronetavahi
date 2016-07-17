@@ -46,6 +46,7 @@ BLOGS_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-blogs
 MAIL_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-mail
 FORUM_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-fora
 TOX_USERS_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-tox-users
+ID_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-id
 ZERONET_INDEX=$ZERONET_INSTALL/mesh.html
 ZERONET_CONFIG=$ZERONET_INSTALL/bootstrap
 
@@ -54,13 +55,20 @@ IPFS_PORT=4001
 MY_BLOG_STR=$"My Blog"
 MY_MAIL_STR=$"My Mail"
 MY_FORUM_STR=$"My Forum"
+MY_ID_STR=$"My ID Service"
+
 BLOGS_STR=$"Blogs"
 MAIL_STR=$"Mail"
 FORA_STR=$"Fora"
-ZERONET_BLOG_STR=$"ZeroNet Blog"
-ZERONET_MAIL_STR=$"ZeroNet Mail"
-ZERONET_FORUM_STR=$"ZeroNet Forum"
+TOX_STR=$"Tox Users"
+ID_STR=$"ID Services"
 NO_USERS_STR=$"No users found"
+
+# service names advertised by avahi
+ZERONET_BLOG_STR="ZeroNet Blog"
+ZERONET_MAIL_STR="ZeroNet Mail"
+ZERONET_FORUM_STR="ZeroNet Forum"
+ZERONET_ID_STR="ZeroNet ID Service"
 
 # contains the output of the avahi command
 TEMPFILE_BASE=/tmp/tmpzeronetavahibase.txt
@@ -128,10 +136,12 @@ function create_index {
 	blogaddress=$(cat /home/$MY_USERNAME/.config/zeronet/myblog)
 	mailaddress=$(cat /home/$MY_USERNAME/.config/zeronet/mymail)
 	forumaddress=$(cat /home/$MY_USERNAME/.config/zeronet/myforum)
+	idaddress=$(cat /home/$MY_USERNAME/.config/zeronet/myzeroid)
 	if [ -f $ZERONET_INDEX ]; then
 		sed -i "s|.*${MY_BLOG_STR}.*|  <li><a href=\"${blogaddress}\">${MY_BLOG_STR}</a></li>|g" $ZERONET_INDEX
 		sed -i "s|.*${MY_MAIL_STR}.*|  <li><a href=\"${mailaddress}\">${MY_MAIL_STR}</a></li>|g" $ZERONET_INDEX
 		sed -i "s|.*${MY_FORUM_STR}.*|  <li><a href=\"${forumaddress}\">${MY_FORUM_STR}</a></li>|g" $ZERONET_INDEX
+		sed -i "s|.*${MY_ID_STR}.*|  <li><a href=\"${idaddress}\">${MY_ID_STR}</a></li>|g" $ZERONET_INDEX
 		return
 	fi
 	echo '<!DOCTYPE html>' > $ZERONET_INDEX
@@ -148,6 +158,7 @@ function create_index {
 	echo "  <li><a href=\"${blogaddress}\">${MY_BLOG_STR}</a></li>" >> $ZERONET_INDEX
 	echo "  <li><a href=\"${mailaddress}\">${MY_MAIL_STR}</a></li>" >> $ZERONET_INDEX
 	echo "  <li><a href=\"${forumaddress}\">${MY_FORUM_STR}</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"${idaddress}\">${MY_ID_STR}</a></li>" >> $ZERONET_INDEX
 #    echo "  <li><a href=\"http://localhost:5001/webui\">File Share</a></li>" >> $ZERONET_INDEX
 	echo '</ol>' >> $ZERONET_INDEX
 	echo '' >> $ZERONET_INDEX
@@ -157,7 +168,8 @@ function create_index {
 	echo "  <li><a href=\"${BLOGS_FILE}.html\">${BLOGS_STR}</a></li>" >> $ZERONET_INDEX
 	echo "  <li><a href=\"${MAIL_FILE}.html\">${MAIL_STR}</a></li>" >> $ZERONET_INDEX
 	echo "  <li><a href=\"${FORUM_FILE}.html\">${FORA_STR}</a></li>" >> $ZERONET_INDEX
-	echo "  <li><a href=\"${TOX_USERS_FILE}.html\">Tox Users</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"${ID_FILE}.html\">${ID_STR}</a></li>" >> $ZERONET_INDEX
+	echo "  <li><a href=\"${TOX_USERS_FILE}.html\">${TOX_STR}</a></li>" >> $ZERONET_INDEX
 	echo '</ol>' >> $ZERONET_INDEX
 	echo '' >> $ZERONET_INDEX
 	echo '</body>' >> $ZERONET_INDEX
@@ -341,6 +353,44 @@ function zeronet_detect_fora {
 	echo '<ol>' >> $FORUM_FILE.new
 }
 
+function zeronet_detect_id {
+	if [ -f $ID_FILE.new ]; then
+		rm -f $ID_FILE.new
+	fi
+
+	cat $TEMPFILE_BASE | grep "${ZERONET_ID_STR}\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+	state=0
+	address=""
+	peer=""
+	echo '<ol type="square">' >> $ID_FILE.new
+	while IFS='' read -r line || [[ -n "$line" ]]; do
+		if [ ${state} -eq "3" ]; then
+			if [[ $line == *"txt ="* ]]; then
+				id_url=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				echo "  <li><a href=${id_url}>${peer}</a></li>" >> $ID_FILE.new
+				state=0
+			fi
+		fi
+		if [ ${state} -eq "2" ]; then
+			if [[ $line == *"address ="* ]]; then
+				address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=3
+			fi
+		fi
+		if [ ${state} -eq "1" ]; then
+			if [[ $line == *"hostname ="* ]]; then
+				peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+				state=2
+			fi
+		fi
+		if [[ $line == *"${ZERONET_ID_STR}"* && $line == "= "* ]]; then
+			state=1
+		fi
+	done < "$TEMPFILE"
+	echo '</ol>' >> $ID_FILE.new
+}
+
 function avahi_remove_info {
 	rm -f $TEMPFILE_BASE
 	rm -f $TEMPFILE
@@ -366,6 +416,7 @@ fi
 
 avahi_extract_info
 zeronet_detect
+zeronet_detect_id
 zeronet_detect_blog
 zeronet_detect_mail
 zeronet_detect_fora
@@ -375,6 +426,7 @@ avahi_remove_info
 zeronet_update_config
 
 # make some html headers and footers
+create_header $ID_FILE $ID_STR
 create_header $BLOGS_FILE $BLOGS_STR
 create_header $MAIL_FILE $MAIL_STR
 create_header $FORUM_FILE $FORA_STR
@@ -387,6 +439,7 @@ create_footer $TOX_USERS_FILE
 # make the index page
 create_index
 
+assemble_web_page ${ID_FILE} $ZERONET_INSTALL
 assemble_web_page ${BLOGS_FILE} $ZERONET_INSTALL
 assemble_web_page ${MAIL_FILE} $ZERONET_INSTALL
 assemble_web_page ${FORUM_FILE} $ZERONET_INSTALL
