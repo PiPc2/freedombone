@@ -48,439 +48,520 @@ TOX_NODES=
 #)
 
 MESH_INSTALL_DIR=/var/lib
+MESH_INSTALL_COMPLETED=/root/.mesh_setup_completed
+MESH_INSTALL_SETUP=/root/.initial_mesh_setup
 
 function set_hostname {
-    DEFAULT_DOMAIN_NAME="$1"
+	DEFAULT_DOMAIN_NAME="$1"
 
-    echo "$DEFAULT_DOMAIN_NAME" > /etc/hostname
-    hostname $DEFAULT_DOMAIN_NAME
+	echo "$DEFAULT_DOMAIN_NAME" > /etc/hostname
+	hostname $DEFAULT_DOMAIN_NAME
 
-    if grep -q "127.0.1.1" /etc/hosts; then
-        sed -i "s/127.0.1.1.*/127.0.1.1       $DEFAULT_DOMAIN_NAME/g" /etc/hosts
-    else
-        echo "127.0.1.1  $DEFAULT_DOMAIN_NAME" >> /etc/hosts
-    fi
+	if grep -q "127.0.1.1" /etc/hosts; then
+		sed -i "s/127.0.1.1.*/127.0.1.1       $DEFAULT_DOMAIN_NAME/g" /etc/hosts
+	else
+		echo "127.0.1.1  $DEFAULT_DOMAIN_NAME" >> /etc/hosts
+	fi
 }
 
 function change_avahi_name {
-    decarray=( 1 2 3 4 5 6 7 8 9 0 )
-    PEER_ID=${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}
-    sed -i "s|#host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
-    sed -i "s|host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
-    set_hostname P$PEER_ID
+	decarray=( 1 2 3 4 5 6 7 8 9 0 )
+	PEER_ID=${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}
+	sed -i "s|#host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
+	sed -i "s|host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
+	set_hostname P$PEER_ID
 
-    echo "New avahi name for this peer is P$PEER_ID"
-    toilet "mesh-$PEER_ID"
-    echo $"avahi name changed to P${PEER_ID}.local" >> $INSTALL_LOG
+	echo "New avahi name for this peer is P$PEER_ID"
+	toilet "mesh-$PEER_ID"
+	echo $"avahi name changed to P${PEER_ID}.local" >> $INSTALL_LOG
+	if [ -f $MESH_INSTALL_COMPLETED ]; then
+		systemctl restart avahi-daemon
+	fi
 }
 
 function regenerate_ssh_host_keys {
-    echo $"Regenerating ssh host keys" >> $INSTALL_LOG
-    rm -f /etc/ssh/ssh_host_*
-    dpkg-reconfigure openssh-server
-    echo $'ssh host keys regenerated' >> $INSTALL_LOG
-    # remove small moduli
-    awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
-    mv ~/moduli /etc/ssh/moduli
-    echo $'ssh small moduli removed' >> $INSTALL_LOG
+	echo $"Regenerating ssh host keys" >> $INSTALL_LOG
+	rm -f /etc/ssh/ssh_host_*
+	dpkg-reconfigure openssh-server
+	echo $'ssh host keys regenerated' >> $INSTALL_LOG
+	# remove small moduli
+	awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
+	mv ~/moduli /etc/ssh/moduli
+	echo $'ssh small moduli removed' >> $INSTALL_LOG
+
+	if [ -f $MESH_INSTALL_COMPLETED ]; then
+		systemctl restart ssh
+	fi
 }
 
 function configure_zeronet {
-    sed -i "s|ExecStart=.*|ExecStart=/usr/bin/python zeronet.py --ip_external P${PEER_ID}.local --trackers_file $MESH_INSTALL_DIR/zeronet/bootstrap|g" /etc/systemd/system/zeronet.service
-    echo $"zeronet daemon updated to P${PEER_ID}.local" >> $INSTALL_LOG
+	sed -i "s|ExecStart=.*|ExecStart=/usr/bin/python zeronet.py --ip_external P${PEER_ID}.local --trackers_file $MESH_INSTALL_DIR/zeronet/bootstrap|g" /etc/systemd/system/zeronet.service
+	echo $"zeronet daemon updated to P${PEER_ID}.local" >> $INSTALL_LOG
+}
+
+function remove_zeronet_blog {
+	blog_address=$(cat $MESH_INSTALL_DIR/zeronet/blog.txt | grep "Site address" | awk -F ':' '{print $2}')
+	ZERONET_BLOG_ADDRESS=${blog_address//[[:blank:]]/}
+	if [ -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS ]; then
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/*.json
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/*.html
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/*
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/img/post/*
+		rm -rf $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/img/post
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/img/*
+		rm -rf $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS
+	fi
 }
 
 function configure_zeronet_blog {
-    echo $'Updating ZeroNet Blog' >> $INSTALL_LOG
-    ZERONET_DEFAULT_BLOG_TITLE="${MY_USERNAME}'s Blog"
+	if [ -f $MESH_INSTALL_COMPLETED ]; then
+		remove_zeronet_blog
+	fi
 
-    cd $MESH_INSTALL_DIR/zeronet
-    python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/blog.txt
-    if [ ! -f $MESH_INSTALL_DIR/zeronet/blog.txt ]; then
-        echo $'Unable to create ZeroNet blog' >> $INSTALL_LOG
-        exit 7386
-    fi
-    blog_address=$(cat blog.txt | grep "Site address" | awk -F ':' '{print $2}')
-    blog_private_key=$(cat blog.txt | grep "Site private key" | awk -F ':' '{print $2}')
-    ZERONET_BLOG_ADDRESS=${blog_address//[[:blank:]]/}
-    ZERONET_BLOG_PRIVATE_KEY=${blog_private_key//[[:blank:]]/}
+	echo $'Updating ZeroNet Blog' >> $INSTALL_LOG
+	ZERONET_DEFAULT_BLOG_TITLE="${MY_USERNAME}'s Blog"
 
-    if [ ${#ZERONET_BLOG_ADDRESS} -lt 20 ]; then
-        echo $"Address:    $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create zeronet blog address' >> $INSTALL_LOG
-        exit 7358
-    fi
+	cd $MESH_INSTALL_DIR/zeronet
+	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/blog.txt
+	if [ ! -f $MESH_INSTALL_DIR/zeronet/blog.txt ]; then
+		echo $'Unable to create ZeroNet blog' >> $INSTALL_LOG
+		exit 7386
+	fi
+	blog_address=$(cat $MESH_INSTALL_DIR/zeronet/blog.txt | grep "Site address" | awk -F ':' '{print $2}')
+	blog_private_key=$(cat $MESH_INSTALL_DIR/zeronet/blog.txt | grep "Site private key" | awk -F ':' '{print $2}')
+	ZERONET_BLOG_ADDRESS=${blog_address//[[:blank:]]/}
+	ZERONET_BLOG_PRIVATE_KEY=${blog_private_key//[[:blank:]]/}
 
-    if [ ${#ZERONET_BLOG_PRIVATE_KEY} -lt 20 ]; then
-        echo $"Address:    $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create zeronet blog private key' >> $INSTALL_LOG
-        exit 1639
-    fi
+	if [ ${#ZERONET_BLOG_ADDRESS} -lt 20 ]; then
+		echo $"Address:    $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create zeronet blog address' >> $INSTALL_LOG
+		exit 7358
+	fi
 
-    if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS" ]; then
-        echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-        exit 7638
-    fi
+	if [ ${#ZERONET_BLOG_PRIVATE_KEY} -lt 20 ]; then
+		echo $"Address:    $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create zeronet blog private key' >> $INSTALL_LOG
+		exit 1639
+	fi
 
-    echo $"ZeroNet Blog address:     $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-    echo $"ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
-    cp -r $MESH_INSTALL_DIR/zeronet/ZeroBlog/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS
+	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS" ]; then
+		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
+		exit 7638
+	fi
 
-    if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data ]; then
-        mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
-    fi
-    cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
-    sed -i "s/MyZeroBlog/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
-    sed -i "s/My ZeroBlog./$ZERONET_DEFAULT_BLOG_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
-    sed -i "s/ZeroBlog Demo/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
-    sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_BLOG_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
-    sed -i "s/Blogging platform Demo/Blogging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/content.json
-    python zeronet.py siteSign $ZERONET_BLOG_ADDRESS $ZERONET_BLOG_PRIVATE_KEY
+	echo $"ZeroNet Blog address:     $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
+	echo $"ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
+	cp -r $MESH_INSTALL_DIR/zeronet/ZeroBlog/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS
 
-    # update the avahi service
-    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-blog.service
-    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-blog.service
-    echo '<service-group>' >> /tmp/zeronet-blog.service
-    echo '  <name replace-wildcards="yes">%h ZeroNet Blog</name>' >> /tmp/zeronet-blog.service
-    echo '  <service>' >> /tmp/zeronet-blog.service
-    echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-blog.service
-    echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-blog.service
-    echo "    <txt-record>$ZERONET_URL/$ZERONET_BLOG_ADDRESS</txt-record>" >> /tmp/zeronet-blog.service
-    echo '  </service>' >> /tmp/zeronet-blog.service
-    echo '</service-group>' >> /tmp/zeronet-blog.service
-    cp /tmp/zeronet-blog.service /etc/avahi/services/zeronet-blog.service
+	if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data ]; then
+		mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
+	fi
+	cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
+	sed -i "s/MyZeroBlog/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
+	sed -i "s/My ZeroBlog./$ZERONET_DEFAULT_BLOG_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
+	sed -i "s/ZeroBlog Demo/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
+	sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_BLOG_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
+	sed -i "s/Blogging platform Demo/Blogging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/content.json
+	python zeronet.py siteSign $ZERONET_BLOG_ADDRESS $ZERONET_BLOG_PRIVATE_KEY
 
-    if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
-        mkdir -p /home/${MY_USERNAME}/.config/zeronet
-        chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
-    fi
-    echo "$ZERONET_URL/$ZERONET_BLOG_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/myblog
+	# update the avahi service
+	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-blog.service
+	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-blog.service
+	echo '<service-group>' >> /tmp/zeronet-blog.service
+	echo '  <name replace-wildcards="yes">%h ZeroNet Blog</name>' >> /tmp/zeronet-blog.service
+	echo '  <service>' >> /tmp/zeronet-blog.service
+	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-blog.service
+	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-blog.service
+	echo "    <txt-record>$ZERONET_URL/$ZERONET_BLOG_ADDRESS</txt-record>" >> /tmp/zeronet-blog.service
+	echo '  </service>' >> /tmp/zeronet-blog.service
+	echo '</service-group>' >> /tmp/zeronet-blog.service
+	cp /tmp/zeronet-blog.service /etc/avahi/services/zeronet-blog.service
 
-    sed -i "s|ZeroNet Blog address.*|ZeroNet Blog address: $ZERONET_BLOG_ADDRESS|g" /home/${MY_USERNAME}/README
-    sed -i "s|ZeroNet Blog private key.*|ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
+	if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
+		mkdir -p /home/${MY_USERNAME}/.config/zeronet
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
+	fi
+	echo "$ZERONET_URL/$ZERONET_BLOG_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/myblog
 
-    if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
-        chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
-    fi
+	sed -i "s|ZeroNet Blog address.*|ZeroNet Blog address: $ZERONET_BLOG_ADDRESS|g" /home/${MY_USERNAME}/README
+	sed -i "s|ZeroNet Blog private key.*|ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
 
-    echo $'Update of ZeroNet Blog completed' >> $INSTALL_LOG
+	if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
+		chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
+	fi
+
+	echo $'Update of ZeroNet Blog completed' >> $INSTALL_LOG
+}
+
+function remove_zeronet_mail {
+	mail_address=$(cat $MESH_INSTALL_DIR/zeronet/mail.txt | grep "Site address" | awk -F ':' '{print $2}')
+	ZERONET_MAIL_ADDRESS=${mail_address//[[:blank:]]/}
+	if [ -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS ]; then
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/*.json
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/*.html
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/users/*
+		rm -rf $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/users
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/*
+		rm -rf $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS
+	fi
 }
 
 function configure_zeronet_mail {
-    echo $'Updating ZeroNet Mail' >> $INSTALL_LOG
-    ZERONET_DEFAULT_MAIL_TITLE="${MY_USERNAME}'s Mail"
+	if [ -f $MESH_INSTALL_COMPLETED ]; then
+		remove_zeronet_mail
+	fi
 
-    cd $MESH_INSTALL_DIR/zeronet
-    python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/mail.txt
-    if [ ! -f $MESH_INSTALL_DIR/zeronet/mail.txt ]; then
-        echo $'Unable to create ZeroNet mail' >> $INSTALL_LOG
-        exit 72574
-    fi
-    mail_address=$(cat mail.txt | grep "Site address" | awk -F ':' '{print $2}')
-    mail_private_key=$(cat mail.txt | grep "Site private key" | awk -F ':' '{print $2}')
-    ZERONET_MAIL_ADDRESS=${mail_address//[[:blank:]]/}
-    ZERONET_MAIL_PRIVATE_KEY=${mail_private_key//[[:blank:]]/}
+	echo $'Updating ZeroNet Mail' >> $INSTALL_LOG
+	ZERONET_DEFAULT_MAIL_TITLE="${MY_USERNAME}'s Mail"
 
-    if [ ${#ZERONET_MAIL_ADDRESS} -lt 20 ]; then
-        echo $"Address:    $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create zeronet mail address' >> $INSTALL_LOG
-        exit 7358
-    fi
+	cd $MESH_INSTALL_DIR/zeronet
+	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/mail.txt
+	if [ ! -f $MESH_INSTALL_DIR/zeronet/mail.txt ]; then
+		echo $'Unable to create ZeroNet mail' >> $INSTALL_LOG
+		exit 72574
+	fi
+	mail_address=$(cat $MESH_INSTALL_DIR/zeronet/mail.txt | grep "Site address" | awk -F ':' '{print $2}')
+	mail_private_key=$(cat $MESH_INSTALL_DIR/zeronet/mail.txt | grep "Site private key" | awk -F ':' '{print $2}')
+	ZERONET_MAIL_ADDRESS=${mail_address//[[:blank:]]/}
+	ZERONET_MAIL_PRIVATE_KEY=${mail_private_key//[[:blank:]]/}
 
-    if [ ${#ZERONET_MAIL_PRIVATE_KEY} -lt 20 ]; then
-        echo $"Address:    $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create zeronet mail private key' >> $INSTALL_LOG
-        exit 1639
-    fi
+	if [ ${#ZERONET_MAIL_ADDRESS} -lt 20 ]; then
+		echo $"Address:    $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create zeronet mail address' >> $INSTALL_LOG
+		exit 7358
+	fi
 
-    if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS" ]; then
-        echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-        exit 7638
-    fi
+	if [ ${#ZERONET_MAIL_PRIVATE_KEY} -lt 20 ]; then
+		echo $"Address:    $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create zeronet mail private key' >> $INSTALL_LOG
+		exit 1639
+	fi
 
-    echo $"ZeroNet Mail address:     $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-    echo $"ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
-    cp -r $MESH_INSTALL_DIR/zeronet/ZeroMail/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS
+	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS" ]; then
+		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
+		exit 7638
+	fi
 
-    if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data ]; then
-        mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
-    fi
-    cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
-    sed -i "s/MyZeroMail/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
-    sed -i "s/My ZeroMail./$ZERONET_DEFAULT_MAIL_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
-    sed -i "s/ZeroMail Demo/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
-    sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_MAIL_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
-    sed -i "s/Mailging platform Demo/Mailging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/content.json
-    python zeronet.py siteSign $ZERONET_MAIL_ADDRESS $ZERONET_MAIL_PRIVATE_KEY
+	echo $"ZeroNet Mail address:     $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
+	echo $"ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
+	cp -r $MESH_INSTALL_DIR/zeronet/ZeroMail/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS
 
-    # Add an avahi service
-    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-mail.service
-    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-mail.service
-    echo '<service-group>' >> /tmp/zeronet-mail.service
-    echo '  <name replace-wildcards="yes">%h ZeroNet Mail</name>' >> /tmp/zeronet-mail.service
-    echo '  <service>' >> /tmp/zeronet-mail.service
-    echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-mail.service
-    echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-mail.service
-    echo "    <txt-record>$ZERONET_URL/$ZERONET_MAIL_ADDRESS</txt-record>" >> /tmp/zeronet-mail.service
-    echo '  </service>' >> /tmp/zeronet-mail.service
-    echo '</service-group>' >> /tmp/zeronet-mail.service
-    cp /tmp/zeronet-mail.service /etc/avahi/services/zeronet-mail.service
+	if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data ]; then
+		mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
+	fi
+	cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
+	sed -i "s/MyZeroMail/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
+	sed -i "s/My ZeroMail./$ZERONET_DEFAULT_MAIL_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
+	sed -i "s/ZeroMail Demo/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
+	sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_MAIL_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
+	sed -i "s/Mailging platform Demo/Mailging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/content.json
+	python zeronet.py siteSign $ZERONET_MAIL_ADDRESS $ZERONET_MAIL_PRIVATE_KEY
 
-    if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
-        mkdir -p /home/${MY_USERNAME}/.config/zeronet
-        chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
-    fi
-    echo "$ZERONET_URL/$ZERONET_MAIL_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/mymail
+	# Add an avahi service
+	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-mail.service
+	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-mail.service
+	echo '<service-group>' >> /tmp/zeronet-mail.service
+	echo '  <name replace-wildcards="yes">%h ZeroNet Mail</name>' >> /tmp/zeronet-mail.service
+	echo '  <service>' >> /tmp/zeronet-mail.service
+	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-mail.service
+	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-mail.service
+	echo "    <txt-record>$ZERONET_URL/$ZERONET_MAIL_ADDRESS</txt-record>" >> /tmp/zeronet-mail.service
+	echo '  </service>' >> /tmp/zeronet-mail.service
+	echo '</service-group>' >> /tmp/zeronet-mail.service
+	cp /tmp/zeronet-mail.service /etc/avahi/services/zeronet-mail.service
 
-    sed -i "s|ZeroNet Mail address.*|ZeroNet Mail address: $ZERONET_MAIL_ADDRESS|g" /home/${MY_USERNAME}/README
-    sed -i "s|ZeroNet Mail private key.*|ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
+	if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
+		mkdir -p /home/${MY_USERNAME}/.config/zeronet
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
+	fi
+	echo "$ZERONET_URL/$ZERONET_MAIL_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/mymail
 
-    if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
-        chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
-    fi
+	sed -i "s|ZeroNet Mail address.*|ZeroNet Mail address: $ZERONET_MAIL_ADDRESS|g" /home/${MY_USERNAME}/README
+	sed -i "s|ZeroNet Mail private key.*|ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
 
-    echo $'Update of ZeroNet Mail completed' >> $INSTALL_LOG
+	if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
+		chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
+	fi
+
+	echo $'Update of ZeroNet Mail completed' >> $INSTALL_LOG
+}
+
+function remove_zeronet_forum {
+	forum_address=$(cat $MESH_INSTALL_DIR/zeronet/forum.txt | grep "Site address" | awk -F ':' '{print $2}')
+	ZERONET_FORUM_ADDRESS=${forum_address//[[:blank:]]/}
+	if [ -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS ]; then
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/data/users/*
+		rm -rf $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/data/users
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/data/*
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/*.html
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/*.json
+		rm -rf $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS
+	fi
 }
 
 function configure_zeronet_forum {
-    echo $'Updating ZeroNet Forum' >> $INSTALL_LOG
-    ZERONET_DEFAULT_FORUM_TITLE="${MY_USERNAME}'s Forum"
+	if [ -f $MESH_INSTALL_COMPLETED ]; then
+		remove_zeronet_forum
+	fi
+	echo $'Updating ZeroNet Forum' >> $INSTALL_LOG
+	ZERONET_DEFAULT_FORUM_TITLE="${MY_USERNAME}'s Forum"
 
-    cd $MESH_INSTALL_DIR/zeronet
-    python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/forum.txt
-    if [ ! -f $MESH_INSTALL_DIR/zeronet/forum.txt ]; then
-        echo $'Unable to create ZeroNet forum' >> $INSTALL_LOG
-        exit 47962
-    fi
-    forum_address=$(cat forum.txt | grep "Site address" | awk -F ':' '{print $2}')
-    forum_private_key=$(cat forum.txt | grep "Site private key" | awk -F ':' '{print $2}')
-    ZERONET_FORUM_ADDRESS=${forum_address//[[:blank:]]/}
-    ZERONET_FORUM_PRIVATE_KEY=${forum_private_key//[[:blank:]]/}
+	cd $MESH_INSTALL_DIR/zeronet
+	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/forum.txt
+	if [ ! -f $MESH_INSTALL_DIR/zeronet/forum.txt ]; then
+		echo $'Unable to create ZeroNet forum' >> $INSTALL_LOG
+		exit 47962
+	fi
+	forum_address=$(cat $MESH_INSTALL_DIR/zeronet/forum.txt | grep "Site address" | awk -F ':' '{print $2}')
+	forum_private_key=$(cat $MESH_INSTALL_DIR/zeronet/forum.txt | grep "Site private key" | awk -F ':' '{print $2}')
+	ZERONET_FORUM_ADDRESS=${forum_address//[[:blank:]]/}
+	ZERONET_FORUM_PRIVATE_KEY=${forum_private_key//[[:blank:]]/}
 
-    if [ ${#ZERONET_FORUM_ADDRESS} -lt 20 ]; then
-        echo $"Address:    $ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create zeronet forum address' >> $INSTALL_LOG
-        exit 76352
-    fi
+	if [ ${#ZERONET_FORUM_ADDRESS} -lt 20 ]; then
+		echo $"Address:    $ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create zeronet forum address' >> $INSTALL_LOG
+		exit 76352
+	fi
 
-    if [ ${#ZERONET_FORUM_PRIVATE_KEY} -lt 20 ]; then
-        echo $"Address:    $ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create zeronet forum private key' >> $INSTALL_LOG
-        exit 87356
-    fi
+	if [ ${#ZERONET_FORUM_PRIVATE_KEY} -lt 20 ]; then
+		echo $"Address:    $ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create zeronet forum private key' >> $INSTALL_LOG
+		exit 87356
+	fi
 
-    if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS" ]; then
-        echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
-        exit 7638
-    fi
+	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS" ]; then
+		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
+		exit 7638
+	fi
 
-    echo $"Forum address:     $ZERONET_FORUM_ADDRESS"
-    echo $"Forum private key: $ZERONET_FORUM_PRIVATE_KEY"
-    cp -r $MESH_INSTALL_DIR/zeronet/ZeroTalk/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS
-    sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
-    sed -i "s/ZeroTalk/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
-    sed -i "s|Demo for dynamic, decentralized content publishing.|$ZERONET_DEFAULT_FORUM_TAGLINE|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
-    sed -i 's/Messaging Board Demo/Messaging Board/g' $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
-    sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
-    python zeronet.py siteSign $ZERONET_FORUM_ADDRESS $ZERONET_FORUM_PRIVATE_KEY --inner_path data/users/content.json
+	echo $"Forum address:     $ZERONET_FORUM_ADDRESS"
+	echo $"Forum private key: $ZERONET_FORUM_PRIVATE_KEY"
+	cp -r $MESH_INSTALL_DIR/zeronet/ZeroTalk/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS
+	sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
+	sed -i "s/ZeroTalk/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
+	sed -i "s|Demo for dynamic, decentralized content publishing.|$ZERONET_DEFAULT_FORUM_TAGLINE|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
+	sed -i 's/Messaging Board Demo/Messaging Board/g' $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
+	sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
+	python zeronet.py siteSign $ZERONET_FORUM_ADDRESS $ZERONET_FORUM_PRIVATE_KEY --inner_path data/users/content.json
 
-    # Add an avahi service
-    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-forum.service
-    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-forum.service
-    echo '<service-group>' >> /tmp/zeronet-forum.service
-    echo '  <name replace-wildcards="yes">%h ZeroNet Forum</name>' >> /tmp/zeronet-forum.service
-    echo '  <service>' >> /tmp/zeronet-forum.service
-    echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-forum.service
-    echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-forum.service
-    echo "    <txt-record>$ZERONET_URL/$ZERONET_FORUM_ADDRESS</txt-record>" >> /tmp/zeronet-forum.service
-    echo '  </service>' >> /tmp/zeronet-forum.service
-    echo '</service-group>' >> /tmp/zeronet-forum.service
-    sudo cp /tmp/zeronet-forum.service /etc/avahi/services/zeronet-forum.service
+	# Add an avahi service
+	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-forum.service
+	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-forum.service
+	echo '<service-group>' >> /tmp/zeronet-forum.service
+	echo '  <name replace-wildcards="yes">%h ZeroNet Forum</name>' >> /tmp/zeronet-forum.service
+	echo '  <service>' >> /tmp/zeronet-forum.service
+	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-forum.service
+	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-forum.service
+	echo "    <txt-record>$ZERONET_URL/$ZERONET_FORUM_ADDRESS</txt-record>" >> /tmp/zeronet-forum.service
+	echo '  </service>' >> /tmp/zeronet-forum.service
+	echo '</service-group>' >> /tmp/zeronet-forum.service
+	sudo cp /tmp/zeronet-forum.service /etc/avahi/services/zeronet-forum.service
 
-    if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
-        mkdir -p /home/${MY_USERNAME}/.config/zeronet
-        chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
-    fi
-    echo "$ZERONET_URL/$ZERONET_FORUM_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/myforum
+	if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
+		mkdir -p /home/${MY_USERNAME}/.config/zeronet
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
+	fi
+	echo "$ZERONET_URL/$ZERONET_FORUM_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/myforum
 
-    sed -i "s|ZeroNet Forum address.*|ZeroNet Forum address: $ZERONET_FORUM_ADDRESS|g" /home/${MY_USERNAME}/README
-    sed -i "s|ZeroNet Forum private key.*|ZeroNet Forum private key: $ZERONET_FORUM_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
+	sed -i "s|ZeroNet Forum address.*|ZeroNet Forum address: $ZERONET_FORUM_ADDRESS|g" /home/${MY_USERNAME}/README
+	sed -i "s|ZeroNet Forum private key.*|ZeroNet Forum private key: $ZERONET_FORUM_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
 
-    if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
-        chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
-    fi
+	if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
+		chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
+	fi
 
-    echo $'Update of ZeroNet Forum completed' >> $INSTALL_LOG
+	echo $'Update of ZeroNet Forum completed' >> $INSTALL_LOG
+}
+
+function remove_zeronet_id {
+	zeroid_address=$(cat $MESH_INSTALL_DIR/zeronet/zeroid.txt | grep "Site address" | awk -F ':' '{print $2}')
+	ZERONET_ID_ADDRESS=${zeroid_address//[[:blank:]]/}
+	if [ -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS ]; then
+		shred -zu $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS/*
+		rm -rf $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS
+	fi
 }
 
 function configure_zeronet_id {
-    echo $'Updating ZeroID' >> $INSTALL_LOG
+	if [ -f $MESH_INSTALL_COMPLETED ]; then
+		remove_zeronet_id
+	fi
+	echo $'Updating ZeroID' >> $INSTALL_LOG
 
-    cd $MESH_INSTALL_DIR/zeronet
-    python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/zeroid.txt
-    if [ ! -f $MESH_INSTALL_DIR/zeronet/zeroid.txt ]; then
-        echo $'Unable to create ZeroID' >> $INSTALL_LOG
-        exit 47962
-    fi
-    zeroid_address=$(cat zeroid.txt | grep "Site address" | awk -F ':' '{print $2}')
-    zeroid_private_key=$(cat zeroid.txt | grep "Site private key" | awk -F ':' '{print $2}')
-    ZERONET_ID_ADDRESS=${zeroid_address//[[:blank:]]/}
-    ZERONET_ID_PRIVATE_KEY=${zeroid_private_key//[[:blank:]]/}
+	cd $MESH_INSTALL_DIR/zeronet
+	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/zeroid.txt
+	if [ ! -f $MESH_INSTALL_DIR/zeronet/zeroid.txt ]; then
+		echo $'Unable to create ZeroID' >> $INSTALL_LOG
+		exit 47962
+	fi
+	zeroid_address=$(cat $MESH_INSTALL_DIR/zeronet/zeroid.txt | grep "Site address" | awk -F ':' '{print $2}')
+	zeroid_private_key=$(cat $MESH_INSTALL_DIR/zeronet/zeroid.txt | grep "Site private key" | awk -F ':' '{print $2}')
+	ZERONET_ID_ADDRESS=${zeroid_address//[[:blank:]]/}
+	ZERONET_ID_PRIVATE_KEY=${zeroid_private_key//[[:blank:]]/}
 
-    if [ ${#ZERONET_ID_ADDRESS} -lt 20 ]; then
-        echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create ZeroID address' >> $INSTALL_LOG
-        exit 76352
-    fi
+	if [ ${#ZERONET_ID_ADDRESS} -lt 20 ]; then
+		echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create ZeroID address' >> $INSTALL_LOG
+		exit 76352
+	fi
 
-    if [ ${#ZERONET_ID_PRIVATE_KEY} -lt 20 ]; then
-        echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
-        echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
-        echo $'Unable to create ZeroID private key' >> $INSTALL_LOG
-        exit 87356
-    fi
+	if [ ${#ZERONET_ID_PRIVATE_KEY} -lt 20 ]; then
+		echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
+		echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
+		echo $'Unable to create ZeroID private key' >> $INSTALL_LOG
+		exit 87356
+	fi
 
-    if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS" ]; then
-        echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS" >> $INSTALL_LOG
-        exit 378434
-    fi
+	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS" ]; then
+		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS" >> $INSTALL_LOG
+		exit 378434
+	fi
 
-    echo $"ZeroID address:     $ZERONET_ID_ADDRESS"
-    echo $"ZeroID private key: $ZERONET_ID_PRIVATE_KEY"
-    cp -r $MESH_INSTALL_DIR/zeronet/ZeroID/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS
-    # TODO
-    sed -i "s///g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS/content.json
-    python zeronet.py siteSign $ZERONET_ID_ADDRESS $ZERONET_ID_PRIVATE_KEY --inner_path data/users/content.json
+	echo $"ZeroID address:     $ZERONET_ID_ADDRESS"
+	echo $"ZeroID private key: $ZERONET_ID_PRIVATE_KEY"
+	cp -r $MESH_INSTALL_DIR/zeronet/ZeroID/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS
+	# TODO
+	sed -i "s///g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS/content.json
+	python zeronet.py siteSign $ZERONET_ID_ADDRESS $ZERONET_ID_PRIVATE_KEY --inner_path data/users/content.json
 
-    # Add an avahi service
-    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-id.service
-    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-id.service
-    echo '<service-group>' >> /tmp/zeronet-id.service
-    echo '  <name replace-wildcards="yes">%h ZeroNet ID Service</name>' >> /tmp/zeronet-id.service
-    echo '  <service>' >> /tmp/zeronet-id.service
-    echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-id.service
-    echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-id.service
-    echo "    <txt-record>$ZERONET_URL/$ZERONET_ID_ADDRESS</txt-record>" >> /tmp/zeronet-id.service
-    echo '  </service>' >> /tmp/zeronet-id.service
-    echo '</service-group>' >> /tmp/zeronet-id.service
-    sudo cp /tmp/zeronet-id.service /etc/avahi/services/zeronet-id.service
+	# Add an avahi service
+	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-id.service
+	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-id.service
+	echo '<service-group>' >> /tmp/zeronet-id.service
+	echo '  <name replace-wildcards="yes">%h ZeroNet ID Service</name>' >> /tmp/zeronet-id.service
+	echo '  <service>' >> /tmp/zeronet-id.service
+	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-id.service
+	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-id.service
+	echo "    <txt-record>$ZERONET_URL/$ZERONET_ID_ADDRESS</txt-record>" >> /tmp/zeronet-id.service
+	echo '  </service>' >> /tmp/zeronet-id.service
+	echo '</service-group>' >> /tmp/zeronet-id.service
+	sudo cp /tmp/zeronet-id.service /etc/avahi/services/zeronet-id.service
 
-    if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
-        mkdir -p /home/${MY_USERNAME}/.config/zeronet
-        chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
-    fi
-    echo "$ZERONET_URL/$ZERONET_ID_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/myzeroid
+	if [ ! -d /home/${MY_USERNAME}/.config/zeronet ]; then
+		mkdir -p /home/${MY_USERNAME}/.config/zeronet
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
+	fi
+	echo "$ZERONET_URL/$ZERONET_ID_ADDRESS" > /home/${MY_USERNAME}/.config/zeronet/myzeroid
 
-    sed -i "s|ZeroID address.*|ZeroID address: $ZERONET_ID_ADDRESS|g" /home/${MY_USERNAME}/README
-    sed -i "s|ZeroID private key.*|ZeroID private key: $ZERONET_ID_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
+	sed -i "s|ZeroID address.*|ZeroID address: $ZERONET_ID_ADDRESS|g" /home/${MY_USERNAME}/README
+	sed -i "s|ZeroID private key.*|ZeroID private key: $ZERONET_ID_PRIVATE_KEY|g" /home/${MY_USERNAME}/README
 
-    if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
-        chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
-    fi
+	if [ -d ${MESH_INSTALL_DIR}/zeronet ]; then
+		chown -R zeronet:zeronet ${MESH_INSTALL_DIR}/zeronet
+	fi
 
-    echo $'Update of ZeroID completed' >> $INSTALL_LOG
+	echo $'Update of ZeroID completed' >> $INSTALL_LOG
 }
 
 function configure_toxcore {
-    echo $'Configuring toxcore' >> $INSTALL_LOG
+	echo $'Configuring toxcore' >> $INSTALL_LOG
 
-    TOXIC_FILE=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
+	TOXIC_FILE=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
 
-    echo $'Enabling toxcore daemon' >> $INSTALL_LOG
-    systemctl enable tox-bootstrapd.service
-    echo $'Regenerating Tox bootstrap node keys' >> $INSTALL_LOG
-    systemctl stop tox-bootstrapd.service
-    if [ -f /var/lib/tox-bootstrapd/keys ]; then
-        rm /var/lib/tox-bootstrapd/keys
-    fi
-    systemctl start tox-bootstrapd.service
-    # sleep for a while so that the tox keys can be generated
-    sleep 30
-    TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
-    TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
-    if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
-        echo $'WARNING: Could not obtain the tox node public key' >> $INSTALL_LOG
-        exit 46362
-    fi
+	echo $'Enabling toxcore daemon' >> $INSTALL_LOG
+	systemctl enable tox-bootstrapd.service
+	echo $'Regenerating Tox bootstrap node keys' >> $INSTALL_LOG
+	systemctl stop tox-bootstrapd.service
+	if [ -f /var/lib/tox-bootstrapd/keys ]; then
+		rm /var/lib/tox-bootstrapd/keys
+	fi
+	systemctl start tox-bootstrapd.service
+	# sleep for a while so that the tox keys can be generated
+	sleep 30
+	TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
+	TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
+	if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
+		echo $'WARNING: Could not obtain the tox node public key' >> $INSTALL_LOG
+		exit 46362
+	fi
 
-    # save the public key for later reference
-    echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
-    echo $'Configured toxcore' >> $INSTALL_LOG
+	# save the public key for later reference
+	echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
+	echo $'Configured toxcore' >> $INSTALL_LOG
 
-    echo $'Clearing toxic client settings' >> $INSTALL_LOG
-    if [ -d /home/${MY_USERNAME}/.config/tox ]; then
-        rm -rf /home/${MY_USERNAME}/.config/tox
-    fi
-    echo $'toxic client configured' >> $INSTALL_LOG
+	echo $'Clearing toxic client settings' >> $INSTALL_LOG
+	if [ -d /home/${MY_USERNAME}/.config/tox ]; then
+		rm -rf /home/${MY_USERNAME}/.config/tox
+	fi
+	echo $'toxic client configured' >> $INSTALL_LOG
 }
 
 function disable_password_logins {
-    if [ ! -d /home/$DEFAULT_USERNAME ]; then
-        echo $"Home directory for $DEFAULT_USERNAME not found"
-        exit 3682572
-    fi
+	if [ ! -d /home/$DEFAULT_USERNAME ]; then
+		echo $"Home directory for $DEFAULT_USERNAME not found"
+		exit 3682572
+	fi
 
-    # create an authorized_keys file
-    if [ ! -d /home/$DEFAULT_USERNAME/.ssh ]; then
-        mkdir -p /home/$DEFAULT_USERNAME/.ssh
-    fi
-    if [ ! -f /home/$DEFAULT_USERNAME/.ssh/authorized_keys ]; then
-        touch /home/$DEFAULT_USERNAME/.ssh/authorized_keys
-    fi
-    chown -R $DEFAULT_USERNAME:$DEFAULT_USERNAME /home/$DEFAULT_USERNAME/.ssh
+	# create an authorized_keys file
+	if [ ! -d /home/$DEFAULT_USERNAME/.ssh ]; then
+		mkdir -p /home/$DEFAULT_USERNAME/.ssh
+	fi
+	if [ ! -f /home/$DEFAULT_USERNAME/.ssh/authorized_keys ]; then
+		touch /home/$DEFAULT_USERNAME/.ssh/authorized_keys
+	fi
+	chown -R $DEFAULT_USERNAME:$DEFAULT_USERNAME /home/$DEFAULT_USERNAME/.ssh
 
-    # disable password logins
-    sed -i 's|#PasswordAuthentication.*|PasswordAuthentication no|g' /etc/ssh/sshd_config
-    sed -i 's|PasswordAuthentication.*|PasswordAuthentication no|g' /etc/ssh/sshd_config
+	# disable password logins
+	sed -i 's|#PasswordAuthentication.*|PasswordAuthentication no|g' /etc/ssh/sshd_config
+	sed -i 's|PasswordAuthentication.*|PasswordAuthentication no|g' /etc/ssh/sshd_config
 }
 
 function disable_screen_lock {
-    dconf write /org/gnome/desktop/screensaver/lock-enabled false
+	dconf write /org/gnome/desktop/screensaver/lock-enabled false
 }
 
 function enable_batman_daemon {
-    systemctl enable batman
-    systemctl daemon-reload
+	systemctl enable batman
+	systemctl daemon-reload
 }
 
-if [ -f /root/.initial_mesh_setup ]; then
-    if [ $1 ]; then
-        MY_USERNAME=$1
-    fi
+# whether to reset the identity
+if [ $2 ]; then
+	if [[ "$2" == $"new"* ]]; then
+		if [ ! -f $MESH_INSTALL_SETUP ]; then
+			touch $MESH_INSTALL_SETUP
+		fi
+	fi
+fi
 
-    # sleep in order to allow other daemons to start up
-    sleep 15
+if [ -f $MESH_INSTALL_SETUP ]; then
+	if [ $1 ]; then
+		MY_USERNAME=$1
+	fi
 
-    # clear the install log
-    if [ -f $INSTALL_LOG ]; then
-        rm $INSTALL_LOG
-    fi
+	# sleep in order to allow other daemons to start up
+	sleep 15
 
-    echo $'Beginning mesh node setup' >> $INSTALL_LOG
-    enable_batman_daemon
-    change_avahi_name
-    regenerate_ssh_host_keys
-    configure_zeronet_blog
-    configure_zeronet_mail
-    configure_zeronet_forum
-    configure_zeronet_id
-    configure_toxcore
-    configure_zeronet
-    disable_password_logins
-    disable_screen_lock
+	# clear the install log
+	if [ -f $INSTALL_LOG ]; then
+		rm $INSTALL_LOG
+	fi
 
-    rm /root/.initial_mesh_setup
-    systemctl disable mesh-setup.service
-    touch /root/.mesh_setup_completed
-    echo $'Mesh node setup complete. Rebooting...' >> $INSTALL_LOG
-    reboot
+	echo $'Beginning mesh node setup' >> $INSTALL_LOG
+	enable_batman_daemon
+	change_avahi_name
+	regenerate_ssh_host_keys
+	configure_zeronet_blog
+	configure_zeronet_mail
+	configure_zeronet_forum
+	configure_zeronet_id
+	configure_toxcore
+	configure_zeronet
+	disable_password_logins
+	disable_screen_lock
+
+	rm $MESH_INSTALL_SETUP
+	systemctl disable mesh-setup.service
+	touch $MESH_INSTALL_COMPLETED
+	echo $'Mesh node setup complete. Rebooting...' >> $INSTALL_LOG
+	reboot
 fi
 
 exit 0
