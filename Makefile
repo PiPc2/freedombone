@@ -11,6 +11,8 @@ rmtranslations:
 	bash -c "./translate remove"
 alltranslations:
 	bash -c "./translate translations"
+tidy:
+	./tidy src/*
 source:
 	tar -cvf ../${APP}_${VERSION}.orig.tar ../${APP}-${VERSION} --exclude-vcs
 	gzip -f9n ../${APP}_${VERSION}.orig.tar
