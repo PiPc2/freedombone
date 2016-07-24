@@ -204,6 +204,59 @@ function get_blog_admin_password {
     fi
 }
 
+function install_blog_social_networks {
+    # set social networks
+    if grep -q "social.hubzilla" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini; then
+	sed -i "s|;social.hubzilla|social.hubzilla|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+	sed -i "s|social.hubzilla.*|social.hubzilla = \"$HUBZILLA_DOMAIN_NAME\"|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    fi
+    if grep -q "social.gnusocial" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini; then
+	sed -i "s|;social.gnusocial|social.gnusocial|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+	sed -i "s|social.gnusocial.*|social.gnusocial = \"$MICROBLOG_DOMAIN_NAME\"|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    fi
+
+    # clear proprietary social network strings
+    sed -i 's|social.facebook.*|social.facebook = ""|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    sed -i 's|social.twitter.*|social.twitter = ""|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+    sed -i 's|social.google.*|social.google = ""|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
+}
+
+function install_blog_user {
+    # create a user password
+    function_check get_blog_admin_password
+    get_blog_admin_password
+    if [ ! $FULLBLOG_ADMIN_PASSWORD ]; then
+	if [ -f $IMAGE_PASSWORD_FILE ]; then
+	    FULLBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+	else
+	    FULLBLOG_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+	fi
+	echo '' >> /home/$MY_USERNAME/README
+	echo '' >> /home/$MY_USERNAME/README
+	echo $'HTMLy Blog' >> /home/$MY_USERNAME/README
+	echo '==========' >> /home/$MY_USERNAME/README
+	echo $"Your blog username: $MY_USERNAME" >> /home/$MY_USERNAME/README
+	echo $"Your blog password is: $FULLBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+	if [[ $ONION_ONLY == 'no' ]]; then
+	    echo $"Log into your blog at https://$FULLBLOG_DOMAIN_NAME/login" >> /home/$MY_USERNAME/README
+	fi
+	chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+	chmod 600 /home/$MY_USERNAME/README
+    fi
+
+    # create a user
+    FULLBLOG_ADMIN_PASSWORD_HASH=$(${PROJECT_NAME}-sec --bloghash "$FULLBLOG_ADMIN_PASSWORD")
+    if [ ${#FULLBLOG_ADMIN_PASSWORD_HASH} -lt 8 ]; then
+	echo $'Blog admin password could not be hashed'
+	exit 625728
+    fi
+    echo ';Password' > /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo "password = $FULLBLOG_ADMIN_PASSWORD_HASH" >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo 'encryption = password_hash' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo ';Role' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    echo 'role = admin' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+}
+
 function install_blog {
     if [ ! $FULLBLOG_DOMAIN_NAME ]; then
 	echo $'The blog domain name was not specified'
@@ -412,54 +465,9 @@ function install_blog {
     sed -i 's|timezone.*|timezone = "Europe/London"|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
     sed -i "s|Your name|$MY_NAME|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
 
-    # set social networks
-    if grep -q "social.hubzilla" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini; then
-	sed -i "s|;social.hubzilla|social.hubzilla|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-	sed -i "s|social.hubzilla.*|social.hubzilla = \"$HUBZILLA_DOMAIN_NAME\"|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-    fi
-    if grep -q "social.gnusocial" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini; then
-	sed -i "s|;social.gnusocial|social.gnusocial|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-	sed -i "s|social.gnusocial.*|social.gnusocial = \"$MICROBLOG_DOMAIN_NAME\"|g" /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-    fi
+    install_blog_social_networks
 
-    # clear proprietary social network strings
-    sed -i 's|social.facebook.*|social.facebook = ""|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-    sed -i 's|social.twitter.*|social.twitter = ""|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-    sed -i 's|social.google.*|social.google = ""|g' /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/config.ini
-
-    # create a user password
-    function_check get_blog_admin_password
-    get_blog_admin_password
-    if [ ! $FULLBLOG_ADMIN_PASSWORD ]; then
-	if [ -f $IMAGE_PASSWORD_FILE ]; then
-	    FULLBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-	else
-	    FULLBLOG_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-	fi
-	echo '' >> /home/$MY_USERNAME/README
-	echo '' >> /home/$MY_USERNAME/README
-	echo $'HTMLy Blog' >> /home/$MY_USERNAME/README
-	echo '==========' >> /home/$MY_USERNAME/README
-	echo $"Your blog username: $MY_USERNAME" >> /home/$MY_USERNAME/README
-	echo $"Your blog password is: $FULLBLOG_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
-	if [[ $ONION_ONLY == 'no' ]]; then
-	    echo $"Log into your blog at https://$FULLBLOG_DOMAIN_NAME/login" >> /home/$MY_USERNAME/README
-	fi
-	chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-	chmod 600 /home/$MY_USERNAME/README
-    fi
-
-    # create a user
-    FULLBLOG_ADMIN_PASSWORD_HASH=$(${PROJECT_NAME}-sec --bloghash "$FULLBLOG_ADMIN_PASSWORD")
-    if [ ${#FULLBLOG_ADMIN_PASSWORD_HASH} -lt 8 ]; then
-	echo $'Blog admin password could not be hashed'
-	exit 625728
-    fi
-    echo ';Password' > /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo "password = $FULLBLOG_ADMIN_PASSWORD_HASH" >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo 'encryption = password_hash' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo ';Role' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo 'role = admin' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
+    install_blog_user
 
     function_check nginx_ensite
     nginx_ensite $FULLBLOG_DOMAIN_NAME
