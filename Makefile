@@ -11,7 +11,7 @@ rmtranslations:
 	bash -c "./translate remove"
 alltranslations:
 	bash -c "./translate translations"
-tidyup:
+tidy:
 	./tidyup src/*
 source:
 	tar -cvf ../${APP}_${VERSION}.orig.tar ../${APP}-${VERSION} --exclude-vcs
@@ -61,7 +61,6 @@ uninstall:
 	rm -rf /etc/${APP}
 	bash -c "./translate uninstall"
 clean:
-	./tidyup src/*
-	rm -f \#* \.#* debian/*.substvars debian/*.log
+	rm -f \#* \.#* debian/*.substvars debian/*.log src/*~
 	rm -fr deb.* debian/${APP}
 	rm -f ../${APP}*.deb ../${APP}*.changes ../${APP}*.asc ../${APP}*.dsc
