@@ -39,258 +39,258 @@ SEARX_LOGIN_TEXT=$"Search engine login"
 SEARX_PASSWORD=
 
 function reconfigure_searx {
-    echo -n ''
+	echo -n ''
 }
 
 function upgrade_searx {
-    if ! grep -Fxq "install_searx" $COMPLETION_FILE; then
-	return
-    fi
+	if ! grep -Fxq "install_searx" $COMPLETION_FILE; then
+		return
+	fi
 
-    set_repo_commit $SEARX_PATH/searx "Search engine commit" "$SEARX_COMMIT" $SEARX_REPO
-    if grep "Search engine key" $COMPLETION_FILE; then
-	if [ -f ${SEARX_PATH}/searx/searx/settings.yml ]; then
-	    # note: this might change to a --tor option in a later version
-	    if ! grep 'socks5://127.0.0.1:9050' ${SEARX_PATH}/searx/searx/settings.yml; then
+	set_repo_commit $SEARX_PATH/searx "Search engine commit" "$SEARX_COMMIT" $SEARX_REPO
+	if grep "Search engine key" $COMPLETION_FILE; then
+		if [ -f ${SEARX_PATH}/searx/searx/settings.yml ]; then
+			# note: this might change to a --tor option in a later version
+			if ! grep 'socks5://127.0.0.1:9050' ${SEARX_PATH}/searx/searx/settings.yml; then
+				echo 'outgoing: # communication with search engines' >> ${SEARX_PATH}/searx/searx/settings.yml
+				echo '    proxies:' >> ${SEARX_PATH}/searx/searx/settings.yml
+				echo '        http : socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
+				echo '        https: socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
+			fi
+			SEARX_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
+			sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings.yml
+			if [ -f /var/lib/tor/hidden_service_searx/hostname ]; then
+				SEARX_ONION_HOSTNAME=$(echo /var/lib/tor/hidden_service_searx/hostname)
+				sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings.yml
+			fi
+		fi
+	fi
+}
+
+function backup_local_searx {
+	echo -n ''
+}
+
+function restore_local_searx {
+	echo -n ''
+}
+
+function backup_remote_searx {
+	echo -n ''
+}
+
+function restore_remote_searx {
+	echo -n ''
+}
+
+function remove_searx {
+	if ! grep -Fxq "install_searx" $COMPLETION_FILE; then
+		return
+	fi
+	systemctl stop searx
+	systemctl disable searx
+	rm /etc/systemd/system/searx.service
+	function_check remove_onion_service
+	remove_onion_service searx ${SEARX_ONION_PORT}
+	userdel -r searx
+	nginx_dissite searx
+	if [ -f /etc/nginx/sites-available/searx ]; then
+		rm /etc/nginx/sites-available/searx
+	fi
+	if [ -d ${SEARX_PATH}/searx ]; then
+		rm -rf ${SEARX_PATH}/searx
+	fi
+	sed -i '/install_searx/d' $COMPLETION_FILE
+	sed -i '/Search engine /d' $COMPLETION_FILE
+}
+
+function install_searx {
+	# Note: currently socks5 outgoing proxies to other search engines does not work
+	if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+		return
+	fi
+	if [ ! -d /etc/nginx ]; then
+		echo $'Webserver is not installed'
+		exit 62429
+	fi
+
+	if grep -Fxq "install_searx" $COMPLETION_FILE; then
+		return
+	fi
+
+	apt-get -y install python-pip libyaml-dev python-werkzeug python-babel python-lxml apache2-utils
+	apt-get -y install git build-essential libxslt-dev python-dev python-virtualenv python-pybabel zlib1g-dev uwsgi uwsgi-plugin-python libapache2-mod-uwsgi
+
+	pip install --upgrade pip
+
+	pip install certifi
+	if [ ! "$?" = "0" ]; then
+		echo $'Failed to install certifi'
+		exit 737692
+	fi
+
+	pip install pyyaml
+	if [ ! "$?" = "0" ]; then
+		echo $'Failed to install pyyaml'
+		exit 469242
+	fi
+
+	pip install flask --upgrade
+	if [ ! "$?" = "0" ]; then
+		echo $'Failed to install flask'
+		exit 888575
+	fi
+
+	pip install flask_restless --upgrade
+	if [ ! "$?" = "0" ]; then
+		echo $'Failed to install flask_restless'
+		exit 54835
+	fi
+
+	pip install flask_babel --upgrade
+	if [ ! "$?" = "0" ]; then
+		echo $'Failed to install flask_babel'
+		exit 63738
+	fi
+
+	if [ ! -d $SEARX_PATH ]; then
+		mkdir -p $SEARX_PATH
+	fi
+
+	# clone the repo
+	cd $SEARX_PATH
+	function_check git_clone
+	git_clone $SEARX_REPO searx
+	git checkout $SEARX_COMMIT -b $SEARX_COMMIT
+	if ! grep -q "Search engine commit" $COMPLETION_FILE; then
+		echo "Search engine commit:$SEARX_COMMIT" >> $COMPLETION_FILE
+	else
+		sed -i "s/Search engine commit.*/Search engine commit:$SEARX_COMMIT/g" $COMPLETION_FILE
+	fi
+
+	# create an onion service
+	SEARX_ONION_HOSTNAME=$(add_onion_service searx 80 ${SEARX_ONION_PORT})
+	if ! grep "Search engine onion domain" $COMPLETION_FILE; then
+		echo "Search engine onion domain:${SEARX_ONION_HOSTNAME}" >> $COMPLETION_FILE
+	else
+		sed -i "s|Search engine onion domain.*|Search engine onion domain:${SEARX_ONION_HOSTNAME}|g" $COMPLETION_FILE
+	fi
+
+	# an unprivileged user to run as
+	useradd -d ${SEARX_PATH}/searx/ -s /bin/false searx
+	adduser searx debian-tor
+
+	# daemon
+	echo '[Unit]' > /etc/systemd/system/searx.service
+	echo 'Description=Searx (search engine)' >> /etc/systemd/system/searx.service
+	echo 'After=syslog.target' >> /etc/systemd/system/searx.service
+	echo 'After=network.target' >> /etc/systemd/system/searx.service
+	echo '' >> /etc/systemd/system/searx.service
+	echo '[Service]' >> /etc/systemd/system/searx.service
+	echo 'Type=simple' >> /etc/systemd/system/searx.service
+	echo 'User=searx' >> /etc/systemd/system/searx.service
+	echo 'Group=searx' >> /etc/systemd/system/searx.service
+	echo "WorkingDirectory=${SEARX_PATH}/searx" >> /etc/systemd/system/searx.service
+	echo "ExecStart=/usr/bin/python ${SEARX_PATH}/searx/searx/webapp.py" >> /etc/systemd/system/searx.service
+	echo 'Restart=always' >> /etc/systemd/system/searx.service
+	echo 'Environment="USER=searx"' >> /etc/systemd/system/searx.service
+	echo '' >> /etc/systemd/system/searx.service
+	echo '[Install]' >> /etc/systemd/system/searx.service
+	echo 'WantedBy=multi-user.target' >> /etc/systemd/system/searx.service
+
+	# create a webserver file
+	echo 'server {' > /etc/nginx/sites-available/searx
+	echo "    listen 127.0.0.1:${SEARX_ONION_PORT} default_server;" >> /etc/nginx/sites-available/searx
+	echo "    root ${SEARX_PATH}/searx;" >> /etc/nginx/sites-available/searx
+	echo "    server_name ${SEARX_ONION_HOSTNAME};" >> /etc/nginx/sites-available/searx
+	echo '    access_log off;' >> /etc/nginx/sites-available/searx
+	echo "    error_log /var/log/searx_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/searx
+	echo '' >> /etc/nginx/sites-available/searx
+	function_check nginx_limits
+	nginx_limits searx '1M'
+	function_check nginx_disable_sniffing
+	nginx_disable_sniffing searx
+	echo '    add_header Strict-Transport-Security max-age=0;' >> /etc/nginx/sites-available/searx
+	echo '' >> /etc/nginx/sites-available/searx
+	echo '    location / {' >> /etc/nginx/sites-available/searx
+	echo '        proxy_pass http://localhost:8888;' >> /etc/nginx/sites-available/searx
+	echo '        proxy_set_header Host $host;' >> /etc/nginx/sites-available/searx
+	echo '        proxy_set_header X-Real-IP $remote_addr;' >> /etc/nginx/sites-available/searx
+	echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /etc/nginx/sites-available/searx
+	echo '        proxy_set_header X-Remote-Port $remote_port;' >> /etc/nginx/sites-available/searx
+	echo '        proxy_set_header X-Forwarded-Proto $scheme;' >> /etc/nginx/sites-available/searx
+	echo '        proxy_redirect off;' >> /etc/nginx/sites-available/searx
+
+	echo "        auth_basic \"${SEARX_LOGIN_TEXT}\";" >> /etc/nginx/sites-available/searx
+	echo '        auth_basic_user_file /etc/nginx/.htpasswd;' >> /etc/nginx/sites-available/searx
+	echo '    }' >> /etc/nginx/sites-available/searx
+	echo '' >> /etc/nginx/sites-available/searx
+	echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/searx
+	echo '' >> /etc/nginx/sites-available/searx
+	echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/searx
+	echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/searx
+	echo '' >> /etc/nginx/sites-available/searx
+	echo '    location = /robots.txt {' >> /etc/nginx/sites-available/searx
+	echo '        allow all;' >> /etc/nginx/sites-available/searx
+	echo '        log_not_found off;' >> /etc/nginx/sites-available/searx
+	echo '        access_log off;' >> /etc/nginx/sites-available/searx
+	echo '    }' >> /etc/nginx/sites-available/searx
+	echo '}' >> /etc/nginx/sites-available/searx
+
+	# replace the secret key
+	if ! grep "Search engine key" $COMPLETION_FILE; then
+		SEARX_SECRET_KEY="$(create_password 30)"
+		echo "Search engine key:${SEARX_SECRET_KEY}" >> $COMPLETION_FILE
+	else
+		SEARX_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
+	fi
+	sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings.yml
+	sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings_robot.yml
+	sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings.yml
+	sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings_robot.yml
+
+	# note: this might change to a --tor option in a later version
+	if ! grep 'socks5://127.0.0.1:9050' ${SEARX_PATH}/searx/searx/settings.yml; then
 		echo 'outgoing: # communication with search engines' >> ${SEARX_PATH}/searx/searx/settings.yml
 		echo '    proxies:' >> ${SEARX_PATH}/searx/searx/settings.yml
 		echo '        http : socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
 		echo '        https: socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
-	    fi
-	    SEARX_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
-	    sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings.yml
-	    if [ -f /var/lib/tor/hidden_service_searx/hostname ]; then
-		SEARX_ONION_HOSTNAME=$(echo /var/lib/tor/hidden_service_searx/hostname)
-		sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings.yml
-	    fi
 	fi
-    fi
-}
 
-function backup_local_searx {
-    echo -n ''
-}
+	chown -R searx:searx ${SEARX_PATH}/searx
 
-function restore_local_searx {
-    echo -n ''
-}
+	# enable the site
+	nginx_ensite searx
 
-function backup_remote_searx {
-    echo -n ''
-}
+	# restart the web server
+	systemctl restart php5-fpm
+	systemctl restart nginx
 
-function restore_remote_searx {
-    echo -n ''
-}
+	# start the daemon
+	systemctl enable searx.service
+	systemctl daemon-reload
+	systemctl start searx.service
 
-function remove_searx {
-    if ! grep -Fxq "install_searx" $COMPLETION_FILE; then
-	return
-    fi
-    systemctl stop searx
-    systemctl disable searx
-    rm /etc/systemd/system/searx.service
-    function_check remove_onion_service
-    remove_onion_service searx ${SEARX_ONION_PORT}
-    userdel -r searx
-    nginx_dissite searx
-    if [ -f /etc/nginx/sites-available/searx ]; then
-	rm /etc/nginx/sites-available/searx
-    fi
-    if [ -d ${SEARX_PATH}/searx ]; then
-	rm -rf ${SEARX_PATH}/searx
-    fi
-    sed -i '/install_searx/d' $COMPLETION_FILE
-    sed -i '/Search engine /d' $COMPLETION_FILE
-}
-
-function install_searx {
-    # Note: currently socks5 outgoing proxies to other search engines does not work
-    if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
-	return
-    fi
-    if [ ! -d /etc/nginx ]; then
-	echo $'Webserver is not installed'
-	exit 62429
-    fi
-
-    if grep -Fxq "install_searx" $COMPLETION_FILE; then
-	return
-    fi
-
-    apt-get -y install python-pip libyaml-dev python-werkzeug python-babel python-lxml apache2-utils
-    apt-get -y install git build-essential libxslt-dev python-dev python-virtualenv python-pybabel zlib1g-dev uwsgi uwsgi-plugin-python libapache2-mod-uwsgi
-
-    pip install --upgrade pip
-
-    pip install certifi
-    if [ ! "$?" = "0" ]; then
-	echo $'Failed to install certifi'
-	exit 737692
-    fi
-
-    pip install pyyaml
-    if [ ! "$?" = "0" ]; then
-	echo $'Failed to install pyyaml'
-	exit 469242
-    fi
-
-    pip install flask --upgrade
-    if [ ! "$?" = "0" ]; then
-	echo $'Failed to install flask'
-	exit 888575
-    fi
-
-    pip install flask_restless --upgrade
-    if [ ! "$?" = "0" ]; then
-	echo $'Failed to install flask_restless'
-	exit 54835
-    fi
-
-    pip install flask_babel --upgrade
-    if [ ! "$?" = "0" ]; then
-	echo $'Failed to install flask_babel'
-	exit 63738
-    fi
-
-    if [ ! -d $SEARX_PATH ]; then
-	mkdir -p $SEARX_PATH
-    fi
-
-    # clone the repo
-    cd $SEARX_PATH
-    function_check git_clone
-    git_clone $SEARX_REPO searx
-    git checkout $SEARX_COMMIT -b $SEARX_COMMIT
-    if ! grep -q "Search engine commit" $COMPLETION_FILE; then
-	echo "Search engine commit:$SEARX_COMMIT" >> $COMPLETION_FILE
-    else
-	sed -i "s/Search engine commit.*/Search engine commit:$SEARX_COMMIT/g" $COMPLETION_FILE
-    fi
-
-    # create an onion service
-    SEARX_ONION_HOSTNAME=$(add_onion_service searx 80 ${SEARX_ONION_PORT})
-    if ! grep "Search engine onion domain" $COMPLETION_FILE; then
-	echo "Search engine onion domain:${SEARX_ONION_HOSTNAME}" >> $COMPLETION_FILE
-    else
-	sed -i "s|Search engine onion domain.*|Search engine onion domain:${SEARX_ONION_HOSTNAME}|g" $COMPLETION_FILE
-    fi
-
-    # an unprivileged user to run as
-    useradd -d ${SEARX_PATH}/searx/ -s /bin/false searx
-    adduser searx debian-tor
-
-    # daemon
-    echo '[Unit]' > /etc/systemd/system/searx.service
-    echo 'Description=Searx (search engine)' >> /etc/systemd/system/searx.service
-    echo 'After=syslog.target' >> /etc/systemd/system/searx.service
-    echo 'After=network.target' >> /etc/systemd/system/searx.service
-    echo '' >> /etc/systemd/system/searx.service
-    echo '[Service]' >> /etc/systemd/system/searx.service
-    echo 'Type=simple' >> /etc/systemd/system/searx.service
-    echo 'User=searx' >> /etc/systemd/system/searx.service
-    echo 'Group=searx' >> /etc/systemd/system/searx.service
-    echo "WorkingDirectory=${SEARX_PATH}/searx" >> /etc/systemd/system/searx.service
-    echo "ExecStart=/usr/bin/python ${SEARX_PATH}/searx/searx/webapp.py" >> /etc/systemd/system/searx.service
-    echo 'Restart=always' >> /etc/systemd/system/searx.service
-    echo 'Environment="USER=searx"' >> /etc/systemd/system/searx.service
-    echo '' >> /etc/systemd/system/searx.service
-    echo '[Install]' >> /etc/systemd/system/searx.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/searx.service
-
-    # create a webserver file
-    echo 'server {' > /etc/nginx/sites-available/searx
-    echo "    listen 127.0.0.1:${SEARX_ONION_PORT} default_server;" >> /etc/nginx/sites-available/searx
-    echo "    root ${SEARX_PATH}/searx;" >> /etc/nginx/sites-available/searx
-    echo "    server_name ${SEARX_ONION_HOSTNAME};" >> /etc/nginx/sites-available/searx
-    echo '    access_log off;' >> /etc/nginx/sites-available/searx
-    echo "    error_log /var/log/searx_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    function_check nginx_limits
-    nginx_limits searx '1M'
-    function_check nginx_disable_sniffing
-    nginx_disable_sniffing searx
-    echo '    add_header Strict-Transport-Security max-age=0;' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    location / {' >> /etc/nginx/sites-available/searx
-    echo '        proxy_pass http://localhost:8888;' >> /etc/nginx/sites-available/searx
-    echo '        proxy_set_header Host $host;' >> /etc/nginx/sites-available/searx
-    echo '        proxy_set_header X-Real-IP $remote_addr;' >> /etc/nginx/sites-available/searx
-    echo '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /etc/nginx/sites-available/searx
-    echo '        proxy_set_header X-Remote-Port $remote_port;' >> /etc/nginx/sites-available/searx
-    echo '        proxy_set_header X-Forwarded-Proto $scheme;' >> /etc/nginx/sites-available/searx
-    echo '        proxy_redirect off;' >> /etc/nginx/sites-available/searx
-
-    echo "        auth_basic \"${SEARX_LOGIN_TEXT}\";" >> /etc/nginx/sites-available/searx
-    echo '        auth_basic_user_file /etc/nginx/.htpasswd;' >> /etc/nginx/sites-available/searx
-    echo '    }' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/searx
-    echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    location = /robots.txt {' >> /etc/nginx/sites-available/searx
-    echo '        allow all;' >> /etc/nginx/sites-available/searx
-    echo '        log_not_found off;' >> /etc/nginx/sites-available/searx
-    echo '        access_log off;' >> /etc/nginx/sites-available/searx
-    echo '    }' >> /etc/nginx/sites-available/searx
-    echo '}' >> /etc/nginx/sites-available/searx
-
-    # replace the secret key
-    if ! grep "Search engine key" $COMPLETION_FILE; then
-	SEARX_SECRET_KEY="$(create_password 30)"
-	echo "Search engine key:${SEARX_SECRET_KEY}" >> $COMPLETION_FILE
-    else
-	SEARX_SECRET_KEY=$(cat $COMPLETION_FILE | grep "Search engine key" | awk -F ':' '{print $2}')
-    fi
-    sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings.yml
-    sed -i "s|secret_key.*|secret_key : \"${SEARX_SECRET_KEY}\"|g" ${SEARX_PATH}/searx/searx/settings_robot.yml
-    sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings.yml
-    sed -i '0,/RE/s/base_url.*/base_url : \"http://${SEARX_ONION_HOSTNAME}\/' ${SEARX_PATH}/searx/searx/settings_robot.yml
-
-    # note: this might change to a --tor option in a later version
-    if ! grep 'socks5://127.0.0.1:9050' ${SEARX_PATH}/searx/searx/settings.yml; then
-	echo 'outgoing: # communication with search engines' >> ${SEARX_PATH}/searx/searx/settings.yml
-	echo '    proxies:' >> ${SEARX_PATH}/searx/searx/settings.yml
-	echo '        http : socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
-	echo '        https: socks5://127.0.0.1:9050' >> ${SEARX_PATH}/searx/searx/settings.yml
-    fi
-
-    chown -R searx:searx ${SEARX_PATH}/searx
-
-    # enable the site
-    nginx_ensite searx
-
-    # restart the web server
-    systemctl restart php5-fpm
-    systemctl restart nginx
-
-    # start the daemon
-    systemctl enable searx.service
-    systemctl daemon-reload
-    systemctl start searx.service
-
-    if ! grep -q "Your search engine password is" /home/$MY_USERNAME/README; then
-	if [ ${#SEARX_PASSWORD} -lt 8 ]; then
-	    if [ -f $IMAGE_PASSWORD_FILE ]; then
-		SEARX_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-	    else
-		SEARX_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-	    fi
+	if ! grep -q "Your search engine password is" /home/$MY_USERNAME/README; then
+		if [ ${#SEARX_PASSWORD} -lt 8 ]; then
+			if [ -f $IMAGE_PASSWORD_FILE ]; then
+				SEARX_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+			else
+				SEARX_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+			fi
+		fi
+		echo "$SEARX_PASSWORD" | htpasswd -i -s -c /etc/nginx/.htpasswd $MY_USERNAME
+		echo '' >> /home/$MY_USERNAME/README
+		echo '' >> /home/$MY_USERNAME/README
+		echo $'Search Engine' >> /home/$MY_USERNAME/README
+		echo '=============' >> /home/$MY_USERNAME/README
+		echo $"Search engine onion domain: ${SEARX_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+		echo $"Your search engine password is: $SEARX_PASSWORD" >> /home/$MY_USERNAME/README
+		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+		chmod 600 /home/$MY_USERNAME/README
 	fi
-	echo "$SEARX_PASSWORD" | htpasswd -i -s -c /etc/nginx/.htpasswd $MY_USERNAME
-	echo '' >> /home/$MY_USERNAME/README
-	echo '' >> /home/$MY_USERNAME/README
-	echo $'Search Engine' >> /home/$MY_USERNAME/README
-	echo '=============' >> /home/$MY_USERNAME/README
-	echo $"Search engine onion domain: ${SEARX_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
-	echo $"Your search engine password is: $SEARX_PASSWORD" >> /home/$MY_USERNAME/README
-	chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-	chmod 600 /home/$MY_USERNAME/README
-    fi
 
-    echo 'install_searx' >> $COMPLETION_FILE
+	echo 'install_searx' >> $COMPLETION_FILE
 }
 
 # NOTE: deliberately no exit 0
