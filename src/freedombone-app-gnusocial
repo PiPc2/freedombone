@@ -53,6 +53,35 @@ SHARINGS_THEME_COMMIT='7106c7ef03'
 GNUSOCIAL_NSFW_REPO="https://gitgud.io/ShitposterClub/SensitiveContent"
 GNUSOCIAL_NSFW_COMMIT='a096bbe0cfae9a9b177682920ffb58d32a48e136'
 
+function get_mariadb_gnusocial_admin_password {
+	if [ -f /home/$MY_USERNAME/README ]; then
+		if grep -q "MariaDB gnusocial admin password" /home/$MY_USERNAME/README; then
+			MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB gnusocial admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+		fi
+		if grep -q "Microblog administrator password" /home/$MY_USERNAME/README; then
+			MICROBLOG_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Microblog administrator password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+		fi
+	fi
+}
+
+function gnusocial_create_database {
+	function_check get_mariadb_gnusocial_admin_password
+	get_mariadb_gnusocial_admin_password
+	if [ ! $MICROBLOG_ADMIN_PASSWORD ]; then
+		if [ -f $IMAGE_PASSWORD_FILE ]; then
+			MICROBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+		else
+			MICROBLOG_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+		fi
+	fi
+	if [ ! $MICROBLOG_ADMIN_PASSWORD ]; then
+		return
+	fi
+
+	function_check create_database
+	create_database gnusocial "$MICROBLOG_ADMIN_PASSWORD" $MY_USERNAME
+}
+
 function gnusocial_running_script {
 	if ! grep -Fxq "install_gnusocial" $COMPLETION_FILE; then
 		return
@@ -130,6 +159,9 @@ function restore_local_gnusocial {
 		cd $gnusocial_dir
 		scripts/stopdaemons.sh
 
+		function_check gnusocial_create_database
+		gnusocial_create_database
+
 		restore_database gnusocial ${MICROBLOG_DOMAIN_NAME}
 		if [ -d $temp_restore_dir ]; then
 			rm -rf $temp_restore_dir
@@ -174,6 +206,9 @@ function restore_remote_gnusocial {
 		# stop the daemons
 		cd /var/www/${MICROBLOG_DOMAIN_NAME}/htdocs
 		scripts/stopdaemons.sh
+
+		function_check gnusocial_create_database
+		gnusocial_create_database
 
 		function_check restore_database_from_friend
 		restore_database_from_friend gnusocial ${MICROBLOG_DOMAIN_NAME}
@@ -256,18 +291,8 @@ function install_gnusocial_main {
 	chown www-data:www-data /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
 	chmod +x /var/www/$MICROBLOG_DOMAIN_NAME/htdocs/scripts/maildaemon.php
 
-	function_check get_mariadb_gnusocial_admin_password
-	get_mariadb_gnusocial_admin_password
-	if [ ! $MICROBLOG_ADMIN_PASSWORD ]; then
-		if [ -f $IMAGE_PASSWORD_FILE ]; then
-			MICROBLOG_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-		else
-			MICROBLOG_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-		fi
-	fi
-
-	function_check create_database
-	create_database gnusocial "$MICROBLOG_ADMIN_PASSWORD" $MY_USERNAME
+	function_check gnusocial_create_database
+	gnusocial_create_database
 
 	if [ ! -f "/etc/aliases" ]; then
 		touch /etc/aliases
