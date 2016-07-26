@@ -369,15 +369,19 @@ function mesh_tox_node {
 		exit 16865
 	fi
 
-	mesh_tox_node_prefix=''
 	if [ $rootdir ]; then
-		mesh_tox_node_prefix="chroot \"$rootdir\""
+		chroot ${rootdir} apt-get -y install build-essential libtool autotools-dev
+		chroot ${rootdir} apt-get -y install automake checkinstall check git yasm
+		chroot ${rootdir} apt-get -y install libsodium13 libsodium-dev libcap2-bin
+		chroot ${rootdir} apt-get -y install libconfig9 libconfig-dev autoconf
+		chroot ${rootdir} apt-get -y install libopus-dev libvpx-dev
+	else
+		apt-get -y install build-essential libtool autotools-dev
+		apt-get -y install automake checkinstall check git yasm
+		apt-get -y install libsodium13 libsodium-dev libcap2-bin
+		apt-get -y install libconfig9 libconfig-dev autoconf
+		apt-get -y install libopus-dev libvpx-dev
 	fi
-	$mesh_tox_node_prefix apt-get -y install build-essential libtool autotools-dev
-	$mesh_tox_node_prefix apt-get -y install automake checkinstall check git yasm
-	$mesh_tox_node_prefix apt-get -y install libsodium13 libsodium-dev libcap2-bin
-	$mesh_tox_node_prefix apt-get -y install libconfig9 libconfig-dev autoconf
-	$mesh_tox_node_prefix apt-get -y install libopus-dev libvpx-dev
 
 	if [ ! -d ${rootdir}${INSTALL_DIR} ]; then
 		mkdir -p ${rootdir}${INSTALL_DIR}
@@ -389,18 +393,32 @@ function mesh_tox_node {
 	cd ${rootdir}$INSTALL_DIR/toxcore
 	git checkout $TOXCORE_COMMIT -b $TOXCORE_COMMIT
 
-	$mesh_tox_node_prefix /bin/bash -x <<EOF
+	if [ ${rootdir} ]; then
+		chroot ${rootdir} /bin/bash -x <<EOF
 cd ${INSTALL_DIR}/toxcore
 autoreconf -i
 ./configure --enable-daemon
 make
 make install
 EOF
+	else
+		/bin/bash -x <<EOF
+cd ${INSTALL_DIR}/toxcore
+autoreconf -i
+./configure --enable-daemon
+make
+make install
+EOF
+	fi
 
 	cp $rootdir/usr/local/lib/libtoxcore* $rootdir/usr/lib/
 	cp ${rootdir}${INSTALL_DIR}/toxcore/other/bootstrap_daemon/tox-bootstrapd.service $rootdir/etc/systemd/system/
 	sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' $rootdir/etc/systemd/system/tox-bootstrapd.service
-	$mesh_tox_node_prefix systemctl enable tox-bootstrapd.service
+	if [ ${rootdir} ]; then
+		chroot ${rootdir} systemctl enable tox-bootstrapd.service
+	else
+		systemctl enable tox-bootstrapd.service
+	fi
 
 	SECONDS=0
 	if [ ! -f $rootdir/usr/local/bin/tox-bootstrapd ]; then
@@ -412,8 +430,13 @@ EOF
 	duration=$SECONDS
 	echo $"Toxcore compile $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
 
-	$mesh_tox_node_prefix useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment $"Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
-	$mesh_tox_node_prefix chmod 700 /var/lib/tox-bootstrapd
+	if [ ${rootdir} ]; then
+		chroot ${rootdir} useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment $"Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
+		chroot ${rootdir} chmod 700 /var/lib/tox-bootstrapd
+	else
+		useradd --home-dir /var/lib/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment $"Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
+		chmod 700 /var/lib/tox-bootstrapd
+	fi
 
 	# remove Maildir
 	if [ -d $rootdir/var/lib/tox-bootstrapd/Maildir ]; then
@@ -488,11 +511,19 @@ function mesh_tox_avahi {
 		exit 768352
 	fi
 
-	$mesh_tox_avahi_prefix /bin/bash -x <<EOF
+	if [ ${rootdir} ]; then
+		chroot ${rootdir} /bin/bash -x <<EOF
 cd ${INSTALL_DIR}/toxid
 make
 make install
 EOF
+	else
+		/bin/bash -x <<EOF
+cd ${INSTALL_DIR}/toxid
+make
+make install
+EOF
+	fi
 
 	if [ ! -f $rootdir/usr/local/bin/toxid ]; then
 		echo $'toxid not found'
@@ -505,10 +536,6 @@ EOF
 }
 
 function mesh_tox_client {
-	mesh_tox_client_prefix=''
-	if [ $rootdir ]; then
-		mesh_tox_client_prefix="chroot \"$rootdir\""
-	fi
 
 	TOXIC_FILE=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
 
@@ -523,8 +550,13 @@ function mesh_tox_client {
 		TOXIC_REPO=$TOXIC_REPO_MAIN
 	fi
 
-	$mesh_tox_client_prefix apt-get -y install libncursesw5-dev libconfig-dev libqrencode-dev
-	$mesh_tox_client_prefix apt-get -y install libcurl4-openssl-dev libvpx-dev libopenal-dev
+	if [ ${rootdir} ]; then
+		chroot ${rootdir} apt-get -y install libncursesw5-dev libconfig-dev libqrencode-dev
+		chroot ${rootdir} apt-get -y install libcurl4-openssl-dev libvpx-dev libopenal-dev
+	else
+		apt-get -y install libncursesw5-dev libconfig-dev libqrencode-dev
+		apt-get -y install libcurl4-openssl-dev libvpx-dev libopenal-dev
+	fi
 
 	TEMP_SCRIPT_NAME=fbtmp728353.sh
 	TEMP_SCRIPT=/tmp/$TEMP_SCRIPT_NAME
@@ -545,7 +577,11 @@ function mesh_tox_client {
 	TOXIC_FILE=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
 
 	SECONDS=0
-	$mesh_tox_client_prefix /root/$TEMP_SCRIPT_NAME
+	if [ ${rootdir} ]; then
+		chroot ${rootdir} /root/$TEMP_SCRIPT_NAME
+	else
+		/root/$TEMP_SCRIPT_NAME
+	fi
 	if [ ! "$?" = "0" ]; then
 		duration=$SECONDS
 		echo $"Toxic client compile failed at $(($duration / 60)) minutes and $(($duration % 60)) seconds elapsed."
