@@ -52,6 +52,9 @@ MESH_INSTALL_COMPLETED=/root/.mesh_setup_completed
 MESH_INSTALL_SETUP=/root/.initial_mesh_setup
 MESH_AMNESIC=/root/.amnesic
 
+# size of the tomb used to store qtox settings
+TOMB_TOX_SIZE_MB=64
+
 function create_ram_disk {
 	ramdisk_size_mb=$1
 	if [ ! -d /mnt/ramdisk ]; then
@@ -465,16 +468,6 @@ function configure_zeronet_id {
 	echo $'Update of ZeroID completed' >> $INSTALL_LOG
 }
 
-function amnesic_remove_tox {
-	echo $'Clearing qtox client settings' >> $INSTALL_LOG
-	if [ -d /home/${MY_USERNAME}/.config/tox ]; then
-		shred -zu /home/${MY_USERNAME}/.config/tox/*.tox
-		shred -zu /home/${MY_USERNAME}/.config/tox/*.db
-		shred -zu /home/${MY_USERNAME}/.config/tox/*.ini
-		rm -rf /home/${MY_USERNAME}/.config/tox
-	fi
-}
-
 function configure_toxcore {
 	echo $'Configuring toxcore' >> $INSTALL_LOG
 
@@ -500,9 +493,6 @@ function configure_toxcore {
 	# save the public key for later reference
 	echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
 	echo $'Configured toxcore' >> $INSTALL_LOG
-
-	amnesic_remove_tox
-	echo $'toxic client configured' >> $INSTALL_LOG
 }
 
 function disable_password_logins {
@@ -540,6 +530,16 @@ function mesh_amnesic {
 	fi
 
 	echo '#!/bin/bash' > /usr/bin/amnesic
+	echo '' >> /usr/bin/amnesic
+	echo 'tomb slam all' >> /usr/bin/amnesic
+	echo '' >> /usr/bin/amnesic
+	echo "if [ -d /home/${MY_USERNAME}/.config/tox ]; then" >> /usr/bin/amnesic
+	echo "    rm -rf /home/${MY_USERNAME}/.config/tox" >> /usr/bin/amnesic
+	echo 'fi' >> /usr/bin/amnesic
+	echo '' >> /usr/bin/amnesic
+	echo 'if [ -f /tmp/tox.tomb ]; then' >> /usr/bin/amnesic
+	echo '    rm -f /tmp/tox.tomb' >> /usr/bin/amnesic
+	echo 'fi' >> /usr/bin/amnesic
 	echo '' >> /usr/bin/amnesic
 	echo "shred -zu /var/log/${PROJECT_NAME}*" >> /usr/bin/amnesic
 	echo '' >> /usr/bin/amnesic
@@ -579,6 +579,37 @@ function mesh_restart_daemons {
 	echo $'Daemons restarted' >> $INSTALL_LOG
 }
 
+function setup_amnesic_tox_data {
+	if [ ! -f $MESH_AMNESIC ]; then
+		return
+	fi
+	if [ ! -d /mnt/ramdisk ]; then
+		return
+	fi
+
+	TOMB_TOX_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
+	tomb dig -s $TOMB_TOX_SIZE_MB /tmp/tox.tomb
+	tomb forge /mnt/ramdisk/tox.tomb.key --tomb-pwd "${TOMB_TOX_PASSWORD}" --unsafe
+	tomb lock /tmp/tox.tomb -k /mnt/ramdisk/tox.tomb.key --tomb-pwd "${TOMB_TOX_PASSWORD}" --unsafe
+	tomb open /tmp/tox.tomb -k /mnt/ramdisk/tox.tomb.key --tomb-pwd "${TOMB_TOX_PASSWORD}" --unsafe
+	TOMB_TOX_PASSWORD=
+	if [ -d /media/tox ]; then
+		if [ ! -d /home/$MY_USERNAME/.config ]; then
+			mkdir -p /home/$MY_USERNAME/.config
+		fi
+		if [ -d /home/$MY_USERNAME/.config/tox ]; then
+			cp -r /home/$MY_USERNAME/.config/tox/* /media/tox
+			rm -rf /home/$MY_USERNAME/.config/tox
+			ln -s /media/tox /home/$MY_USERNAME/.config/tox
+		fi
+		chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
+		chown -R $MY_USERNAME:$MY_USERNAME /media/tox
+		echo "Tox Tomb created" >> /var/log/${PROJECT_NAME}.log
+	else
+		echo "WARNING: Tox Tomb not found" >> /var/log/${PROJECT_NAME}.log
+	fi
+}
+
 # whether to reset the identity
 set_new_identity=
 if [ $2 ]; then
@@ -615,6 +646,7 @@ if [ -f $MESH_INSTALL_SETUP ]; then
 	fi
 
 	echo $'Beginning mesh node setup' >> $INSTALL_LOG
+	tomb slam all
 	enable_batman_daemon
 	create_ram_disk 1
 	change_avahi_name
@@ -623,6 +655,7 @@ if [ -f $MESH_INSTALL_SETUP ]; then
 	configure_zeronet_mail
 	configure_zeronet_forum
 	configure_zeronet_id
+	setup_amnesic_tox_data
 	configure_toxcore
 	configure_zeronet
 	disable_password_logins
