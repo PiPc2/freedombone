@@ -54,6 +54,7 @@ MESH_AMNESIC=/root/.amnesic
 
 # size of the tomb used to store qtox settings
 TOMB_TOX_SIZE_MB=64
+TOMB_ZERONET_SIZE_MB=64
 
 function create_ram_disk {
 	ramdisk_size_mb=$1
@@ -580,7 +581,44 @@ function mesh_restart_daemons {
 	echo $'Daemons restarted' >> $INSTALL_LOG
 }
 
-function setup_amnesic_tox_data {
+function create_tomb {
+	tomb_name=$1
+	tomb_size=$2
+
+	if [ -f /tmp/${tomb_name}.tomb ]; then
+		tomb slam /tmp/${tomb_name}.tomb
+	fi
+
+	# make a temporary password
+	tomb dig -s ${tomb_size} /tmp/${tomb_name}.tomb
+	if [ ! -f /tmp/${tomb_name}.tomb ]; then
+		echo "WARNING: ${tomb_name} tomb did not install properly" >> /var/log/${PROJECT_NAME}.log
+		tomb >> /var/log/${PROJECT_NAME}.log
+	fi
+	TOMB_TEMP_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
+	tomb forge /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
+	tomb lock /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
+	tomb open /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
+	# clear the temporary password
+	TOMB_TEMP_PASSWORD=
+
+	if [ -d /media/${tomb_name} ]; then
+		if [ ! -d /home/${MY_USERNAME}/.config ]; then
+			mkdir -p /home/${MY_USERNAME}/.config
+		fi
+		if [ -d /home/${MY_USERNAME}/.config/${tomb_name} ]; then
+			rm -rf /home/${MY_USERNAME}/.config/${tomb_name}
+		fi
+		ln -s /media/${tomb_name} /home/${MY_USERNAME}/.config/${tomb_name}
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /media/${tomb_name}
+		echo "${tomb_name} tomb created" >> /var/log/${PROJECT_NAME}.log
+	else
+		echo "WARNING: ${tomb_name} tomb not found" >> /var/log/${PROJECT_NAME}.log
+	fi
+}
+
+function setup_amnesic_data {
 	if [ ! -f $MESH_AMNESIC ]; then
 		return
 	fi
@@ -588,38 +626,7 @@ function setup_amnesic_tox_data {
 		return
 	fi
 
-	# close any existing open tomb
-	if [ -f /tmp/tox.tomb ]; then
-		tomb slam /tmp/tox.tomb
-	fi
-
-	# make a temporary password
-	tomb dig -s $TOMB_TOX_SIZE_MB /tmp/tox.tomb
-	if [ ! -f /tmp/tox.tomb ]; then
-		echo "WARNING: Tomb did not install properly" >> /var/log/${PROJECT_NAME}.log
-		tomb >> /var/log/${PROJECT_NAME}.log
-	fi
-	TOMB_TOX_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
-	tomb forge /mnt/ramdisk/tox.tomb.key --tomb-pwd "${TOMB_TOX_PASSWORD}" --unsafe
-	tomb lock /tmp/tox.tomb -k /mnt/ramdisk/tox.tomb.key --tomb-pwd "${TOMB_TOX_PASSWORD}" --unsafe
-	tomb open /tmp/tox.tomb -k /mnt/ramdisk/tox.tomb.key --tomb-pwd "${TOMB_TOX_PASSWORD}" --unsafe
-	# clear the temporary password
-	TOMB_TOX_PASSWORD=
-
-	if [ -d /media/tox ]; then
-		if [ ! -d /home/$MY_USERNAME/.config ]; then
-			mkdir -p /home/$MY_USERNAME/.config
-		fi
-		if [ -d /home/$MY_USERNAME/.config/tox ]; then
-			rm -rf /home/$MY_USERNAME/.config/tox
-		fi
-		ln -s /media/tox /home/$MY_USERNAME/.config/tox
-		chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
-		chown -R $MY_USERNAME:$MY_USERNAME /media/tox
-		echo "Tox Tomb created" >> /var/log/${PROJECT_NAME}.log
-	else
-		echo "WARNING: Tox Tomb not found" >> /var/log/${PROJECT_NAME}.log
-	fi
+	create_tomb tox $TOMB_TOX_SIZE_MB
 }
 
 # whether to reset the identity
@@ -667,7 +674,7 @@ if [ -f $MESH_INSTALL_SETUP ]; then
 	configure_zeronet_mail
 	configure_zeronet_forum
 	configure_zeronet_id
-	setup_amnesic_tox_data
+	setup_amnesic_data
 	configure_toxcore
 	configure_zeronet
 	disable_password_logins
