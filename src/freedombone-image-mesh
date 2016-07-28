@@ -54,7 +54,9 @@ MESH_AMNESIC=/root/.amnesic
 
 # size of the tomb used to store qtox settings
 TOMB_TOX_SIZE_MB=64
-TOMB_ZERONET_SIZE_MB=64
+
+# Tomb containing logs
+TOMB_LOG_SIZE_MB=32
 
 function create_ram_disk {
 	ramdisk_size_mb=$1
@@ -535,16 +537,6 @@ function mesh_amnesic {
 	echo '' >> /usr/bin/amnesic
 	echo 'tomb slam all' >> /usr/bin/amnesic
 	echo '' >> /usr/bin/amnesic
-	echo "if [ -d /home/${MY_USERNAME}/.config/tox ]; then" >> /usr/bin/amnesic
-	echo "    rm -rf /home/${MY_USERNAME}/.config/tox" >> /usr/bin/amnesic
-	echo 'fi' >> /usr/bin/amnesic
-	echo '' >> /usr/bin/amnesic
-	echo 'if [ -f /tmp/tox.tomb ]; then' >> /usr/bin/amnesic
-	echo '    rm -f /tmp/tox.tomb' >> /usr/bin/amnesic
-	echo 'fi' >> /usr/bin/amnesic
-	echo '' >> /usr/bin/amnesic
-	echo "shred -zu /var/log/${PROJECT_NAME}*" >> /usr/bin/amnesic
-	echo '' >> /usr/bin/amnesic
 	echo 'MY_USERNAME=$1' >> /usr/bin/amnesic
 	echo -n "${PROJECT_NAME}-image-mesh " >> /usr/bin/amnesic
 	echo '$MY_USERNAME amnesic' >> /usr/bin/amnesic
@@ -601,21 +593,6 @@ function create_tomb {
 	tomb open /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
 	# clear the temporary password
 	TOMB_TEMP_PASSWORD=
-
-	if [ -d /media/${tomb_name} ]; then
-		if [ ! -d /home/${MY_USERNAME}/.config ]; then
-			mkdir -p /home/${MY_USERNAME}/.config
-		fi
-		if [ -d /home/${MY_USERNAME}/.config/${tomb_name} ]; then
-			rm -rf /home/${MY_USERNAME}/.config/${tomb_name}
-		fi
-		ln -s /media/${tomb_name} /home/${MY_USERNAME}/.config/${tomb_name}
-		chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
-		chown -R ${MY_USERNAME}:${MY_USERNAME} /media/${tomb_name}
-		echo "${tomb_name} tomb created" >> /var/log/${PROJECT_NAME}.log
-	else
-		echo "WARNING: ${tomb_name} tomb not found" >> /var/log/${PROJECT_NAME}.log
-	fi
 }
 
 function setup_amnesic_data {
@@ -626,7 +603,29 @@ function setup_amnesic_data {
 		return
 	fi
 
-	create_tomb tox $TOMB_TOX_SIZE_MB
+	tomb_name=log
+	create_tomb ${tomb_name} $TOMB_LOG_SIZE_MB
+	if [ -d /media/${tomb_name} ]; then
+		INSTALL_LOG=/media/${tomb_name}/${PROJECT_NAME}.log
+	fi
+
+	tomb_name=tox
+	create_tomb ${tomb_name} $TOMB_TOX_SIZE_MB
+	if [ -d /media/${tomb_name} ]; then
+		if [ ! -d /home/${MY_USERNAME}/.config ]; then
+			mkdir -p /home/${MY_USERNAME}/.config
+		fi
+		if [ -d /home/${MY_USERNAME}/.config/${tomb_name} ]; then
+			rm -rf /home/${MY_USERNAME}/.config/${tomb_name}
+		fi
+		ln -s /media/${tomb_name} /home/${MY_USERNAME}/.config/${tomb_name}
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
+		chown -R ${MY_USERNAME}:${MY_USERNAME} /media/${tomb_name}
+		echo "${tomb_name} tomb created" >> $INSTALL_LOG
+	else
+		echo "WARNING: ${tomb_name} tomb not found" >> $INSTALL_LOG
+	fi
+
 }
 
 # whether to reset the identity
@@ -668,13 +667,13 @@ if [ -f $MESH_INSTALL_SETUP ]; then
 	tomb slam all
 	enable_batman_daemon
 	create_ram_disk 1
+	setup_amnesic_data
 	change_avahi_name
 	regenerate_ssh_host_keys
 	configure_zeronet_blog
 	configure_zeronet_mail
 	configure_zeronet_forum
 	configure_zeronet_id
-	setup_amnesic_data
 	configure_toxcore
 	configure_zeronet
 	disable_password_logins
