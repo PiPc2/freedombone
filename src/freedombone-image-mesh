@@ -547,10 +547,16 @@ function create_tomb {
 		tomb >> /var/log/${PROJECT_NAME}.log
 	fi
 	TOMB_TEMP_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
+	echo "$TOMB_TEMP_PASSWORD" > /mnt/ramdisk/${tomb_name}.tomb.pass
 	tomb forge /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
 	tomb lock /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
 	tomb open /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
+	# update /etc/crypttab so that the rest of the os has access
+	cryptsetup luksAddKey --key-file=/mnt/ramdisk/${tomb_name}.tomb.key /tmp/${tomb_name}.tomb newkey --password="${TOMB_TEMP_PASSWORD}"
+
+	# stop stuff from popping up
 	pkill caja
+
 	# clear the temporary password
 	TOMB_TEMP_PASSWORD=
 }
@@ -561,6 +567,12 @@ function setup_amnesic_data {
 	fi
 	if [ ! -d /mnt/ramdisk ]; then
 		return
+	fi
+
+	# clear crypttab
+	if [ -f /etc/crypttab ]; then
+		shred -zu /etc/crypttab
+		touch /etc/crypttab
 	fi
 
 	tomb_name=log
