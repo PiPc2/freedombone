@@ -421,6 +421,11 @@ function configure_toxcore {
 
 	TOXIC_FILE=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
 
+	if [ -f $MESH_AMNESIC ]; then
+		# change to the amnesic mount
+		sed -i 's|/var/lib/tox-bootstrapd|/media/tox-bootstrapd|g' /etc/tox-bootstrapd.conf
+	fi
+
 	echo $'Enabling toxcore daemon' >> $INSTALL_LOG
 	systemctl enable tox-bootstrapd.service
 
@@ -433,6 +438,9 @@ function configure_toxcore {
 	# sleep for a while so that the tox keys can be generated
 	sleep 30
 	TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
+	if [ -f $MESH_AMNESIC ]; then
+		TOX_BOOTSTRAP_ID_FILE=/media/tox-bootstrapd/pubkey.txt
+	fi
 	TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
 	if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
 		echo $'WARNING: Could not obtain the tox node public key' >> $INSTALL_LOG
@@ -547,12 +555,10 @@ function create_tomb {
 		tomb >> /var/log/${PROJECT_NAME}.log
 	fi
 	TOMB_TEMP_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
-	echo "$TOMB_TEMP_PASSWORD" > /mnt/ramdisk/${tomb_name}.tomb.pass
 	tomb forge /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
 	tomb lock /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
 	tomb open /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
-	# update /etc/crypttab so that the rest of the os has access
-	cryptsetup luksAddKey --key-file=/mnt/ramdisk/${tomb_name}.tomb.key /tmp/${tomb_name}.tomb newkey --password="${TOMB_TEMP_PASSWORD}"
+	gsettings set org.mate.caja.desktop volumes-visible false
 
 	# stop stuff from popping up
 	pkill caja
