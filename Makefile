@@ -21,9 +21,11 @@ install:
 	mkdir -p ${DESTDIR}/usr/share/${APP}/base
 	mkdir -p ${DESTDIR}/usr/share/${APP}/apps
 	mkdir -p ${DESTDIR}/usr/share/${APP}/utils
+	mkdir -p ${DESTDIR}/usr/share/${APP}/avatars
 	mkdir -p ${DESTDIR}/etc/${APP}
 	cp -r image_build/* ${DESTDIR}/etc/${APP}
 	install -m 755 img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
+	install -m 755 img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
 	install -m 755 src/* ${DESTDIR}${PREFIX}/bin
 	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
 	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
