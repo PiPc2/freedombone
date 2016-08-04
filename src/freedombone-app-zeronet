@@ -120,6 +120,12 @@ function remove_zeronet {
 	if ! grep -Fxq "install_zeronet" $COMPLETION_FILE; then
 		return
 	fi
+	if [ -f /etc/systemd/system/mesh-sync.service ]; then
+		systemctl stop mesh-sync
+		systemctl disable mesh-sync
+		rm -f /etc/systemd/system/mesh-sync.service
+		systemctl daemon-reload
+	fi
 	iptables -D INPUT -i $WIFI_INTERFACE -p udp --dport $ZERONET_PORT -j ACCEPT
 	iptables -D INPUT -i $WIFI_INTERFACE -p tcp --dport $ZERONET_PORT -j ACCEPT
 	iptables -D INPUT -i $WIFI_INTERFACE -p udp --dport $TRACKER_PORT -j ACCEPT
@@ -555,7 +561,34 @@ function mesh_zeronet {
 	chroot "$rootdir" chown -R tracker:tracker $MESH_INSTALL_DIR/tracker
 
 	# publish regularly
-	echo "*/1 *     * * *   root    /usr/local/bin/zeronetavahi > /dev/null" >> $rootdir/etc/crontab
+	MESH_SYNC_COMMAND=$rootdir/usr/bin/mesh-sync
+	echo '#!/bin/bash' > $MESH_SYNC_COMMAND
+	echo 'while true' >> $MESH_SYNC_COMMAND
+	echo 'do' >> $MESH_SYNC_COMMAND
+	echo '    /usr/bin/timeout 20 /usr/local/bin/toxavahi' >> $MESH_SYNC_COMMAND
+	echo '    /usr/bin/timeout 20 /usr/local/bin/zeronetavahi' >> $MESH_SYNC_COMMAND
+	echo '    sleep 5' >> $MESH_SYNC_COMMAND
+	echo 'done' >> $MESH_SYNC_COMMAND
+	chmod +x $MESH_SYNC_COMMAND
+
+	if [ ! -f $rootdir/etc/systemd/system/mesh-sync.service ]; then
+		MESH_SYNC_FILENAME=$rootdir/etc/systemd/system/mesh-sync.service
+		echo '[Unit]' > $MESH_SYNC_FILENAME
+		echo 'Description=mesh-sync - Service publications over avahi' >> $MESH_SYNC_FILENAME
+		echo 'After=network.target' >> $MESH_SYNC_FILENAME
+		echo '' >> $MESH_SYNC_FILENAME
+		echo '[Service]' >> $MESH_SYNC_FILENAME
+		echo 'User=root' >> $MESH_SYNC_FILENAME
+		echo 'ExecStart=/usr/bin/mesh-sync' >> $MESH_SYNC_FILENAME
+		echo 'Restart=on-failure' >> $MESH_SYNC_FILENAME
+		echo 'SuccessExitStatus=3 4' >> $MESH_SYNC_FILENAME
+		echo 'RestartForceExitStatus=3 4' >> $MESH_SYNC_FILENAME
+		echo '' >> $MESH_SYNC_FILENAME
+		echo '[Install]' >> $MESH_SYNC_FILENAME
+		echo 'WantedBy=multi-user.target' >> $MESH_SYNC_FILENAME
+
+		chroot "$rootdir" systemctl enable mesh-sync.service
+	fi
 
 	chroot "$rootdir" systemctl enable tracker.service
 	chroot "$rootdir" systemctl enable zeronet.service
