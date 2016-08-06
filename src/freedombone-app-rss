@@ -76,6 +76,8 @@ function upgrade_rss {
     if grep -Fxq "install_rss" $COMPLETION_FILE; then
         function_check set_repo_commit
         set_repo_commit $RSS_READER_PATH "RSS reader commit" "$RSS_READER_COMMIT" $RSS_READER_REPO
+        function_check rss_modifications
+        rss_modifications
     fi
 
     if grep -Fxq "install_rss_mobile_reader" $COMPLETION_FILE; then
@@ -140,6 +142,34 @@ function restore_local_rss {
         rss_create_database
 
         restore_database ttrss ${RSS_READER_DOMAIN_NAME}
+
+        if [ -d /etc/share/tt-rss ]; then
+            if [ -d /root/tempttrss/etc/share/tt-rss ]; then
+                rm -rf /etc/share/tt-rss
+                mv /root/tempttrss/etc/share/tt-rss /etc/share/
+                if [ ! "$?" = "0" ]; then
+                    function_check set_user_permissions
+                    set_user_permissions
+
+                    function_check backup_unmount_drive
+                    backup_unmount_drive
+                    exit 528823
+                fi
+                if [ -d /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME} ]; then
+                    ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${2}.key
+                    ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${2}.pem
+                else
+                    # Ensure that the bundled SSL cert is being used
+                    if [ -f /etc/ssl/certs/${RSS_READER_DOMAIN_NAME}.bundle.crt ]; then
+                        sed -i "s|${RSS_READER_DOMAIN_NAME}.crt|${RSS_READER_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${2}
+                    fi
+                fi
+            fi
+        fi
+
+        function_check rss_modifications
+        rss_modifications
+
         if [ -d $USB_MOUNT/backup/ttrss ]; then
             chown -R www-data:www-data /etc/share/tt-rss
             if [ -d $temp_restore_dir ]; then
@@ -183,6 +213,27 @@ function restore_remote_rss {
         rss_create_database
 
         restore_database_from_friend ttrss ${RSS_READER_DOMAIN_NAME}
+
+        if [ -d /etc/share/tt-rss ]; then
+            rm -rf /etc/share/tt-rss
+            mv /root/tempttrss/etc/share/tt-rss /etc/share/
+            if [ ! "$?" = "0" ]; then
+                exit 6391
+            fi
+            if [ -d /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME} ]; then
+                ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${RSS_READER_DOMAIN_NAME}.key
+                ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${RSS_READER_DOMAIN_NAME}.pem
+            else
+                # Ensure that the bundled SSL cert is being used
+                if [ -f /etc/ssl/certs/${RSS_READER_DOMAIN_NAME}.bundle.crt ]; then
+                    sed -i "s|${RSS_READER_DOMAIN_NAME}.crt|${RSS_READER_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${RSS_READER_DOMAIN_NAME}
+                fi
+            fi
+        fi
+
+        function_check rss_modifications
+        rss_modifications
+
         if [ -d $SERVER_DIRECTORY/backup/ttrss ]; then
             chown -R www-data:www-data /etc/share/tt-rss
         fi

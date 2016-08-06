@@ -32,528 +32,481 @@
 SUSPENDED_SITE=
 
 function suspend_site {
-	# suspends a given website
-	SUSPENDED_SITE="$1"
-	nginx_dissite $SUSPENDED_SITE
-	service nginx reload
+    # suspends a given website
+    SUSPENDED_SITE="$1"
+    nginx_dissite $SUSPENDED_SITE
+    service nginx reload
 }
 
 function restart_site {
-	# restarts a given website
-	if [ ! $SUSPENDED_SITE ]; then
-		return
-	fi
-	nginx_ensite $SUSPENDED_SITE
-	service nginx reload
-	SUSPENDED_SITE=
+    # restarts a given website
+    if [ ! $SUSPENDED_SITE ]; then
+        return
+    fi
+    nginx_ensite $SUSPENDED_SITE
+    service nginx reload
+    SUSPENDED_SITE=
 }
 
 function configure_backup_key {
-	if grep -Fxq "configure_backup_key" $COMPLETION_FILE; then
-		return
-	fi
-	apt-get -y install gnupg
+    if grep -Fxq "configure_backup_key" $COMPLETION_FILE; then
+        return
+    fi
+    apt-get -y install gnupg
 
-	BACKUP_KEY_EXISTS=$(gpg_key_exists "root" "$MY_NAME (backup key)")
-	if [[ $BACKUP_KEY_EXISTS == "yes" ]]; then
-		return
-	fi
+    BACKUP_KEY_EXISTS=$(gpg_key_exists "root" "$MY_NAME (backup key)")
+    if [[ $BACKUP_KEY_EXISTS == "yes" ]]; then
+        return
+    fi
 
-	# Generate a GPG key for backups
-	BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
-	if [[ $BACKUP_KEY_EXISTS == "no" ]]; then
-		echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
-		echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-		echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
-		echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-		echo "Name-Real:  $MY_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
-		echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
-		echo "Name-Comment: backup key" >> /home/$MY_USERNAME/gpg-genkey.conf
-		echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
-		chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
-		echo $'Backup key does not exist. Creating it.'
-		su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
-		shred -zu /home/$MY_USERNAME/gpg-genkey.conf
-		echo $'Checking that the Backup key was created'
-		BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
-		if [[ $BACKUP_KEY_EXISTS == "no" ]]; then
-			echo $'Backup key could not be created'
-			exit 43382
-		fi
-	fi
-	MY_BACKUP_KEY_ID=$(su -c "gpg --list-keys \"$MY_NAME (backup key)\" | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
-	echo "Backup key: $MY_BACKUP_KEY_ID"
-	MY_BACKUP_KEY=/home/$MY_USERNAME/backup_key
-	su -c "gpg --output ${MY_BACKUP_KEY}_public.asc --armor --export $MY_BACKUP_KEY_ID" - $MY_USERNAME
-	su -c "gpg --output ${MY_BACKUP_KEY}_private.asc --armor --export-secret-key $MY_BACKUP_KEY_ID" - $MY_USERNAME
-	if [ ! -f ${MY_BACKUP_KEY}_public.asc ]; then
-		echo 'Public backup key could not be exported'
-		exit 36829
-	fi
-	if [ ! -f ${MY_BACKUP_KEY}_private.asc ]; then
-		echo 'Private backup key could not be exported'
-		exit 29235
-	fi
+    # Generate a GPG key for backups
+    BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
+    if [[ $BACKUP_KEY_EXISTS == "no" ]]; then
+        echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
+        echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+        echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
+        echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
+        echo "Name-Real:  $MY_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+        echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
+        echo "Name-Comment: backup key" >> /home/$MY_USERNAME/gpg-genkey.conf
+        echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
+        echo $'Backup key does not exist. Creating it.'
+        su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+        shred -zu /home/$MY_USERNAME/gpg-genkey.conf
+        echo $'Checking that the Backup key was created'
+        BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
+        if [[ $BACKUP_KEY_EXISTS == "no" ]]; then
+            echo $'Backup key could not be created'
+            exit 43382
+        fi
+    fi
+    MY_BACKUP_KEY_ID=$(su -c "gpg --list-keys \"$MY_NAME (backup key)\" | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+    echo "Backup key: $MY_BACKUP_KEY_ID"
+    MY_BACKUP_KEY=/home/$MY_USERNAME/backup_key
+    su -c "gpg --output ${MY_BACKUP_KEY}_public.asc --armor --export $MY_BACKUP_KEY_ID" - $MY_USERNAME
+    su -c "gpg --output ${MY_BACKUP_KEY}_private.asc --armor --export-secret-key $MY_BACKUP_KEY_ID" - $MY_USERNAME
+    if [ ! -f ${MY_BACKUP_KEY}_public.asc ]; then
+        echo 'Public backup key could not be exported'
+        exit 36829
+    fi
+    if [ ! -f ${MY_BACKUP_KEY}_private.asc ]; then
+        echo 'Private backup key could not be exported'
+        exit 29235
+    fi
 
-	# import backup key to root user
-	gpg --import --import ${MY_BACKUP_KEY}_public.asc
-	gpg --allow-secret-key-import --import ${MY_BACKUP_KEY}_private.asc
+    # import backup key to root user
+    gpg --import --import ${MY_BACKUP_KEY}_public.asc
+    gpg --allow-secret-key-import --import ${MY_BACKUP_KEY}_private.asc
 
-	shred -zu ${MY_BACKUP_KEY}_public.asc
-	shred -zu ${MY_BACKUP_KEY}_private.asc
+    shred -zu ${MY_BACKUP_KEY}_public.asc
+    shred -zu ${MY_BACKUP_KEY}_private.asc
 
-	echo 'configure_backup_key' >> $COMPLETION_FILE
+    echo 'configure_backup_key' >> $COMPLETION_FILE
 }
 
 function backup_to_friends_servers {
-	# update crontab
-	echo '#!/bin/bash' > /etc/cron.daily/backuptofriends
-	echo "if [ -f /usr/local/bin/${PROJECT_NAME}-backup-remote ]; then" >> /etc/cron.daily/backuptofriends
-	echo "    /usr/local/bin/${PROJECT_NAME}-backup-remote" >> /etc/cron.daily/backuptofriends
-	echo 'else' >> /etc/cron.daily/backuptofriends
-	echo "    /usr/bin/${PROJECT_NAME}-backup-remote" >> /etc/cron.daily/backuptofriends
-	echo 'fi' >> /etc/cron.daily/backuptofriends
-	chmod +x /etc/cron.daily/backuptofriends
+    # update crontab
+    echo '#!/bin/bash' > /etc/cron.daily/backuptofriends
+    echo "if [ -f /usr/local/bin/${PROJECT_NAME}-backup-remote ]; then" >> /etc/cron.daily/backuptofriends
+    echo "    /usr/local/bin/${PROJECT_NAME}-backup-remote" >> /etc/cron.daily/backuptofriends
+    echo 'else' >> /etc/cron.daily/backuptofriends
+    echo "    /usr/bin/${PROJECT_NAME}-backup-remote" >> /etc/cron.daily/backuptofriends
+    echo 'fi' >> /etc/cron.daily/backuptofriends
+    chmod +x /etc/cron.daily/backuptofriends
 }
 
 function backup_mount_drive {
-	if [ $1 ]; then
-		USB_DRIVE=/dev/${1}1
-	fi
+    if [ $1 ]; then
+        USB_DRIVE=/dev/${1}1
+    fi
 
-	# get the admin user
-	ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-	if [ $2 ]; then
-		ADMIN_USERNAME=$2
-	fi
-	ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
+    # get the admin user
+    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    if [ $2 ]; then
+        ADMIN_USERNAME=$2
+    fi
+    ADMIN_NAME=$(getent passwd $ADMIN_USERNAME | cut -d: -f5 | cut -d, -f1)
 
-	if [ $3 ]; then
-		RESTORE_APP=$3
-	fi
+    if [ $3 ]; then
+        RESTORE_APP=$3
+    fi
 
-	# check that the backup destination is available
-	if [ ! -b $USB_DRIVE ]; then
-		echo $"Please attach a USB drive"
-		exit 1
-	fi
+    # check that the backup destination is available
+    if [ ! -b $USB_DRIVE ]; then
+        echo $"Please attach a USB drive"
+        exit 1
+    fi
 
-	# unmount if already mounted
-	umount -f $USB_MOUNT
-	if [ ! -d $USB_MOUNT ]; then
-		mkdir $USB_MOUNT
-	fi
-	if [ -f /dev/mapper/encrypted_usb ]; then
-		rm -rf /dev/mapper/encrypted_usb
-	fi
-	cryptsetup luksClose encrypted_usb
+    # unmount if already mounted
+    umount -f $USB_MOUNT
+    if [ ! -d $USB_MOUNT ]; then
+        mkdir $USB_MOUNT
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
+    cryptsetup luksClose encrypted_usb
 
-	# mount the encrypted backup drive
-	cryptsetup luksOpen $USB_DRIVE encrypted_usb
-	if [ "$?" = "0" ]; then
-		USB_DRIVE=/dev/mapper/encrypted_usb
-	fi
-	mount $USB_DRIVE $USB_MOUNT
-	if [ ! "$?" = "0" ]; then
-		echo $"There was a problem mounting the USB drive to $USB_MOUNT"
-		rm -rf $USB_MOUNT
-		exit 783452
-	fi
+    # mount the encrypted backup drive
+    cryptsetup luksOpen $USB_DRIVE encrypted_usb
+    if [ "$?" = "0" ]; then
+        USB_DRIVE=/dev/mapper/encrypted_usb
+    fi
+    mount $USB_DRIVE $USB_MOUNT
+    if [ ! "$?" = "0" ]; then
+        echo $"There was a problem mounting the USB drive to $USB_MOUNT"
+        rm -rf $USB_MOUNT
+        exit 783452
+    fi
 }
 
 function backup_unmount_drive {
-	if [ $1 ]; then
-		USB_DRIVE=${1}
-		if [ $2 ]; then
-			USB_MOUNT=${2}
-		fi
-	fi
-	sync
-	umount $USB_MOUNT
-	if [ ! "$?" = "0" ]; then
-		echo $"Unable to unmount the drive."
-		rm -rf $USB_MOUNT
-		exit 9
-	fi
-	rm -rf $USB_MOUNT
-	if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
-		echo $"Unmount encrypted USB"
-		cryptsetup luksClose encrypted_usb
-	fi
-	if [ -f /dev/mapper/encrypted_usb ]; then
-		rm -rf /dev/mapper/encrypted_usb
-	fi
+    if [ $1 ]; then
+        USB_DRIVE=${1}
+        if [ $2 ]; then
+            USB_MOUNT=${2}
+        fi
+    fi
+    sync
+    umount $USB_MOUNT
+    if [ ! "$?" = "0" ]; then
+        echo $"Unable to unmount the drive."
+        rm -rf $USB_MOUNT
+        exit 9
+    fi
+    rm -rf $USB_MOUNT
+    if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
+        echo $"Unmount encrypted USB"
+        cryptsetup luksClose encrypted_usb
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
 }
 
 function backup_database_local {
-	if [ ${#DATABASE_PASSWORD} -lt 2 ]; then
-		echo $"No MariaDB password was given"
-		function_check restart_site
-		restart_site
-		exit 10
-	fi
-	if [ ! -d $USB_MOUNT/backup/${1} ]; then
-		mkdir -p $USB_MOUNT/backup/${1}
-	fi
-	if [ ! -d $USB_MOUNT/backup/${1}data ]; then
-		mkdir -p $USB_MOUNT/backup/${1}data
-	fi
-	if [ ! -d /root/temp${1}data ]; then
-		mkdir -p /root/temp${1}data
-	fi
-	echo $"Obtaining ${1} database backup"
-	mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > /root/temp${1}data/${1}.sql
-	if [ ! -s /root/temp${1}data/${1}.sql ]; then
-		echo $"${1} database could not be saved"
-		shred -zu /root/temp${1}data/*
-		rm -rf /root/temp${1}data
-		umount $USB_MOUNT
-		rm -rf $USB_MOUNT
-		restart_site
-		exit 6835872
-	fi
+    if [ ${#DATABASE_PASSWORD} -lt 2 ]; then
+        echo $"No MariaDB password was given"
+        function_check restart_site
+        restart_site
+        exit 10
+    fi
+    if [ ! -d $USB_MOUNT/backup/${1} ]; then
+        mkdir -p $USB_MOUNT/backup/${1}
+    fi
+    if [ ! -d $USB_MOUNT/backup/${1}data ]; then
+        mkdir -p $USB_MOUNT/backup/${1}data
+    fi
+    if [ ! -d /root/temp${1}data ]; then
+        mkdir -p /root/temp${1}data
+    fi
+    echo $"Obtaining ${1} database backup"
+    mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > /root/temp${1}data/${1}.sql
+    if [ ! -s /root/temp${1}data/${1}.sql ]; then
+        echo $"${1} database could not be saved"
+        shred -zu /root/temp${1}data/*
+        rm -rf /root/temp${1}data
+        umount $USB_MOUNT
+        rm -rf $USB_MOUNT
+        restart_site
+        exit 6835872
+    fi
 }
 
 function backup_directory_to_usb {
-	if [ ! -d ${1} ]; then
-		echo $"WARNING: directory does not exist: ${1}"
-	else
-		BACKUP_KEY_EXISTS=$(gpg --list-keys "$ADMIN_NAME (backup key)")
-		if [ ! "$?" = "0" ]; then
-			echo $"Backup key could not be found"
-			function_check restart_site
-			restart_site
-			exit 6
-		fi
-		MY_BACKUP_KEY_ID=$(gpg --list-keys "$ADMIN_NAME (backup key)" | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
-		if [ ! -d $USB_MOUNT/backup/${2} ]; then
-			mkdir -p $USB_MOUNT/backup/${2}
-		fi
-		obnam force-lock -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
-		obnam backup -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
-		if [[ $ENABLE_BACKUP_VERIFICATION == "yes" ]]; then
-			obnam verify -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
-			if [ ! "$?" = "0" ]; then
-				umount $USB_MOUNT
-				rm -rf $USB_MOUNT
-				if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-					shred -zu ${1}/*
-					rm -rf ${1}
-				fi
-				function_check restart_site
-				restart_site
-				exit 683252
-			fi
-		fi
-		obnam forget --keep=30d -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID
-		if [ ! "$?" = "0" ]; then
-			umount $USB_MOUNT
-			rm -rf $USB_MOUNT
-			if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-				shred -zu ${1}/*
-				rm -rf ${1}
-			fi
-			function_check restart_site
-			restart_site
-			exit 7
-		fi
-		if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-			shred -zu ${1}/*
-			rm -rf ${1}
-		fi
-	fi
+    if [ ! -d ${1} ]; then
+        echo $"WARNING: directory does not exist: ${1}"
+    else
+        BACKUP_KEY_EXISTS=$(gpg --list-keys "$ADMIN_NAME (backup key)")
+        if [ ! "$?" = "0" ]; then
+            echo $"Backup key could not be found"
+            function_check restart_site
+            restart_site
+            exit 6
+        fi
+        MY_BACKUP_KEY_ID=$(gpg --list-keys "$ADMIN_NAME (backup key)" | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+        if [ ! -d $USB_MOUNT/backup/${2} ]; then
+            mkdir -p $USB_MOUNT/backup/${2}
+        fi
+        obnam force-lock -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
+        obnam backup -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
+        if [[ $ENABLE_BACKUP_VERIFICATION == "yes" ]]; then
+            obnam verify -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
+            if [ ! "$?" = "0" ]; then
+                umount $USB_MOUNT
+                rm -rf $USB_MOUNT
+                if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+                    shred -zu ${1}/*
+                    rm -rf ${1}
+                fi
+                function_check restart_site
+                restart_site
+                exit 683252
+            fi
+        fi
+        obnam forget --keep=30d -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID
+        if [ ! "$?" = "0" ]; then
+            umount $USB_MOUNT
+            rm -rf $USB_MOUNT
+            if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+                shred -zu ${1}/*
+                rm -rf ${1}
+            fi
+            function_check restart_site
+            restart_site
+            exit 7
+        fi
+        if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+            shred -zu ${1}/*
+            rm -rf ${1}
+        fi
+    fi
 }
 
 function backup_database_to_usb {
-	database_name=$1
-	backup_database_local $database_name
-	backup_directory_to_usb /root/temp${database_name}data ${database_name}data
+    database_name=$1
+    backup_database_local $database_name
+    backup_directory_to_usb /root/temp${database_name}data ${database_name}data
 }
 
 # after user files have been restored permissions may need to be set
 function set_user_permissions {
-	echo $"Setting permissions"
-	for d in /home/*/ ; do
-		USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-		if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
-			chown -R $USERNAME:$USERNAME /home/$USERNAME
-		fi
-	done
+    echo $"Setting permissions"
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+            chown -R $USERNAME:$USERNAME /home/$USERNAME
+        fi
+    done
 }
 
 function backup_directory_to_friend {
-	BACKUP_KEY_EXISTS=$(gpg --list-keys "$ADMIN_NAME (backup key)")
-	if [ ! "$?" = "0" ]; then
-		echo $"Backup key could not be found"
-		function_check restart_site
-		restart_site
-		exit 43382
-	fi
-	ADMIN_BACKUP_KEY_ID=$(gpg --list-keys "$ADMIN_NAME (backup key)" | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
-	if [ ! -d $SERVER_DIRECTORY/backup/${2} ]; then
-		mkdir -p $SERVER_DIRECTORY/backup/${2}
-	fi
-	obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-	obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-	if [[ $ENABLE_VERIFICATION == "yes" ]]; then
-		obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-		if [ ! "$?" = "0" ]; then
-			if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-				shred -zu /root/temp${2}/*
-				rm -rf /root/temp${2}
-			fi
-			# Send a warning email
-			echo "Unable to verify ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
-			function_check restart_site
-			restart_site
-			exit 953
-		fi
-	fi
-	obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID}
-	if [ ! "$?" = "0" ]; then
-		if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-			shred -zu /root/temp${2}/*
-			rm -rf /root/temp${2}
-		fi
-		# Send a warning email
-		echo "Unable to backup ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
-		function_check restart_site
-		restart_site
-		exit 853
-	fi
-	if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-		shred -zu /root/temp${2}/*
-		rm -rf /root/temp${2}
-	fi
+    BACKUP_KEY_EXISTS=$(gpg --list-keys "$ADMIN_NAME (backup key)")
+    if [ ! "$?" = "0" ]; then
+        echo $"Backup key could not be found"
+        function_check restart_site
+        restart_site
+        exit 43382
+    fi
+    ADMIN_BACKUP_KEY_ID=$(gpg --list-keys "$ADMIN_NAME (backup key)" | grep 'pub ' | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+    if [ ! -d $SERVER_DIRECTORY/backup/${2} ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/${2}
+    fi
+    obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+    obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+    if [[ $ENABLE_VERIFICATION == "yes" ]]; then
+        obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+        if [ ! "$?" = "0" ]; then
+            if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+                shred -zu /root/temp${2}/*
+                rm -rf /root/temp${2}
+            fi
+            # Send a warning email
+            echo "Unable to verify ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
+            function_check restart_site
+            restart_site
+            exit 953
+        fi
+    fi
+    obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID}
+    if [ ! "$?" = "0" ]; then
+        if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+            shred -zu /root/temp${2}/*
+            rm -rf /root/temp${2}
+        fi
+        # Send a warning email
+        echo "Unable to backup ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
+        function_check restart_site
+        restart_site
+        exit 853
+    fi
+    if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
+        shred -zu /root/temp${2}/*
+        rm -rf /root/temp${2}
+    fi
 }
 
 function backup_database_remote {
-	if [ ${#DATABASE_PASSWORD} -lt 2 ]; then
-		echo $"No MariaDB password was given"
-		function_check restart_site
-		restart_site
-		exit 5783
-	fi
-	if [ ! -d $SERVER_DIRECTORY/backup/${1} ]; then
-		mkdir -p $SERVER_DIRECTORY/backup/${1}
-	fi
-	if [ ! -d $SERVER_DIRECTORY/backup/${1}data ]; then
-		mkdir -p $SERVER_DIRECTORY/backup/${1}data
-	fi
-	if [ ! -d /root/temp${1}data ]; then
-		mkdir -p /root/temp${1}data
-	fi
-	echo "Obtaining ${1} database backup"
-	mysqldump --password=$DATABASE_PASSWORD ${1} > /root/temp${1}data/${1}.sql
-	if [ ! -s /root/temp${1}data/${1}.sql ]; then
-		echo $"${1} database could not be saved"
-		shred -zu /root/temp${1}data/*
-		rm -rf /root/temp${1}data
-		# Send a warning email
-		echo $"Unable to export ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
-		function_check restart_site
-		restart_site
-		exit 5738
-	fi
+    if [ ${#DATABASE_PASSWORD} -lt 2 ]; then
+        echo $"No MariaDB password was given"
+        function_check restart_site
+        restart_site
+        exit 5783
+    fi
+    if [ ! -d $SERVER_DIRECTORY/backup/${1} ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/${1}
+    fi
+    if [ ! -d $SERVER_DIRECTORY/backup/${1}data ]; then
+        mkdir -p $SERVER_DIRECTORY/backup/${1}data
+    fi
+    if [ ! -d /root/temp${1}data ]; then
+        mkdir -p /root/temp${1}data
+    fi
+    echo "Obtaining ${1} database backup"
+    mysqldump --password=$DATABASE_PASSWORD ${1} > /root/temp${1}data/${1}.sql
+    if [ ! -s /root/temp${1}data/${1}.sql ]; then
+        echo $"${1} database could not be saved"
+        shred -zu /root/temp${1}data/*
+        rm -rf /root/temp${1}data
+        # Send a warning email
+        echo $"Unable to export ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+        function_check restart_site
+        restart_site
+        exit 5738
+    fi
 }
 
 function backup_database_to_friend {
-	database_name=$1
-	backup_database_remote $database_name
-	backup_directory_to_friend /root/temp${database_name}data ${database_name}data
+    database_name=$1
+    backup_database_remote $database_name
+    backup_directory_to_friend /root/temp${database_name}data ${database_name}data
 }
 
 function backup_apps {
-	localremote=$1
-	FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+    localremote=$1
+    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
 
-	BACKUP_APPS_COMPLETED=()
+    BACKUP_APPS_COMPLETED=()
 
-	# for all the app scripts
-	for filename in $FILES
-	do
-		app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
-		if [[ $(item_in_array ${app_name} ${BACKUP_APPS_COMPLETED[@]}) != 0 ]]; then
-			if [[ "$(app_is_installed $a)" == "1" ]]; then
-				BACKUP_APPS_COMPLETED+=("${app_name}")
-				backup_${localremote}_${app_name}
-			fi
-		fi
-	done
+    # for all the app scripts
+    for filename in $FILES
+    do
+        app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+        if [[ $(item_in_array ${app_name} ${BACKUP_APPS_COMPLETED[@]}) != 0 ]]; then
+            if [[ "$(app_is_installed $a)" == "1" ]]; then
+                BACKUP_APPS_COMPLETED+=("${app_name}")
+                backup_${localremote}_${app_name}
+            fi
+        fi
+    done
 }
 
 function restore_apps {
-	localremote=$1
-	FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+    localremote=$1
+    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
 
-	RESTORE_APPS_COMPLETED=()
+    RESTORE_APPS_COMPLETED=()
 
-	# for all the app scripts
-	for filename in $FILES
-	do
-		app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
-		if [[ $RESTORE_APP == 'all' || $RESTORE_APP == "${app_name}"  ]]; then
-			if [[ $(item_in_array ${app_name} ${RESTORE_APPS_COMPLETED[@]}) != 0 ]]; then
-				function_check app_is_installed
-				if [[ "$(app_is_installed $a)" == "1" ]]; then
-					RESTORE_APPS_COMPLETED+=("${app_name}")
-					function_check restore_${localremote}_${app_name}
-					restore_${localremote}_${app_name}
-				fi
-			fi
-		fi
-	done
+    # for all the app scripts
+    for filename in $FILES
+    do
+        app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+        if [[ $RESTORE_APP == 'all' || $RESTORE_APP == "${app_name}"  ]]; then
+            if [[ $(item_in_array ${app_name} ${RESTORE_APPS_COMPLETED[@]}) != 0 ]]; then
+                function_check app_is_installed
+                if [[ "$(app_is_installed $a)" == "1" ]]; then
+                    RESTORE_APPS_COMPLETED+=("${app_name}")
+                    function_check restore_${localremote}_${app_name}
+                    restore_${localremote}_${app_name}
+                fi
+            fi
+        fi
+    done
 }
 
 function restore_database_from_friend {
-	DATABASE_PASSWORD=
-	RESTORE_SUBDIR="root"
+    DATABASE_PASSWORD=
+    RESTORE_SUBDIR="root"
 
-	if [ -d $SERVER_DIRECTORY/backup/${1} ]; then
-		echo $"Restoring ${1} database"
-		restore_directory_from_friend /root/temp${1}data ${1}data
-		if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
-			echo $"Unable to restore ${1} database"
-			rm -rf /root/temp${1}data
-			exit 503
-		fi
-		mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
-		if [ ! "$?" = "0" ]; then
-			echo "$mysqlsuccess"
-			exit 964
-		fi
-		shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
-		rm -rf /root/temp${1}data
-		echo $"Restoring ${1} installation"
-		restore_directory_from_friend /root/temp${1} ${1}
-		RESTORE_SUBDIR="var"
-		if [ ${1} ]; then
-
-			# special handling of ttrss
-			if [[ ${2} == "ttrss" ]]; then
-				if [ -d /etc/share/tt-rss ]; then
-					rm -rf /etc/share/tt-rss
-					mv /root/temp${1}/etc/share/tt-rss /etc/share/
-					if [ ! "$?" = "0" ]; then
-						exit 639
-					fi
-					if [ -d /etc/letsencrypt/live/${2} ]; then
-						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
-						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
-					else
-						# Ensure that the bundled SSL cert is being used
-						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
-							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
-						fi
-					fi
-				fi
-			fi
-
-			if [ -d /var/www/${2}/htdocs ]; then
-				if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
-					rm -rf /var/www/${2}/htdocs
-					mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
-					if [ ! "$?" = "0" ]; then
-						exit 683
-					fi
-					if [ -d /etc/letsencrypt/live/${2} ]; then
-						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
-						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
-					else
-						# Ensure that the bundled SSL cert is being used
-						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
-							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
-						fi
-					fi
-				fi
-			fi
-		fi
-	fi
+    if [ -d $SERVER_DIRECTORY/backup/${1} ]; then
+        echo $"Restoring ${1} database"
+        restore_directory_from_friend /root/temp${1}data ${1}data
+        if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
+            echo $"Unable to restore ${1} database"
+            rm -rf /root/temp${1}data
+            exit 503
+        fi
+        mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+        if [ ! "$?" = "0" ]; then
+            echo "$mysqlsuccess"
+            exit 964
+        fi
+        shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
+        rm -rf /root/temp${1}data
+        echo $"Restoring ${1} installation"
+        restore_directory_from_friend /root/temp${1} ${1}
+        RESTORE_SUBDIR="var"
+        if [ ${1} ]; then
+            if [ -d /var/www/${2}/htdocs ]; then
+                if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
+                    rm -rf /var/www/${2}/htdocs
+                    mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
+                    if [ ! "$?" = "0" ]; then
+                        exit 683
+                    fi
+                    if [ -d /etc/letsencrypt/live/${2} ]; then
+                        ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+                        ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+                    else
+                        # Ensure that the bundled SSL cert is being used
+                        if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+                            sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    fi
 }
 
 function restore_database {
-	RESTORE_SUBDIR="root"
+    RESTORE_SUBDIR="root"
 
-	if [ -d $USB_MOUNT/backup/${1} ]; then
-		echo $"Restoring ${1} database"
-		function_check restore_directory_from_usb
-		restore_directory_from_usb "/root/temp${1}data" "${1}data"
-		if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
-			echo $"Unable to restore ${1} database"
-			rm -rf /root/temp${1}data
-			function_check set_user_permissions
-			set_user_permissions
-			function_check backup_unmount_drive
-			backup_unmount_drive
-			exit 503
-		fi
-		mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
-		if [ ! "$?" = "0" ]; then
-			echo "$mysqlsuccess"
-			function_check set_user_permissions
-			set_user_permissions
-			function_check set_user_permissions
-			backup_unmount_drive
-			exit 964
-		fi
-		shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
-		rm -rf /root/temp${1}data
-		echo $"Restoring ${1} installation"
-		if [ ! -d /root/temp${1} ]; then
-			mkdir /root/temp${1}
-		fi
-		function_check restore_directory_from_usb
-		restore_directory_from_usb "/root/temp${1}" "${1}"
-		RESTORE_SUBDIR="var"
-		if [ ${2} ]; then
-			# special handline of ttrss
-			if [[ ${2} == "ttrss" ]]; then
-				if [ -d /etc/share/tt-rss ]; then
-					if [ -d /root/temp${1}/etc/share/tt-rss ]; then
-						rm -rf /etc/share/tt-rss
-						mv /root/temp${1}/etc/share/tt-rss /etc/share/
-						if [ ! "$?" = "0" ]; then
-							function_check set_user_permissions
-							set_user_permissions
-							function_check backup_unmount_drive
-							backup_unmount_drive
-							exit 528
-						fi
-						if [ -d /etc/letsencrypt/live/${2} ]; then
-							ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
-							ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
-						else
-							# Ensure that the bundled SSL cert is being used
-							if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
-								sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
-							fi
-						fi
-					fi
-				fi
-			fi
-
-			if [ -d /var/www/${2}/htdocs ]; then
-				if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
-					rm -rf /var/www/${2}/htdocs
-					mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
-					if [ ! "$?" = "0" ]; then
-						set_user_permissions
-						backup_unmount_drive
-						exit 683
-					fi
-					if [ -d /etc/letsencrypt/live/${2} ]; then
-						ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
-						ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
-					else
-						# Ensure that the bundled SSL cert is being used
-						if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
-							sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
-						fi
-					fi
-				fi
-			fi
-		fi
-	fi
+    if [ -d $USB_MOUNT/backup/${1} ]; then
+        echo $"Restoring ${1} database"
+        function_check restore_directory_from_usb
+        restore_directory_from_usb "/root/temp${1}data" "${1}data"
+        if [ ! -f /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql ]; then
+            echo $"Unable to restore ${1} database"
+            rm -rf /root/temp${1}data
+            function_check set_user_permissions
+            set_user_permissions
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 503
+        fi
+        mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD ${1} -o < /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+        if [ ! "$?" = "0" ]; then
+            echo "$mysqlsuccess"
+            function_check set_user_permissions
+            set_user_permissions
+            function_check set_user_permissions
+            backup_unmount_drive
+            exit 964
+        fi
+        shred -zu /root/temp${1}data/${RESTORE_SUBDIR}/temp${1}data/*
+        rm -rf /root/temp${1}data
+        echo $"Restoring ${1} installation"
+        if [ ! -d /root/temp${1} ]; then
+            mkdir /root/temp${1}
+        fi
+        function_check restore_directory_from_usb
+        restore_directory_from_usb "/root/temp${1}" "${1}"
+        RESTORE_SUBDIR="var"
+        if [ ${2} ]; then
+            if [ -d /var/www/${2}/htdocs ]; then
+                if [ -d /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs ]; then
+                    rm -rf /var/www/${2}/htdocs
+                    mv /root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs /var/www/${2}/
+                    if [ ! "$?" = "0" ]; then
+                        set_user_permissions
+                        backup_unmount_drive
+                        exit 683
+                    fi
+                    if [ -d /etc/letsencrypt/live/${2} ]; then
+                        ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
+                        ln -s /etc/letsencrypt/live/${2}/fullchain.pem /etc/ssl/certs/${2}.pem
+                    else
+                        # Ensure that the bundled SSL cert is being used
+                        if [ -f /etc/ssl/certs/${2}.bundle.crt ]; then
+                            sed -i "s|${2}.crt|${2}.bundle.crt|g" /etc/nginx/sites-available/${2}
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    fi
 }
 
 # NOTE: deliberately no exit 0
