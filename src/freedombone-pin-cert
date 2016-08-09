@@ -33,10 +33,49 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-pin-cert
 export TEXTDOMAINDIR="/usr/share/locale"
 
+WEBSITES_DIRECTORY=/etc/nginx/sites-available
+
+function pin_all_certs {
+    if [ ! -d $WEBSITES_DIRECTORY ]; then
+        return
+    fi
+
+    cd $WEBSITES_DIRECTORY
+    for file in `dir -d *` ; do
+        if grep -q "Public-Key-Pins" $file; then
+            DOMAIN_NAME=$file
+            KEY_FILENAME=/etc/ssl/private/${DOMAIN_NAME}.key
+            if [ -f $KEY_FILENAME ]; then
+                BACKUP_KEY_FILENAME=/etc/ssl/certs/${DOMAIN_NAME}.pem
+                if [ -f $BACKUP_KEY_FILENAME ]; then
+                    KEY_HASH=$(openssl rsa -in $KEY_FILENAME -outform der -pubout | openssl dgst -sha256 -binary | openssl enc -base64)
+                    BACKUP_KEY_HASH=$(openssl rsa -in $BACKUP_KEY_FILENAME -outform der -pubout | openssl dgst -sha256 -binary | openssl enc -base64)
+                    if [ ${#BACKUP_KEY_HASH} -gt 5 ]; then
+
+                        PIN_HEADER="Public-Key-Pins 'pin-sha256=\"${KEY_HASH}\"; pin-sha256=\"${BACKUP_KEY_HASH}\"; max-age=5184000; includeSubDomains';"
+                        sed -i "s|Public-Key-Pins.*|${PIN_HEADER}|g" $file
+                        echo "Pinned $DOMAIN_NAME"
+                    fi
+                fi
+            fi
+        fi
+    done
+}
+
+if [[ $1 == "all" ]]; then
+    pin_all_certs
+    systemctl restart nginx
+    exit 0
+fi
+
 DOMAIN_NAME=$1
 KEY_FILENAME=/etc/ssl/private/${DOMAIN_NAME}.key
 BACKUP_KEY_FILENAME=/etc/ssl/certs/${DOMAIN_NAME}.pem
-SITE_FILENAME=/etc/nginx/sites-available/${DOMAIN_NAME}
+SITE_FILENAME=$WEBSITES_DIRECTORY/${DOMAIN_NAME}
+
+if [ ! -f "$SITE_FILENAME" ]; then
+    exit 0
+fi
 
 if [ ! -f "$KEY_FILENAME" ]; then
     echo $"No private key certificate found for $DOMAIN_NAME"
@@ -45,15 +84,21 @@ fi
 
 if [ ! -f "$BACKUP_KEY_FILENAME" ]; then
     echo $"No fullchain certificate found for $DOMAIN_NAME"
-    exit 1
-fi
-
-if [ ! -f "$SITE_FILENAME" ]; then
-    exit 0
+    exit 2
 fi
 
 KEY_HASH=$(openssl rsa -in $KEY_FILENAME -outform der -pubout | openssl dgst -sha256 -binary | openssl enc -base64)
 BACKUP_KEY_HASH=$(openssl rsa -in $BACKUP_KEY_FILENAME -outform der -pubout | openssl dgst -sha256 -binary | openssl enc -base64)
+
+if [ ${#KEY_HASH} -lt 5 ]; then
+    echo 'Pin hash unexpectedly short'
+    exit 3
+fi
+
+if [ ${#BACKUP_KEY_HASH} -lt 5 ]; then
+    echo 'Backup pin hash unexpectedly short'
+    exit 4
+fi
 
 PIN_HEADER="Public-Key-Pins 'pin-sha256=\"${KEY_HASH}\"; pin-sha256=\"${BACKUP_KEY_HASH}\"; max-age=5184000; includeSubDomains';"
 if ! grep -q "Public-Key-Pins" $SITE_FILENAME; then
