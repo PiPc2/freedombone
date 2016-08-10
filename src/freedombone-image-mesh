@@ -73,6 +73,9 @@ MESH_INSTALL_DIR=/var/lib
 ZERONET_INSTALL=$MESH_INSTALL_DIR/zeronet
 TOX_USERS_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-tox-users.html
 
+# whether to enable zeronet
+ENABLE_ZERONET=
+
 function create_ram_disk {
     ramdisk_size_mb=$1
     if [ ! -d /mnt/ramdisk ]; then
@@ -467,10 +470,19 @@ function configure_toxcore {
 }
 
 function create_tox_user {
-    if [ ! -f /home/${MY_USERNAME}/.config/tox/data.tox ]; then
-        toxid -u $MY_USERNAME -n data
-        chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config/tox
+    # remove any existing user
+    if [ -f /home/${MY_USERNAME}/.config/tox/data.tox ]; then
+        rm -f /home/${MY_USERNAME}/.config/tox/data*
     fi
+    if [ -d /home/${MY_USERNAME}/.config/tox/avatars ]; then
+        rm -rf /home/${MY_USERNAME}/.config/tox/avatars
+    fi
+    if [ ! -f /home/${MY_USERNAME}/.first_boot ]; then
+        touch /home/${MY_USERNAME}/.first_boot
+    fi
+
+    toxid -u $MY_USERNAME -n data
+    chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config/tox
 
     if [ ! -d /home/$MY_USERNAME/Desktop ]; then
         return
@@ -615,7 +627,9 @@ function mesh_restart_daemons {
     systemctl restart avahi-daemon
     systemctl restart ssh
     systemctl restart tox-bootstrapd
-    systemctl restart zeronet
+    if [ $ENABLE_ZERONET ]; then
+        systemctl restart zeronet
+    fi
     echo $'Daemons restarted' >> $INSTALL_LOG
 }
 
@@ -800,13 +814,15 @@ if [ -f $MESH_INSTALL_SETUP ]; then
     setup_amnesic_data
     change_avahi_name
     regenerate_ssh_host_keys
-    configure_zeronet_blog
-    configure_zeronet_mail
-    configure_zeronet_forum
-    configure_zeronet_id
+    if [ $ENABLE_ZERONET ]; then
+        configure_zeronet_blog
+        configure_zeronet_mail
+        configure_zeronet_forum
+        configure_zeronet_id
+        configure_zeronet
+    fi
     configure_toxcore
     create_tox_user
-    configure_zeronet
     disable_password_logins
     mesh_amnesic
 
@@ -821,10 +837,10 @@ if [ -f $MESH_INSTALL_SETUP ]; then
     if [ ! -f $MESH_INSTALL_COMPLETED ]; then
         echo $'Mesh node setup complete' >> $INSTALL_LOG
         touch $MESH_INSTALL_COMPLETED
-		if [ -d /home/$MY_USERNAME/Desktop ]; then
-			touch $FIRST_BOOT
-			chown ${MY_USERNAME}:${MY_USERNAME} $FIRST_BOOT
-		fi
+        if [ -d /home/$MY_USERNAME/Desktop ]; then
+            touch $FIRST_BOOT
+            chown ${MY_USERNAME}:${MY_USERNAME} $FIRST_BOOT
+        fi
         reboot
     fi
 fi
