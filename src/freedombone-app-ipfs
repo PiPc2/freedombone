@@ -33,253 +33,388 @@ VARIANTS='mesh'
 IPFS_GO_REPO="https://github.com/ipfs/go-ipfs"
 IPFS_COMMIT='20b06a4cbce8884f5b194da6e98cb11f2c77f166'
 IPFS_PORT=4001
+IPFS_NODE_VERSION='6.2.2'
+IPFS_JS_VERSION='0.14.3'
+IPFS_JS_RONIN_VERSION='0.3.11'
 
 function reconfigure_ipfs {
-	echo -n ''
+    echo -n ''
+}
+
+function upgrade_ipfs_go {
+    if ! grep -Fxq "install_ipfs_go" $COMPLETION_FILE; then
+        return
+    fi
+
+    function_check select_go_version
+    select_go_version
+
+    function_check set_repo_commit
+    set_repo_commit $GOPATH/src/github.com/ipfs/go-ipfs "ipfs commit" "$IPFS_COMMIT" $IPFS_REPO
+}
+
+function upgrade_ipfs_js {
+    if ! grep -Fxq "install_ipfs_js" $COMPLETION_FILE; then
+        return
+    fi
+
+    npm cache clean -f
+    npm install -g n
+    n ${IPFS_NODE_VERSION}
+    npm install ronin@${IPFS_JS_RONIN_VERSION} --global
+    npm install ipfs@${IPFS_JS_VERSION} --global
 }
 
 function upgrade_ipfs {
-	if ! grep -Fxq "install_ipfs" $COMPLETION_FILE; then
-		return
-	fi
-
-	function_check select_go_version
-	select_go_version
-
-	function_check set_repo_commit
-	set_repo_commit $GOPATH/src/github.com/ipfs/go-ipfs "ipfs commit" "$IPFS_COMMIT" $IPFS_REPO
+    upgrade_ipfs_js
+    upgrade_ipfs_go
 }
 
 function backup_local_ipfs {
-	if ! grep -q "Admin user" $COMPLETION_FILE; then
-		return
-	fi
-	ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-	source_directory=/home/$ADMIN_USERNAME/.ipfs
-	if [ -d $source_directory ]; then
-		dest_directory=ipfs
-		echo $"Backing up $source_directory to $dest_directory"
+    if ! grep -q "Admin user" $COMPLETION_FILE; then
+        return
+    fi
+    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    source_directory=/home/$ADMIN_USERNAME/.ipfs
+    if [ -d $source_directory ]; then
+        dest_directory=ipfs
+        echo $"Backing up $source_directory to $dest_directory"
 
-		function_check backup_directory_to_usb
-		backup_directory_to_usb $source_directory $dest_directory
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
 
-		echo $"Backup to $dest_directory complete"
-	fi
+        echo $"Backup to $dest_directory complete"
+    fi
 }
 
 function restore_local_ipfs {
-	if ! grep -q "Admin user" $COMPLETION_FILE; then
-		return
-	fi
-	if [ -d $USB_MOUNT/backup/ipfs ]; then
-		echo $"Restoring IPFS"
-		temp_restore_dir=/root/tempipfs
-		function_check restore_directory_from_usb
-		restore_directory_from_usb $temp_restore_dir ipfs
-		ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-		cp -rf $temp_restore_dir/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
-		if [ ! "$?" = "0" ]; then
-			rm -rf $temp_restore_dir
-			function_check set_user_permissions
-			set_user_permissions
-			function_check backup_unmount_drive
-			backup_unmount_drive
-			exit 27627
-		fi
-		rm -rf $temp_restore_dir
-		echo $"Restore of IPFS complete"
-	fi
+    if ! grep -q "Admin user" $COMPLETION_FILE; then
+        return
+    fi
+    if [ -d $USB_MOUNT/backup/ipfs ]; then
+        echo $"Restoring IPFS"
+        temp_restore_dir=/root/tempipfs
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir ipfs
+        ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+        cp -rf $temp_restore_dir/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
+        if [ ! "$?" = "0" ]; then
+            rm -rf $temp_restore_dir
+            function_check set_user_permissions
+            set_user_permissions
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 27627
+        fi
+        rm -rf $temp_restore_dir
+        echo $"Restore of IPFS complete"
+    fi
 }
 
 function backup_remote_ipfs {
-	if ! grep -q "Admin user" $COMPLETION_FILE; then
-		return
-	fi
-	ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
-	if [ -d /home/$ADMIN_USERNAME/.ipfs ]; then
-		echo $"Backing up IPFS"
-		backup_directory_to_friend /home/$ADMIN_USERNAME/.ipfs ipfs
-		echo $"Backup of IPFS complete"
-	fi
+    if ! grep -q "Admin user" $COMPLETION_FILE; then
+        return
+    fi
+    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    if [ -d /home/$ADMIN_USERNAME/.ipfs ]; then
+        echo $"Backing up IPFS"
+        backup_directory_to_friend /home/$ADMIN_USERNAME/.ipfs ipfs
+        echo $"Backup of IPFS complete"
+    fi
 }
 
 function restore_remote_ipfs {
-	if [ -d $SERVER_DIRECTORY/backup/ipfs ]; then
-		echo $"Restoring IPFS"
-		temp_restore_dir=/root/tempipfs
-		function_check restore_directory_from_friend
-		restore_directory_from_friend $temp_restore_dir ipfs
-		cp -rf $temp_restore_dir/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
-		if [ ! "$?" = "0" ]; then
-			function_check set_user_permissions
-			set_user_permissions
-			rm -rf $temp_restore_dir
-			exit 276357
-		fi
-		rm -rf $temp_restore_dir
-		echo $"Restore of IPFS complete"
-	fi
+    if [ -d $SERVER_DIRECTORY/backup/ipfs ]; then
+        echo $"Restoring IPFS"
+        temp_restore_dir=/root/tempipfs
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir ipfs
+        cp -rf $temp_restore_dir/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
+        if [ ! "$?" = "0" ]; then
+            function_check set_user_permissions
+            set_user_permissions
+            rm -rf $temp_restore_dir
+            exit 276357
+        fi
+        rm -rf $temp_restore_dir
+        echo $"Restore of IPFS complete"
+    fi
+}
+
+function remove_ipfs_go {
+    if ! grep -Fxq "install_ipfs_go" $COMPLETION_FILE; then
+        return
+    fi
+    function_check select_go_version
+    select_go_version
+    systemctl stop ipfs
+    systemctl disable ipfs
+    systemctl daemon-reload
+    rm /etc/systemd/system/ipfs.service
+    rm -rf $GOPATH/src/github.com/ipfs
+    iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+    sed -i '/install_ipfs/d' $COMPLETION_FILE
+    sed -i '/ipfs/d' $COMPLETION_FILE
+    sed -i '/configure_firewall_for_ipfs/d' $COMPLETION_FILE
+}
+
+function remove_ipfs_js {
+    if ! grep -Fxq "install_ipfs_js" $COMPLETION_FILE; then
+        return
+    fi
+    systemctl stop ipfs
+    systemctl disable ipfs
+    rm /etc/systemd/system/ipfs.service
+    systemctl daemon-reload
+
+    npm uninstall ipfs --global
+    npm uninstall ronin --global
+
+    iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+    sed -i '/install_ipfs/d' $COMPLETION_FILE
+    sed -i '/ipfs/d' $COMPLETION_FILE
+    sed -i '/configure_firewall_for_ipfs/d' $COMPLETION_FILE
 }
 
 function remove_ipfs {
-	if ! grep -Fxq "install_ipfs" $COMPLETION_FILE; then
-		return
-	fi
-	function_check select_go_version
-	select_go_version
-	systemctl stop ipfs
-	systemctl disable ipfs
-	systemctl daemon-reload
-	rm /etc/systemd/system/ipfs.service
-	rm -rf $GOPATH/src/github.com/ipfs
-	iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
-	function_check save_firewall_settings
-	save_firewall_settings
-	sed -i '/install_ipfs/d' $COMPLETION_FILE
-	sed -i '/ipfs /d' $COMPLETION_FILE
-	sed -i '/configure_firewall_for_ipfs/d' $COMPLETION_FILE
+    remove_ipfs_js
+    remove_ipfs_go
 }
 
 function configure_firewall_for_ipfs {
-	if grep -Fxq "configure_firewall_for_ipfs" $COMPLETION_FILE; then
-		return
-	fi
-	if [[ $ONION_ONLY != "no" ]]; then
-		return
-	fi
-	iptables -A INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
-	function_check save_firewall_settings
-	save_firewall_settings
+    if grep -Fxq "configure_firewall_for_ipfs" $COMPLETION_FILE; then
+        return
+    fi
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+    iptables -A INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
 
-	OPEN_PORTS+=("IPFS     $IPFS_PORT")
-	echo 'configure_firewall_for_ipfs' >> $COMPLETION_FILE
+    OPEN_PORTS+=("IPFS     $IPFS_PORT")
+    echo 'configure_firewall_for_ipfs' >> $COMPLETION_FILE
+}
+
+function install_ipfs_js {
+    if grep -Fxq "install_ipfs_js" $COMPLETION_FILE; then
+        return
+    fi
+
+    apt-get -y install npm libpam0g-dev fuse
+
+    npm cache clean -f
+    npm install -g n
+    n ${IPFS_NODE_VERSION}
+    npm install ronin@${IPFS_JS_RONIN_VERSION} --global
+    npm install ipfs@${IPFS_JS_VERSION} --global
+
+    IPFS_PATH=/usr/local/bin
+
+    # initialise
+    su -c "$IPFS_PATH/ipfs init -b 4096" - $MY_USERNAME
+    if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
+        echo "IPFS could not be initialised for user $MY_USERNAME"
+        exit 7358
+    fi
+
+    # directories to mount to
+    if [ ! -d /ipfs ]; then
+        mkdir /ipfs
+        mkdir /ipns
+        chown $MY_USERNAME:$MY_USERNAME /ipfs
+        chown $MY_USERNAME:$MY_USERNAME /ipns
+    fi
+
+    if [ -f /etc/fuse.conf ]; then
+        chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
+    fi
+    if [ -f /dev/fuse ]; then
+        chown $MY_USERNAME:$MY_USERNAME /dev/fuse
+    fi
+
+    IPFS_DAEMON_NAME=ipfs
+    IPFS_DAEMON_FILE=/etc/systemd/system/${IPFS_DAEMON_NAME}.service
+    echo '[Unit]' > $IPFS_DAEMON_FILE
+    echo 'Description=IPFS javascript daemon' >> $IPFS_DAEMON_FILE
+    echo 'After=syslog.target' >> $IPFS_DAEMON_FILE
+    echo 'After=network.target' >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Service]' >> $IPFS_DAEMON_FILE
+    echo 'Type=simple' >> $IPFS_DAEMON_FILE
+    echo "User=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "Group=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "WorkingDirectory=/home/$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "ExecStart=${IPFS_PATH}/jsipfs daemon --mount" >> $IPFS_DAEMON_FILE
+    echo 'Restart=on-failure' >> $IPFS_DAEMON_FILE
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\"" >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Install]' >> $IPFS_DAEMON_FILE
+    echo 'WantedBy=multi-user.target' >> $IPFS_DAEMON_FILE
+
+    systemctl daemon-reload
+    systemctl enable ${IPFS_DAEMON_NAME}
+    systemctl restart ${IPFS_DAEMON_NAME}
+
+    if [ -d /etc/avahi ]; then
+        su -c "echo $($IPFS_PATH/ipfs id | grep '\"ID\":' | awk -F '\"' '{print $4}') > /tmp/ipfsid" - $MY_USERNAME
+        if [ ! -f /tmp/ipfsid ]; then
+            echo 'No IPFS identity was created'
+            exit 37895
+        fi
+        IPFS_PEER_ID=$(cat /tmp/ipfsid)
+        if [ ${#IPFS_PEER_ID} -lt 10 ]; then
+            echo 'Invalid IPFS peer ID'
+            echo "$IPFS_PEER_ID"
+            exit 74782
+        fi
+        # Add an avahi service
+        function_check create_avahi_service
+        create_avahi_service ipfs "ipfs" udp $IPFS_PORT "$IPFS_PEER_ID"
+        rm /tmp/ipfsid
+    fi
+
+    function_check configure_firewall_for_ipfs
+    configure_firewall_for_ipfs
+
+    echo 'install_ipfs_js' >> $COMPLETION_FILE
+}
+
+
+function install_ipfs_go {
+    if grep -Fxq "install_ipfs_go" $COMPLETION_FILE; then
+        return
+    fi
+
+    function_check select_go_version
+    select_go_version
+
+    apt-get -y install golang libpam0g-dev fuse
+
+    if [ ! -d /home/git ]; then
+        # add a gogs user account
+        adduser --disabled-login --gecos 'Gogs' git
+
+        # install Go
+        if ! grep -q "export GOPATH=" ~/.bashrc; then
+            echo "export GOPATH=$GOPATH" >> ~/.bashrc
+        else
+            sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" ~/.bashrc
+        fi
+        systemctl set-environment GOPATH=$GOPATH
+        if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
+            echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
+        else
+            sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
+        fi
+        if [ ! -d $GOPATH ]; then
+            mkdir -p $GOPATH
+        fi
+    fi
+
+    IPFS_PATH=$GOPATH/bin
+    export PATH="$GOPATH/bin:$PATH:"
+    if ! grep -q 'GOPATH/bin' ~/.bashrc; then
+        echo 'export PATH="$GOPATH/bin:$PATH:";' >> ~/.bashrc
+    else
+        sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
+    fi
+
+    # set gopath for the user
+    if ! grep -q "GOPATH=" /home/$MY_USERNAME/.bashrc; then
+        echo "export GOPATH=$GOPATH" >> /home/$MY_USERNAME/.bashrc
+        echo 'export PATH="$GOPATH/bin:$PATH:";' >> /home/$MY_USERNAME/.bashrc
+    else
+        sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" /home/$MY_USERNAME/.bashrc
+    fi
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
+
+    IPFS_GO_REPO2=$(echo "$IPFS_GO_REPO" | sed 's|https://||g')
+    go get -u ${IPFS_GO_REPO2}/cmd/ipfs
+    if [ ! "$?" = "0" ]; then
+        exit 8242
+    fi
+
+    cd $GOPATH/src/$IPFS_GO_REPO2
+    git checkout $IPFS_COMMIT -b $IPFS_COMMIT
+    if ! grep -q "ipfs commit" $COMPLETION_FILE; then
+        echo "ipfs commit:$IPFS_COMMIT" >> $COMPLETION_FILE
+    else
+        sed -i "s/ipfs commit.*/ipfs commit:$IPFS_COMMIT/g" $COMPLETION_FILE
+    fi
+
+    # initialise
+    su -c "$IPFS_PATH/ipfs init -b 4096" - $MY_USERNAME
+    if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
+        echo "IPFS could not be initialised for user $MY_USERNAME"
+        exit 7358
+    fi
+
+    # directories to mount to
+    if [ ! -d /ipfs ]; then
+        mkdir /ipfs
+        mkdir /ipns
+        chown $MY_USERNAME:$MY_USERNAME /ipfs
+        chown $MY_USERNAME:$MY_USERNAME /ipns
+    fi
+
+    if [ -f /etc/fuse.conf ]; then
+        chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
+    fi
+    if [ -f /dev/fuse ]; then
+        chown $MY_USERNAME:$MY_USERNAME /dev/fuse
+    fi
+
+    echo '[Unit]' > /etc/systemd/system/ipfs.service
+    echo 'Description=IPFS go daemon' >> /etc/systemd/system/ipfs.service
+    echo 'After=syslog.target' >> /etc/systemd/system/ipfs.service
+    echo 'After=network.target' >> /etc/systemd/system/ipfs.service
+    echo '' >> /etc/systemd/system/ipfs.service
+    echo '[Service]' >> /etc/systemd/system/ipfs.service
+    echo 'Type=simple' >> /etc/systemd/system/ipfs.service
+    echo "User=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+    echo "Group=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+    echo "WorkingDirectory=/home/$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+    echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> /etc/systemd/system/ipfs.service
+    echo 'Restart=on-failure' >> /etc/systemd/system/ipfs.service
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> /etc/systemd/system/ipfs.service
+    echo '' >> /etc/systemd/system/ipfs.service
+    echo '[Install]' >> /etc/systemd/system/ipfs.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ipfs.service
+
+    systemctl enable ipfs
+    systemctl daemon-reload
+    systemctl restart ipfs
+
+    if [ -d /etc/avahi ]; then
+        su -c "echo $($IPFS_PATH/ipfs id | grep '\"ID\":' | awk -F '\"' '{print $4}') > /tmp/ipfsid" - $MY_USERNAME
+        if [ ! -f /tmp/ipfsid ]; then
+            echo 'No IPFS identity was created'
+            exit 37895
+        fi
+        IPFS_PEER_ID=$(cat /tmp/ipfsid)
+        if [ ${#IPFS_PEER_ID} -lt 10 ]; then
+            echo 'Invalid IPFS peer ID'
+            echo "$IPFS_PEER_ID"
+            exit 74782
+        fi
+        # Add an avahi service
+        function_check create_avahi_service
+        create_avahi_service ipfs "ipfs" udp $IPFS_PORT "$IPFS_PEER_ID"
+        rm /tmp/ipfsid
+    fi
+
+    function_check configure_firewall_for_ipfs
+    configure_firewall_for_ipfs
+
+    echo 'install_ipfs_go' >> $COMPLETION_FILE
 }
 
 function install_ipfs {
-	if grep -Fxq "install_ipfs" $COMPLETION_FILE; then
-		return
-	fi
-
-	function_check select_go_version
-	select_go_version
-
-	apt-get -y install golang libpam0g-dev fuse
-
-	if [ ! -d /home/git ]; then
-		# add a gogs user account
-		adduser --disabled-login --gecos 'Gogs' git
-
-		# install Go
-		if ! grep -q "export GOPATH=" ~/.bashrc; then
-			echo "export GOPATH=$GOPATH" >> ~/.bashrc
-		else
-			sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" ~/.bashrc
-		fi
-		systemctl set-environment GOPATH=$GOPATH
-		if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
-			echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
-		else
-			sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
-		fi
-		if [ ! -d $GOPATH ]; then
-			mkdir -p $GOPATH
-		fi
-	fi
-
-	IPFS_PATH=$GOPATH/bin
-	export PATH="$GOPATH/bin:$PATH:"
-	if ! grep -q 'GOPATH/bin' ~/.bashrc; then
-		echo 'export PATH="$GOPATH/bin:$PATH:";' >> ~/.bashrc
-	else
-		sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
-	fi
-
-	# set gopath for the user
-	if ! grep -q "GOPATH=" /home/$MY_USERNAME/.bashrc; then
-		echo "export GOPATH=$GOPATH" >> /home/$MY_USERNAME/.bashrc
-		echo 'export PATH="$GOPATH/bin:$PATH:";' >> /home/$MY_USERNAME/.bashrc
-	else
-		sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" /home/$MY_USERNAME/.bashrc
-	fi
-	chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
-
-	IPFS_GO_REPO2=$(echo "$IPFS_GO_REPO" | sed 's|https://||g')
-	go get -u ${IPFS_GO_REPO2}/cmd/ipfs
-	if [ ! "$?" = "0" ]; then
-		exit 8242
-	fi
-
-	cd $GOPATH/src/$IPFS_GO_REPO2
-	git checkout $IPFS_COMMIT -b $IPFS_COMMIT
-	if ! grep -q "ipfs commit" $COMPLETION_FILE; then
-		echo "ipfs commit:$IPFS_COMMIT" >> $COMPLETION_FILE
-	else
-		sed -i "s/ipfs commit.*/ipfs commit:$IPFS_COMMIT/g" $COMPLETION_FILE
-	fi
-
-	# initialise
-	su -c "$IPFS_PATH/ipfs init -b 4096" - $MY_USERNAME
-	if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
-		echo "IPFS could not be initialised for user $MY_USERNAME"
-		exit 7358
-	fi
-
-	# directories to mount to
-	if [ ! -d /ipfs ]; then
-		mkdir /ipfs
-		mkdir /ipns
-		chown $MY_USERNAME:$MY_USERNAME /ipfs
-		chown $MY_USERNAME:$MY_USERNAME /ipns
-	fi
-
-	if [ -f /etc/fuse.conf ]; then
-		chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
-	fi
-	if [ -f /dev/fuse ]; then
-		chown $MY_USERNAME:$MY_USERNAME /dev/fuse
-	fi
-
-	echo '[Unit]' > /etc/systemd/system/ipfs.service
-	echo 'Description=IPFS daemon' >> /etc/systemd/system/ipfs.service
-	echo 'After=syslog.target' >> /etc/systemd/system/ipfs.service
-	echo 'After=network.target' >> /etc/systemd/system/ipfs.service
-	echo '' >> /etc/systemd/system/ipfs.service
-	echo '[Service]' >> /etc/systemd/system/ipfs.service
-	echo 'Type=simple' >> /etc/systemd/system/ipfs.service
-	echo "User=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
-	echo "Group=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
-	echo "WorkingDirectory=/home/$MY_USERNAME" >> /etc/systemd/system/ipfs.service
-	echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> /etc/systemd/system/ipfs.service
-	echo 'Restart=on-failure' >> /etc/systemd/system/ipfs.service
-	echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> /etc/systemd/system/ipfs.service
-	echo '' >> /etc/systemd/system/ipfs.service
-	echo '[Install]' >> /etc/systemd/system/ipfs.service
-	echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ipfs.service
-
-	systemctl enable ipfs
-	systemctl daemon-reload
-	systemctl restart ipfs
-
-	if [ -d /etc/avahi ]; then
-		su -c "echo $($IPFS_PATH/ipfs id | grep '\"ID\":' | awk -F '\"' '{print $4}') > /tmp/ipfsid" - $MY_USERNAME
-		if [ ! -f /tmp/ipfsid ]; then
-			echo 'No IPFS identity was created'
-			exit 37895
-		fi
-		IPFS_PEER_ID=$(cat /tmp/ipfsid)
-		if [ ${#IPFS_PEER_ID} -lt 10 ]; then
-			echo 'Invalid IPFS peer ID'
-			echo "$IPFS_PEER_ID"
-			exit 74782
-		fi
-		# Add an avahi service
-		function_check create_avahi_service
-		create_avahi_service ipfs "ipfs" udp $IPFS_PORT "$IPFS_PEER_ID"
-		rm /tmp/ipfsid
-	fi
-
-	function_check configure_firewall_for_ipfs
-	configure_firewall_for_ipfs
-
-	echo 'install_ipfs' >> $COMPLETION_FILE
+    install_ipfs_js
+    #install_ipfs_go
 }
