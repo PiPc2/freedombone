@@ -201,7 +201,74 @@ function configure_firewall_for_ipfs {
     echo 'configure_firewall_for_ipfs' >> $COMPLETION_FILE
 }
 
+function mesh_install_ipfs_js {
+    if grep -Fxq "mesh_install_ipfs_js" $COMPLETION_FILE; then
+        return
+    fi
+
+    chroot ${rootdir} apt-get -y install npm
+    chroot ${rootdir} apt-get -y install libpam0g-dev fuse
+
+    chroot ${rootdir} npm cache clean -f
+    chroot ${rootdir} npm install -g n
+    chroot ${rootdir} n ${IPFS_NODE_VERSION}
+    chroot ${rootdir} npm install ronin@${IPFS_JS_RONIN_VERSION} --global
+    chroot ${rootdir} npm install ipfs@${IPFS_JS_VERSION} --global
+
+    IPFS_PATH=/usr/local/bin
+
+    if [ ! -f ${rootdir}$IPFS_PATH/jsipfs ]; then
+        exit 637292
+    fi
+
+    # directories to mount to
+    if [ ! -d ${rootdir}/ipfs ]; then
+        chroot ${rootdir} mkdir /ipfs
+        chroot ${rootdir} mkdir /ipns
+        chroot ${rootdir} chown $MY_USERNAME:$MY_USERNAME /ipfs
+        chroot ${rootdir} chown $MY_USERNAME:$MY_USERNAME /ipns
+    fi
+
+    if [ -f ${rootdir}/etc/fuse.conf ]; then
+        chroot ${rootdir} chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
+    fi
+    if [ -f ${rootdir}/dev/fuse ]; then
+        chroot ${rootdir} chown $MY_USERNAME:$MY_USERNAME /dev/fuse
+    fi
+
+    IPFS_DAEMON_NAME=ipfs
+    IPFS_DAEMON_FILE=${rootdir}/etc/systemd/system/${IPFS_DAEMON_NAME}.service
+    echo '[Unit]' > $IPFS_DAEMON_FILE
+    echo 'Description=IPFS javascript daemon' >> $IPFS_DAEMON_FILE
+    echo 'After=syslog.target' >> $IPFS_DAEMON_FILE
+    echo 'After=network.target' >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Service]' >> $IPFS_DAEMON_FILE
+    echo 'Type=simple' >> $IPFS_DAEMON_FILE
+    echo "User=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "Group=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "WorkingDirectory=/home/$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "ExecStart=${IPFS_PATH}/jsipfs daemon --mount" >> $IPFS_DAEMON_FILE
+    echo 'Restart=on-failure' >> $IPFS_DAEMON_FILE
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\"" >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Install]' >> $IPFS_DAEMON_FILE
+    echo 'WantedBy=multi-user.target' >> $IPFS_DAEMON_FILE
+
+    chroot ${rootdir} systemctl enable ${IPFS_DAEMON_NAME}
+    chroot ${rootdir} systemctl daemon-reload
+
+    function_check create_avahi_service
+    create_avahi_service ipfs "ipfs" udp $IPFS_PORT "IPFS_PEER_ID"
+
+    echo 'mesh install_ipfs_js' >> $COMPLETION_FILE
+}
+
 function install_ipfs_js {
+    if [[ $SYSTEM_TYPE == "$VARIANT_MESH" ]]; then
+        mesh_install_ipfs_js
+        return
+    fi
     if grep -Fxq "install_ipfs_js" $COMPLETION_FILE; then
         return
     fi
