@@ -34,6 +34,7 @@ IPFS_GO_REPO="https://github.com/ipfs/go-ipfs"
 IPFS_COMMIT='20b06a4cbce8884f5b194da6e98cb11f2c77f166'
 IPFS_PORT=4001
 IPFS_NODE_VERSION='6.2.2'
+IPFS_N_VERSION='2.1.4'
 IPFS_JS_VERSION='0.14.3'
 IPFS_JS_RONIN_VERSION='0.3.11'
 IPFS_KEY_LENGTH=2048
@@ -207,7 +208,7 @@ function mesh_install_ipfs_js {
     fi
 
     chroot ${rootdir} apt-get -y install nodejs
-    chroot ${rootdir} apt-get -y install npm
+    chroot ${rootdir} apt-get -y install npm curl
     chroot ${rootdir} apt-get -y install libpam0g-dev fuse
 
     if [ ! -f ${rootdir}/usr/bin/nodejs ]; then
@@ -215,16 +216,23 @@ function mesh_install_ipfs_js {
         exit 63962
     fi
 
-    chroot ${rootdir} ln -s /usr/bin/nodejs /usr/bin/node
-    chroot ${rootdir} ln -s /usr/bin/nodejs /usr/local/bin/node
+    cat <<EOF > ${rootdir}/root/install-ipfs.sh
+#!/bin/bash
+PATH="/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/bin"
+NODE_PATH="/usr/lib/node_modules"
+cp /usr/bin/nodejs /usr/local/bin/node
+cp /usr/bin/nodejs /usr/bin/node
+/usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+npm install -g n@${IPFS_N_VERSION} --save
+n ${IPFS_NODE_VERSION}
+npm install -g ronin@${IPFS_JS_RONIN_VERSION} --save
+npm install -g ipfs@${IPFS_JS_VERSION} --save
+EOF
+    chroot ${rootdir} chmod +x /root/install-ipfs.sh
+    chroot ${rootdir} /root/install-ipfs.sh
+    rm -f ${rootdir}/root/install-ipfs.sh
 
-    chroot ${rootdir} npm cache clean -f
-    chroot ${rootdir} npm install -g n
-    chroot ${rootdir} n ${IPFS_NODE_VERSION}
-    chroot ${rootdir} npm install -g ronin@${IPFS_JS_RONIN_VERSION}
-    chroot ${rootdir} npm install -g ipfs@${IPFS_JS_VERSION}
-
-    IPFS_PATH=/usr/local/bin
+    IPFS_PATH=/usr/bin
 
     if [ ! -f ${rootdir}$IPFS_PATH/jsipfs ]; then
         exit 637292
@@ -265,10 +273,6 @@ function mesh_install_ipfs_js {
     echo 'WantedBy=multi-user.target' >> $IPFS_DAEMON_FILE
 
     chroot ${rootdir} systemctl enable ${IPFS_DAEMON_NAME}
-    chroot ${rootdir} systemctl daemon-reload
-
-    function_check create_avahi_service
-    create_avahi_service ipfs "ipfs" udp $IPFS_PORT "IPFS_PEER_ID"
 
     echo 'mesh install_ipfs_js' >> $COMPLETION_FILE
 }
@@ -291,16 +295,15 @@ function install_ipfs_js {
         exit 63962
     fi
 
-    ln -s /usr/bin/nodejs /usr/bin/node
-    ln -s /usr/bin/nodejs /usr/local/bin/node
+    cp /usr/bin/nodejs /usr/local/bin/node
+    cp /usr/bin/nodejs /usr/bin/node
+    /usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+    /usr/local/bin/npm install -g n@${IPFS_N_VERSION}
+    /usr/local/bin/n ${IPFS_NODE_VERSION}
+    /usr/local/bin/npm install -g ronin@${IPFS_JS_RONIN_VERSION}
+    /usr/local/bin/npm install -g ipfs@${IPFS_JS_VERSION}
 
-    npm cache clean -f
-    npm install -g n
-    n ${IPFS_NODE_VERSION}
-    npm install -g ronin@${IPFS_JS_RONIN_VERSION}
-    npm install -g ipfs@${IPFS_JS_VERSION}
-
-    IPFS_PATH=/usr/local/bin
+    IPFS_PATH=/usr/bin
 
     if [ ! -f $IPFS_PATH/jsipfs ]; then
         exit 637292
@@ -363,9 +366,6 @@ function install_ipfs_js {
             echo "$IPFS_PEER_ID"
             exit 74782
         fi
-        # Add an avahi service
-        function_check create_avahi_service
-        create_avahi_service ipfs "ipfs" udp $IPFS_PORT "$IPFS_PEER_ID"
         rm /tmp/ipfsid
     fi
 
