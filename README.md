@@ -31,9 +31,11 @@ Install the freedombone commands onto your laptop/desktop:
 
 Then install packages needed for building images:
 
-    sudo apt-get -y install python-docutils mktorrent vmdebootstrap xz-utils
-    sudo apt-get -y install dosfstools btrfs-tools extlinux python-distro-info mbr
-    sudo apt-get -y install qemu-user-static binfmt-support u-boot-tools qemu
+
+    sudo apt-get -y install build-essential git python-docutils mktorrent
+    sudo apt-get -y install vmdebootstrap xz-utils dosfstools btrfs-tools extlinux
+    sudo apt-get -y install python-distro-info mbr qemu-user-static binfmt-support
+    sudo apt-get -y install u-boot-tools qemu
 
 A typical use case to build an 8GB image for a Beaglebone Black is as follows. You can change the size depending upon the capacity of your microSD card.
 

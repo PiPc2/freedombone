@@ -227,6 +227,7 @@ npm install -g n@${IPFS_N_VERSION} --save
 n ${IPFS_NODE_VERSION}
 npm install -g ronin@${IPFS_JS_RONIN_VERSION} --save
 npm install -g ipfs@${IPFS_JS_VERSION} --save
+exit 0
 EOF
     chroot ${rootdir} chmod +x /root/install-ipfs.sh
     chroot ${rootdir} /root/install-ipfs.sh
@@ -375,8 +376,98 @@ function install_ipfs_js {
     echo 'install_ipfs_js' >> $COMPLETION_FILE
 }
 
+function mesh_install_ipfs_go {
+    chroot ${rootdir} apt-get -y install golang libpam0g-dev fuse
+
+    mesh_upgrade_golang
+
+    GOPATH=/home/git/gvm/pkgsets/go${GO_VERSION}/global
+
+    cat <<EOF > ${rootdir}/root/install_ipfs_go.sh
+#!/bin/bash
+
+if [ ! -d /home/git ]; then
+    adduser --disabled-login --gecos 'Gogs' git
+
+    # install Go
+    if ! grep -q "export GOPATH=" ~/.bashrc; then
+        echo "export GOPATH=\$GOPATH" >> ~/.bashrc
+    else
+        sed -i "s|export GOPATH=.*|export GOPATH=\$GOPATH|g" ~/.bashrc
+    fi
+    systemctl set-environment GOPATH=\$GOPATH
+    if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
+        echo "systemctl set-environment GOPATH=\$GOPATH" >> ~/.bashrc
+    else
+        sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=\$GOPATH|g" ~/.bashrc
+    fi
+    if [ ! -d \$GOPATH ]; then
+        mkdir -p \$GOPATH
+    fi
+fi
+
+IPFS_PATH=\$GOPATH/bin
+export PATH="\$GOPATH/bin:\$PATH:"
+if ! grep -q 'GOPATH/bin' ~/.bashrc; then
+    echo 'export PATH="\$GOPATH/bin:\$PATH:";' >> ~/.bashrc
+else
+    sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=\$GOPATH|g" ~/.bashrc
+fi
+
+# set gopath for the user
+if ! grep -q "GOPATH=" /home/$MY_USERNAME/.bashrc; then
+    echo "export GOPATH=$GOPATH" >> /home/$MY_USERNAME/.bashrc
+    echo 'export PATH="\$GOPATH/bin:\$PATH:";' >> /home/$MY_USERNAME/.bashrc
+else
+    sed -i "s|export GOPATH=.*|export GOPATH=\$GOPATH|g" /home/$MY_USERNAME/.bashrc
+fi
+chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
+
+IPFS_GO_REPO2=$(echo "$IPFS_GO_REPO" | sed 's|https://||g')
+go get -u ${IPFS_GO_REPO2}/cmd/ipfs
+if [ ! "$?" = "0" ]; then
+    exit 8242
+fi
+
+cd \$GOPATH/src/$IPFS_GO_REPO2
+git checkout $IPFS_COMMIT -b $IPFS_COMMIT
+exit 0
+EOF
+    chroot ${rootdir} chmod +x /root/install_ipfs_go.sh
+    chroot ${rootdir} /root/install_ipfs_go.sh
+    if [ ! "$?" = "0" ]; then
+        echo $'Failed to install ipfs go'
+        cat ${rootdir}/root/install_ipfs_go.sh
+        rm -f ${rootdir}/root/install_ipfs_go.sh
+        exit 365728
+    fi
+    chroot ${rootdir} rm -f /root/install_ipfs_go.sh
+
+    echo '[Unit]' > ${rootdir}/etc/systemd/system/ipfs.service
+    echo 'Description=IPFS go daemon' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo 'After=syslog.target' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo 'After=network.target' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo '' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo '[Service]' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo 'Type=simple' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "User=$MY_USERNAME" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "Group=$MY_USERNAME" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "WorkingDirectory=/home/$MY_USERNAME" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo 'Restart=on-failure' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo '' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo '[Install]' >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo 'WantedBy=multi-user.target' >> ${rootdir}/etc/systemd/system/ipfs.service
+
+    chroot ${rootdir} systemctl enable ipfs
+}
 
 function install_ipfs_go {
+    if [ $INSTALLING_MESH ]; then
+        mesh_install_ipfs_go
+        return
+    fi
     if grep -Fxq "install_ipfs_go" $COMPLETION_FILE; then
         return
     fi
@@ -506,6 +597,6 @@ function install_ipfs_go {
 }
 
 function install_ipfs {
-    install_ipfs_js
-    #install_ipfs_go
+    #install_ipfs_js
+    install_ipfs_go
 }
