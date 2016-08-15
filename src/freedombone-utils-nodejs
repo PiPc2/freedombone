@@ -1,0 +1,107 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# nodejs functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# For reasons unknown we initially have to upgrade to an intermediate version
+# before getting to the version we want
+
+VARIANTS='mesh'
+
+NODEJS_VERSION='6.2.2'
+NODEJS_N_VERSION='2.1.4'
+
+function mesh_install_nodejs {
+    chroot "${rootdir}" apt-get -y install nodejs
+    chroot "${rootdir}" apt-get -y install npm curl
+
+    if [ ! -f ${rootdir}/usr/bin/nodejs ]; then
+        echo $'nodejs was not installed'
+        exit 63962
+    fi
+
+    cat <<EOF > ${rootdir}/root/install-nodejs.sh
+#!/bin/bash
+PATH="/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/bin"
+NODE_PATH="/usr/lib/node_modules"
+cp /usr/bin/nodejs /usr/local/bin/node
+cp /usr/bin/nodejs /usr/bin/node
+/usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+npm install -g n@${NODEJS_N_VERSION} --save
+n ${NODEJS_VERSION}
+exit 0
+EOF
+    chroot "${rootdir}" chmod +x /root/install-nodejs.sh
+    chroot "${rootdir}" /root/install-nodejs.sh
+    if [ ! "$?" = "0" ]; then
+        chroot "${rootdir}" rm -f /root/install-nodejs.sh
+        exit 7632572
+    fi
+    chroot "${rootdir}" rm -f /root/install-nodejs.sh
+}
+
+function install_nodejs {
+    if [ $INSTALLING_MESH ]; then
+        mesh_install_nodejs
+        return
+    fi
+    if grep -Fxq "install_nodejs" $COMPLETION_FILE; then
+        return
+    fi
+
+    apt-get -y install nodejs
+    apt-get -y install npm curl
+
+    if [ ! -f /usr/bin/nodejs ]; then
+        echo $'nodejs was not installed'
+        exit 63962
+    fi
+
+    cat <<EOF > /root/install-nodejs.sh
+#!/bin/bash
+PATH="/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/bin"
+NODE_PATH="/usr/lib/node_modules"
+cp /usr/bin/nodejs /usr/local/bin/node
+cp /usr/bin/nodejs /usr/bin/node
+/usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+npm install -g n@${NODEJS_N_VERSION} --save
+n ${NODEJS_VERSION}
+exit 0
+EOF
+    chmod +x /root/install-nodejs.sh
+    /root/install-nodejs.sh
+    if [ ! "$?" = "0" ]; then
+        rm -f /root/install-nodejs.sh
+        exit 7632572
+    fi
+    rm -f /root/install-nodejs.sh
+
+    echo 'install_nodejs' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately there is no "exit 0"
