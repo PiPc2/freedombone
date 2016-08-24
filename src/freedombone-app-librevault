@@ -67,36 +67,77 @@ function remove_librevault {
     if ! grep -Fxq "install_librevault" $COMPLETION_FILE; then
         return
     fi
-    iptables -D INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
-    iptables -D INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
-    function_check save_firewall_settings
-    save_firewall_settings
+    if [ $LIBREVAULT_PORT ]; then
+        iptables -D INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
+        iptables -D INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
+        function_check save_firewall_settings
+        save_firewall_settings
+    fi
 
     systemctl stop librevault
     systemctl disable librevault
     rm /etc/systemd/system/librevault.service
     sed -i '/install_librevault/d' $COMPLETION_FILE
     sed -i '/configure_firewall_for_librevault/d' $COMPLETION_FILE
-    systemctl restart cron
 }
 
 function configure_firewall_for_librevault {
     if grep -Fxq "configure_firewall_for_librevault" $COMPLETION_FILE; then
         return
     fi
-    iptables -A INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
-    iptables -A INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
-    function_check save_firewall_settings
-    save_firewall_settings
-
-    OPEN_PORTS+=("Librevault $LIBREVAULT_PORT")
+    if [ $LIBREVAULT_PORT ]; then
+        iptables -A INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
+        iptables -A INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
+        function_check save_firewall_settings
+        save_firewall_settings
+        OPEN_PORTS+=("Librevault $LIBREVAULT_PORT")
+    fi
     echo 'configure_firewall_for_librevault' >> $COMPLETION_FILE
 }
 
-function mesh_install_syncthing {
+function mesh_install_librevault {
+    install_tracker
+
+    chroot "$rootdir" apt-get -y -t jessie-backports install cmake
+    chroot "$rootdir" apt-get -y install bittornado nginx
+    chroot "$rootdir" apt-get -y install build-essential libboost-all-dev libssl-dev
+    chroot "$rootdir" apt-get -y install qtbase5-dev libqt5svg5-dev libqt5websockets5-dev
+    chroot "$rootdir" apt-get -y install autoconf automake libtool curl make g++ unzip
+
+    if [ ! -d $rootdir$INSTALL_DIR ]; then
+        chroot "$rootdir" mkdir -p $INSTALL_DIR
+    fi
+    chroot "$rootdir" git clone $PROTOBUF_REPO $rootdir$INSTALL_DIR/protobuf
+    cd $rootdir$INSTALL_DIR/protobuf
+    git checkout $PROTOBUF_COMMIT -b $PROTOBUF_COMMIT
+
+    cat <<EOF > $rootdir/root/install_protobuf
+cd $INSTALL_DIR/protobuf
+./autogen.sh
+./configure
+make
+make install
+ldconfig
+EOF
+    chroot "$rootdir" chmod +x /root/install_protobuf
+    chroot "$rootdir" /root/install_protobuf
+
+    git_clone $LIBREVAULT_REPO $rootdir$INSTALL_DIR/librevault
+    cd $rootdir$INSTALL_DIR/librevault
+    git checkout $LIBREVAULT_COMMIT -b $LIBREVAULT_COMMIT
+    mkdir $rootdir$INSTALL_DIR/librevault/build
+
+    cat <<EOF > $rootdir/root/install_librevault
+cd $INSTALL_DIR/librevault/build
+cmake ..
+cmake --build .
+make install
+EOF
+    chroot "$rootdir" chmod +x /root/install_librevault
+    chroot "$rootdir" /root/install_librevault
 }
 
-function install_syncthing {
+function install_librevault {
     if [ $INSTALLING_MESH ]; then
         mesh_install_librevault
         return
@@ -106,7 +147,10 @@ function install_syncthing {
         return
     fi
 
-    apt-get -y install build-essential cmake libboost-all-dev libssl-dev
+    install_tracker
+
+    apt-get -y -t jessie-backports install cmake
+    apt-get -y install build-essential libboost-all-dev libssl-dev
     apt-get -y install qtbase5-dev libqt5svg5-dev libqt5websockets5-dev
     apt-get -y install autoconf automake libtool curl make g++ unzip
 
@@ -130,6 +174,7 @@ function install_syncthing {
     cd $INSTALL_DIR/librevault/build
     cmake ..
     cmake --build .
+    make install
 
     echo 'install_librevault' >> $COMPLETION_FILE
 }
