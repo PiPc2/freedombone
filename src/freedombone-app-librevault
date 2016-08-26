@@ -28,14 +28,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VARIANTS='none'
+VARIANTS='mesh'
 
 PROTOBUF_REPO="https://github.com/google/protobuf"
 PROTOBUF_COMMIT='b97a4a53cdd55be74c30badefeb132a091764f53'
 
 LIBREVAULT_REPO="https://github.com/Librevault/librevault"
 LIBREVAULT_COMMIT='86a6aefcb5cc458f4d42195368fbcff2871f98e3'
-LIBREVAULT_PORT=
+LIBREVAULT_PORT=42345
 
 function reconfigure_librevault {
     echo -n ''
@@ -43,23 +43,55 @@ function reconfigure_librevault {
 }
 
 function upgrade_librevault {
+    if ! grep -Fxq "install_librevault" $COMPLETION_FILE; then
+        return
+    fi
+
+    function_check set_repo_commit
+
+    if [ -d $INSTALL_DIR/protobuf ]; then
+        if ! grep -q "Protobuf commit:$PROTOBUF_COMMIT" $COMPLETION_FILE; then
+            set_repo_commit $INSTALL_DIR/protobuf "Protobuf commit" "$PROTOBUF_COMMIT" $PROTOBUF_REPO
+            cd $INSTALL_DIR/protobuf
+            ./autogen.sh
+            ./configure
+            make
+            make check
+            make install
+            ldconfig
+        fi
+    fi
+
+    if [ -d $INSTALL_DIR/librevault/build ]; then
+        if ! grep -q "Librevault commit:$LIBREVAULT_COMMIT" $COMPLETION_FILE; then
+            set_repo_commit $INSTALL_DIR/librevault "Librevault commit" "$LIBREVAULT_COMMIT" $LIBREVAULT_REPO
+            cd $INSTALL_DIR/librevault
+            git submodule update --init --recursive
+            cd $INSTALL_DIR/librevault/build
+            cmake ..
+            cmake --build .
+            make install
+        fi
+    fi
+}
+
+function backup_local_librevault {
     echo -n ''
     # TODO
 }
 
-function backup_local_librevault {
-    # TODO
-}
-
 function restore_local_librevault {
+    echo -n ''
     # TODO
 }
 
 function backup_remote_librevault {
+    echo -n ''
     # TODO
 }
 
 function restore_remote_librevault {
+    echo -n ''
     # TODO
 }
 
@@ -67,12 +99,10 @@ function remove_librevault {
     if ! grep -Fxq "install_librevault" $COMPLETION_FILE; then
         return
     fi
-    if [ $LIBREVAULT_PORT ]; then
-        iptables -D INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
-        iptables -D INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
-        function_check save_firewall_settings
-        save_firewall_settings
-    fi
+    iptables -D INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
 
     systemctl stop librevault
     systemctl disable librevault
@@ -85,29 +115,39 @@ function configure_firewall_for_librevault {
     if grep -Fxq "configure_firewall_for_librevault" $COMPLETION_FILE; then
         return
     fi
-    if [ $LIBREVAULT_PORT ]; then
-        iptables -A INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
-        iptables -A INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
-        function_check save_firewall_settings
-        save_firewall_settings
-        OPEN_PORTS+=("Librevault $LIBREVAULT_PORT")
-    fi
+    iptables -A INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+    OPEN_PORTS+=("Librevault $LIBREVAULT_PORT")
     echo 'configure_firewall_for_librevault' >> $COMPLETION_FILE
 }
 
 function mesh_install_librevault {
     install_tracker
+    install_cmake
+    install_cryptopp
 
-    chroot "$rootdir" apt-get -y -t jessie-backports install cmake
     chroot "$rootdir" apt-get -y install bittornado nginx
-    chroot "$rootdir" apt-get -y install build-essential libboost-all-dev libssl-dev
+    chroot "$rootdir" apt-get -y install build-essential
+    chroot "$rootdir" apt-get -y install autoconf automake libtool curl make unzip
+
+    # A workaround which allows c++14 to be installed
+    sed -i 's|jessie|stretch|g' $rootdir/etc/apt/sources.list
+    sed -i 's|stretch-backports|jessie-backports|g' $rootdir/etc/apt/sources.list
+    chroot "$rootdir" apt-get update
+    chroot "$rootdir" apt-get -y install g++ gcc-6 g++-6 libboost-all-dev libssl-dev
+    chroot "$rootdir" apt-get -y install protobuf-compiler libprotobuf-dev
     chroot "$rootdir" apt-get -y install qtbase5-dev libqt5svg5-dev libqt5websockets5-dev
-    chroot "$rootdir" apt-get -y install autoconf automake libtool curl make g++ unzip
+    chroot "$rootdir" apt-get -y install libsqlite3-dev qttools5-dev qttools5-dev-tools libnatpmp-dev
+    sed -i 's|stretch|jessie|g' $rootdir/etc/apt/sources.list
+    chroot "$rootdir" apt-get update
 
     if [ ! -d $rootdir$INSTALL_DIR ]; then
-        chroot "$rootdir" mkdir -p $INSTALL_DIR
+        mkdir -p $rootdir$INSTALL_DIR
     fi
-    chroot "$rootdir" git clone $PROTOBUF_REPO $rootdir$INSTALL_DIR/protobuf
+
+    git clone $PROTOBUF_REPO $rootdir$INSTALL_DIR/protobuf
     cd $rootdir$INSTALL_DIR/protobuf
     git checkout $PROTOBUF_COMMIT -b $PROTOBUF_COMMIT
 
@@ -122,19 +162,59 @@ EOF
     chroot "$rootdir" chmod +x /root/install_protobuf
     chroot "$rootdir" /root/install_protobuf
 
-    git_clone $LIBREVAULT_REPO $rootdir$INSTALL_DIR/librevault
+    git clone $LIBREVAULT_REPO $rootdir$INSTALL_DIR/librevault
     cd $rootdir$INSTALL_DIR/librevault
     git checkout $LIBREVAULT_COMMIT -b $LIBREVAULT_COMMIT
+    git submodule update --init --recursive
+
+    # rabin seems particularly broken
+    rm -rf $rootdir$INSTALL_DIR/librevault/contrib/rabin
+    git clone https://github.com/bashrc/rabin $rootdir$INSTALL_DIR/librevault/contrib/rabin
+    cd $rootdir$INSTALL_DIR/librevault/contrib/rabin
+    git checkout bashrc/fixup2
+
     mkdir $rootdir$INSTALL_DIR/librevault/build
 
     cat <<EOF > $rootdir/root/install_librevault
 cd $INSTALL_DIR/librevault/build
-cmake ..
-cmake --build .
+cmake -BUILD_UPDATER=OFF ..
+which Meta_s.pb.cc
+cmake --build $INSTALL_DIR/librevault/build
 make install
 EOF
     chroot "$rootdir" chmod +x /root/install_librevault
     chroot "$rootdir" /root/install_librevault
+    chroot "$rootdir" rm /root/install_librevault
+
+    LIBREVAULT_DAEMON=$rootdir/etc/systemd/system/librevault-daemon.service
+    echo '[Unit]' > $LIBREVAULT_DAEMON
+    echo 'Description=Librevault - Peer-to-peer, decentralized and open source file sync (multi-instance-master)' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Service]' >> $LIBREVAULT_DAEMON
+    echo 'Type=oneshot' >> $LIBREVAULT_DAEMON
+    echo 'RemainAfterExit=yes' >> $LIBREVAULT_DAEMON
+    echo 'ExecStart=/bin/true' >> $LIBREVAULT_DAEMON
+    echo 'ExecReload=/bin/true' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Install]' >> $LIBREVAULT_DAEMON
+    echo 'WantedBy=multi-user.target' >> $LIBREVAULT_DAEMON
+
+    LIBREVAULT_DAEMON=$rootdir/etc/systemd/system/librevault-daemon@.service
+    echo '[Unit]' > $LIBREVAULT_DAEMON
+    echo 'Description=Librevault - Peer-to-peer, decentralized and open source file sync (instance for %I)' >> $LIBREVAULT_DAEMON
+    echo 'After=network.target' >> $LIBREVAULT_DAEMON
+    echo 'PartOf=librevault-daemon.service' >> $LIBREVAULT_DAEMON
+    echo 'ReloadPropagatedFrom=librevault-daemon.service' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Service]' >> $LIBREVAULT_DAEMON
+    echo 'User=%i' >> $LIBREVAULT_DAEMON
+    echo 'ExecStart=/usr/bin/librevault-daemon' >> $LIBREVAULT_DAEMON
+    echo 'Restart=on-failure' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Install]' >> $LIBREVAULT_DAEMON
+    echo 'WantedBy=multi-user.target' >> $LIBREVAULT_DAEMON
+
+    chroot "$rootdir" systemctl enable librevault-daemon
 }
 
 function install_librevault {
@@ -148,11 +228,23 @@ function install_librevault {
     fi
 
     install_tracker
+    install_cmake
+    install_cryptopp
 
-    apt-get -y -t jessie-backports install cmake
-    apt-get -y install build-essential libboost-all-dev libssl-dev
+    apt-get -y install build-essential
+    apt-get -y install autoconf automake libtool curl make unzip
+
+    # A workaround which allows c++14 to be installed
+    sed -i 's|jessie|stretch|g' /etc/apt/sources.list
+    sed -i 's|stretch-backports|jessie-backports|g' /etc/apt/sources.list
+    apt-get update
+    apt-get -y install protobuf-compiler libprotobuf-dev
+    apt-get -y install g++ gcc-6 g++-6 libboost-all-dev libssl-dev
     apt-get -y install qtbase5-dev libqt5svg5-dev libqt5websockets5-dev
-    apt-get -y install autoconf automake libtool curl make g++ unzip
+    apt-get -y install libsqlite3-dev qttools5-dev qttools5-dev-tools libnatpmp-dev
+    apt-get -y install gcc-6 g++-6 libboost-all-dev
+    sed -i 's|stretch|jessie|g' /etc/apt/sources.list
+    apt-get update
 
     if [ ! -d $INSTALL_DIR ]; then
         mkdir -p $INSTALL_DIR
@@ -167,14 +259,65 @@ function install_librevault {
     make install
     ldconfig
 
+    if ! grep -q "Protobuf commit" $COMPLETION_FILE; then
+        echo "Protobuf commit:$PROTOBUF_COMMIT" >> $COMPLETION_FILE
+    else
+        sed -i "s/Protobuf commit.*/Protobuf commit:$PROTOBUF_COMMIT/g" $COMPLETION_FILE
+    fi
+
     git_clone $LIBREVAULT_REPO $INSTALL_DIR/librevault
     cd $INSTALL_DIR/librevault
     git checkout $LIBREVAULT_COMMIT -b $LIBREVAULT_COMMIT
+    git submodule update --init --recursive
+
+    # rabin seems particularly broken
+    rm -rf $INSTALL_DIR/librevault/contrib/rabin
+    git clone https://github.com/bashrc/rabin $INSTALL_DIR/librevault/contrib/rabin
+    cd $INSTALL_DIR/librevault/contrib/rabin
+    git checkout bashrc/fixup2
+
     mkdir $INSTALL_DIR/librevault/build
     cd $INSTALL_DIR/librevault/build
-    cmake ..
+    cmake -BUILD_UPDATER=OFF ..
     cmake --build .
     make install
+
+    if ! grep -q "Librevault commit" $COMPLETION_FILE; then
+        echo "Librevault commit:$LIBREVAULT_COMMIT" >> $COMPLETION_FILE
+    else
+        sed -i "s/Librevault commit.*/Librevault commit:$LIBREVAULT_COMMIT/g" $COMPLETION_FILE
+    fi
+
+    LIBREVAULT_DAEMON=/etc/systemd/system/librevault-daemon.service
+    echo '[Unit]' > $LIBREVAULT_DAEMON
+    echo 'Description=Librevault - Peer-to-peer, decentralized and open source file sync (multi-instance-master)' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Service]' >> $LIBREVAULT_DAEMON
+    echo 'Type=oneshot' >> $LIBREVAULT_DAEMON
+    echo 'RemainAfterExit=yes' >> $LIBREVAULT_DAEMON
+    echo 'ExecStart=/bin/true' >> $LIBREVAULT_DAEMON
+    echo 'ExecReload=/bin/true' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Install]' >> $LIBREVAULT_DAEMON
+    echo 'WantedBy=multi-user.target' >> $LIBREVAULT_DAEMON
+
+    LIBREVAULT_DAEMON=/etc/systemd/system/librevault-daemon@.service
+    echo '[Unit]' > $LIBREVAULT_DAEMON
+    echo 'Description=Librevault - Peer-to-peer, decentralized and open source file sync (instance for %I)' >> $LIBREVAULT_DAEMON
+    echo 'After=network.target' >> $LIBREVAULT_DAEMON
+    echo 'PartOf=librevault-daemon.service' >> $LIBREVAULT_DAEMON
+    echo 'ReloadPropagatedFrom=librevault-daemon.service' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Service]' >> $LIBREVAULT_DAEMON
+    echo 'User=%i' >> $LIBREVAULT_DAEMON
+    echo 'ExecStart=/usr/bin/librevault-daemon' >> $LIBREVAULT_DAEMON
+    echo 'Restart=on-failure' >> $LIBREVAULT_DAEMON
+    echo '' >> $LIBREVAULT_DAEMON
+    echo '[Install]' >> $LIBREVAULT_DAEMON
+    echo 'WantedBy=multi-user.target' >> $LIBREVAULT_DAEMON
+
+    systemctl enable librevault-daemon
+    systemctl start librevault-daemon
 
     echo 'install_librevault' >> $COMPLETION_FILE
 }
