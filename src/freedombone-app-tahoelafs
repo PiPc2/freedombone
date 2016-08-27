@@ -1,0 +1,243 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Distributed storage
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='mesh'
+
+TAHOELAFS_PORT=50213
+TAHOELAFS_WEB_PORT=3456
+TAHOELAFS_STORAGE_SPACE=1G
+TAHOELAFS_SHARED_DIR='Shared'
+
+function reconfigure_tahoelafs {
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+            if [ -d /home/$USERNAME/.tahoe ]; then
+                su -c 'tahoe stop' - $USERNAME
+                rm -rf /home/$USERNAME/.tahoe
+            fi
+            if [ -d /home/$USERNAME/.tahoe-introducer ]; then
+                rm -rf /home/$USERNAME/.tahoe-introducer
+            fi
+
+            if [ -d /home/$USERNAME/${TAHOELAFS_SHARED_DIR} ]; then
+                rm -rf /home/$USERNAME/${TAHOELAFS_SHARED_DIR}
+            fi
+
+            su -c 'tahoe create-node' - $USERNAME
+
+            if [ ! -d /home/$USERNAME/.tahoe ]; then
+                exit 63722
+            fi
+
+            su -c 'tahoe create-introducer ~/.tahoe-introducer' - $USERNAME
+
+            if [ ! -d /home/$USERNAME/.tahoe-introducer ]; then
+                exit 365272
+            fi
+
+            # create a shared directory
+            if [ ! -d /home/$USERNAME/${TAHOELAFS_SHARED_DIR} ]; then
+                mkdir /home/$USERNAME/${TAHOELAFS_SHARED_DIR}
+                chown -R $USERNAME:$USERNAME /home/$USERNAME/${TAHOELAFS_SHARED_DIR}
+            fi
+
+            TAHOELAFS_CONFIG=/home/$USERNAME/.tahoe/tahoe.cfg
+            echo '[node]' > $TAHOELAFS_CONFIG
+            echo "nickname = $USERNAME" >> $TAHOELAFS_CONFIG
+            echo "web.port = tcp:$TAHOELAFS_WEB_PORT:interface=127.0.0.1" >> $TAHOELAFS_CONFIG
+            echo 'web.static = public_html' >> $TAHOELAFS_CONFIG
+            echo "tub.port = tcp:$TAHOELAFS_PORT" >> $TAHOELAFS_CONFIG
+            echo "tub.location = tcp:$HOSTNAME:$TAHOELAFS_PORT" >> $TAHOELAFS_CONFIG
+            echo 'timeout.keepalive = 240' >> $TAHOELAFS_CONFIG
+            echo 'timeout.disconnect = 1800' >> $TAHOELAFS_CONFIG
+            echo '' >> $TAHOELAFS_CONFIG
+            echo '[client]' >> $TAHOELAFS_CONFIG
+            echo 'introducer.furl = None' >> $TAHOELAFS_CONFIG
+            echo '#helper.furl =' >> $TAHOELAFS_CONFIG
+            echo '' >> $TAHOELAFS_CONFIG
+            echo 'shares.needed = 1' >> $TAHOELAFS_CONFIG
+            echo 'shares.happy = 1' >> $TAHOELAFS_CONFIG
+            echo 'shares.total = 1' >> $TAHOELAFS_CONFIG
+            echo '' >> $TAHOELAFS_CONFIG
+            echo '[storage]' >> $TAHOELAFS_CONFIG
+            echo 'enabled = true' >> $TAHOELAFS_CONFIG
+            echo "reserved_space = $TAHOELAFS_STORAGE_SPACE" >> $TAHOELAFS_CONFIG
+            echo '#expire.enabled = true' >> $TAHOELAFS_CONFIG
+            echo '#expire.mode =' >> $TAHOELAFS_CONFIG
+            echo '' >> $TAHOELAFS_CONFIG
+            echo '[helper]' >> $TAHOELAFS_CONFIG
+            echo 'enabled = false' >> $TAHOELAFS_CONFIG
+            echo '' >> $TAHOELAFS_CONFIG
+            echo '[drop_upload]' >> $TAHOELAFS_CONFIG
+            echo 'enabled = true' >> $TAHOELAFS_CONFIG
+            echo "local.directory = ~/${TAHOELAFS_SHARED_DIR}" >> $TAHOELAFS_CONFIG
+            chown $USERNAME:$USERNAME $TAHOELAFS_CONFIG
+
+            su -c 'tahoe start ~/.tahoe-introducer' - $USERNAME
+            su -c 'tahoe start' - $USERNAME
+        fi
+    done
+}
+
+function upgrade_tahoelafs {
+    echo -n ''
+    # TODO
+}
+
+function backup_local_tahoelafs {
+    echo -n ''
+    # TODO
+}
+
+function restore_local_tahoelafs {
+    echo -n ''
+    # TODO
+}
+
+function backup_remote_tahoelafs {
+    echo -n ''
+    # TODO
+}
+
+function restore_remote_tahoelafs {
+    echo -n ''
+    # TODO
+}
+
+function remove_tahoelafs {
+    if ! grep -Fxq "install_tahoelafs" $COMPLETION_FILE; then
+        return
+    fi
+    iptables -D INPUT -p udp --dport $TAHOELAFS_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport $TAHOELAFS_PORT -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+
+    apt-get -y remove --purge tahoe-lafs
+
+    sed -i '/install_tahoelafs/d' $COMPLETION_FILE
+    sed -i '/configure_firewall_for_tahoelafs/d' $COMPLETION_FILE
+}
+
+function configure_firewall_for_tahoelafs {
+    if grep -Fxq "configure_firewall_for_tahoelafs" $COMPLETION_FILE; then
+        return
+    fi
+    iptables -A INPUT -p udp --dport $TAHOELAFS_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $TAHOELAFS_PORT -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+    OPEN_PORTS+=("Tahoe-LAFS $TAHOELAFS_PORT")
+    echo 'configure_firewall_for_tahoelafs' >> $COMPLETION_FILE
+}
+
+function tahoelafs_update_script {
+    update_script_filename=$1
+
+    echo '#!/bin/bash' > $update_script_filename
+    echo 'PEERS_FILE=$(mktemp /tmp/tahoelafs-peers.XXXXXX)' >> $update_script_filename
+    echo -n 'avahi-browse -atl | grep "Workstation" | ' >> $update_script_filename
+    echo -n "awk -F ' ' '{print \$4}' " >> $update_script_filename
+    echo '| sort -u > $PEERS_FILE' >> $update_script_filename
+    echo 'if [ ! "$?" = "0" ]; then' >> $update_script_filename
+    echo '    exit 1' >> $update_script_filename
+    echo 'fi' >> $update_script_filename
+    echo '' >> $update_script_filename
+    echo 'if [ ! -f $PEERS_FILE ]; then' >> $update_script_filename
+    echo '    exit 0' >> $update_script_filename
+    echo 'fi' >> $update_script_filename
+    echo '' >> $update_script_filename
+    echo 'furl=""' >> $update_script_filename
+    echo 'while IFS="" read -r line || [[ -n "$line" ]]; do' >> $update_script_filename
+    echo '    if [[ $furl != "" ]]; then' >> $update_script_filename
+    echo -n '        furl="$furl,$line:' >> $update_script_filename
+    echo -n "$TAHOELAFS_PORT" >> $update_script_filename
+    echo '"' >> $update_script_filename
+    echo '    else' >> $update_script_filename
+    echo -n '        furl="$line:' >> $update_script_filename
+    echo -n "$TAHOELAFS_PORT" >> $update_script_filename
+    echo '"' >> $update_script_filename
+    echo '    fi' >> $update_script_filename
+    echo 'done < "$PEERS_FILE"' >> $update_script_filename
+    echo '' >> $update_script_filename
+    echo 'rm $PEERS_FILE' >> $update_script_filename
+    echo '' >> $update_script_filename
+    echo 'for d in /home/*/ ; do' >> $update_script_filename
+    echo -n '    USERNAME=$(echo "$d" | ' >> $update_script_filename
+    echo "awk -F '/' '{print \$3}')'" >> $update_script_filename
+    echo '    if [ -f /home/$USERNAME/.tahoe/tahoe.cfg ]; then' >> $update_script_filename
+    echo '        if ! grep -q "introducer.furl = ${furl}" /home/$USERNAME/.tahoe/tahoe.cfg; then' >> $update_script_filename
+    echo '            sed -i "s|introducer.furl =.*|introducer.furl = ${furl}|g" /home/$USERNAME/.tahoe/tahoe.cfg' >> $update_script_filename
+    echo '            chown $USERNAME:$USERNAME /home/$USERNAME/.tahoe/tahoe.cfg' >> $update_script_filename
+    echo '            su -c "tahoe restart" - $USERNAME' >> $update_script_filename
+    echo '        fi' >> $update_script_filename
+    echo '    fi' >> $update_script_filename
+    echo 'done' >> $update_script_filename
+    echo '' >> $update_script_filename
+    echo 'exit 0' >> $update_script_filename
+    chmod +x $update_script_filename
+}
+
+function mesh_install_tahoelafs {
+    chroot "$rootdir" apt-get -y install tahoe-lafs
+    chroot "$rootdir" su -c 'tahoe create-client' - $MY_USERNAME
+    if [ ! -d $rootdir/home/$MY_USERNAME/.tahoe ]; then
+        exit 63722
+    fi
+    tahoelafs_update_script $rootdir/usr/bin/update-tahoelafs
+
+    if ! grep -q "update-tahoelafs" $rootdir/etc/crontab; then
+        echo "*/1            * *   *   *   root /usr/bin/update-tahoelafs 2> /dev/null" >> $rootdir/etc/crontab
+    fi
+}
+
+function install_tahoelafs {
+    if [ $INSTALLING_MESH ]; then
+        mesh_install_tahoelafs
+        return
+    fi
+
+    if grep -Fxq "install_tahoelafs" $COMPLETION_FILE; then
+        return
+    fi
+
+    apt-get -y install tahoe-lafs
+    configure_firewall_for_tahoelafs
+    reconfigure_tahoelafs
+    tahoelafs_update_script /usr/bin/update-tahoelafs
+
+    function_check cron_add_mins
+    cron_add_mins 1 '/usr/bin/update-tahoelafs 2> /dev/null'
+
+    echo 'install_tahoelafs' >> $COMPLETION_FILE
+}
+
+# NOTE: deliberately no exit 0
