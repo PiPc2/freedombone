@@ -30,17 +30,21 @@
 
 VARIANTS='mesh'
 
+TAHOELAFS_REPO="https://github.com/tahoe-lafs/tahoe-lafs"
+TAHOELAFS_COMMIT='30b421d48b3d1dae2ef507bf27a1f3816300cd92'
+
 TAHOELAFS_PORT=50213
 TAHOELAFS_WEB_PORT=3456
 TAHOELAFS_STORAGE_SPACE=1G
 TAHOELAFS_SHARED_DIR='Shared'
+TAHOE_COMMAND="cd /var/lib/tahoelafs && venv/bin/tahoe"
 
 function reconfigure_tahoelafs {
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
         if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
             if [ -d /home/$USERNAME/.tahoe ]; then
-                su -c 'tahoe stop' - $USERNAME
+                su -c "$TAHOE_COMMAND stop" - $USERNAME
                 rm -rf /home/$USERNAME/.tahoe
             fi
 
@@ -48,7 +52,7 @@ function reconfigure_tahoelafs {
                 rm -rf /home/$USERNAME/${TAHOELAFS_SHARED_DIR}
             fi
 
-            su -c 'tahoe create-node' - $USERNAME
+            su -c "cd $TAHOE_COMMAND create-node" - $USERNAME
 
             if [ ! -d /home/$USERNAME/.tahoe ]; then
                 exit 63722
@@ -87,12 +91,13 @@ function reconfigure_tahoelafs {
             echo '[helper]' >> $TAHOELAFS_CONFIG
             echo 'enabled = false' >> $TAHOELAFS_CONFIG
             echo '' >> $TAHOELAFS_CONFIG
-            echo '[drop_upload]' >> $TAHOELAFS_CONFIG
+            echo '[magic_folder]' >> $TAHOELAFS_CONFIG
             echo 'enabled = true' >> $TAHOELAFS_CONFIG
-            echo "local.directory = ~/${TAHOELAFS_SHARED_DIR}" >> $TAHOELAFS_CONFIG
+            echo "local.directory = /home/${USERNAME}/${TAHOELAFS_SHARED_DIR}" >> $TAHOELAFS_CONFIG
             chown $USERNAME:$USERNAME $TAHOELAFS_CONFIG
 
-            su -c 'tahoe start' - $USERNAME
+            su -c "$TAHOE_COMMAND start" - $USERNAME
+            su -c "$TAHOE_COMMAND magic-folder create $HOSTNAME" - $USERNAME
         fi
     done
 }
@@ -131,8 +136,15 @@ function remove_tahoelafs {
     function_check save_firewall_settings
     save_firewall_settings
 
-    pip uninstall tahoe-lafs
-    apt-get -y remove --purge tahoe-lafs
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [ -f /home/$USERNAME/.tahoe ]; then
+            su -c "$TAHOE_COMMAND stop" - $USERNAME
+            rm -rf /home/$USERNAME/.tahoe
+        fi
+    done
+
+    rm -rf /var/lib/tahoelafs
 
     sed -i '/install_tahoelafs/d' $COMPLETION_FILE
     sed -i '/configure_firewall_for_tahoelafs/d' $COMPLETION_FILE
@@ -152,6 +164,7 @@ function configure_firewall_for_tahoelafs {
 
 function tahoelafs_update_script {
     update_script_filename=$1
+    update_script_type=$2
 
     echo '#!/bin/bash' > $update_script_filename
     echo 'PEERS_FILE=$(mktemp /tmp/tahoelafs-peers.XXXXXX)' >> $update_script_filename
@@ -187,23 +200,44 @@ function tahoelafs_update_script {
     echo '    if [ -f /home/$USERNAME/.tahoe/tahoe.cfg ]; then' >> $update_script_filename
     echo '        if ! grep -q "introducer.furl = ${furl}" /home/$USERNAME/.tahoe/tahoe.cfg; then' >> $update_script_filename
     echo '            sed -i "s|introducer.furl =.*|introducer.furl = ${furl}|g" /home/$USERNAME/.tahoe/tahoe.cfg' >> $update_script_filename
+
+    # change the nickname to the same as used by tox
+    if [ $update_script_type ]; then
+        if [[ $update_script_type == "mesh" ]]; then
+            echo '            TOX_USERNAME=$(toxid --showuser)' >> $update_script_filename
+            echo '            sed -i "s|nickname =.*|nickname = ${TOX_USERNAME}|g" /home/$USERNAME/.tahoe/tahoe.cfg' >> $update_script_filename
+        fi
+    fi
+
     echo '            chown $USERNAME:$USERNAME /home/$USERNAME/.tahoe/tahoe.cfg' >> $update_script_filename
-    echo '            su -c "tahoe restart" - $USERNAME' >> $update_script_filename
+    echo "            su -c '$TAHOE_COMMAND restart' - \$USERNAME" >> $update_script_filename
     echo '        fi' >> $update_script_filename
+
     echo '    fi' >> $update_script_filename
     echo 'done' >> $update_script_filename
     echo '' >> $update_script_filename
+
     echo 'exit 0' >> $update_script_filename
     chmod +x $update_script_filename
 }
 
 function mesh_install_tahoelafs {
-    chroot "$rootdir" apt-get -y install python-pip tahoe-lafs
-    chroot "$rootdir" pip install tahoe-lafs
-    chroot "$rootdir" su -c 'tahoe create-client' - $MY_USERNAME
-    if [ ! -d $rootdir/home/$MY_USERNAME/.tahoe ]; then
-        exit 63722
-    fi
+    chroot "$rootdir" apt-get -y install build-essential python-pip python-dev
+    chroot "$rootdir" apt-get -y install libffi-dev libssl-dev python-virtualenv
+
+    git clone $TAHOELAFS_REPO $rootdir/var/lib/tahoelafs
+    cd $rootdir/var/lib/tahoelafs
+    git checkout $TAHOELAFS_COMMIT -b $TAHOELAFS_COMMIT
+
+    cat <<EOF > $rootdir/root/install_tahoelafs
+cd /var/lib/tahoelafs
+virtualenv venv
+venv/bin/pip install --editable .
+EOF
+    chroot "$rootdir" chmod +x /root/install_tahoelafs
+    chroot "$rootdir" /root/install_tahoelafs
+    chroot "$rootdir" rm /root/install_tahoelafs
+
     tahoelafs_update_script $rootdir/usr/bin/update-tahoelafs
 
     if ! grep -q "update-tahoelafs" $rootdir/etc/crontab; then
@@ -221,14 +255,19 @@ function install_tahoelafs {
         return
     fi
 
-    apt-get -y install python-pip tahoe-lafs
-    pip install tahoe-lafs
+    apt-get -y install build-essential python-pip python-dev libffi-dev libssl-dev python-virtualenv
+
+    git_clone $TAHOELAFS_REPO /var/lib/tahoelafs
+    cd /var/lib/tahoelafs
+    git checkout $TAHOELAFS_COMMIT -b $TAHOELAFS_COMMIT
+    virtualenv venv
+    venv/bin/pip install --editable .
     configure_firewall_for_tahoelafs
     reconfigure_tahoelafs
     tahoelafs_update_script /usr/bin/update-tahoelafs
 
     function_check cron_add_mins
-    cron_add_mins 1 '/usr/bin/update-tahoelafs 2> /dev/null'
+    cron_add_mins 1 "/usr/bin/update-tahoelafs 2> /dev/null"
 
     echo 'install_tahoelafs' >> $COMPLETION_FILE
 }
