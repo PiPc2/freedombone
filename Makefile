@@ -1,5 +1,5 @@
 APP=freedombone
-VERSION=1.01
+VERSION=1.02
 RELEASE=1
 PREFIX?=/usr/local
 
