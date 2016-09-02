@@ -32,8 +32,9 @@
 # before getting to the version we want
 GO_INTERMEDIATE_VERSION=1.4.2
 
-GO_VERSION=1.5
+GO_VERSION=1.7
 
+GO_REPO="https://go.googlesource.com/go"
 GO_PACKAGE_MANAGER_REPO="https://github.com/gpmgo/gopm"
 GVM_HOME=/home/git/gvm
 GVM_REPO="https://github.com/moovweb/gvm"
@@ -62,123 +63,120 @@ function select_go_version {
     systemctl set-environment GOPATH=$GOPATH
 }
 
-function mesh_upgrade_golang {
+function mesh_upgrade_golang_from_source {
+    chroot "$rootdir" adduser --disabled-login --gecos 'go' ipfs
+
+    git clone $GO_REPO $rootdir/home/go/go${GO_VERSION}
+    cd $rootdir/home/go/go${GO_VERSION}
+    git checkout go${GO_VERSION} -b go${GO_VERSION}
+
+    git clone $GO_REPO $rootdir/home/go/go${GO_INTERMEDIATE_VERSION}
+    cd $rootdir/home/go/go${GO_INTERMEDIATE_VERSION}
+    git checkout go${GO_INTERMEDIATE_VERSION} -b go${GO_INTERMEDIATE_VERSION}
+
     cat <<EOF > ${rootdir}/root/upgrade_golang.sh
 #!/bin/bash
-
-export GVM_ROOT=$GVM_HOME
 
 apt-get -y install build-essential libc6-dev
 apt-get -y install gcc-multilib g++-multilib make
 apt-get -y install curl git mercurial binutils bison
-if [ ! -d $INSTALL_DIR ]; then
-    mkdir $INSTALL_DIR
-fi
-cd $INSTALL_DIR
 
-git clone $GVM_REPO gvm
-
-cd $INSTALL_DIR/gvm
-git checkout $GVM_COMMIT -b $GVM_COMMIT
-if [ ! -f binscripts/gvm-installer ]; then
-    echo $'gvm installer not found'
-fi
-chmod +x binscripts/gvm-installer
-
-if [ -d /root/.gvm ]; then
-    rm -rf /root/.gvm
-fi
-if [ -d $GVM_HOME ]; then
-    rm -rf $GVM_HOME
-fi
-if ! grep -q "export GVM_ROOT=" ~/.bashrc; then
-    echo "export GVM_ROOT=$GVM_HOME" >> ~/.bashrc
-else
-    sed -i "s|export GVM_ROOT=.*|export GVM_ROOT=$GVM_HOME|g" ~/.bashrc
+if [ -d /home/go/Maildir ]; then
+    rm -rf /home/go/Maildir
 fi
 
-if [ ! -d /home/git ]; then
-    adduser --disabled-login --gecos 'Gogs' git
-fi
-if [ -d /home/git/Maildir ]; then
-    rm -rf /home/git/Maildir
-fi
+export GOROOT=/home/go
+export GOPATH=/home/go/go${GO_INTERMEDIATE_VERSION}
 
-./binscripts/gvm-installer master /home/git
-
-if [ ! -d $GVM_HOME ]; then
-    echo $'Unable to install gvm'
-    exit 83537
+cd /home/go/go${GO_INTERMEDIATE_VERSION}/src
+./all.bash
+if [ ! -f /home/go/go${GO_INTERMEDIATE_VERSION}/bin/go ]; then
+    exit 63722
 fi
 
-[[ -s "$GVM_HOME/scripts/gvm" ]] && source "$GVM_HOME/scripts/gvm"
-if [ ! -f $GVM_HOME/bin/gvm ]; then
-    echo $'gvm was not installed'
-fi
-if ! grep -q "export GVM_ROOT=" ~/.bashrc; then
-    echo "export GVM_ROOT=$GVM_HOME" >> ~/.bashrc
-fi
+export GOROOT_BOOTSTRAP=/home/go/go${GO_INTERMEDIATE_VERSION}
 
-cd $GVM_HOME/bin
-
-$GVM_HOME/bin/gvm install go${GO_INTERMEDIATE_VERSION}
-if [ ! "\$?" = "0" ]; then
-    echo $"Unable to install intermediate go version ${GO_INTERMEDIATE_VERSION}"
-    if [ -f $GVM_HOME/logs/go-go${GO_INTERMEDIATE_VERSION}-compile.log ]; then
-        cat $GVM_HOME/logs/go-go${GO_INTERMEDIATE_VERSION}-compile.log
-    fi
-    exit 352872
+cd /home/go/go${GO_VERSION}/src
+./all.bash
+if [ ! -f /home/go/go${GO_VERSION}/bin/go ]; then
+    exit 528352
 fi
 
-export GOROOT_BOOTSTRAP=/home/git/gvm/gos/go${GO_INTERMEDIATE_VERSION}
+chown -R go:go /home/go
 
-$GVM_HOME/bin/gvm install go${GO_VERSION}
-if [ ! "\$?" = "0" ]; then
-    echo $"Unable to install go version ${GO_VERSION}"
-    if [ -f $GVM_HOME/logs/go-go${GO_VERSION}-compile.log ]; then
-        cat $GVM_HOME/logs/go-go${GO_VERSION}-compile.log
-    fi
-    exit 529252
-fi
-
-chown -R git:git $GVM_HOME
-
-if [ ! -d $GVM_HOME/bin ]; then
-    echo $'GVM was not installed'
-    exit 629532
-fi
-
-if ! grep -q "GVM_ROOT=" ~/.bashrc; then
-    echo "export GVM_ROOT=$GVM_HOME" >> ~/.bashrc
-else
-    sed -i "s|export GVM_ROOT=.*|export GVM_ROOT=$GVM_HOME|g" ~/.bashrc
-fi
-
-cd $GVM_HOME/bin
-[[ -s "$GVM_HOME/scripts/gvm" ]] && source "$GVM_HOME/scripts/gvm"
-#$GVM_HOME/bin/gvm use go${GO_VERSION} --default
-#if [ ! "\$?" = "0" ]; then
-#    echo $"Unable to use go version ${GO_VERSION}"
-#    if [ -f $GVM_HOME/logs/go-go${GO_VERSION}-compile.log ]; then
-#        cat $GVM_HOME/logs/go-go${GO_VERSION}-compile.log
-#    fi
-#fi
-
-echo "export GOPATH=/home/git/gvm/pkgsets/go${GO_VERSION}/global" >> ~/.bashrc
-export GOPATH=/home/git/gvm/pkgsets/go${GO_VERSION}/global
+export GOPATH=/home/go/go${GO_VERSION}
+export GOROOT=/home/go
+echo "export GOPATH=/home/go/go${GO_VERSION}" >> /home/go/.bashrc
+echo "export GOPATH=/home/go/go${GO_VERSION}" >> ~/.bashrc
+echo "export GOROOT=/home/go" >> /home/go/.bashrc
+echo "export GOROOT=/home/go" >> ~/.bashrc
+echo "systemctl set-environment GOPATH=\$GOPATH" >> ~/.bashrc
+echo "systemctl set-environment GOROOT=\$GOROOT" >> ~/.bashrc
+echo "systemctl set-environment GOPATH=\$GOPATH" >> /home/go/.bashrc
+echo "systemctl set-environment GOROOT=\$GOROOT" >> /home/go/.bashrc
 systemctl set-environment GOPATH=\$GOPATH
+systemctl set-environment GOROOT=\$GOROOT
 
 exit 0
 EOF
     chroot ${rootdir} chmod +x /root/upgrade_golang.sh
     chroot ${rootdir} /root/upgrade_golang.sh
-    if [ ! "$?" = "0" ]; then
+    if [ ! -f ${rootdir}/home/go/go${GO_VERSION}/bin/go ]; then
         echo $'Failed to upgrade golang'
         cat ${rootdir}/root/upgrade_golang.sh
         rm -f ${rootdir}/root/upgrade_golang.sh
         exit 836535
     fi
     rm -f ${rootdir}/root/upgrade_golang.sh
+}
+
+function mesh_upgrade_golang {
+    chroot "$rootdir" adduser --disabled-login --gecos 'go' go
+
+    GOARCH=
+    if [[ $ARCHITECTURE == *"386" ]]; then
+        GOARCH=386
+    fi
+    if [[ $ARCHITECTURE == *"amd64" ]]; then
+        GOARCH=amd64
+    fi
+    if [[ $ARCHITECTURE == *"arm"* ]]; then
+        GOARCH=armv6l
+    fi
+    if [ ! $GOARCH ]; then
+        return
+    fi
+
+    GO_SOURCE=https://storage.googleapis.com/golang/go${GO_VERSION}.linux-${GOARCH}.tar.gz
+
+    if [ ! -d ${rootdir}${INSTALL_DIR} ]; then
+        chroot "$rootdir" mkdir -p ${INSTALL_DIR}
+    fi
+    cd ${rootdir}${INSTALL_DIR}
+    wget ${GO_SOURCE}
+    if [ ! -f ${rootdir}${INSTALL_DIR}/go${GO_VERSION}.linux-${GOARCH}.tar.gz ]; then
+        exit 26524
+    fi
+    chroot "$rootdir" tar -C /home/go -xzf ${INSTALL_DIR}/go${GO_VERSION}.linux-${GOARCH}.tar.gz
+    if [ ! -d ${rootdir}/home/go/go/bin ]; then
+        echo 'Go binary not installed'
+        exit 763562
+    fi
+    mv ${rootdir}/home/go/go ${rootdir}/home/go/go${GO_VERSION}
+    echo "export GOROOT=/home/go" >> $rootdir/root/.bashrc
+    echo "export GOROOT=/home/go" >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo "export GOROOT=/home/go" >> $rootdir/home/go/.bashrc
+
+    echo "export GOPATH=\$GOROOT/go${GO_VERSION}/bin" >> $rootdir/root/.bashrc
+    echo "export GOPATH=\$GOROOT/go${GO_VERSION}/bin" >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo "export GOPATH=\$GOROOT/go${GO_VERSION}/bin" >> $rootdir/home/go/.bashrc
+
+    echo 'export PATH=$PATH:$GOPATH' >> $rootdir/root/.bashrc
+    echo 'export PATH=$PATH:$GOPATH' >> $rootdir/home/$MY_USERNAME/.bashrc
+    echo 'export PATH=$PATH:$GOPATH' >> $rootdir/home/go/.bashrc
+    chroot "$rootdir" chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME
+    chroot "$rootdir" chown -R go:go /home/go
+    cp ${rootdir}/home/go/go${GO_VERSION}/bin/* ${rootdir}/usr/bin
 }
 
 function upgrade_golang {
@@ -246,6 +244,9 @@ function upgrade_golang {
     fi
     if ! grep -q "export GVM_ROOT=" ~/.bashrc; then
         echo "export GVM_ROOT=$GVM_ROOT" >> ~/.bashrc
+    fi
+    if ! grep -q 'PATH=$PATH:$GVM_ROOT/bin' ~/.bashrc; then
+        echo 'PATH=$PATH:$GVM_ROOT/bin' >> ~/.bashrc
     fi
 
     export GOROOT_BOOTSTRAP=$GOROOT

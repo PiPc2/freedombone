@@ -32,7 +32,7 @@ VARIANTS='mesh'
 
 IPFS_GO_REPO_BASE="github.com/ipfs/go-ipfs"
 IPFS_GO_REPO="https://${IPFS_GO_REPO_BASE}"
-IPFS_COMMIT='20b06a4cbce8884f5b194da6e98cb11f2c77f166'
+IPFS_COMMIT='6fdfaaf6e4783ae1be7b348e7a6bc0640982c7df'
 IPFS_PORT=4001
 IPFS_NODE_VERSION='6.2.2'
 IPFS_N_VERSION='2.1.4'
@@ -382,46 +382,14 @@ function mesh_install_ipfs_go {
 
     mesh_upgrade_golang
 
-    GOPATH=/home/git/gvm/pkgsets/go${GO_VERSION}/global
+    GOPATH=/home/go/go${GO_VERSION}
+    IPFS_PATH=/usr/bin
 
     cat <<EOF > ${rootdir}/root/install_ipfs_go.sh
-#!/bin/bash
-
 export GOPATH=$GOPATH
+export GOROOT=/home/go
 
-if [ ${#GOPATH} -lt 1 ]; then
-    echo $'GOPATH was not set'
-    exit 62925
-fi
-
-if [ ! -d /home/git ]; then
-    adduser --disabled-login --gecos 'Gogs' git
-
-    # install Go
-    if ! grep -q "export GOPATH=" ~/.bashrc; then
-        echo "export GOPATH=\$GOPATH" >> ~/.bashrc
-    else
-        sed -i "s|export GOPATH=.*|export GOPATH=\$GOPATH|g" ~/.bashrc
-    fi
-    systemctl set-environment GOPATH=\$GOPATH
-    if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
-        echo "systemctl set-environment GOPATH=\$GOPATH" >> ~/.bashrc
-    else
-        sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=\$GOPATH|g" ~/.bashrc
-    fi
-    if [ ! -d \$GOPATH ]; then
-        mkdir -p \$GOPATH
-    fi
-fi
-
-IPFS_PATH=\$GOPATH/bin
-export PATH="\$GOPATH/bin:\$PATH:"
-echo 'export PATH="\$GOPATH/bin:\$PATH:";' >> /home/$MY_USERNAME/.bashrc
-
-if grep -q 'GOPATH/bin' ~/.bashrc; then
-    sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=\$GOPATH|g" ~/.bashrc
-fi
-chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
+IPFS_PATH=$IPFS_PATH
 
 echo "go get -u ${IPFS_GO_REPO_BASE}/cmd/ipfs"
 go get -u ${IPFS_GO_REPO_BASE}/cmd/ipfs
@@ -434,21 +402,24 @@ if [ ! -d $GOPATH/src/$IPFS_GO_REPO_BASE ]; then
     exit 63923
 fi
 
-cd \$GOPATH/src/$IPFS_GO_REPO_BASE
+cd \$GOPATH/src/${IPFS_GO_REPO_BASE}
 git checkout $IPFS_COMMIT -b $IPFS_COMMIT
 if [ ! "$?" = "0" ]; then
     exit 735639
 fi
 
+make install
+if [ ! "$?" = "0" ]; then
+    exit 6743895
+fi
+
 exit 0
 EOF
     chroot ${rootdir} chmod +x /root/install_ipfs_go.sh
-    chroot ${rootdir} /root/install_ipfs_go.sh
-    if [ ! "$?" = "0" ]; then
-        echo $'Failed to install ipfs go'
-        cat ${rootdir}/root/install_ipfs_go.sh
-        rm -f ${rootdir}/root/install_ipfs_go.sh
-        exit 365728
+    chroot ${rootdir} bash /root/install_ipfs_go.sh
+    if [ ! -f ${rootdir}$IPFS_PATH/ipfs ]; then
+        echo 'IPFS was not installed'
+        exit 73529
     fi
     chroot ${rootdir} rm -f /root/install_ipfs_go.sh
 
@@ -464,7 +435,7 @@ EOF
     echo "WorkingDirectory=/home/$MY_USERNAME" >> ${rootdir}/etc/systemd/system/ipfs.service
     echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> ${rootdir}/etc/systemd/system/ipfs.service
     echo 'Restart=on-failure' >> ${rootdir}/etc/systemd/system/ipfs.service
-    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\"" >> ${rootdir}/etc/systemd/system/ipfs.service
     echo '' >> ${rootdir}/etc/systemd/system/ipfs.service
     echo '[Install]' >> ${rootdir}/etc/systemd/system/ipfs.service
     echo 'WantedBy=multi-user.target' >> ${rootdir}/etc/systemd/system/ipfs.service
@@ -544,6 +515,11 @@ function install_ipfs_go {
         echo "ipfs commit:$IPFS_COMMIT" >> $COMPLETION_FILE
     else
         sed -i "s/ipfs commit.*/ipfs commit:$IPFS_COMMIT/g" $COMPLETION_FILE
+    fi
+
+    make install
+    if [ ! "$?" = "0" ]; then
+        exit 547242
     fi
 
     # initialise
