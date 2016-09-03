@@ -39,6 +39,7 @@ IPFS_N_VERSION='2.1.4'
 IPFS_JS_VERSION='0.14.3'
 IPFS_JS_RONIN_VERSION='0.3.11'
 IPFS_KEY_LENGTH=2048
+IPFS_GO_VERSION=0.4.2
 
 function reconfigure_ipfs {
     echo -n ''
@@ -378,50 +379,47 @@ function install_ipfs_js {
 }
 
 function mesh_install_ipfs_go {
-    chroot ${rootdir} apt-get -y install golang libpam0g-dev fuse
+    chroot ${rootdir} apt-get -y install libpam0g-dev fuse wget
 
     mesh_upgrade_golang
 
-    GOPATH=/home/go/go${GO_VERSION}
+    IPFS_ARCH=
     IPFS_PATH=/usr/bin
 
-    cat <<EOF > ${rootdir}/root/install_ipfs_go.sh
-export GOPATH=$GOPATH
-export GOROOT=/home/go
-
-IPFS_PATH=$IPFS_PATH
-
-echo "go get -u ${IPFS_GO_REPO_BASE}/cmd/ipfs"
-go get -u ${IPFS_GO_REPO_BASE}/cmd/ipfs
-if [ ! "$?" = "0" ]; then
-    exit 8242
-fi
-
-if [ ! -d $GOPATH/src/$IPFS_GO_REPO_BASE ]; then
-    echo $'go get failed to get ipfs'
-    exit 63923
-fi
-
-cd \$GOPATH/src/${IPFS_GO_REPO_BASE}
-git checkout $IPFS_COMMIT -b $IPFS_COMMIT
-if [ ! "$?" = "0" ]; then
-    exit 735639
-fi
-
-make install
-if [ ! "$?" = "0" ]; then
-    exit 6743895
-fi
-
-exit 0
-EOF
-    chroot ${rootdir} chmod +x /root/install_ipfs_go.sh
-    chroot ${rootdir} bash /root/install_ipfs_go.sh
-    if [ ! -f ${rootdir}$IPFS_PATH/ipfs ]; then
-        echo 'IPFS was not installed'
-        exit 73529
+    if [ ! -d $rootdir$INSTALL_DIR/ipfs ]; then
+        mkdir -p $rootdir$INSTALL_DIR/ipfs
     fi
-    chroot ${rootdir} rm -f /root/install_ipfs_go.sh
+    cd $rootdir$INSTALL_DIR/ipfs
+
+    if [[ $ARCHITECTURE == *"386" ]]; then
+        IPFS_ARCH=386
+    fi
+    if [[ $ARCHITECTURE == *"amd64" ]]; then
+        IPFS_ARCH=amd64
+    fi
+    if [[ $ARCHITECTURE == *"arm"* ]]; then
+        IPFS_ARCH=arm
+    fi
+    if [ ! $IPFS_ARCH ]; then
+        return
+    fi
+
+    IPFS_FILE=go-ipfs_v${IPFS_GO_VERSION}_linux-${IPFS_ARCH}.tar.gz
+    wget https://ipfs.io/ipns/dist.ipfs.io/go-ipfs/v${IPFS_GO_VERSION}/${IPFS_FILE}
+    if [ ! -f $rootdir$INSTALL_DIR/ipfs/${IPFS_FILE} ]; then
+        echo $'IPFS package could not be downloaded'
+        exit 63725
+    fi
+    tar -xzvf ${IPFS_FILE}
+    if [ ! -f $rootdir$INSTALL_DIR/ipfs/go-ipfs/ipfs ]; then
+        echo $"ipfs was not found in downloaded package"
+        exit 638235
+    fi
+    chroot "$rootdir" cp $INSTALL_DIR/ipfs/go-ipfs/ipfs $IPFS_PATH
+    if [ ! -f $rootdir$IPFS_PATH/ipfs ]; then
+        echo $'IPFS was not installed'
+        exit 63722
+    fi
 
     echo '[Unit]' > ${rootdir}/etc/systemd/system/ipfs.service
     echo 'Description=IPFS go daemon' >> ${rootdir}/etc/systemd/system/ipfs.service
@@ -433,9 +431,9 @@ EOF
     echo "User=$MY_USERNAME" >> ${rootdir}/etc/systemd/system/ipfs.service
     echo "Group=$MY_USERNAME" >> ${rootdir}/etc/systemd/system/ipfs.service
     echo "WorkingDirectory=/home/$MY_USERNAME" >> ${rootdir}/etc/systemd/system/ipfs.service
-    echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "ExecStart=$IPFS_PATH/ipfs daemon" >> ${rootdir}/etc/systemd/system/ipfs.service
     echo 'Restart=on-failure' >> ${rootdir}/etc/systemd/system/ipfs.service
-    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\"" >> ${rootdir}/etc/systemd/system/ipfs.service
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=/home/go/go${GO_VERSION}\"" >> ${rootdir}/etc/systemd/system/ipfs.service
     echo '' >> ${rootdir}/etc/systemd/system/ipfs.service
     echo '[Install]' >> ${rootdir}/etc/systemd/system/ipfs.service
     echo 'WantedBy=multi-user.target' >> ${rootdir}/etc/systemd/system/ipfs.service
