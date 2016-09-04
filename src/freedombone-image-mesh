@@ -78,6 +78,32 @@ TOX_USERS_FILE=$ZERONET_INSTALL/${PROJECT_NAME}-tox-users.html
 # whether to enable zeronet
 ENABLE_ZERONET=
 
+function create_avahi_service {
+    service_name=$1
+    service_type=$2
+    service_protocol=$3
+    service_port=$4
+    service_description="$5"
+
+    if [ ! -d /etc/avahi ]; then
+        echo $'create_avahi_service: avahi was not installed'
+        exit 52925
+    fi
+
+    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /etc/avahi/services/${service_name}.service
+    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /etc/avahi/services/${service_name}.service
+    echo '<service-group>' >> /etc/avahi/services/${service_name}.service
+    echo "  <name replace-wildcards=\"yes\">%h ${service_type}</name>" >> /etc/avahi/services/${service_name}.service
+    echo '  <service>' >> /etc/avahi/services/${service_name}.service
+    echo "    <type>_${service_type}._${service_protocol}</type>" >> /etc/avahi/services/${service_name}.service
+    echo "    <port>${service_port}</port>" >> /etc/avahi/services/${service_name}.service
+    if [ "$service_description" ]; then
+        echo "    <txt-record>$service_description</txt-record>" >> /tmp/zeronet-blog.service
+    fi
+    echo '  </service>' >> /etc/avahi/services/${service_name}.service
+    echo '</service-group>' >> /etc/avahi/services/${service_name}.service
+}
+
 function create_ram_disk {
     ramdisk_size_mb=$1
     if [ ! -d /mnt/ramdisk ]; then
@@ -737,6 +763,10 @@ function setup_ipfs {
         rm -f /home/$MY_USERNAME/.ipfs-id
     fi
 
+    if [ -f /home/$MY_USERNAME/.ipfs-users ]; then
+        rm -f /home/$MY_USERNAME/.ipfs-users
+    fi
+
     su -c "$IPFS_COMMAND init -b $IPFS_KEY_LENGTH" - $MY_USERNAME
     if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
         echo "IPFS could not be initialised for user $MY_USERNAME" >> $INSTALL_LOG
@@ -756,6 +786,9 @@ function setup_ipfs {
         echo "$IPFS_PEER_ID" >> $INSTALL_LOG
         return
     fi
+
+    TOX_ID=$(su -c 'toxid' - $MY_USERNAME)
+    create_avahi_service ipfs "ipfs" udp $IPFS_PORT "$IPFS_PEER_ID:$TOX_ID"
 
     echo 'IPFS installed with ID $IPFS_PEER_ID' >> $INSTALL_LOG
 }
