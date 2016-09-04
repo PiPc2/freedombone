@@ -751,20 +751,30 @@ function setup_ipfs {
     IPFS_PATH=/usr/bin
     IPFS_KEY_LENGTH=2048
     IPFS_COMMAND=$IPFS_PATH/ipfs
+    IPFS_PUBLIC=/home/$MY_USERNAME/.ipfs-public
 
     su -c "systemctl --user enable ipfs" - $MY_USERNAME
     su -c "systemctl --user start ipfs" - $MY_USERNAME
 
+    if [ -d /home/$MY_USERNAME/Public ]; then
+        rm -rf /home/$MY_USERNAME/Public
+    fi
+
     if [ -d /home/$MY_USERNAME/.ipfs ]; then
+        shred -zu /home/$MY_USERNAME/.ipfs/config
         rm -rf /home/$MY_USERNAME/.ipfs
     fi
 
     if [ -f /home/$MY_USERNAME/.ipfs-id ]; then
-        rm -f /home/$MY_USERNAME/.ipfs-id
+        shred -zu /home/$MY_USERNAME/.ipfs-id
+    fi
+
+    if [ -f /home/$MY_USERNAME/.ipfs-public ]; then
+        shred -zu /home/$MY_USERNAME/.ipfs-public
     fi
 
     if [ -f /home/$MY_USERNAME/.ipfs-users ]; then
-        rm -f /home/$MY_USERNAME/.ipfs-users
+        shred -zu /home/$MY_USERNAME/.ipfs-users
     fi
 
     su -c "$IPFS_COMMAND init -b $IPFS_KEY_LENGTH" - $MY_USERNAME
@@ -787,8 +797,21 @@ function setup_ipfs {
         return
     fi
 
+    # make a public directory
+    if [ -d /home/$MY_USERNAME/Desktop ]; then
+        if [ ! -d /home/$MY_USERNAME/Public ]; then
+            mkdir /home/$MY_USERNAME/Public
+            chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Public
+            su -c "echo \$($IPFS_COMMAND add -rq /home/$MY_USERNAME/Public | tail -n 1) > $IPFS_PUBLIC" - $MY_USERNAME
+            if [ ! -f $IPFS_PUBLIC ]; then
+                echo $'Unable to create public IPFS directory' >> $INSTALL_LOG
+                exit 368225
+            fi
+        fi
+    fi
+
     TOX_ID=$(su -c 'toxid' - $MY_USERNAME)
-    create_avahi_service ipfs "ipfs" udp $IPFS_PORT "$IPFS_PEER_ID:$TOX_ID"
+    create_avahi_service ipfs "ipfs" udp $IPFS_PORT "${IPFS_PEER_ID}:${TOX_ID}"
 
     echo 'IPFS installed with ID $IPFS_PEER_ID' >> $INSTALL_LOG
 }

@@ -55,6 +55,8 @@ IPFS_PORT=4001
 IPFS_PATH=/usr/bin
 IPFS_COMMAND=$IPFS_PATH/ipfs
 IPFS_USERS_FILE=/home/$MY_USERNAME/.ipfs-users
+IPFS_PUBLIC=/home/$MY_USERNAME/.ipfs-public
+IPFS_URL='http://127.0.0.1:8080/ipns'
 
 MY_BLOG_STR=$"My Blog"
 MY_MAIL_STR=$"My Mail"
@@ -84,13 +86,45 @@ TEMPFILE=$(mktemp /tmp/zeronetavahi.XXXXXX)
 # List of tox users previously seen
 PREV_TOX_USERS_FILE=/root/.prev_tox_users
 
+function ipfs_publish {
+    # Publishes anything within the ~/Public directory
+
+    DIR_TO_CHECK=/home/$MY_USERNAME/Public
+    if [ ! -d $DIR_TO_CHECK ]; then
+        return
+    fi
+
+    OLD_STAT_FILE=/home/$MY_USERNAME/.old_stat.txt
+
+    if [ -e $OLD_STAT_FILE ]
+    then
+        OLD_STAT=$(cat $OLD_STAT_FILE)
+    else
+        OLD_STAT="nothing"
+    fi
+
+    NEW_STAT=$(stat -t $DIR_TO_CHECK)
+
+    if [ "$OLD_STAT" != "$NEW_STAT" ]; then
+        su -c "echo \$($IPFS_COMMAND add -rq /home/$MY_USERNAME/Public | tail -n 1) > $IPFS_PUBLIC" - $MY_USERNAME
+        echo $NEW_STAT > $OLD_STAT_FILE
+    fi
+
+    if [ -f $IPFS_PUBLIC ]; then
+        IPFS_PUBLIC_ID=$(cat $IPFS_PUBLIC)
+        su -c "$IPFS_COMMAND name publish /ipfs/$IPFS_PUBLIC_ID" - $MY_USERNAME
+    fi
+}
+
 function ipfs_bootstrap {
     cat $TEMPFILE_BASE | grep "IPFS\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
 
     state=0
     address=""
     peer=""
-    echo -n '' > $IPFS_USERS_FILE
+    if [ -d /home/$MY_USERNAME/Desktop ]; then
+        echo -n '' > ${IPFS_USERS_FILE}.new
+    fi
     while IFS='' read -r line || [[ -n "$line" ]]; do
         if [ ${state} -eq "3" ]; then
             if [[ $line == *"txt ="* ]]; then
@@ -98,7 +132,12 @@ function ipfs_bootstrap {
                 ipfs_peer_id=$(echo "$ipfs_txt" | awk -F ':' '{print $1}')
                 ipfs_tox_id=$(echo "$ipfs_txt" | awk -F ':' '{print $2}')
                 $IPFS_COMMAND bootstrap add /ip4/${address}/tcp/${IPFS_PORT}/ipfs/${ipfs_peer_id}
-                echo "$ipfs_tox_id $ipfs_peer_id" >> $IPFS_USERS_FILE
+                if [ -d /home/$MY_USERNAME/Desktop ]; then
+                    if grep -q "$ipfs_tox_id" $TOX_USERS_FILE; then
+                        ipfs_tox_nick=$(cat $TOX_USERS_FILE | grep $ipfs_tox_id | awk -F ' ' '{print $1}')
+                        echo "$ipfs_tox_nick:${IPFS_URL}/$ipfs_peer_id" >> ${IPFS_USERS_FILE}.new
+                    fi
+                fi
                 state=0
             fi
         fi
@@ -118,6 +157,16 @@ function ipfs_bootstrap {
             state=1
         fi
     done < "$TEMPFILE"
+
+    # Create a list of user sites, in alphabetical order by Tox nick
+    if [ -d /home/$MY_USERNAME/Desktop ]; then
+        if [ -f ${IPFS_USERS_FILE}.new ]; then
+            sites_list=$(cat ${IPFS_USERS_FILE}.new | sort -d)
+            echo "${sites_list}" > ${IPFS_USERS_FILE}
+            chown $MY_USERNAME:$MY_USERNAME ${IPFS_USERS_FILE}
+            rm ${IPFS_USERS_FILE}.new
+        fi
+    fi
 }
 
 function detect_new_tox_users {
@@ -506,6 +555,7 @@ fi
 
 avahi_ipfs
 ipfs_bootstrap
+ipfs_publish
 #detect_tox_users
 avahi_remove_info
 
