@@ -53,7 +53,7 @@ uninstall:
 	rm -rf ${PREFIX}/share/${APP}
 	rm -rf /usr/share/${APP}
 	rm -f ${PREFIX}/bin/${APP}*
-	rm -f ${PREFIX}/bin/zeronetavahi
+	rm -f ${PREFIX}/bin/meshavahi
 	rm -f ${PREFIX}/bin/backup
 	rm -f ${PREFIX}/bin/backup2friends
 	rm -f ${PREFIX}/bin/restore
