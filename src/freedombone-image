@@ -118,7 +118,81 @@ INSECURE='no'
 # a new identity at every shutdown/boot
 AMNESIC='no'
 
-mesh_router_setup_script() {
+# Versions used for Arch/Parabola setup
+MBR_VERSION='1.1.11'
+DEBOOTSTRAP_VERSION='1.0.83'
+
+function image_setup {
+    setup_type=$1
+
+    case $setup_type in
+        debian|ubuntu|trisquel|mint)
+            sudo apt-get -y install build-essential libc6-dev-i386 gcc-multilib g++-multilib
+            sudo apt-get -y install git python-docutils mktorrent vmdebootstrap xz-utils
+            sudo apt-get -y install dosfstools btrfs-tools extlinux python-distro-info mbr
+            sudo apt-get -y install qemu-user-static binfmt-support u-boot-tools qemu
+            ;;
+        parabola|arch)
+            sudo pacman -S --noconfirm libc++ git gcc gcc-libs python-docutils mktorrent patch
+            sudo pacman -S --noconfirm debootstrap xz dosfstools btrfs-progs syslinux python-pip
+            sudo pacman -S --noconfirm qemu-static binfmt-qemu-static uboot-tools qemu parted
+            sudo pacman -S --noconfirm dpkg-devtools bin86
+            mkdir ~/develop
+            if [ ! -d ~/develop/python-cliapp ]; then
+                git clone git://git.liw.fi/cliapp ~/develop/python-cliapp
+            fi
+            sudo pacman -S --noconfirm python2-coverage python2-pytest-cov python2-sphinx
+            sudo pacman -S --noconfirm autopep8 python2-pylint python2-yaml python2-xdg python2-pip
+            cd ~/develop/python-cliapp
+            sudo python2 setup.py install
+            sudo pip2 install distro-info logging
+            if [ ! -d ~/develop/mbr ]; then
+                git clone https://aur.archlinux.org/mbr.git ~/develop/mbr
+            fi
+            cd ~/develop/mbr
+            makepkg
+            tar -xzvf mbr-${MBR_VERSION}.tar.gz
+            cd ~/develop/mbr/mbr-${MBR_VERSION}
+            cp ../*.patch .
+            patch -p0 < *.patch
+            ./configure
+            make
+            sudo make install
+            if [ ! -f /usr/local/sbin/install-mbr ]; then
+                echo $'Failed to install mbr'
+                return
+            fi
+            sudo cp /usr/local/sbin/install-mbr /sbin
+            if [ ! -d ~/develop/multipath-tools ]; then
+                git clone https://aur.archlinux.org/multipath-tools.git ~/develop/multipath-tools
+            fi
+            sudo pacman -S device-mapper libaio liburcu fakeroot
+            cd ~/develop/multipath-tools
+            makepkg
+            makepkg -i
+            cd ~/develop
+            if [ ! -f ~/develop/debootstrap_${DEBOOTSTRAP_VERSION}.tar.gz ]; then
+                wget http://http.debian.net/debian/pool/main/d/debootstrap/debootstrap_${DEBOOTSTRAP_VERSION}.tar.gz
+            fi
+            if [ ! -f ~/develop/debootstrap_${DEBOOTSTRAP_VERSION}.tar.gz ]; then
+                echo $'Failed to download debootstrap code'
+                return
+            fi
+            if [ ! -d ~/develop/debootstrap/scripts ]; then
+                tar -xzvf debootstrap_${DEBOOTSTRAP_VERSION}.tar.gz
+            fi
+            sudo mv ~/develop/debootstrap/scripts/* /usr/share/debootstrap/scripts
+            ;;
+        *)
+            echo $'Unkown operating system'
+            return
+            ;;
+    esac
+
+    echo $'Setup complete'
+}
+
+function mesh_router_setup_script {
     # create a setup script for a mesh router
     mesh_script_filename=$1
     echo "MY_USERNAME=${USERNAME}" > $mesh_script_filename
@@ -272,6 +346,11 @@ do
         --insecure)
             shift
             INSECURE="$1"
+            ;;
+        --setup)
+            shift
+            image_setup "$1"
+            exit 0
             ;;
         *)
             # unknown option

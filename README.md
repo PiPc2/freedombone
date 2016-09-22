@@ -29,13 +29,13 @@ Install the freedombone commands onto your laptop/desktop:
     cd freedombone
     sudo make install
 
-Then install packages needed for building images:
+Then install the necessary packages for building images, on a debian based system using:
 
+    freedombone-image --setup debian
 
-    sudo apt-get -y install build-essential git python-docutils mktorrent
-    sudo apt-get -y install vmdebootstrap xz-utils dosfstools btrfs-tools extlinux
-    sudo apt-get -y install python-distro-info mbr qemu-user-static binfmt-support
-    sudo apt-get -y install u-boot-tools qemu
+or on Parabola/Arch
+
+    freedombone-image --setup parabola
 
 A typical use case to build an 8GB image for a Beaglebone Black is as follows. You can change the size depending upon the capacity of your microSD card.
 
