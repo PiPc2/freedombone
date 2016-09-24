@@ -30,12 +30,31 @@
 
 VARIANTS='full developer'
 
+GOGS_USERNAME='gogs'
+GOGS_VERSION='0.9.97'
+
 GIT_DOMAIN_NAME=
 GIT_CODE=
 GIT_ONION_PORT=8090
-GIT_DOMAIN_REPO="https://github.com/gogits/gogs"
 GIT_ADMIN_PASSWORD=
-GOGS_COMMIT='37305a59ca0cdc7efe880d4e54f68ecbe3eacc29'
+
+function gogs_parameters {
+    CURR_ARCH=
+    if [[ $ARCHITECTURE == *"386" || $ARCHITECTURE == *"686" ]]; then
+        CURR_ARCH=386
+    fi
+    if [[ $ARCHITECTURE == *"amd64" ]]; then
+        CURR_ARCH=amd64
+    fi
+    if [[ $ARCHITECTURE == *"arm"* ]]; then
+        CURR_ARCH=arm
+    fi
+    if [ ! $CURR_ARCH ]; then
+        return
+    fi
+
+    GOGS_BIN=https://github.com/gogits/gogs/releases/download/v${GOGS_VERSION}/linux_${CURR_ARCH}.tar.gz
+}
 
 function get_mariadb_git_admin_password {
     if [ -f /home/$MY_USERNAME/README ]; then
@@ -72,11 +91,37 @@ function upgrade_gogs {
         return
     fi
 
-    function_check select_go_version
-    select_go_version
+    if ! grep -q "Gogs version:" $COMPLETION_FILE; then
+        return
+    fi
 
-    function_check set_repo_commit
-    set_repo_commit $GOPATH/src/github.com/gogits/gogs "Gogs commit" "$GOGS_COMMIT" $GIT_DOMAIN_REPO
+    CURR_GOGS_VERSION=$(cat $COMPLETION_FILE | grep "Gogs version" | head -n 1 | awk -F ':' '{print $2}')
+    if [[ "$CURR_GOGS_VERSION" == "$GOGS_VERSION" ]]; then
+        return
+    fi
+
+    gogs_parameters
+
+    if [ ! -d ${INSTALL_DIR} ]; then
+        mkdir -p ${INSTALL_DIR}
+    fi
+    cd ${INSTALL_DIR}
+    if [ -f linux-${CURR_ARCH}.tar.gz ]; then
+        rm linux-${CURR_ARCH}.tar.gz
+    fi
+    wget ${GOGS_BIN}
+    if [ ! -f linux-${CURR_ARCH}.tar.gz ]; then
+        exit 37836
+    fi
+    tar -xzf ${INSTALL_DIR}/linux_${CURR_ARCH}.tar.gz
+    if [ ! -d $INSTALL_DIR/gogs ]; then
+        exit 37823
+    fi
+    cp -r $INSTALL_DIR/gogs /home/$GOGS_USERNAME
+    rm linux_${CURR_ARCH}.tar.gz
+
+    sed -i "s|Gogs version.*|Gogs version:$GOGS_VERSION|g" $COMPLETION_FILE
+    systemctl restart gogs
 }
 
 function backup_local_gogs {
@@ -84,7 +129,7 @@ function backup_local_gogs {
         return
     fi
 
-    if [ ! -d /home/git/gogs-repositories ]; then
+    if [ ! -d /home/$GOGS_USERNAME/gogs-repositories ]; then
         return
     fi
 
@@ -96,9 +141,9 @@ function backup_local_gogs {
     backup_database_to_usb gogs
 
     function_check backup_directory_to_usb
-    backup_directory_to_usb $GOPATH/src/github.com/gogits/gogs/custom gogs
-    backup_directory_to_usb /home/git/gogs-repositories gogsrepos
-    backup_directory_to_usb /home/git/.ssh gogsssh
+    backup_directory_to_usb /home/$GOGS_USERNAME/custom gogs
+    backup_directory_to_usb /home/$GOGS_USERNAME/gogs-repositories gogsrepos
+    backup_directory_to_usb /home/$GOGS_USERNAME/.ssh gogsssh
 
     echo $"Gogs backup complete"
 }
@@ -107,19 +152,11 @@ function restore_local_gogs {
     if ! grep -q "Gogs domain" $COMPLETION_FILE; then
         return
     fi
-    if [ ! -d /home/git/gogs-repositories ]; then
+    if [ ! -d /home/$GOGS_USERNAME/gogs-repositories ]; then
         return
     fi
 
     GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
-
-    export GVM_ROOT=$GVM_HOME
-    if [ -d $GVM_ROOT/bin ]; then
-        cd $GVM_ROOT/bin
-        [[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
-        gvm use go${GO_VERSION} --default
-        systemctl set-environment GOPATH=$GOPATH
-    fi
 
     if [ ${#GIT_DOMAIN_NAME} -gt 2 ]; then
         function_check gogs_create_database
@@ -130,10 +167,10 @@ function restore_local_gogs {
         temp_restore_dir=/root/tempgogs
         if [ -d $USB_MOUNT/backup/gogs ]; then
             echo $"Restoring Gogs settings"
-            if [ ! -d $GOPATH/src/github.com/gogits/gogs/custom ]; then
-                mkdir -p $GOPATH/src/github.com/gogits/gogs/custom
+            if [ ! -d /home/$GOGS_USERNAME/custom ]; then
+                mkdir -p /home/$GOGS_USERNAME/custom
             fi
-            cp -r ${temp_restore_dir}/$GOPATH/src/github.com/gogits/gogs/custom/* $GOPATH/src/github.com/gogits/gogs/custom
+            cp -r ${temp_restore_dir}/home/$GOGS_USERNAME/custom/* /home/$GOGS_USERNAME/custom
             if [ ! "$?" = "0" ]; then
                 function_check set_user_permissions
                 set_user_permissions
@@ -144,7 +181,7 @@ function restore_local_gogs {
             echo $"Restoring Gogs repos"
             function_check restore_directory_from_usb
             restore_directory_from_usb ${temp_restore_dir}repos gogsrepos
-            cp -r ${temp_restore_dir}repos/home/git/gogs-repositories/* /home/git/gogs-repositories/
+            cp -r ${temp_restore_dir}repos/home/$GOGS_USERNAME/gogs-repositories/* /home/$GOGS_USERNAME/gogs-repositories/
             if [ ! "$?" = "0" ]; then
                 function_check set_user_permissions
                 set_user_permissions
@@ -155,10 +192,10 @@ function restore_local_gogs {
             echo $"Restoring Gogs authorized_keys"
             function_check restore_directory_from_usb
             restore_directory_from_usb ${temp_restore_dir}ssh gogsssh
-            if [ ! -d /home/git/.ssh ]; then
-                mkdir /home/git/.ssh
+            if [ ! -d /home/$GOGS_USERNAME/.ssh ]; then
+                mkdir /home/$GOGS_USERNAME/.ssh
             fi
-            cp -r ${temp_restore_dir}ssh/home/git/.ssh/* /home/git/.ssh/
+            cp -r ${temp_restore_dir}ssh/home/$GOGS_USERNAME/.ssh/* /home/$GOGS_USERNAME/.ssh/
             if [ ! "$?" = "0" ]; then
                 function_check set_user_permissions
                 set_user_permissions
@@ -169,41 +206,33 @@ function restore_local_gogs {
             rm -rf ${temp_restore_dir}
             rm -rf ${temp_restore_dir}repos
             rm -rf ${temp_restore_dir}ssh
-            chown -R git:git /home/git
+            chown -R $GOGS_USERNAME:$GOGS_USERNAME /home/$GOGS_USERNAME
         fi
     fi
 }
 
 function backup_remote_gogs {
-    export GVM_ROOT=/home/git/gvm
-    if [ -d $GVM_ROOT/bin ]; then
-        cd $GVM_ROOT/bin
-        [[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
-        gvm use go${GO_VERSION} --default
-        systemctl set-environment GOPATH=$GOPATH
-    fi
-
-    if [ -d $GOPATH/src/github.com/gogits ]; then
+    if [ -d /home/$GOGS_USERNAME ]; then
         GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
         function_check suspend_site
         suspend_site ${GIT_DOMAIN_NAME}
 
         function_check backup_database_to_friend
-        backup_database_to_friend gogs
+        backup_database_to_friend $GOGS_USERNAME
 
         echo $"Obtaining Gogs settings backup"
 
         function_check backup_directory_to_friend
-        backup_directory_to_friend $GOPATH/src/github.com/gogits/gogs/custom gogs
+        backup_directory_to_friend /home/$GOGS_USERNAME/custom gogs
 
         echo $"Obtaining Gogs repos backup"
 
-        mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/bob
-        backup_directory_to_friend /home/git/gogs-repositories gogsrepos
+        mv /home/$GOGS_USERNAME/gogs-repositories/*.git /home/$GOGS_USERNAME/gogs-repositories/bob
+        backup_directory_to_friend /home/$GOGS_USERNAME/gogs-repositories gogsrepos
 
         echo $"Obtaining Gogs authorized_keys backup"
 
-        backup_directory_to_friend /home/git/.ssh gogsssh
+        backup_directory_to_friend /home/$GOGS_USERNAME/.ssh gogsssh
 
         function_check restart_site
         restart_site
@@ -213,14 +242,6 @@ function backup_remote_gogs {
 }
 
 function restore_remote_gogs {
-    export GVM_ROOT=$GVM_HOME
-    if [ -d $GVM_ROOT/bin ]; then
-        cd $GVM_ROOT/bin
-        [[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
-        gvm use go${GO_VERSION} --default
-        systemctl set-environment GOPATH=$GOPATH
-    fi
-
     if grep -q "Gogs domain" $COMPLETION_FILE; then
         GIT_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Gogs domain" | awk -F ':' '{print $2}')
 
@@ -230,32 +251,32 @@ function restore_remote_gogs {
         function_check restore_database_from_friend
         restore_database_from_friend gogs $GIT_DOMAIN_NAME
         if [ -d $SERVER_DIRECTORY/backup/gogs ]; then
-            if [ ! -d $GOPATH/src/github.com/gogits/gogs/custom ]; then
-                mkdir -p $GOPATH/src/github.com/gogits/gogs/custom
+            if [ ! -d /home/$GOGS_USERNAME/custom ]; then
+                mkdir -p /home/$GOGS_USERNAME/custom
             fi
-            cp -r /root/tempgogs/$GOPATH/src/github.com/gogits/gogs/custom/* $GOPATH/src/github.com/gogits/gogs/custom/
+            cp -r /root/tempgogs/home/$GOGS_USERNAME/custom/* /home/$GOGS_USERNAME/custom/
             if [ ! "$?" = "0" ]; then
-                exit 5885
+                exit 58852
             fi
             echo $"Restoring Gogs repos"
             restore_directory_from_friend /root/tempgogsrepos gogsrepos
-            cp -r /root/tempgogsrepos/home/git/gogs-repositories/* /home/git/gogs-repositories/
+            cp -r /root/tempgogsrepos/home/$GOGS_USERNAME/gogs-repositories/* /home/$GOGS_USERNAME/gogs-repositories/
             if [ ! "$?" = "0" ]; then
                 exit 7649
             fi
             echo $"Restoring Gogs authorized_keys"
             restore_directory_from_friend /root/tempgogsssh gogsssh
-            if [ ! -d /home/git/.ssh ]; then
-                mkdir /home/git/.ssh
+            if [ ! -d /home/$GOGS_USERNAME/.ssh ]; then
+                mkdir /home/$GOGS_USERNAME/.ssh
             fi
-            cp -r /root/tempgogsssh/home/git/.ssh/* /home/git/.ssh/
+            cp -r /root/tempgogsssh/home/$GOGS_USERNAME/.ssh/* /home/$GOGS_USERNAME/.ssh/
             if [ ! "$?" = "0" ]; then
                 exit 74239
             fi
             rm -rf /root/tempgogs
             rm -rf /root/tempgogsrepos
             rm -rf /root/tempgogsssh
-            chown -R git:git /home/git
+            chown -R $GOGS_USERNAME:$GOGS_USERNAME /home/$GOGS_USERNAME
             echo $"Restore of Gogs complete"
         fi
     fi
@@ -280,7 +301,7 @@ function remove_gogs {
     function_check drop_database
     drop_database gogs
     rm /etc/systemd/system/gogs.service
-    rm -rf $GOPATH/src/github.com/gogits
+    rm -rf /home/$GOGS_USERNAME/*
     remove_onion_service gogs ${GIT_ONION_PORT} 9418
     sed -i '/install_gogs/d' $COMPLETION_FILE
     sed -i '/Gogs /d' $COMPLETION_FILE
@@ -295,83 +316,37 @@ function install_gogs {
         return
     fi
 
-    function_check select_go_version
-    select_go_version
+    adduser --disabled-login --gecos 'Gogs' $GOGS_USERNAME
 
-    if [ -d $GOPATH/src/github.com/gogits ]; then
-        rm -rf $GOPATH/src/github.com/gogits
-    fi
+    gogs_parameters
 
-    if [ -d /home/git/gvm/pkgsets/go${GO_VERSION}/global/src/github.com/gogits ]; then
-        rm -rf /home/git/gvm/pkgsets/go${GO_VERSION}/global/src/github.com/gogits
+    if [ ! -d ${INSTALL_DIR} ]; then
+        mkdir -p ${INSTALL_DIR}
     fi
+    cd ${INSTALL_DIR}
+    if [ -f linux-${CURR_ARCH}.tar.gz ]; then
+        rm linux-${CURR_ARCH}.tar.gz
+    fi
+    wget ${GOGS_BIN}
+    if [ ! -f linux-${CURR_ARCH}.tar.gz ]; then
+        exit 37836
+    fi
+    tar -xzf ${INSTALL_DIR}/linux_${CURR_ARCH}.tar.gz
+    if [ ! -d $INSTALL_DIR/gogs ]; then
+        exit 37823
+    fi
+    cp -r $INSTALL_DIR/gogs /home/$GOGS_USERNAME
+    rm linux_${CURR_ARCH}.tar.gz
 
-    if [ -d /home/git/gogs-repositories ]; then
-        rm -rf /home/git/gogs-repositories
-    fi
-
-    if [ ! -d /home/git ]; then
-        # add a gogs user account
-        adduser --disabled-login --gecos 'Gogs' git
-    fi
-    if [ -d /home/git/Maildir ]; then
-        rm -rf /home/git/Maildir
-    fi
-
-    if [ -d $GOPATH/src/github.com/gogits ]; then
-        rm -rf $GOPATH/src/github.com/gogits
-    fi
-
-    # install Go
-    apt-get -y install golang libpam0g-dev
-    if ! grep -q "export GOPATH=" ~/.bashrc; then
-        echo "export GOPATH=$GOPATH" >> ~/.bashrc
-    else
-        sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" ~/.bashrc
-    fi
-    systemctl set-environment GOPATH=$GOPATH
-    if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
-        echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
-    else
-        sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
-    fi
-    if [ ! -d $GOPATH ]; then
-        mkdir -p $GOPATH
-    fi
-    GO_PACKAGE_MANAGER_REPO2=$(echo "$GO_PACKAGE_MANAGER_REPO" | sed 's|https://||g')
-    go get -u $GO_PACKAGE_MANAGER_REPO2
-    if [ ! "$?" = "0" ]; then
-        echo $'install_gogs: go get failed'
-        exit 479832
+    if [ ! -f /home/$GOGS_USERNAME/gogs ]; then
+        echo 'Gogs binary not installed'
+        exit 345562
     fi
 
-    # clone the repo
-    if [ ! -d $GOPATH/src/github.com/gogits ]; then
-        mkdir -p $GOPATH/src/github.com/gogits
-    fi
-    function_check git_clone
-    git_clone $GIT_DOMAIN_REPO $GOPATH/src/github.com/gogits/gogs
-    if [ ! -d $GOPATH/src/github.com/gogits/gogs ]; then
-        echo $"Unable to clone repo $GOPATH/src/github.com/gogits/gogs"
-        exit 85482
-    fi
-    cd $GOPATH/src/github.com/gogits/gogs
-
-    # install
-    go get -u ./...
-
-    git checkout $GOGS_COMMIT -b $GOGS_COMMIT
-    if ! grep -q "Gogs commit" $COMPLETION_FILE; then
-        echo "Gogs commit:$GOGS_COMMIT" >> $COMPLETION_FILE
-    else
-        sed -i "s/Gogs commit.*/Gogs commit:$GOGS_COMMIT/g" $COMPLETION_FILE
-    fi
-
-    go build
-    if [ ! "$?" = "0" ]; then
-        echo $'install_gogs: go build failed'
-        exit 546750
-    fi
+    echo "export GOROOT=/home/go" >> /home/$GOGS_USERNAME/.bashrc
+    echo "export GOPATH=\$GOROOT/go${GO_VERSION}/bin" >> /home/$GOGS_USERNAME/.bashrc
+    echo 'export PATH=$PATH:$GOPATH' >> /home/$GOGS_USERNAME/.bashrc
+    chown -R $GOGS_USERNAME:$GOGS_USERNAME /home/$GOGS_USERNAME
 
     function_check install_mariadb
     install_mariadb
@@ -382,7 +357,7 @@ function install_gogs {
     function_check
     gogs_create_database
 
-    if [ ! -f $GOPATH/src/github.com/gogits/gogs/scripts/mysql.sql ]; then
+    if [ ! -f /home/$GOGS_USERNAME/scripts/mysql.sql ]; then
         echo $'MySql template for Gogs was not found'
         exit 72528
     fi
@@ -417,11 +392,10 @@ function install_gogs {
     fi
 
     function_check initialise_database
-    initialise_database gogs $GOPATH/src/github.com/gogits/gogs/scripts/mysql.sql
+    initialise_database gogs /home/$GOGS_USERNAME/scripts/mysql.sql
 
-    chmod 600 $GOPATH/src/github.com/gogits/gogs/custom/conf/app.ini
+    chown -R $GOGS_USERNAME:$GOGS_USERNAME /home/$GOGS_USERNAME
 
-    chown -R git:git /home/git
     echo '[Unit]' > /etc/systemd/system/gogs.service
     echo 'Description=Gogs (Go Git Service)' >> /etc/systemd/system/gogs.service
     echo 'After=syslog.target' >> /etc/systemd/system/gogs.service
@@ -432,14 +406,13 @@ function install_gogs {
     echo '#LimitMEMLOCK=infinity' >> /etc/systemd/system/gogs.service
     echo '#LimitNOFILE=65535' >> /etc/systemd/system/gogs.service
     echo 'Type=simple' >> /etc/systemd/system/gogs.service
-    echo 'User=git' >> /etc/systemd/system/gogs.service
-    echo 'Group=git' >> /etc/systemd/system/gogs.service
-    echo "WorkingDirectory=$GOPATH/src/github.com/gogits/gogs" >> /etc/systemd/system/gogs.service
-    echo "ExecStart=$GOPATH/src/github.com/gogits/gogs/gogs web" >> /etc/systemd/system/gogs.service
+    echo 'User=gogs' >> /etc/systemd/system/gogs.service
+    echo 'Group=some_group' >> /etc/systemd/system/gogs.service
+    echo 'WorkingDirectory=/home/$GOGS_USERNAME' >> /etc/systemd/system/gogs.service
+    echo 'ExecStart=/home/$GOGS_USERNAME/gogs web' >> /etc/systemd/system/gogs.service
     echo 'Restart=always' >> /etc/systemd/system/gogs.service
     echo 'RestartSec=10' >> /etc/systemd/system/gogs.service
-    echo 'TimeoutStartSec=120' >> /etc/systemd/system/gogs.service
-    echo "Environment=\"USER=git\" \"HOME=/home/git\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> /etc/systemd/system/gogs.service
+    echo "Environment=\"USER=$GOGS_USERNAME\" \"HOME=/home/$GOGS_USERNAME\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> /etc/systemd/system/gogs.service
     echo '' >> /etc/systemd/system/gogs.service
     echo '[Install]' >> /etc/systemd/system/gogs.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/gogs.service
@@ -574,12 +547,12 @@ function install_gogs {
     fi
 
     # create the configuration
-    GOGS_CONFIG_PATH=/home/git/gvm/pkgsets/go${GO_VERSION}/global/src/github.com/gogits/gogs/custom/conf
+    GOGS_CONFIG_PATH=/home/$GOGS_USERNAME/custom/conf
     if [ ! -d $GOGS_CONFIG_PATH ]; then
         mkdir -p $GOGS_CONFIG_PATH
     fi
     GOGS_CONFIG_FILE=$GOGS_CONFIG_PATH/app.ini
-    echo 'RUN_USER = git' > $GOGS_CONFIG_FILE
+    echo "RUN_USER = $GOGS_USERNAME" > $GOGS_CONFIG_FILE
     echo 'RUN_MODE = prod' >> $GOGS_CONFIG_FILE
     echo '' >> $GOGS_CONFIG_FILE
     echo '[database]' >> $GOGS_CONFIG_FILE
@@ -592,7 +565,7 @@ function install_gogs {
     echo 'PATH = data/gogs.db' >> $GOGS_CONFIG_FILE
     echo '' >> $GOGS_CONFIG_FILE
     echo '[repository]' >> $GOGS_CONFIG_FILE
-    echo 'ROOT = /home/git/gogs-repositories' >> $GOGS_CONFIG_FILE
+    echo "ROOT = /home/$GOGS_USERNAME/gogs-repositories" >> $GOGS_CONFIG_FILE
     echo '' >> $GOGS_CONFIG_FILE
     echo '[server]' >> $GOGS_CONFIG_FILE
     if [[ $ONION_ONLY == 'no' ]]; then
@@ -630,7 +603,7 @@ function install_gogs {
     echo 'SHOW_FOOTER_VERSION = false' >> $GOGS_CONFIG_FILE
 
     chmod 750 $GOGS_CONFIG_FILE
-    chown -R git:git /home/git
+    chown -R $GOGS_USERNAME:$GOGS_USERNAME /home/$GOGS_USERNAME
 
     systemctl restart gogs
 
@@ -640,6 +613,11 @@ function install_gogs {
 
     function_check configure_firewall_for_git
     configure_firewall_for_git
+    if ! grep -q "Gogs version:" $COMPLETION_FILE; then
+        echo "Gogs version:$GOGS_VERSION" >> $COMPLETION_FILE
+    else
+        sed -i "s|Gogs version.*|Gogs version:$GOGS_VERSION|g" $COMPLETION_FILE
+    fi
     echo 'install_gogs' >> $COMPLETION_FILE
 }
 

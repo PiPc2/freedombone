@@ -131,7 +131,10 @@ EOF
 }
 
 function mesh_upgrade_golang {
-    chroot "$rootdir" adduser --disabled-login --gecos 'go' go
+    prefix=
+    if [ $rootdir ]; then
+        prefix="chroot $rootdir"
+    $prefix adduser --disabled-login --gecos 'go' go
 
     GOARCH=
     if [[ $ARCHITECTURE == *"386" || $ARCHITECTURE == *"686" ]]; then
@@ -157,7 +160,7 @@ function mesh_upgrade_golang {
     if [ ! -f ${rootdir}${INSTALL_DIR}/go${GO_VERSION}.linux-${GOARCH}.tar.gz ]; then
         exit 26524
     fi
-    chroot "$rootdir" tar -C /home/go -xzf ${INSTALL_DIR}/go${GO_VERSION}.linux-${GOARCH}.tar.gz
+    $prefix tar -C /home/go -xzf ${INSTALL_DIR}/go${GO_VERSION}.linux-${GOARCH}.tar.gz
     if [ ! -d ${rootdir}/home/go/go/bin ]; then
         echo 'Go binary not installed'
         exit 763562
@@ -174,8 +177,8 @@ function mesh_upgrade_golang {
     echo 'export PATH=$PATH:$GOPATH' >> $rootdir/root/.bashrc
     echo 'export PATH=$PATH:$GOPATH' >> $rootdir/home/$MY_USERNAME/.bashrc
     echo 'export PATH=$PATH:$GOPATH' >> $rootdir/home/go/.bashrc
-    chroot "$rootdir" chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME
-    chroot "$rootdir" chown -R go:go /home/go
+    $prefix chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME
+    $prefix chown -R go:go /home/go
     cp ${rootdir}/home/go/go${GO_VERSION}/bin/* ${rootdir}/usr/bin
 }
 
@@ -184,90 +187,8 @@ function upgrade_golang {
         return
     fi
 
-    # NOTE: this is annoyingly hacky and going in the opposite
-    # direction of a pure blend, but it's necessary if you want
-    # to run the latest version of gogs
-
-    # update to the next commit
-    function_check set_repo_commit
-    set_repo_commit $INSTALL_DIR/gvm "gvm commit" "$GVM_COMMIT" $GVM_REPO
-
-    if grep -Fxq "upgrade_golang" $COMPLETION_FILE; then
-        return
-    fi
-
-    export GVM_ROOT=$GVM_HOME
-
-    apt-get -y install build-essential libc6-dev-i386 gcc-multilib g++-multilib
-    apt-get -y install gcc curl git mercurial make binutils bison
-    if [ ! -d $INSTALL_DIR ]; then
-        mkdir $INSTALL_DIR
-    fi
-    cd $INSTALL_DIR
-    function_check git_clone
-    git_clone $GVM_REPO gvm
-    cd $INSTALL_DIR/gvm
-    git checkout $GVM_COMMIT -b $GVM_COMMIT
-    if [ ! -f binscripts/gvm-installer ]; then
-        echo $'gvm installer not found'
-    fi
-    chmod +x binscripts/gvm-installer
-
-    if [ -d /root/.gvm ]; then
-        rm -rf /root/.gvm
-    fi
-    if [ -d $GVM_ROOT ]; then
-        rm -rf $GVM_ROOT
-    fi
-    sed -i "s|export GVM_ROOT=.*|export GVM_ROOT=$GVM_ROOT|g" ~/.bashrc
-
-    if [ ! -d /home/git ]; then
-        # add a gogs user account within which the gvm home directory will exist
-        adduser --disabled-login --gecos 'Gogs' git
-    fi
-    if [ -d /home/git/Maildir ]; then
-        rm -rf /home/git/Maildir
-    fi
-
-    # TODO: this script is all over the place
-    # and contains hardcoded github. See if you can do better
-    ./binscripts/gvm-installer master /home/git
-
-    if [ ! -d $GVM_ROOT ]; then
-        echo $'Unable to install gvm'
-        exit 83537
-    fi
-
-    [[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
-    if [ ! -f $GVM_ROOT/bin/gvm ]; then
-        echo $'gvm was not installed'
-    fi
-    if ! grep -q "export GVM_ROOT=" ~/.bashrc; then
-        echo "export GVM_ROOT=$GVM_ROOT" >> ~/.bashrc
-    fi
-    if ! grep -q 'PATH=$PATH:$GVM_ROOT/bin' ~/.bashrc; then
-        echo 'PATH=$PATH:$GVM_ROOT/bin' >> ~/.bashrc
-    fi
-
-    export GOROOT_BOOTSTRAP=$GOROOT
-
-    cd $GVM_ROOT/bin
-    gvm install go${GO_INTERMEDIATE_VERSION}
-    gvm use go${GO_INTERMEDIATE_VERSION}
-    gvm install go${GO_VERSION}
-    if [ ! "$?" = "0" ]; then
-        echo $'Unable to upgrade golang'
-        exit 529252
-    fi
-    gvm use go${GO_VERSION} --default
-
-    chown -R git:git $GVM_HOME
-
-    if ! grep -q "gvm commit" $COMPLETION_FILE; then
-        echo "gvm commit:$GVM_COMMIT" >> $COMPLETION_FILE
-    else
-        sed -i "s/gvm commit.*/gvm commit:$GVM_COMMIT/g" $COMPLETION_FILE
-    fi
+    rootdir=
+    mesh_upgrade_golang
 
     echo 'upgrade_golang' >> $COMPLETION_FILE
 }
