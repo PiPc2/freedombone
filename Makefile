@@ -24,16 +24,16 @@ install:
 	mkdir -p ${DESTDIR}/usr/share/${APP}/avatars
 	mkdir -p ${DESTDIR}/etc/${APP}
 	cp -r image_build/* ${DESTDIR}/etc/${APP}
-	install -m 755 img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
-	install -m 755 img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
-	install -m 755 src/* ${DESTDIR}${PREFIX}/bin
-	install -m 755 src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
-	install -m 755 src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
-	install -m 755 src/${APP}-mesh-batman ${DESTDIR}${PREFIX}/bin/batman
-	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
-	install -m 755 src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
-	install -m 755 src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
-	install -m 755 src/${APP}-restore-remote ${DESTDIR}${PREFIX}/bin/restorefromfriend
+	cp img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
+	cp img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
+	cp src/* ${DESTDIR}${PREFIX}/bin
+	cp src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
+	cp src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
+	cp src/${APP}-mesh-batman ${DESTDIR}${PREFIX}/bin/batman
+	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
+	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
+	cp src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
+	cp src/${APP}-restore-remote ${DESTDIR}${PREFIX}/bin/restorefromfriend
 	rm -f ${DESTDIR}/usr/share/${APP}/base/*
 	rm -f ${DESTDIR}/usr/share/${APP}/apps/*
 	rm -f ${DESTDIR}/usr/share/${APP}/utils/*
@@ -41,9 +41,9 @@ install:
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-app-* ${DESTDIR}/usr/share/${APP}/apps
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-utils-* ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
-	install -m 644 man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
-	install -m 644 man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
+	cp man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
+	cp man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
+	cp man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
 	bash -c "./translate install"
 uninstall:
 	rm -f ${PREFIX}/share/${APP}_*.png
