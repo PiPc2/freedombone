@@ -39,6 +39,178 @@ SYNCTHING_PORT=22000
 SYNCTHING_SHARED_DATA=/var/lib/syncthing/SyncShared
 SYNCTHING_USER_IDS_FILE='.syncthingids'
 
+function syncthing_create_ids_file {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    SYNCTHING_ID=$(cat ~/.syncthing-server-id)
+    if [ ! -f $SYNCTHING_CONFIG_FILE ]; then
+        echo $'# Your syncthing configuration file' > $SYNCTHING_CONFIG_FILE
+        echo '#' >> $SYNCTHING_CONFIG_FILE
+        echo $"# The ${PROJECT_NAME} syncthing ID is: $SYNCTHING_ID" >> $SYNCTHING_CONFIG_FILE
+        echo '#' >> $SYNCTHING_CONFIG_FILE
+        echo '# Paste the IDs of your devices below' >> $SYNCTHING_CONFIG_FILE
+        echo '#' >> $SYNCTHING_CONFIG_FILE
+    fi
+}
+
+function syncthing_manual_edit {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+    syncthing_create_ids_file
+    editor $SYNCTHING_CONFIG_FILE
+
+    # force an update of the configuration
+    touch ~/.syncthing-update
+}
+
+function syncthing_show_id {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    SYNCTHING_ID=$(cat ~/.syncthing-server-id)
+    dialog --title $"Device ID for ${PROJECT_NAME}" \
+           --backtitle $"Freedombone User Control Panel" \
+           --msgbox $"In a desktop terminal press shift and select the ID below,\nthen right click and copy.\n\nWithin Connectbot select Menu/Copy and then highlight the ID below\n\n$SYNCTHING_ID" 12 78
+}
+
+function syncthing_add_id {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    syncthing_create_ids_file
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title $"Add a Syncthing device ID" \
+           --form $"Paste the device ID for your laptop/desktop/netbook/phone/tablet below" 9 80 2 \
+           $"Device ID:" 1 1 "" 1 26 80 80 \
+           $"Description (optional):" 2 1 "" 2 26 80 80 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    SYNCTHING_DEVICE_ID=$(cat $data | sed -n 1p)
+    SYNCTHING_DESCRIPTION=$(cat $data | sed -n 2p)
+
+    if [ ${#SYNCTHING_DEVICE_ID} -lt 10 ]; then
+        return
+    fi
+
+    if [[ $SYNCTHING_DEVICE_ID == *"#"* || $SYNCTHING_DEVICE_ID == *"*"* || $SYNCTHING_DEVICE_ID == *'/'*  || $SYNCTHING_DEVICE_ID != *"-"* ]]; then
+        dialog --title $"Add a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That doesn't look like a device ID" 6 50
+        return
+    fi
+
+    if grep -q "$SYNCTHING_DEVICE_ID" $SYNCTHING_CONFIG_FILE; then
+        dialog --title $"Add a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That ID has already been added" 6 50
+        return
+    fi
+
+    if [ ${#SYNCTHING_DESCRIPTION} -gt 0 ]; then
+        echo "# $SYNCTHING_DESCRIPTION" >> $SYNCTHING_CONFIG_FILE
+    fi
+    echo "$SYNCTHING_DEVICE_ID" >> $SYNCTHING_CONFIG_FILE
+
+    # force an update of the configuration
+    touch ~/.syncthing-update
+
+    dialog --title $"Add a Syncthing device ID" \
+           --backtitle $"Freedombone User Control Panel" \
+           --msgbox $"The ID was added" 6 50
+}
+
+function syncthing_remove_id {
+    if [ ! -f ~/.syncthing-server-id ]; then
+        return
+    fi
+
+    syncthing_create_ids_file
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone User Control Panel" \
+           --title $"Remove a Syncthing device ID" \
+           --form $"Paste the device ID which is to be removed below" 8 80 1 \
+           $"Device ID:" 1 1 "" 1 14 80 80 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    SYNCTHING_DEVICE_ID=$(cat $data | sed -n 1p)
+
+    if [ ${#SYNCTHING_DEVICE_ID} -lt 10 ]; then
+        return
+    fi
+
+    if [[ $SYNCTHING_DEVICE_ID == *"#"* || $SYNCTHING_DEVICE_ID == *"*"* || $SYNCTHING_DEVICE_ID == *'/'*  || $SYNCTHING_DEVICE_ID != *"-"* ]]; then
+        dialog --title $"Remove a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That doesn't look like a device ID" 6 50
+        return
+    fi
+
+    if ! grep -q "$SYNCTHING_DEVICE_ID" $SYNCTHING_CONFIG_FILE; then
+        dialog --title $"Remove a Syncthing device ID" \
+               --backtitle $"Freedombone User Control Panel" \
+               --msgbox $"That ID wasn't registered anyway" 6 50
+        return
+    fi
+
+    sed -i "/$SYNCTHING_DEVICE_ID/d" $SYNCTHING_CONFIG_FILE
+
+    # force an update of the configuration
+    touch ~/.syncthing-update
+
+    dialog --title $"Remove a Syncthing device ID" \
+           --backtitle $"Freedombone User Control Panel" \
+           --msgbox $"The ID was removed" 6 50
+}
+
+function run_client_syncthing {
+    SYNCTHING_CONFIG_FILE=~/.syncthingids
+    SYNCTHING_ID=$(cat ~/.syncthing-server-id)
+
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone User Control Panel" \
+               --title $"File Synchronization" \
+               --radiolist $"Choose an operation:" 12 70 6 \
+               1 $"Show device ID for ${PROJECT_NAME}" off \
+               2 $"Add an ID for another machine or device" off \
+               3 $"Remove an ID for another machine or device" off \
+               4 $"Manually edit device IDs" off \
+               5 $"Back to main menu" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) syncthing_show_id;;
+            2) syncthing_add_id;;
+            3) syncthing_remove_id;;
+            4) syncthing_manual_edit;;
+            5) break;;
+        esac
+    done
+}
+
 function install_interactive_syncthing {
     echo -n ''
 }
