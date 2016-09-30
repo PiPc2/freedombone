@@ -54,7 +54,112 @@ GNUSOCIAL_NSFW_REPO="https://gitgud.io/ShitposterClub/SensitiveContent"
 GNUSOCIAL_NSFW_COMMIT='a096bbe0cfae9a9b177682920ffb58d32a48e136'
 
 function install_interactive_gnusocial {
-    echo -n ''
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+    if grep -q "ONION_ONLY" $CONFIGURATION_FILE; then
+        ONION_ONLY=$(grep "ONION_ONLY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "MICROBLOG_DOMAIN_NAME" $CONFIGURATION_FILE; then
+        MICROBLOG_DOMAIN_NAME=$(grep "MICROBLOG_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "MICROBLOG_CODE" $CONFIGURATION_FILE; then
+        MICROBLOG_CODE=$(grep "MICROBLOG_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "MICROBLOG_WELCOME_MESSAGE" $CONFIGURATION_FILE; then
+        MICROBLOG_WELCOME_MESSAGE=$(grep "MICROBLOG_WELCOME_MESSAGE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "MICROBLOG_BACKGROUND_IMAGE_URL" $CONFIGURATION_FILE; then
+        MICROBLOG_BACKGROUND_IMAGE_URL=$(grep "MICROBLOG_BACKGROUND_IMAGE_URL" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "DDNS_PROVIDER" $CONFIGURATION_FILE; then
+        DDNS_PROVIDER=$(grep "DDNS_PROVIDER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if [[ $ONION_ONLY != "no" ]]; then
+        MICROBLOG_DOMAIN_NAME='microblog.local'
+    else
+        MICROBLOG_DETAILS_COMPLETE=
+        while [ ! $MICROBLOG_DETAILS_COMPLETE ]
+        do
+            data=$(tempfile 2>/dev/null)
+            trap "rm -f $data" 0 1 2 5 15
+            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"Microblog Configuration" \
+                       --form $"\nPlease enter your Microblog details. Welcome message and background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 4 \
+                       $"Domain:" 1 1 "$(grep 'MICROBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       $"Welcome Message:" 2 1 "$(grep '$MICROBLOG_WELCOME_MESSAGE' temp.cfg | awk -F '=' '{print $2}')" 2 25 255 255 \
+                       $"Background image URL:" 3 1 "$(grep '$MICROBLOG_BACKGROUND_IMAGE_URL' temp.cfg | awk -F '=' '{print $2}')" 3 25 255 255 \
+                       $"Code:" 4 1 "$(grep 'MICROBLOG_CODE' temp.cfg | awk -F '=' '{print $2}')" 4 25 33 255 \
+                       2> $data
+            else
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"Microblog Configuration" \
+                       --form $"\nPlease enter your Microblog details. Welcome message and background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 4 \
+                       $"Domain:" 1 1 "$(grep 'MICROBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       $"Welcome Message:" 2 1 "$(grep '$MICROBLOG_WELCOME_MESSAGE' temp.cfg | awk -F '=' '{print $2}')" 2 25 255 255 \
+                       $"Background image URL:" 3 1 "$(grep '$MICROBLOG_BACKGROUND_IMAGE_URL' temp.cfg | awk -F '=' '{print $2}')" 3 25 255 255 \
+                       2> $data
+            fi
+            sel=$?
+            case $sel in
+                1) exit 1;;
+                255) exit 1;;
+            esac
+            MICROBLOG_DOMAIN_NAME=$(cat $data | sed -n 1p)
+            welcome_msg=$(cat $data | sed -n 2p)
+            if [ ${#welcome_msg} -gt 1 ]; then
+                MICROBLOG_WELCOME_MESSAGE=$welcome_msg
+            fi
+            img_url=$(cat $data | sed -n 3p)
+            if [ ${#img_url} -gt 1 ]; then
+                MICROBLOG_BACKGROUND_IMAGE_URL=$img_url
+            fi
+            if [ $MICROBLOG_DOMAIN_NAME ]; then
+                if [[ $MICROBLOG_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
+                    MICROBLOG_DOMAIN_NAME=""
+                fi
+                TEST_DOMAIN_NAME=$MICROBLOG_DOMAIN_NAME
+                validate_domain_name
+                if [[ $TEST_DOMAIN_NAME != $MICROBLOG_DOMAIN_NAME ]]; then
+                    MICROBLOG_DOMAIN_NAME=
+                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                else
+                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                        MICROBLOG_CODE=$(cat $data | sed -n 4p)
+                        validate_freedns_code "$MICROBLOG_CODE"
+                        if [ ! $VALID_CODE ]; then
+                            MICROBLOG_DOMAIN_NAME=
+                        fi
+                    fi
+                fi
+            fi
+            if [ $MICROBLOG_DOMAIN_NAME ]; then
+                MICROBLOG_DETAILS_COMPLETE="yes"
+            fi
+        done
+        # save the results in the config file
+        if grep -q "MICROBLOG_DOMAIN_NAME=" $CONFIGURATION_FILE; then
+            sed -i "s|MICROBLOG_DOMAIN_NAME=.*|MICROBLOG_DOMAIN_NAME=$MICROBLOG_DOMAIN_NAME|g" $CONFIGURATION_FILE
+        else
+            echo "MICROBLOG_DOMAIN_NAME=$MICROBLOG_DOMAIN_NAME" >> $CONFIGURATION_FILE
+        fi
+        if grep -q "MICROBLOG_CODE=" $CONFIGURATION_FILE; then
+            sed -i "s|MICROBLOG_CODE=.*|MICROBLOG_CODE=$MICROBLOG_CODE|g" $CONFIGURATION_FILE
+        else
+            echo "MICROBLOG_CODE=$MICROBLOG_CODE" >> $CONFIGURATION_FILE
+        fi
+        if grep -q "MICROBLOG_WELCOME_MESSAGE=" $CONFIGURATION_FILE; then
+            sed -i "s|MICROBLOG_WELCOME_MESSAGE=.*|MICROBLOG_WELCOME_MESSAGE=$MICROBLOG_WELCOME_MESSAGE|g" $CONFIGURATION_FILE
+        else
+            echo "MICROBLOG_WELCOME_MESSAGE=$MICROBLOG_WELCOME_MESSAGE" >> $CONFIGURATION_FILE
+        fi
+        if grep -q "MICROBLOG_BACKGROUND_IMAGE_URL=" $CONFIGURATION_FILE; then
+            sed -i "s|MICROBLOG_BACKGROUND_IMAGE_URL=.*|MICROBLOG_BACKGROUND_IMAGE_URL=$MICROBLOG_BACKGROUND_IMAGE_URL|g" $CONFIGURATION_FILE
+        else
+            echo "MICROBLOG_BACKGROUND_IMAGE_URL=$MICROBLOG_BACKGROUND_IMAGE_URL" >> $CONFIGURATION_FILE
+        fi
+    fi
 }
 
 function change_password_gnusocial {

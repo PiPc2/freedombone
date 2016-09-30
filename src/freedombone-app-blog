@@ -61,7 +61,97 @@ function configure_interactive_blog {
 }
 
 function install_interactive_blog {
-    echo -n ''
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+    if grep -q "ONION_ONLY" $CONFIGURATION_FILE; then
+        ONION_ONLY=$(grep "ONION_ONLY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "MY_BLOG_TITLE" $CONFIGURATION_FILE; then
+        MY_BLOG_TITLE=$(grep "MY_BLOG_TITLE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "FULLBLOG_DOMAIN_NAME" $CONFIGURATION_FILE; then
+        FULLBLOG_DOMAIN_NAME=$(grep "FULLBLOG_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "FULLBLOG_CODE" $CONFIGURATION_FILE; then
+        FULLBLOG_CODE=$(grep "FULLBLOG_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+    if grep -q "DDNS_PROVIDER" $CONFIGURATION_FILE; then
+        DDNS_PROVIDER=$(grep "DDNS_PROVIDER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        MY_BLOG_TITLE='My Blog'
+        FULLBLOG_DOMAIN_NAME='blog.local'
+    else
+        FULLBLOG_DETAILS_COMPLETE=
+        while [ ! $FULLBLOG_DETAILS_COMPLETE ]
+        do
+            data=$(tempfile 2>/dev/null)
+            trap "rm -f $data" 0 1 2 5 15
+            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"Blog Configuration" \
+                       --form $"\nPlease enter your blog details:" 11 55 4 \
+                       $"Title:" 1 1 "$(grep 'MY_BLOG_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 33 40 \
+                       $"Domain:" 2 1 "$(grep 'FULLBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 33 40 \
+                       $"Code:" 3 1 "$(grep 'FULLBLOG_CODE' temp.cfg | awk -F '=' '{print $2}')" 3 16 33 255 \
+                       2> $data
+            else
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"Blog Configuration" \
+                       --form $"\nPlease enter your blog details:" 11 55 3 \
+                       $"Title:" 1 1 "$(grep 'MY_BLOG_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 33 40 \
+                       $"Domain:" 2 1 "$(grep 'FULLBLOG_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 33 40 \
+                       2> $data
+            fi
+            sel=$?
+            case $sel in
+                1) exit 1;;
+                255) exit 1;;
+            esac
+            MY_BLOG_TITLE=$(cat $data | sed -n 1p)
+            FULLBLOG_DOMAIN_NAME=$(cat $data | sed -n 2p)
+            if [ $FULLBLOG_DOMAIN_NAME ]; then
+                if [[ $FULLBLOG_DOMAIN_NAME == "$WIKI_DOMAIN_NAME" ]]; then
+                    FULLBLOG_DOMAIN_NAME=""
+                fi
+                TEST_DOMAIN_NAME=$FULLBLOG_DOMAIN_NAME
+                validate_domain_name
+                if [[ $TEST_DOMAIN_NAME != $FULLBLOG_DOMAIN_NAME ]]; then
+                    FULLBLOG_DOMAIN_NAME=
+                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                else
+                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                        FULLBLOG_CODE=$(cat $data | sed -n 3p)
+                        validate_freedns_code "$FULLBLOG_CODE"
+                        if [ ! $VALID_CODE ]; then
+                            FULLBLOG_DOMAIN_NAME=
+                        fi
+                    fi
+                fi
+            fi
+            if [ $FULLBLOG_DOMAIN_NAME ]; then
+                FULLBLOG_DETAILS_COMPLETE="yes"
+            fi
+        done
+
+        if grep -q "MY_BLOG_TITLE=" $CONFIGURATION_FILE; then
+            sed -i "s|MY_BLOG_TITLE=.*|MY_BLOG_TITLE=$MY_BLOG_TITLE|g" $CONFIGURATION_FILE
+        else
+            echo "MY_BLOG_TITLE=$MY_BLOG_TITLE" >> $CONFIGURATION_FILE
+        fi
+        if grep -q "FULLBLOG_DOMAIN_NAME=" $CONFIGURATION_FILE; then
+            sed -i "s|FULLBLOG_DOMAIN_NAME=.*|FULLBLOG_DOMAIN_NAME=$FULLBLOG_DOMAIN_NAME|g" $CONFIGURATION_FILE
+        else
+            echo "FULLBLOG_DOMAIN_NAME=$FULLBLOG_DOMAIN_NAME" >> $CONFIGURATION_FILE
+        fi
+        if grep -q "FULLBLOG_CODE=" $CONFIGURATION_FILE; then
+            sed -i "s|FULLBLOG_CODE=.*|FULLBLOG_CODE=$FULLBLOG_CODE|g" $CONFIGURATION_FILE
+        else
+            echo "FULLBLOG_CODE=$FULLBLOG_CODE" >> $CONFIGURATION_FILE
+        fi
+    fi
 }
 
 function change_password_blog {
