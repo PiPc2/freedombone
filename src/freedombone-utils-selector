@@ -40,6 +40,9 @@ APPS_CHOSEN=()
 # A list of the names of installed apps
 APPS_INSTALLED_NAMES=()
 
+# file containing a list of removed apps
+REMOVED_APPS_FILE=/root/removed
+
 function app_variants {
     filename=$1
     variants_line=$(cat ${filename} | grep "VARIANTS=")
@@ -55,6 +58,40 @@ function item_in_array {
     local e
     for e in "${@:2}"; do [[ "$e" == "$1" ]] && return 0; done
     return 1
+}
+
+function remove_app {
+    app_name=$1
+    if [ ! -f $REMOVED_APPS_FILE ]; then
+        touch $REMOVED_APPS_FILE
+    fi
+    if ! grep -Fxq "$app_name" $REMOVED_APPS_FILE; then
+        echo "$app_name" >> $REMOVED_APPS_FILE
+    fi
+}
+
+function app_is_removed {
+    app_name="$1"
+    if [ ! -f $REMOVED_APPS_FILE ]; then
+        echo "0"
+        return
+    fi
+
+    if ! grep -Fxq "$app_name" $REMOVED_APPS_FILE; then
+        echo "0"
+    else
+        echo "1"
+    fi
+}
+
+function reinstall_app {
+    app_name=$1
+    if [ ! -f $REMOVED_APPS_FILE ]; then
+        return
+    fi
+    if [[ $(app_is_removed $app_name) == "1" ]]; then
+        sed -i "/${app_name}/d" $REMOVED_APPS_FILE
+    fi
 }
 
 function app_is_installed {
@@ -213,6 +250,7 @@ function remove_apps {
         if [[ ${APPS_INSTALLED[$app_index]} == "1" ]]; then
             if [[ ${APPS_CHOSEN[$app_index]} == "0" ]]; then
                 echo $"Removing application: ${a}"
+                remove_app ${a}
                 remove_${a}
                 echo $"${a} was removed"
             fi
@@ -246,9 +284,20 @@ function install_apps {
     do
         if [[ ${APPS_INSTALLED[$app_index]} == "0" ]]; then
             if [[ ${APPS_CHOSEN[$app_index]} == "1" ]]; then
-                echo $"Installing application: ${a}"
-                install_${a}
-                echo $"${a} was installed"
+                if [ ${is_interactive} ]; then
+                    reinstall_app ${a}
+                    echo $"Installing application: ${a}"
+                    install_${a}
+                    echo $"${a} was installed"
+                else
+                    if [[ $(app_is_removed ${a}) == "0" ]]; then
+                        echo $"Installing application: ${a}"
+                        install_${a}
+                        echo $"${a} was installed"
+                    else
+                        echo $"${a} has been removed and so will not be reinstalled"
+                    fi
+                fi
             fi
         fi
         app_index=$[app_index+1]
