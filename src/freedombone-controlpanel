@@ -686,66 +686,6 @@ function change_password {
            --msgbox $"Password for $SELECTED_USERNAME was changed" 6 40
 }
 
-function irc_show_password {
-    IRC_PASSWORD=$(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
-    dialog --title $"IRC Password" \
-           --msgbox "$IRC_PASSWORD" 6 40
-}
-
-function irc_set_global_password {
-    dialog --title $"IRC Password" \
-           --clear \
-           --backtitle $"Freedombone Control Panel" \
-           --passwordbox $"Password for all IRC users, or press Enter for no password" 10 50 2> $data
-    sel=$?
-    case $sel in
-        0)
-            EXISTING_IRC_PASSWORD=$(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
-            NEW_IRC_PASSWORD=$(<$data)
-            sed -i "0,/RE/s/Password =.*/Password =$NEW_IRC_PASSWORD/" /etc/ngircd/ngircd.conf
-
-            # replace the password for all users
-            for d in /home/*/ ; do
-                IRC_USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-                if [[ $IRC_USERNAME != "git" && $IRC_USERNAME != "mirrors" && $IRC_USERNAME != "sync" && $IRC_USERNAME != "tahoelafs" ]]; then
-                    if [ -f /home/$IRC_USERNAME/.irssi/config ]; then
-                        sed -i "s|$EXISTING_IRC_PASSWORD|$NEW_IRC_PASSWORD|g" /home/$IRC_USERNAME/.irssi/config
-                        chown -R $IRC_USERNAME:$IRC_USERNAME /home/$IRC_USERNAME/.irssi
-                    fi
-                fi
-            done
-
-            # restart the daemon for the new password to take effect
-            systemctl restart ngircd
-
-            dialog --title $"IRC Password" \
-                   --msgbox $"The IRC password was changed" 6 40
-            ;;
-    esac
-}
-
-function change_blog_avatar {
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --title $"Change blog avatar" \
-           --backtitle $"Freedombone Control Panel" \
-           --inputbox $"Enter a URL for an image. It should be approximately a square image." 8 75 2>$data
-    sel=$?
-    case $sel in
-        0)
-            IMAGE_URL=$(<$data)
-            if [ ${#IMAGE_URL} -gt 5 ]; then
-                clear
-                ${PROJECT_NAME}-blog -a $IMAGE_URL
-                if [ "$?" = "0" ]; then
-                    dialog --title $"Change blog avatar" \
-                           --msgbox $"Your blog avatar has been changed" 6 40
-                fi
-            fi
-            ;;
-    esac
-}
-
 function change_ssh_public_key {
     select_user
     if [ ! $SELECTED_USERNAME ]; then
@@ -1367,67 +1307,6 @@ function reset_tripwire {
     any_key
 }
 
-function hubzilla_renew_cert {
-    dialog --title $"Renew SSL certificate" \
-           --backtitle $"Freedombone Control Panel" \
-           --yesno $"\nThis will renew a letsencrypt certificate. Select 'yes' to continue" 16 60
-    sel=$?
-    case $sel in
-        1) return;;
-        255) return;;
-    esac
-    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
-    if [ ! -d /var/www/$HUBZILLA_DOMAIN_NAME/htdocs ]; then
-        dialog --title $"Renew SSL certificate" \
-               --msgbox $"Hubzilla install directory not found" 6 40
-        return
-    fi
-    ${PROJECT_NAME}-renew-cert -h $HUBZILLA_DOMAIN_NAME -p 'letsencrypt'
-    if [ ! "$?" = "0" ]; then
-        any_key
-    else
-        dialog --title $"Renew SSL certificate" \
-               --msgbox $"Hubzilla certificate has been renewed" 6 40
-    fi
-}
-
-function hubzilla_channel_directory_server {
-    if ! grep -q "Hubzilla domain" $COMPLETION_FILE; then
-        dialog --title $"Hubzilla channel directory server" \
-               --msgbox $"Hubzilla is not installed on this system" 6 40
-        return
-    fi
-    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Hubzilla domain" | awk -F ':' '{print $2}')
-    if [ ! -d /var/www/$HUBZILLA_DOMAIN_NAME/htdocs ]; then
-        dialog --title $"Hubzilla channel directory server" \
-               --msgbox $"Hubzilla install directory not found" 6 40
-        return
-    fi
-
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --title $"Hubzilla channel directory server" \
-           --backtitle $"Freedombone Control Panel" \
-           --inputbox $"When you click on 'channel directory' this is where Hubzilla will obtain its list from" 8 60 2>$data
-    sel=$?
-    case $sel in
-        0)
-            hubzilla_domain_server=$(<$data)
-            if [[ $hubzilla_domain_server != *"."* ]]; then
-                return
-            fi
-            if [[ $hubzilla_domain_server != "https"* ]]; then
-                dialog --title $"Hubzilla channel directory server" \
-                       --msgbox $"Invalid domain - include the https://" 6 40
-                return
-            fi
-            ./var/www/$HUBZILLA_DOMAIN_NAME/htdocs/util/config system directory_server $hubzilla_domain_server
-            dialog --title $"Hubzilla channel directory server" \
-                   --msgbox $"Domain channel directory server changed to $hubzilla_domain_server" 6 40
-            ;;
-    esac
-}
-
 function format_drive {
     drive=
     data=$(tempfile 2>/dev/null)
@@ -1917,55 +1796,6 @@ function menu_users {
     done
 }
 
-function menu_hubzilla {
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Hubzilla" \
-               --radiolist $"Choose an operation:" 13 70 4 \
-               1 $"Set channel directory server" off \
-               2 $"Renew SSL certificate" off \
-               3 $"Back to main menu" on 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat $data) in
-            1) hubzilla_channel_directory_server;;
-            2) hubzilla_renew_cert;;
-            3) break;;
-        esac
-    done
-}
-
-function menu_media {
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Media Menu" \
-               --radiolist $"Choose an operation:" 13 70 3 \
-               1 $"Attach a drive containing playable media" off \
-               2 $"Remove a drive containing playable media" off \
-               3 $"Exit" on 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat $data) in
-            1) remove-music
-               attach-music;;
-            2) remove-music;;
-            3) break;;
-        esac
-    done
-}
-
 function wifi_enable {
     disable_wifi='yes'
     dialog --title $"Enable Wifi" \
@@ -2018,34 +1848,42 @@ function menu_wifi {
     done
 }
 
-function menu_irc {
-    if [ ! -d /etc/ngircd ]; then
-        dialog --title $"IRC Menu" \
-               --msgbox $"No IRC server is installed" 6 70
-        return
-    fi
+function app_settings {
 
-    while true
+
+    detect_installable_apps
+
+    applist=""
+    appnames=()
+    n=1
+    app_index=0
+    for a in "${APPS_AVAILABLE[@]}"
     do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"IRC Menu" \
-               --radiolist $"Choose an operation:" 14 70 4 \
-               1 $"Set a password for all IRC users" off \
-               2 $"Show current IRC login password" off \
-               3 $"Exit" on 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat $data) in
-            1) irc_set_global_password;;
-            2) irc_show_password;;
-            3) break;;
-        esac
+        if [[ ${APPS_INSTALLED[$app_index]} != "0" ]]; then
+            if [[ $(function_exists configure_interactive_${a}) == "1" ]]; then
+                applist="$applist $n $a off"
+                n=$[n+1]
+                appnames+=("$a")
+            fi
+        fi
+        app_index=$[app_index+1]
     done
+    backstr=$'Back to main menu'
+    applist="$applist $n $backstr on"
+    appnames+=("Exit")
+
+    choices=$(dialog --stdout --backtitle $"Freedombone" \
+                     --title $"Change Settings for an App" \
+                     --radiolist $'Choose:' \
+                     27 40 20 $applist)
+
+    if [ $? -eq 0 ]; then
+        for choice in $choices
+        do
+            app_index = $[choice-1]
+            configure_interactive_${appname[$app_index]}
+        done
+    fi
 }
 
 function menu_top_level {
@@ -2059,25 +1897,22 @@ function menu_top_level {
                1 $"About this system" off \
                2 $"Backup and Restore" off \
                3 $"Reset Tripwire" off \
-               4 $"Logging on/off" off \
-               5 $"Ping enable/disable" off \
-               6 $"Manage Users" off \
-               7 $"Email Filtering Rules" off \
-               8 $"Outgoing Email Proxy" off \
-               9 $"Security Settings" off \
-               10 $"Set the main repository (repo mirrors)" off \
-               11 $"Hubzilla" off \
-               12 $"Media menu" off \
-               13 $"IRC menu" off \
-               14 $"Change your blog avatar" off \
-               15 $"Change the name of this system" off \
-               16 $"Set the TLS date/time source" off \
-               17 $"Set a static local IP address" off \
-               18 $"Wifi menu" off \
-               19 $"Check for updates" off \
-               20 $"Power off the system" off \
-               21 $"Restart the system" off \
-               22 $"Exit" on 2> $data
+               4 $"App Settings" off \
+               5 $"Logging on/off" off \
+               6 $"Ping enable/disable" off \
+               7 $"Manage Users" off \
+               8 $"Email Filtering Rules" off \
+               9 $"Outgoing Email Proxy" off \
+               10 $"Security Settings" off \
+               11 $"Set the main repository (repo mirrors)" off \
+               12 $"Change the name of this system" off \
+               13 $"Set the TLS date/time source" off \
+               14 $"Set a static local IP address" off \
+               15 $"Wifi menu" off \
+               16 $"Check for updates" off \
+               17 $"Power off the system" off \
+               18 $"Restart the system" off \
+               19 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -2087,25 +1922,22 @@ function menu_top_level {
             1) show_about;;
             2) menu_backup_restore;;
             3) reset_tripwire;;
-            4) logging_on_off;;
-            5) ping_enable_disable;;
-            6) menu_users;;
-            7) menu_email;;
-            8) smtp_proxy;;
-            9) security_settings;;
-            10) set_main_repo;;
-            11) menu_hubzilla;;
-            12) menu_media;;
-            13) menu_irc;;
-            14) change_blog_avatar;;
-            15) change_system_name;;
-            16) set_tls_time_source;;
-            17) set_static_IP;;
-            18) menu_wifi;;
-            19) check_for_updates;;
-            20) shut_down_system;;
-            21) restart_system;;
-            22) break;;
+            4) app_settings;;
+            5) logging_on_off;;
+            6) ping_enable_disable;;
+            7) menu_users;;
+            8) menu_email;;
+            9) smtp_proxy;;
+            10) security_settings;;
+            11) set_main_repo;;
+            12) change_system_name;;
+            13) set_tls_time_source;;
+            14) set_static_IP;;
+            15) menu_wifi;;
+            16) check_for_updates;;
+            17) shut_down_system;;
+            18) restart_system;;
+            19) break;;
         esac
     done
 }
