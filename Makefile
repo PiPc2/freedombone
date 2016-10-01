@@ -44,7 +44,7 @@ install:
 	cp man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	cp man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
 	cp man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
-	bash -c "./translate install"
+#	bash -c "./translate install"
 uninstall:
 	rm -f ${PREFIX}/share/${APP}_*.png
 	rm -f ${PREFIX}/share/man/man1/backup.1.gz
