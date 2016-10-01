@@ -30,14 +30,14 @@
 
 VARIANTS='full chat'
 
-# Password used for VoIP server
-VOIP_SERVER_PASSWORD=
-# Port on which VoIP server listens
-VOIP_PORT=64738
+# Password used for mumble server
+MUMBLE_SERVER_PASSWORD=
+# Port on which mumble server listens
+MUMBLE_PORT=64738
 
-# Location of VoIP database and configuration
-VOIP_DATABASE="mumble-server.sqlite"
-VOIP_CONFIG_FILE="mumble-server.ini"
+# Location of mumble database and configuration
+MUMBLE_DATABASE="mumble-server.sqlite"
+MUMBLE_CONFIG_FILE="mumble-server.ini"
 
 function install_interactive_mumble {
     echo -n ''
@@ -58,23 +58,23 @@ function upgrade_mumble {
 function backup_local_mumble {
     if [ -f /etc/mumble-server.ini ]; then
         echo $"Backing up Mumble settings"
-        temp_backup_dir=/root/tempvoipbackup
+        temp_backup_dir=/root/tempmumblebackup
         if [ ! -d $temp_backup_dir ]; then
             mkdir -p $temp_backup_dir
         fi
         cp -f /etc/mumble-server.ini $temp_backup_dir
         cp -f /var/lib/mumble-server/mumble-server.sqlite $temp_backup_dir
-        backup_directory_to_usb $temp_backup_dir voip
+        backup_directory_to_usb $temp_backup_dir mumble
         echo $"Mumble settings backup complete"
     fi
 }
 
 function restore_local_mumble {
-    if [ -d $USB_MOUNT/backup/voip ]; then
-        echo $"Restoring VoIP settings"
-        temp_restore_dir=/root/tempvoip
+    if [ -d $USB_MOUNT/backup/mumble ]; then
+        echo $"Restoring mumble settings"
+        temp_restore_dir=/root/tempmumble
         function_check restore_directory_from_usb
-        restore_directory_from_usb $temp_restore_dir voip
+        restore_directory_from_usb $temp_restore_dir mumble
         cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
         if [ ! "$?" = "0" ]; then
             rm -rf $temp_restore_dir
@@ -103,23 +103,23 @@ function restore_local_mumble {
 
 function backup_remote_mumble {
     if [ -f /etc/mumble-server.ini ]; then
-        echo $"Backing up VoIP settings"
-        if [ ! -d /root/tempvoipbackup ]; then
-            mkdir -p /root/tempvoipbackup
+        echo $"Backing up mumble settings"
+        if [ ! -d /root/tempmumblebackup ]; then
+            mkdir -p /root/tempmumblebackup
         fi
-        cp -f /etc/mumble-server.ini /root/tempvoipbackup
-        cp -f /var/lib/mumble-server/mumble-server.sqlite /root/tempvoipbackup
-        backup_directory_to_friend /root/tempvoipbackup voip
-        echo $"Backup of VoIP settings complete"
+        cp -f /etc/mumble-server.ini /root/tempmumblebackup
+        cp -f /var/lib/mumble-server/mumble-server.sqlite /root/tempmumblebackup
+        backup_directory_to_friend /root/tempmumblebackup mumble
+        echo $"Backup of mumble settings complete"
     fi
 }
 
 function restore_remote_mumble {
-    if [ -d $SERVER_DIRECTORY/backup/voip ]; then
+    if [ -d $SERVER_DIRECTORY/backup/mumble ]; then
         echo $"Restoring Mumble settings"
-        temp_restore_dir=/root/tempvoip
+        temp_restore_dir=/root/tempmumble
         function_check restore_directory_from_friend
-        restore_directory_from_friend $temp_restore_dir voip
+        restore_directory_from_friend $temp_restore_dir mumble
         cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/mumble-server.ini /etc/
         if [ ! "$?" = "0" ]; then
             rm -rf $temp_restore_dir
@@ -150,8 +150,8 @@ function remove_mumble {
     fi
     apt-get -y remove --purge mumble-server
     if [[ $ONION_ONLY == "no" ]]; then
-        iptables -D INPUT -p udp --dport $VOIP_PORT -j ACCEPT
-        iptables -D INPUT -p tcp --dport $VOIP_PORT -j ACCEPT
+        iptables -D INPUT -p udp --dport $MUMBLE_PORT -j ACCEPT
+        iptables -D INPUT -p tcp --dport $MUMBLE_PORT -j ACCEPT
         function_check save_firewall_settings
         save_firewall_settings
     fi
@@ -159,57 +159,54 @@ function remove_mumble {
         rm /etc/mumble-server.ini
     fi
     function_check remove_onion_service
-    remove_onion_service voip ${VOIP_PORT}
-    sed -i '/install_mumble/d' $COMPLETION_FILE
-    sed -i '/install_voip/d' $COMPLETION_FILE
-    sed -i '/configure_firewall_for_voip/d' $COMPLETION_FILE
-    sed -i '/VoIP /d' $COMPLETION_FILE
+    remove_onion_service mumble ${MUMBLE_PORT}
+    sed -i '/mumble/d' $COMPLETION_FILE
 }
 
-function get_voip_server_password {
+function get_mumble_server_password {
     if [ -f /home/$MY_USERNAME/README ]; then
-        if grep -q "VoIP server password" /home/$MY_USERNAME/README; then
-            if [ ! $VOIP_SERVER_PASSWORD ]; then
-                VOIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "VoIP server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+        if grep -q "mumble server password" /home/$MY_USERNAME/README; then
+            if [ ! $MUMBLE_SERVER_PASSWORD ]; then
+                MUMBLE_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "mumble server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
             fi
         else
             if grep -q "Mumble server password" /home/$MY_USERNAME/README; then
-                if [ ! $VOIP_SERVER_PASSWORD ]; then
-                    VOIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Mumble server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+                if [ ! $MUMBLE_SERVER_PASSWORD ]; then
+                    MUMBLE_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "Mumble server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
                 fi
             fi
         fi
     fi
 }
 
-function configure_firewall_for_voip {
-    if grep -Fxq "configure_firewall_for_voip" $COMPLETION_FILE; then
+function configure_firewall_for_mumble {
+    if grep -Fxq "configure_firewall_for_mumble" $COMPLETION_FILE; then
         return
     fi
     if [[ $ONION_ONLY != "no" ]]; then
         return
     fi
-    iptables -A INPUT -p udp --dport $VOIP_PORT -j ACCEPT
-    iptables -A INPUT -p tcp --dport $VOIP_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport $MUMBLE_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $MUMBLE_PORT -j ACCEPT
     function_check save_firewall_settings
     save_firewall_settings
 
-    OPEN_PORTS+=("Mumble   $VOIP_PORT")
-    echo 'configure_firewall_for_voip' >> $COMPLETION_FILE
+    OPEN_PORTS+=("Mumble   $MUMBLE_PORT")
+    echo 'configure_firewall_for_mumble' >> $COMPLETION_FILE
 }
 
 function install_mumble {
     apt-get -y install mumble-server
 
-    function_check get_voip_server_password
-    get_voip_server_password
-    if [ ! $VOIP_SERVER_PASSWORD ]; then
+    function_check get_mumble_server_password
+    get_mumble_server_password
+    if [ ! $MUMBLE_SERVER_PASSWORD ]; then
         if [ -f $IMAGE_PASSWORD_FILE ]; then
-            VOIP_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+            MUMBLE_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
         else
-            VOIP_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-            if [ ${#VOIP_SERVER_PASSWORD} -lt $MINIMUM_PASSWORD_LENGTH ]; then
-                VOIP_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+            MUMBLE_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+            if [ ${#MUMBLE_SERVER_PASSWORD} -lt $MINIMUM_PASSWORD_LENGTH ]; then
+                MUMBLE_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
             fi
         fi
     fi
@@ -223,11 +220,11 @@ function install_mumble {
 
     # Check that the cert was created
     if [ ! -f /etc/ssl/certs/mumble.crt ]; then
-        echo $'VoIP server certificate not created'
+        echo $'mumble server certificate not created'
         exit 57892
     fi
     if [ ! -f /etc/ssl/private/mumble.key ]; then
-        echo $'VoIP server key not created'
+        echo $'mumble server key not created'
         exit 57893
     fi
     if [ ! -d /var/lib/mumble-server ]; then
@@ -237,10 +234,10 @@ function install_mumble {
     cp /etc/ssl/private/mumble.key /var/lib/mumble-server
     chown -R mumble-server:mumble-server /var/lib/mumble-server
 
-    sed -i "s|welcometext=.*|welcometext=\"<br />Welcome to $DEFAULT_DOMAIN_NAME <b>VoIP</b>.<br />Chat freely!<br />\"|g" /etc/mumble-server.ini
+    sed -i "s|welcometext=.*|welcometext=\"<br />Welcome to $DEFAULT_DOMAIN_NAME <b>mumble</b>.<br />Chat freely!<br />\"|g" /etc/mumble-server.ini
 
-    if [[ $VOIP_SERVER_PASSWORD && $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
-        sed -i "s|serverpassword=.*|serverpassword=$VOIP_SERVER_PASSWORD|g" /etc/mumble-server.ini
+    if [[ $MUMBLE_SERVER_PASSWORD && $SYSTEM_TYPE != "$VARIANT_MESH" ]]; then
+        sed -i "s|serverpassword=.*|serverpassword=$MUMBLE_SERVER_PASSWORD|g" /etc/mumble-server.ini
     fi
 
     sed -i 's|#autobanAttempts.*|autobanAttempts = 10|g' /etc/mumble-server.ini
@@ -262,9 +259,9 @@ function install_mumble {
     sed -i 's|#imagemessagelength=.*|imagemessagelength=131072|g' /etc/mumble-server.ini
     sed -i 's|#allowhtml=.*|allowhtml=False|g' /etc/mumble-server.ini
     sed -i 's|allowhtml=.*|allowhtml=False|g' /etc/mumble-server.ini
-    sed -i "s|port=.*|port=${VOIP_PORT}|g" /etc/mumble-server.ini
+    sed -i "s|port=.*|port=${MUMBLE_PORT}|g" /etc/mumble-server.ini
 
-    VOIP_ONION_HOSTNAME=$(add_onion_service mumble ${VOIP_PORT} ${VOIP_PORT})
+    MUMBLE_ONION_HOSTNAME=$(add_onion_service mumble ${MUMBLE_PORT} ${MUMBLE_PORT})
 
     systemctl restart mumble-server
 
@@ -273,10 +270,10 @@ function install_mumble {
         echo '' >> /home/$MY_USERNAME/README
         echo $'Mumble Server' >> /home/$MY_USERNAME/README
         echo '=============' >> /home/$MY_USERNAME/README
-        echo $"Mumble onion domain:$VOIP_ONION_HOSTNAME" >> /home/$MY_USERNAME/README
+        echo $"Mumble onion domain:$MUMBLE_ONION_HOSTNAME" >> /home/$MY_USERNAME/README
         echo $'Mumble server username: mumble-server' >> /home/$MY_USERNAME/README
         if [[ $SYSTEM_TYPE != "VARIANT_MESH" ]]; then
-            echo $"Mumble server password: $VOIP_SERVER_PASSWORD" >> /home/$MY_USERNAME/README
+            echo $"Mumble server password: $MUMBLE_SERVER_PASSWORD" >> /home/$MY_USERNAME/README
         fi
         echo '' >> /home/$MY_USERNAME/README
         echo $'To connect to the Mumble server use your username and the server password shown above.' >> /home/$MY_USERNAME/README
@@ -284,8 +281,8 @@ function install_mumble {
         chmod 600 /home/$MY_USERNAME/README
     fi
 
-    function_check configure_firewall_for_voip
-    configure_firewall_for_voip
+    function_check configure_firewall_for_mumble
+    configure_firewall_for_mumble
 }
 
 # NOTE: deliberately no exit 0
