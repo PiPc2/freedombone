@@ -43,6 +43,7 @@ APPS_INSTALLED_NAMES=()
 # file containing a list of removed apps
 REMOVED_APPS_FILE=/root/removed
 
+# gets the variants list from an app script
 function app_variants {
     filename=$1
     variants_line=$(cat ${filename} | grep "VARIANTS=")
@@ -54,12 +55,14 @@ function app_variants {
     echo "$variants_list"
 }
 
+# whether a given item is in an array
 function item_in_array {
     local e
     for e in "${@:2}"; do [[ "$e" == "$1" ]] && return 0; done
     return 1
 }
 
+# mark a given app as having been removed so that it doesn't get reinstalled on updates
 function remove_app {
     app_name=$1
     if [ ! -f $REMOVED_APPS_FILE ]; then
@@ -70,6 +73,7 @@ function remove_app {
     fi
 }
 
+# returns 1 if an app has been marked as removed
 function app_is_removed {
     app_name="$1"
     if [ ! -f $REMOVED_APPS_FILE ]; then
@@ -84,6 +88,7 @@ function app_is_removed {
     fi
 }
 
+# Allows an app to be reinstalled even if it was previously marked as being removed
 function reinstall_app {
     app_name=$1
     if [ ! -f $REMOVED_APPS_FILE ]; then
@@ -94,6 +99,7 @@ function reinstall_app {
     fi
 }
 
+# returns 1 if an app is installed
 function app_is_installed {
     app_name="$1"
 
@@ -109,6 +115,7 @@ function app_is_installed {
         return
     fi
 
+    # check the completion file to see if it was installed
     if [ ! -f $COMPLETION_FILE ]; then
         echo "0"
         return
@@ -121,6 +128,7 @@ function app_is_installed {
     fi
 }
 
+# called at the end of the install section of an app script
 function install_completed {
     if [ ! ${1} ]; then
         exit 673935
@@ -128,6 +136,7 @@ function install_completed {
     echo "install_${1}" >> $COMPLETION_FILE
 }
 
+# populates an array of "0" or "1" for whether apps are installed
 function get_apps_installed {
     for a in "${APPS_AVAILABLE[@]}"
     do
@@ -135,6 +144,7 @@ function get_apps_installed {
     done
 }
 
+# populates an array of installed app names
 function get_apps_installed_names {
     APPS_INSTALLED_NAMES=()
     for a in "${APPS_AVAILABLE[@]}"
@@ -145,6 +155,7 @@ function get_apps_installed_names {
     done
 }
 
+# detects what apps are available
 function detect_apps {
     FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
 
@@ -166,6 +177,9 @@ function detect_apps {
     get_apps_installed_names
 }
 
+# detects what apps are available and can be installed
+# If the variants list within an app script is an empty string then
+# it is considered to be too experimental to be installable
 function detect_installable_apps {
     FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
 
@@ -182,6 +196,7 @@ function detect_installable_apps {
         app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
         if [[ $(item_in_array ${app_name} ${APPS_AVAILABLE[@]}) != 0 ]]; then
             variants_list=$(app_variants $filename)
+            # check for empty string
             if [ ${#variants_list} -gt 0 ]; then
                 APPS_AVAILABLE+=("${app_name}")
                 APPS_CHOSEN+=("0")
@@ -236,6 +251,7 @@ function choose_apps_for_variant {
     get_apps_installed
 }
 
+# show a list of apps which have been chosen
 function list_chosen_apps {
     app_index=0
     for a in "${APPS_AVAILABLE[@]}"
@@ -270,12 +286,12 @@ function install_apps {
     app_index=0
     for a in "${APPS_AVAILABLE[@]}"
     do
-        if [[ ${APPS_INSTALLED[$app_index]} == "0" ]]; then
-            if [[ ${APPS_CHOSEN[$app_index]} == "1" ]]; then
-                if [ ${is_interactive} ]; then
-                    # interactively obtain settings for this app
-                    if [[ $(function_exists install_interactive_${a}) == "1" ]]; then
-                        if [[ $(app_is_removed ${a}) == "0" ]]; then
+        if [[ $(app_is_removed ${a}) == "0" ]]; then
+            if [[ ${APPS_INSTALLED[$app_index]} == "0" ]]; then
+                if [[ ${APPS_CHOSEN[$app_index]} == "1" ]]; then
+                    if [ ${is_interactive} ]; then
+                        # interactively obtain settings for this app
+                        if [[ $(function_exists install_interactive_${a}) == "1" ]]; then
                             install_interactive_${a}
                         fi
                     fi
