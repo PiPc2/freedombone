@@ -36,13 +36,23 @@ export TEXTDOMAINDIR="/usr/share/locale"
 
 CONFIGURATION_FILE=/root/${PROJECT_NAME}.cfg
 
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+  source $f
+done
+
+APP_FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+for f in $APP_FILES
+do
+  source $f
+done
+
 MY_USERNAME=$1
 SSH_PUBLIC_KEY="$2"
 GPG_KEYSERVER='hkp://keys.gnupg.net'
 SSH_PORT=2222
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
-SIP_EXTENSION=
-FULLBLOG_DOMAIN_NAME=
 DEFAULT_DOMAIN_NAME=
 
 if [ ! $MY_USERNAME ]; then
@@ -199,190 +209,25 @@ chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
 chown $MY_USERNAME:$MY_USERNAME $MY_GPG_PUBLIC_KEY
 chmod 600 /home/$MY_USERNAME/README
 
-if grep -q "install_xmpp" $COMPLETION_FILE; then
-    echo $"Adding an xmpp account for $MY_USERNAME"
-    ${PROJECT_NAME}-addxmpp -e "$MY_USERNAME@$HOSTNAME" -p "$NEW_USER_PASSWORD"
-    if [ ! "$?" = "0" ]; then
-        echo $"xmpp account not created"
-        userdel -r $MY_USERNAME
-        exit 8
-    fi
-fi
-
-if grep -q "install_xmpp_client" $COMPLETION_FILE; then
-    echo $"Adding xmpp client setup"
-    XMPP_CLIENT_DIR=/home/$MY_USERNAME/.local/share/profanity
-    XMPP_CLIENT_ACCOUNTS=$XMPP_CLIENT_DIR/accounts
-    if [ ! -d $XMPP_CLIENT_DIR ]; then
-        mkdir -p $XMPP_CLIENT_DIR
-    fi
-    if [ ! -d /home/$MY_USERNAME/.config/profanity ]; then
-        mkdir -p /home/$MY_USERNAME/.config/profanity
-    fi
-    echo "[${MY_USERNAME}@${HOSTNAME}]" > $XMPP_CLIENT_ACCOUNTS
-    echo 'enabled=true' >> $XMPP_CLIENT_ACCOUNTS
-    echo "jid=${MY_USERNAME}@${HOSTNAME}" >> $XMPP_CLIENT_ACCOUNTS
-    echo 'resource=profanity' >> $XMPP_CLIENT_ACCOUNTS
-    echo "muc.service=conference.${HOSTNAME}" >> $XMPP_CLIENT_ACCOUNTS
-    echo "muc.nick=${MY_USERNAME}" >> $XMPP_CLIENT_ACCOUNTS
-    echo 'presence.last=online' >> $XMPP_CLIENT_ACCOUNTS
-    echo 'presence.login=online' >> $XMPP_CLIENT_ACCOUNTS
-    echo 'priority.online=0' >> $XMPP_CLIENT_ACCOUNTS
-    echo 'priority.chat=0' >> $XMPP_CLIENT_ACCOUNTS
-    echo 'priority.away=0' >> $XMPP_CLIENT_ACCOUNTS
-    echo 'priority.xa=0' >> $XMPP_CLIENT_ACCOUNTS
-    echo 'priority.dnd=0' >> $XMPP_CLIENT_ACCOUNTS
-
-    echo '[connection]' > /home/$MY_USERNAME/.config/profanity/profrc
-    echo "account=${MY_USERNAME}@${HOSTNAME}" >> /home/$MY_USERNAME/.config/profanity/profrc
-
-    chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.local
-    chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
-fi
-
-if grep -q "Blog domain" $COMPLETION_FILE; then
-    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
-    if [ ! -d /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users ]; then
-        echo $'Blog users directory not found'
-        if grep -q "install_xmpp" $COMPLETION_FILE; then
-            ${PROJECT_NAME}-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
+echo $'Detecting installed apps...'
+detect_apps
+get_apps_installed_names
+for app_name in "${APPS_INSTALLED_NAMES[@]}"
+do
+    if [[ $(function_exists add_user_${app_name}) == "1" ]]; then
+        echo $"Adding user to ${app_name}"
+        retval=$(add_user_${app_name} "$MY_USERNAME" "$NEW_USER_PASSWORD")
+        if [[ $retval != '0' ]]; then
+            echo $"Failed with error code ${retval}"
+            ${PROJECT_NAME}-rmuser $MY_USERNAME
+            exit 672392
         fi
-        userdel -r $MY_USERNAME
-        exit 9
     fi
-    NEW_USER_PASSWORD_HASH=$(${PROJECT_NAME}-sec --bloghash "$NEW_USER_PASSWORD")
-    if [ ${#NEW_USER_PASSWORD_HASH} -lt 8 ]; then
-        echo $'Blog admin password could not be hashed'
-        exit 783528
-    fi
-    echo ';Password' > /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo "password = $NEW_USER_PASSWORD_HASH" >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo 'encryption = password_hash' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo ';Role' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo 'role = admin' >> /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    echo "$MY_USERNAME added as a blog user"
-fi
-
-if grep -q "install_sip" $COMPLETION_FILE; then
-    SIP_EXTENSION=$(${PROJECT_NAME}-sipfreeext)
-    ${PROJECT_NAME}-addsipuser -u $MY_USERNAME -e $SIP_EXTENSION -p "$NEW_USER_PASSWORD"
-    if [ ! "$?" = "0" ]; then
-        echo $'SIP user could not be added. Ensure that extension numbers are in order and do no exceed 299'
-        if grep -q "install_xmpp" $COMPLETION_FILE; then
-            ${PROJECT_NAME}-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
-        fi
-        if grep -q "Blog domain" $COMPLETION_FILE; then
-            if [ -f /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini ]; then
-                rm /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-            fi
-        fi
-        userdel -r $MY_USERNAME
-        exit 10
-    fi
-fi
-
-if grep -q "install_gnusocial" $COMPLETION_FILE; then
-    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "gnusocial domain" | awk -F ':' '{print $2}')
-    if [ -d /var/www/$MICROBLOG_DOMAIN_NAME ]; then
-        cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-        php scripts/registeruser.php -n $MY_USERNAME -w "$NEW_USER_PASSWORD" -e "$MY_USERNAME@$HOSTNAME"
-        ${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$MICROBLOG_DOMAIN_NAME" -g gnusocial --public no
-        echo $'Created gnusocial user'
-    else
-        echo $"Unable to find gnusocial installation at /var/www/$MICROBLOG_DOMAIN_NAME/htdocs"
-        userdel -r $MY_USERNAME
-        exit 11
-    fi
-fi
-
-if grep -q "install_irc_client" $COMPLETION_FILE; then
-    IRC_PORT=6697
-    if grep -q "IRC_PORT" $CONFIGURATION_FILE; then
-        IRC_PORT=$(grep "IRC_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    IRC_PASSWORD=$(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
-    if [ ${#IRC_PASSWORD} -lt 2 ]; then
-        IRC_PASSWORD=
-    fi
-
-    if [ ! -d /home/$MY_USERNAME/.irssi ]; then
-        mkdir /home/$MY_USERNAME/.irssi
-    fi
-
-    echo 'servers = (' > /home/$MY_USERNAME/.irssi/config
-    echo '  {' >> /home/$MY_USERNAME/.irssi/config
-    echo '    address = "chat.freenode.net";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    chatnet = "Freenode";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    port = "6667";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    autoconnect = "no";' >> /home/$MY_USERNAME/.irssi/config
-    echo '  },' >> /home/$MY_USERNAME/.irssi/config
-    echo '  {' >> /home/$MY_USERNAME/.irssi/config
-    echo '    address = "irc.oftc.net";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    chatnet = "OFTC";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    port = "6667";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    autoconnect = "yes";' >> /home/$MY_USERNAME/.irssi/config
-    echo '  },' >> /home/$MY_USERNAME/.irssi/config
-    echo '  {' >> /home/$MY_USERNAME/.irssi/config
-    echo "    address = \"${HOSTNAME}\";" >> /home/$MY_USERNAME/.irssi/config
-    echo '    chatnet = "Freedombone";' >> /home/$MY_USERNAME/.irssi/config
-    echo "    port = \"${IRC_PORT}\";" >> /home/$MY_USERNAME/.irssi/config
-    echo '    use_ssl = "yes";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    ssl_verify = "no";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    autoconnect = "yes";' >> /home/$MY_USERNAME/.irssi/config
-
-    echo '  }' >> /home/$MY_USERNAME/.irssi/config
-    echo ');' >> /home/$MY_USERNAME/.irssi/config
-    echo '' >> /home/$MY_USERNAME/.irssi/config
-    echo 'chatnets = {' >> /home/$MY_USERNAME/.irssi/config
-    echo '  Freedombone = {' >> /home/$MY_USERNAME/.irssi/config
-    echo '    type = "IRC";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_kicks = "1";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_msgs = "4";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_whois = "1";' >> /home/$MY_USERNAME/.irssi/config
-    echo '  };' >> /home/$MY_USERNAME/.irssi/config
-    echo '  Freenode = {' >> /home/$MY_USERNAME/.irssi/config
-    echo '    type = "IRC";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_kicks = "1";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_msgs = "4";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_whois = "1";' >> /home/$MY_USERNAME/.irssi/config
-    echo '  };' >> /home/$MY_USERNAME/.irssi/config
-    echo '  OFTC = {' >> /home/$MY_USERNAME/.irssi/config
-    echo '    type = "IRC";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_kicks = "1";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_msgs = "1";' >> /home/$MY_USERNAME/.irssi/config
-    echo '    max_whois = "1";' >> /home/$MY_USERNAME/.irssi/config
-    echo '  };' >> /home/$MY_USERNAME/.irssi/config
-    echo '};' >> /home/$MY_USERNAME/.irssi/config
-    echo '' >> /home/$MY_USERNAME/.irssi/config
-    echo 'channels = (' >> /home/$MY_USERNAME/.irssi/config
-    echo '  { name = "#freedombone"; chatnet = "Freedombone"; autojoin = "Yes"; },' >> /home/$MY_USERNAME/.irssi/config
-    echo ');' >> /home/$MY_USERNAME/.irssi/config
-    echo '' >> /home/$MY_USERNAME/.irssi/config
-    echo 'settings = {' >> /home/$MY_USERNAME/.irssi/config
-    echo "  core = { real_name = \"$MY_NAME\"; user_name = \"$MY_USERNAME\"; nick = \"$MY_USERNAME\"; };" >> /home/$MY_USERNAME/.irssi/config
-    echo '  "fe-text" = { actlist_sort = "refnum"; };' >> /home/$MY_USERNAME/.irssi/config
-    echo '};' >> /home/$MY_USERNAME/.irssi/config
-    echo 'ignores = ( { level = "CTCPS"; } );' >> /home/$MY_USERNAME/.irssi/config
-
-    chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.irssi
-fi
+done
 
 if [ -f /etc/nginx/.htpasswd ]; then
     if ! grep "${MY_USERNAME}:" /etc/nginx/.htpasswd; then
         echo "$NEW_USER_PASSWORD" | htpasswd -i -s /etc/nginx/.htpasswd $MY_USERNAME
-    fi
-fi
-
-# add user to the sipwitch group
-if [ -f /etc/sipwitch.conf ]; then
-    usermod -aG sipwitch $MY_USERNAME
-fi
-
-# add user for SIP STUN/TURN
-if [ -d /etc/turnserver ]; then
-    if grep -q "DEFAULT_DOMAIN_NAME" $CONFIGURATION_FILE; then
-        DEFAULT_DOMAIN_NAME=$(grep "DEFAULT_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        echo "${MY_USERNAME}:${NEW_USER_PASSWORD}:${DEFAULT_DOMAIN_NAME}:authorized" >> /etc/turnserver/turnusers.txt
     fi
 fi
 
@@ -393,9 +238,6 @@ fi
 
 clear
 echo $"New user $MY_USERNAME was created"
-if [ $SIP_EXTENSION ]; then
-    echo $"Their SIP phone extension is $SIP_EXTENSION"
-fi
 echo $"Their login password is $NEW_USER_PASSWORD"
 echo ''
 echo $'IMPORTANT: Make a note of the password, because it will not be saved'
