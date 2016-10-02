@@ -37,6 +37,18 @@ export TEXTDOMAINDIR="/usr/share/locale"
 MY_USERNAME=$1
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+  source $f
+done
+
+APP_FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+for f in $APP_FILES
+do
+  source $f
+done
+
 if [ ! $MY_USERNAME ]; then
     echo $'Please specify a username to remove'
     exit 1
@@ -80,39 +92,10 @@ if [[ $yn != 'y' && $yn != 'Y' && $yn != 'yes' && $yn != 'Yes' && $yn != 'YES' ]
     exit 8
 fi
 
-if grep -q "install_xmpp" $COMPLETION_FILE; then
-    ${PROJECT_NAME}-rmxmpp -e "$MY_USERNAME@$HOSTNAME"
-fi
-
-if grep -q "Blog domain" $COMPLETION_FILE; then
-    FULLBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "Blog domain" | awk -F ':' '{print $2}')
-    if [ -f /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini ]; then
-        rm /var/www/$FULLBLOG_DOMAIN_NAME/htdocs/config/users/$MY_USERNAME.ini
-    fi
-fi
-
-if grep -q "install_sip" $COMPLETION_FILE; then
-    ${PROJECT_NAME}-rmsipuser $MY_USERNAME
-fi
-
-if grep -q "gnusocial domain" $COMPLETION_FILE; then
-    MICROBLOG_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "gnusocial domain" | awk -F ':' '{print $2}')
-    if [ -d /var/www/$MICROBLOG_DOMAIN_NAME ]; then
-        cd /var/www/$MICROBLOG_DOMAIN_NAME/htdocs
-        php scripts/deleteprofile.php -n $MY_USERNAME -y
-        echo $'Removed gnusocial user'
-    fi
-fi
-
 if [ -f /etc/nginx/.htpasswd ]; then
     if grep "${MY_USERNAME}:" /etc/nginx/.htpasswd; then
         htpasswd -D /etc/nginx/.htpasswd $MY_USERNAME
     fi
-fi
-
-# remove user from SIP TURN/STUN
-if [ -d /etc/turnserver ]; then
-    sed -i "/${MY_USERNAME}:/d" /etc/turnserver/turnusers.txt
 fi
 
 # remove gpg keys
@@ -125,14 +108,16 @@ if [ -d /home/$MY_USERNAME/.ssh ]; then
     shred -zu /home/$MY_USERNAME/.ssh/*
 fi
 
-# remove tox indentity
-if [ -d /home/$MY_USERNAME/.config/tox ]; then
-    if [ -d /home/$MY_USERNAME/.config/tox/chatlogs ]; then
-        shred -zu /home/$MY_USERNAME/.config/tox/chatlogs/*
-        rm -rf /home/$MY_USERNAME/.config/tox/chatlogs
+echo $'Detecting installed apps...'
+detect_apps
+get_apps_installed_names
+for app_name in "${APPS_INSTALLED_NAMES[@]}"
+do
+    if [[ $(function_exists remove_user_${app_name}) == "1" ]]; then
+        echo $"Removing user from ${app_name}"
+        remove_user_${app_name} "$MY_USERNAME"
     fi
-    shred -zu /home/$MY_USERNAME/.config/tox/*
-fi
+done
 
 userdel -r $MY_USERNAME
 
