@@ -42,6 +42,15 @@ RSS_READER_PATH=/etc/share/tt-rss
 RSS_READER_GNUSOCIAL_REPO="https://github.com/bashrc/ttrss-gnusocial"
 RSS_READER_GNUSOCIAL_COMMIT='20b2535e3f2b0ddc0117b584bdcaa6bf7a2d9fa2'
 
+rss_variables=(RSS_READER_REPO
+               RSS_MOBILE_READER_REPO
+               RSS_READER_COMMIT
+               RSS_MOBILE_READER_COMMIT
+               RSS_READER_ADMIN_PASSWORD
+               RSS_READER_DOMAIN_NAME
+               USB_MOUNT
+               MY_USERNAME)
+
 function install_interactive_rss {
     echo -n ''
 }
@@ -81,14 +90,14 @@ function reconfigure_rss {
 }
 
 function upgrade_rss {
-    if grep -Fxq "install_rss" $COMPLETION_FILE; then
+    if [[ $(app_is_installed rss) == "1" ]]; then
         function_check set_repo_commit
         set_repo_commit $RSS_READER_PATH "rss reader commit" "$RSS_READER_COMMIT" $RSS_READER_REPO
         function_check rss_modifications
         rss_modifications
     fi
 
-    if grep -Fxq "install_rss_mobile_reader" $COMPLETION_FILE; then
+    if [[ $(app_is_installed rss_mobile_reader) == "1" ]]; then
         if [ ! $RSS_READER_PATH ]; then
             RSS_READER_PATH=/etc/share/tt-rss
         fi
@@ -116,105 +125,86 @@ function upgrade_rss {
 }
 
 function backup_local_rss {
-    RSS_READER_DOMAIN_NAME='ttrss'
-    if grep -q "rss reader domain" $COMPLETION_FILE; then
+    if [ -d /etc/share/tt-rss ]; then
         RSS_READER_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "rss reader domain" | awk -F ':' '{print $2}')
-    fi
 
-    if grep -q "rss reader domain" $COMPLETION_FILE; then
-        if [ -d /etc/share/tt-rss ]; then
-            RSS_READER_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "rss reader domain" | awk -F ':' '{print $2}')
+        echo $"Backing up ttrss"
 
-            echo $"Backing up ttrss"
+        function_check backup_database_to_usb
+        backup_database_to_usb ttrss
 
-            function_check backup_database_to_usb
-            backup_database_to_usb ttrss
+        backup_directory_to_usb /etc/share/tt-rss ttrss
 
-            backup_directory_to_usb /etc/share/tt-rss ttrss
-
-            echo $"ttrss backup complete"
-        fi
+        echo $"ttrss backup complete"
     fi
 }
 
 function restore_local_rss {
-    if ! grep -q "rss reader domain" $COMPLETION_FILE; then
-        return
+    temp_restore_dir=/root/tempttrss
+
+    function_check rss_create_database
+    rss_create_database
+
+    restore_database ttrss ${RSS_READER_DOMAIN_NAME}
+
+    if [ -d /etc/share/tt-rss ]; then
+        if [ -d /root/tempttrss/etc/share/tt-rss ]; then
+            rm -rf /etc/share/tt-rss
+            mv /root/tempttrss/etc/share/tt-rss /etc/share/
+            if [ ! "$?" = "0" ]; then
+                function_check set_user_permissions
+                set_user_permissions
+
+                function_check backup_unmount_drive
+                backup_unmount_drive
+                exit 528823
+            fi
+            if [ -d /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME} ]; then
+                ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${2}.key
+                ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${2}.pem
+            else
+                # Ensure that the bundled SSL cert is being used
+                if [ -f /etc/ssl/certs/${RSS_READER_DOMAIN_NAME}.bundle.crt ]; then
+                    sed -i "s|${RSS_READER_DOMAIN_NAME}.crt|${RSS_READER_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${2}
+                fi
+            fi
+        fi
     fi
-    RSS_READER_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "rss reader domain" | awk -F ':' '{print $2}')
-    if [ $RSS_READER_DOMAIN_NAME ]; then
-        echo $"Restoring ttrss"
-        temp_restore_dir=/root/tempttrss
 
-        function_check rss_create_database
-        rss_create_database
+    function_check rss_modifications
+    rss_modifications
 
-        restore_database ttrss ${RSS_READER_DOMAIN_NAME}
-
-        if [ -d /etc/share/tt-rss ]; then
-            if [ -d /root/tempttrss/etc/share/tt-rss ]; then
-                rm -rf /etc/share/tt-rss
-                mv /root/tempttrss/etc/share/tt-rss /etc/share/
-                if [ ! "$?" = "0" ]; then
-                    function_check set_user_permissions
-                    set_user_permissions
-
-                    function_check backup_unmount_drive
-                    backup_unmount_drive
-                    exit 528823
-                fi
-                if [ -d /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME} ]; then
-                    ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${2}.key
-                    ln -s /etc/letsencrypt/live/${RSS_READER_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${2}.pem
-                else
-                    # Ensure that the bundled SSL cert is being used
-                    if [ -f /etc/ssl/certs/${RSS_READER_DOMAIN_NAME}.bundle.crt ]; then
-                        sed -i "s|${RSS_READER_DOMAIN_NAME}.crt|${RSS_READER_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${2}
-                    fi
-                fi
-            fi
+    if [ -d $USB_MOUNT/backup/ttrss ]; then
+        chown -R www-data:www-data /etc/share/tt-rss
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
         fi
-
-        function_check rss_modifications
-        rss_modifications
-
-        if [ -d $USB_MOUNT/backup/ttrss ]; then
-            chown -R www-data:www-data /etc/share/tt-rss
-            if [ -d $temp_restore_dir ]; then
-                rm -rf $temp_restore_dir
-            fi
-        fi
-        echo $"Restore of ttrss complete"
     fi
 }
 
 function backup_remote_rss {
-    if grep -q "rss reader domain" $COMPLETION_FILE; then
-        RSS_READER_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "rss reader domain" | awk -F ':' '{print $2}')
-        if [ -d /etc/share/tt-rss ]; then
-            function_check suspend_site
-            suspend_site ${RSS_READER_DOMAIN_NAME}
+    if [ -d /etc/share/tt-rss ]; then
+        function_check suspend_site
+        suspend_site ${RSS_READER_DOMAIN_NAME}
 
-            function_check backup_database_to_friend
-            backup_database_to_friend ttrss
+        function_check backup_database_to_friend
+        backup_database_to_friend ttrss
 
-            echo $"Backing up RSS reader installation"
+        echo $"Backing up RSS reader installation"
 
-            function_check backup_directory_to_friend
-            backup_directory_to_friend /etc/share/tt-rss ttrss
+        function_check backup_directory_to_friend
+        backup_directory_to_friend /etc/share/tt-rss ttrss
 
-            function_check restart_site
-            restart_site
-        else
-            echo $"RSS reader domain specified but not found in /etc/share/ttrss}"
-        fi
+        function_check restart_site
+        restart_site
+    else
+        echo $"RSS reader domain specified but not found in /etc/share/ttrss}"
     fi
 }
 
 function restore_remote_rss {
     if grep -q "rss reader domain" $COMPLETION_FILE; then
         echo $"Restoring ttrss"
-        RSS_READER_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "rss reader domain" | awk -F ':' '{print $2}')
         function_check restore_database_from_friend
 
         function_check rss_create_database
@@ -256,9 +246,6 @@ function remove_rss {
     if [[ $(app_is_installed rss) == "0" ]]; then
         return
     fi
-    if grep -q "RSS_READER_DOMAIN_NAME" $CONFIGURATION_FILE; then
-        RSS_READER_DOMAIN_NAME=$(grep "RSS_READER_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
     nginx_dissite $RSS_READER_DOMAIN_NAME
     function_check remove_onion_service
     remove_onion_service ttrss ${RSS_READER_ONION_PORT} ${RSS_MOBILE_READER_ONION_PORT}
@@ -292,10 +279,6 @@ function rss_modifications {
 }
 
 function install_rss_main {
-    if grep -Fxq "install_rss_main" $COMPLETION_FILE; then
-        return
-    fi
-
     apt-get -y install php-gettext php5-curl php5-gd php5-mysql git
     apt-get -y install curl php-xml-parser php5-mcrypt
 
@@ -520,7 +503,7 @@ function install_rss_main {
         chmod 600 /home/$MY_USERNAME/README
     fi
 
-    echo 'install_rss_main' >> $COMPLETION_FILE
+    install_completed rss_main
 }
 
 function install_rss_gnusocial {
@@ -560,8 +543,7 @@ function install_rss_gnusocial {
         echo "rss reader gnusocial commit:$RSS_READER_GNUSOCIAL_COMMIT" >> $COMPLETION_FILE
     fi
     chown -R www-data:www-data $RSS_READER_GNUSOCIAL_PATH
-
-    echo 'install_rss_gnusocial' >> $COMPLETION_FILE
+    install_completed rss_gnusocial
 }
 
 function install_rss_mobile_reader {
@@ -612,8 +594,7 @@ function install_rss_mobile_reader {
     chown -R www-data:www-data $RSS_MOBILE_READER_PATH
     chown -R www-data:www-data $RSS_READER_PATH
     chmod a+x $RSS_MOBILE_READER_PATH
-
-    echo 'install_rss_mobile_reader' >> $COMPLETION_FILE
+    install_completed rss_mobile_reader
 }
 
 function install_rss {

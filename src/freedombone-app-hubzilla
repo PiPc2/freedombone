@@ -40,6 +40,16 @@ HUBZILLA_ADMIN_PASSWORD=
 HUBZILLA_COMMIT='8aee932525d0bc341713fe7052e2a5ab318a69c0'
 HUBZILLA_ADDONS_COMMIT='4456f097e3faf2adeab696ad08e3f213e82199bd'
 
+hubzilla_variables=(ONION_ONLY
+                    HUBZILLA_DOMAIN_NAME
+                    HUBZILLA_CODE
+                    DDNS_PROVIDER
+                    MY_USERNAME
+                    HUBZILLA_REPO
+                    HUBZILLA_COMMIT
+                    HUBZILLA_ADDONS_REPO
+                    HUBZILLA_ADDONS_COMMIT)
+
 function hubzilla_renew_cert {
     dialog --title $"Renew SSL certificate" \
            --backtitle $"Freedombone Control Panel" \
@@ -126,21 +136,6 @@ function configure_interactive_hubzilla {
 }
 
 function install_interactive_hubzilla {
-    if [ ! $ONION_ONLY ]; then
-        ONION_ONLY='no'
-    fi
-    if grep -q "ONION_ONLY" $CONFIGURATION_FILE; then
-        ONION_ONLY=$(grep "ONION_ONLY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if grep -q "HUBZILLA_DOMAIN_NAME" $CONFIGURATION_FILE; then
-        HUBZILLA_DOMAIN_NAME=$(grep "HUBZILLA_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if grep -q "HUBZILLA_CODE" $CONFIGURATION_FILE; then
-        HUBZILLA_CODE=$(grep "HUBZILLA_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if grep -q "DDNS_PROVIDER" $CONFIGURATION_FILE; then
-        DDNS_PROVIDER=$(grep "DDNS_PROVIDER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
     if [[ $ONION_ONLY != "no" ]]; then
         HUBZILLA_DOMAIN_NAME='hubzilla.local'
     else
@@ -250,10 +245,6 @@ function reconfigure_hubzilla {
 }
 
 function upgrade_hubzilla {
-    if grep -q "HUBZILLA_DOMAIN_NAME" $CONFIGURATION_FILE; then
-        HUBZILLA_DOMAIN_NAME=$(grep "HUBZILLA_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-
     HUBZILLA_PATH=/var/www/$HUBZILLA_DOMAIN_NAME/htdocs
 
     function_check set_repo_commit
@@ -269,88 +260,66 @@ function upgrade_hubzilla {
 }
 
 function backup_local_hubzilla {
-    if grep -q "hubzilla domain" $COMPLETION_FILE; then
-        HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "hubzilla domain" | awk -F ':' '{print $2}')
-        hubzilla_path=/var/www/${HUBZILLA_DOMAIN_NAME}/htdocs
-        if [ -d $hubzilla_path ]; then
-            echo $"Backing up Hubzilla"
-            function_check backup_database_to_usb
-            backup_database_to_usb hubzilla
+    hubzilla_path=/var/www/${HUBZILLA_DOMAIN_NAME}/htdocs
+    if [ -d $hubzilla_path ]; then
+        function_check backup_database_to_usb
+        backup_database_to_usb hubzilla
 
-            backup_directory_to_usb $hubzilla_path hubzilla
-
-            echo $"Hubzilla backup complete"
-        fi
+        backup_directory_to_usb $hubzilla_path hubzilla
     fi
 }
 
 function restore_local_hubzilla {
-    if ! grep -q "hubzilla domain" $COMPLETION_FILE; then
-        return
-    fi
-    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "hubzilla domain" | awk -F ':' '{print $2}')
-    if [ $HUBZILLA_DOMAIN_NAME ]; then
-        echo $"Restoring Hubzilla"
-        temp_restore_dir=/root/temphubzilla
-        hubzilla_dir=/var/www/${HUBZILLA_DOMAIN_NAME}/htdocs
+    temp_restore_dir=/root/temphubzilla
+    hubzilla_dir=/var/www/${HUBZILLA_DOMAIN_NAME}/htdocs
 
-        function_check hubzilla_create_database
-        hubzilla_create_database
+    function_check hubzilla_create_database
+    hubzilla_create_database
 
-        restore_database hubzilla ${HUBZILLA_DOMAIN_NAME}
-        if [ -d $USB_MOUNT/backup/hubzilla ]; then
-            if [ ! -d $hubzilla_dir/store/[data]/smarty3 ]; then
-                mkdir -p $hubzilla_dir/store/[data]/smarty3
-            fi
-            chmod 777 $hubzilla_dir/store/[data]/smarty3
-            chown -R www-data:www-data $hubzilla_dir/*
-            if [ -d $temp_restore_dir ]; then
-                rm -rf $temp_restore_dir
-            fi
+    restore_database hubzilla ${HUBZILLA_DOMAIN_NAME}
+    if [ -d $USB_MOUNT/backup/hubzilla ]; then
+        if [ ! -d $hubzilla_dir/store/[data]/smarty3 ]; then
+            mkdir -p $hubzilla_dir/store/[data]/smarty3
         fi
-        echo $"Restore of Hubzilla complete"
+        chmod 777 $hubzilla_dir/store/[data]/smarty3
+        chown -R www-data:www-data $hubzilla_dir/*
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
     fi
 }
 
 function backup_remote_hubzilla {
-    if grep -q "hubzilla domain" $COMPLETION_FILE; then
-        HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "hubzilla domain" | awk -F ':' '{print $2}')
-        temp_backup_dir=/var/www/${HUBZILLA_DOMAIN_NAME}/htdocs
-        if [ -d $temp_backup_dir ]; then
-            suspend_site ${HUBZILLA_DOMAIN_NAME}
-            backup_database_to_friend hubzilla
-            echo "Backing up Hubzilla installation"
-            backup_directory_to_friend $temp_backup_dir hubzilla
-            restart_site
-            echo "Backup of Hubzilla complete"
-        else
-            echo $"Hubzilla domain specified but not found in /var/www/${HUBZILLA_DOMAIN_NAME}"
-            exit 2578
-        fi
+    temp_backup_dir=/var/www/${HUBZILLA_DOMAIN_NAME}/htdocs
+    if [ -d $temp_backup_dir ]; then
+        suspend_site ${HUBZILLA_DOMAIN_NAME}
+        backup_database_to_friend hubzilla
+        echo "Backing up Hubzilla installation"
+        backup_directory_to_friend $temp_backup_dir hubzilla
+        restart_site
+        echo "Backup of Hubzilla complete"
+    else
+        echo $"Hubzilla domain specified but not found in /var/www/${HUBZILLA_DOMAIN_NAME}"
+        exit 2578
     fi
 }
 
 function restore_remote_hubzilla {
-    if grep -q "hubzilla domain" $COMPLETION_FILE; then
-        echo $"Restoring Hubzilla"
-        HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "hubzilla domain" | awk -F ':' '{print $2}')
-        function_check restore_database_from_friend
+    function_check restore_database_from_friend
 
-        function_check hubzilla_create_database
-        hubzilla_create_database
+    function_check hubzilla_create_database
+    hubzilla_create_database
 
-        restore_database_from_friend hubzilla ${HUBZILLA_DOMAIN_NAME}
-        if [ -d $SERVER_DIRECTORY/backup/hubzilla ]; then
-            if [ ! -d /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3 ]; then
-                mkdir -p /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
-            fi
-            chmod 777 /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
-            chown -R www-data:www-data /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/*
+    restore_database_from_friend hubzilla ${HUBZILLA_DOMAIN_NAME}
+    if [ -d $SERVER_DIRECTORY/backup/hubzilla ]; then
+        if [ ! -d /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3 ]; then
+            mkdir -p /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
         fi
-        if [ -d /root/temphubzilla ]; then
-            rm -rf /root/temphubzilla
-        fi
-        echo $"Restore of Hubzilla complete"
+        chmod 777 /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+        chown -R www-data:www-data /var/www/${HUBZILLA_DOMAIN_NAME}/htdocs/*
+    fi
+    if [ -d /root/temphubzilla ]; then
+        rm -rf /root/temphubzilla
     fi
 }
 
@@ -359,7 +328,6 @@ function remove_hubzilla {
         return
     fi
     echo $'Removing Hubzilla'
-    HUBZILLA_DOMAIN_NAME=$(cat $COMPLETION_FILE | grep "hubzilla domain" | awk -F ':' '{print $2}')
     nginx_dissite $HUBZILLA_DOMAIN_NAME
     if [ -d /var/www/$HUBZILLA_DOMAIN_NAME ]; then
         rm -rf /var/www/$HUBZILLA_DOMAIN_NAME
@@ -376,22 +344,6 @@ function remove_hubzilla {
 }
 
 function install_hubzilla {
-    if [ ! $ONION_ONLY ]; then
-        ONION_ONLY='no'
-    fi
-    if grep -q "ONION_ONLY" $CONFIGURATION_FILE; then
-        ONION_ONLY=$(grep "ONION_ONLY" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if grep -q "HUBZILLA_DOMAIN_NAME" $CONFIGURATION_FILE; then
-        HUBZILLA_DOMAIN_NAME=$(grep "HUBZILLA_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if grep -q "HUBZILLA_CODE" $CONFIGURATION_FILE; then
-        HUBZILLA_CODE=$(grep "HUBZILLA_CODE" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if grep -q "DDNS_PROVIDER" $CONFIGURATION_FILE; then
-        DDNS_PROVIDER=$(grep "DDNS_PROVIDER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-
     if [ ! $HUBZILLA_DOMAIN_NAME ]; then
         return
     fi
