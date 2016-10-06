@@ -30,6 +30,35 @@
 
 PROJECT_NAME='freedombone'
 COMPLETION_FILE=/root/${PROJECT_NAME}-completed.txt
+HOTSPOT_PASSPHRASE='mesh'
+
+function count_wlan {
+    # counts the number of wlan devices
+    ctr=0
+
+    for i in $(seq 0 -1 10); do
+        if grep -q "wlan${i}" /proc/net/dev; then
+            ctr=$((ctr + 1))
+        fi
+    done
+    echo $ctr
+}
+
+function update_wifi_adaptors {
+    IFACE=
+    IFACE_SECONDARY=
+
+    for i in $(seq 10 -1 0); do
+        if grep -q "wlan${i}" /proc/net/dev; then
+            if [ ! $IFACE ]; then
+                IFACE="wlan${i}"
+            else
+                IFACE_SECONDARY="wlan${i}"
+                return
+            fi
+        fi
+    done
+}
 
 if [[ $1 == "start" ]]; then
     # install avahi
@@ -68,33 +97,22 @@ TAHOELAFS_PORT=50213
 
 # Ethernet bridge definition (bridged to bat0)
 BRIDGE=br-mesh
-IFACE='wlan0'
+BRIDGE_HOTSPOT=br-hotspot
+IFACE=
+IFACE_SECONDARY=
 EIFACE=eth0
+WLAN_ADAPTORS=$(count_wlan)
 
-if [[ $IFACE == "wlan0" ]]; then
-    if grep -q "wlan5" /proc/net/dev; then
-        IFACE=wlan5
-    fi
+if [ $WLAN_ADAPTORS -eq 0 ]; then
+    echo $'No wlan adaptors found'
+    exit 0
 fi
-if [[ $IFACE == "wlan0" ]]; then
-    if grep -q "wlan4" /proc/net/dev; then
-        IFACE=wlan4
-    fi
-fi
-if [[ $IFACE == "wlan0" ]]; then
-    if grep -q "wlan3" /proc/net/dev; then
-        IFACE=wlan3
-    fi
-fi
-if [[ $IFACE == "wlan0" ]]; then
-    if grep -q "wlan2" /proc/net/dev; then
-        IFACE=wlan2
-    fi
-fi
-if [[ $IFACE == "wlan0" ]]; then
-    if grep -q "wlan1" /proc/net/dev; then
-        IFACE=wlan1
-    fi
+
+update_wifi_adaptors
+
+if [ ! $IFACE ]; then
+    echo $'No wlan adaptor'
+    exit 0
 fi
 
 if [ -e /etc/default/batctl ]; then
@@ -125,6 +143,11 @@ function stop {
         ifconfig $BRIDGE down || true
         brctl delbr $BRIDGE
         ifconfig $EIFACE down -promisc
+    fi
+    if [ $IFACE_SECONDARY ]; then
+        brctl delif $BRIDGE_HOTSPOT bat0
+        ifconfig $BRIDGE_HOTSPOT down || true
+        brctl delbr $BRIDGE_HOTSPOT
     fi
 
     avahi-autoipd -k $BRIDGE
@@ -220,7 +243,6 @@ function start {
     modprobe batman-adv
     batctl if add $IFACE
     ifconfig $IFACE up
-    avahi-autoipd --force-bind --daemonize --wait $BRIDGE
     avahi-autoipd --force-bind --daemonize --wait $IFACE
     ifconfig bat0 up promisc
 
@@ -242,6 +264,46 @@ function start {
         ifconfig $EIFACE 0.0.0.0
         ifconfig $EIFACE up promisc
         ifconfig $BRIDGE up
+        avahi-autoipd --force-bind --daemonize --wait $BRIDGE
+    fi
+
+    if [ $IFACE_SECONDARY ]; then
+        if [[ $IFACE != $IFACE_SECONDARY ]]; then
+            if [ -d /etc/hostapd ]; then
+                # bridge between mesh and wifi hotspot for mobile
+                HOTSPOT_NAME=$"${WIFI_SSID}-hotspot"
+                ifconfig $IFACE_SECONDARY down
+                iwconfig $IFACE_SECONDARY mode managed essid $HOTSPOT_NAME channel ${CHANNEL}
+                iwconfig $IFACE_SECONDARY ap $CELLID
+
+                brctl addbr $BRIDGE_HOTSPOT
+                brctl addif $BRIDGE_HOTSPOT bat0
+                brctl addif $BRIDGE_HOTSPOT $IFACE_SECONDARY
+                ifconfig bat0 0.0.0.0
+                ifconfig $IFACE_SECONDARY 0.0.0.0
+
+                sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
+
+                echo "interface=$IFACE_SECONDARY" > /etc/hostapd/hostapd.conf
+                echo "bridge=${BRIDGE_HOTSPOT}" >> /etc/hostapd/hostapd.conf
+                echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+                echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+                echo "ssid=$HOTSPOT_NAME" >> /etc/hostapd/hostapd.conf
+                echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+                echo "channel=${CHANNEL}" >> /etc/hostapd/hostapd.conf
+                echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+                echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+                echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+                echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+                echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+                echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+                echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+
+                ifconfig $IFACE_SECONDARY up promisc
+                ifconfig $BRIDGE_HOTSPOT up
+                avahi-autoipd --force-bind --daemonize --wait $BRIDGE_HOTSPOT
+            fi
+        fi
     fi
 
     iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
