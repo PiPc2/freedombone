@@ -118,6 +118,11 @@ Where **sdX** is the microSD drive. You can check which drive is the microSD dri
 
 With the drive removed and inserted. Copying to the microSD will take a while, so go and do something less boring instead. When it's complete remove it from your system and insert it into the SBC. Connect an ethernet cable between the SBC and your internet router, then connect the power cable. On the Beaglebone Black you will see some flashing LEDs, but on other SBCs there may not be any visual indication that anything is booting.
 
+On Arch/Parabola set up avahi so that you can access the system on its local address.
+
+    sudo sed -i 's|hosts:.*|hosts: files mdns_minimal [NOTFOUND=return] dns myhostname|g' /etc/nsswitch.conf
+    sudo pacman -S avahi nss-mdns
+
 With the board connected and running you can ssh into the system with:
 
     ssh fbone@freedombone.local -p 2222
