@@ -29,160 +29,145 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 function git_clone {
-	repo_url="$1"
-	destination_dir="$2"
+    repo_url="$1"
+    destination_dir="$2"
 
-	if [[ "$repo_url" == "ssh:"* ]]; then
-		retval=$(get_friends_servers)
-		if [[ $retval == "0" ]]; then
-			if [ "${FRIENDS_MIRRORS_SERVER}" ]; then
-				if [ ${#FRIENDS_MIRRORS_SERVER} -gt 2 ]; then
-					if [ "$FRIENDS_MIRRORS_PASSWORD" ]; then
-						if [ ${#FRIENDS_MIRRORS_PASSWORD} -gt 2 ]; then
-							echo "sshpass -p \"$FRIENDS_MIRRORS_PASSWORD\" git clone $repo_url $destination_dir"
-							sshpass -p "$FRIENDS_MIRRORS_PASSWORD" git clone "$repo_url" "$destination_dir"
-							return
-						fi
-					fi
-				fi
-			fi
-		fi
-	fi
-	echo "git clone $repo_url $destination_dir"
-	git clone "$repo_url" "$destination_dir"
+    if [[ "$repo_url" == "ssh:"* ]]; then
+        retval=$(get_friends_servers)
+        if [[ $retval == "0" ]]; then
+            if [ "${FRIENDS_MIRRORS_SERVER}" ]; then
+                if [ ${#FRIENDS_MIRRORS_SERVER} -gt 2 ]; then
+                    if [ "$FRIENDS_MIRRORS_PASSWORD" ]; then
+                        if [ ${#FRIENDS_MIRRORS_PASSWORD} -gt 2 ]; then
+                            echo "sshpass -p \"$FRIENDS_MIRRORS_PASSWORD\" git clone $repo_url $destination_dir"
+                            sshpass -p "$FRIENDS_MIRRORS_PASSWORD" git clone "$repo_url" "$destination_dir"
+                            return
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    fi
+    echo "git clone $repo_url $destination_dir"
+    git clone "$repo_url" "$destination_dir"
 }
 
 function git_pull {
-	if [ ! $1 ]; then
-		echo $'git_pull no repo specified'
-	fi
+    if [ ! $1 ]; then
+        echo $'git_pull no repo specified'
+    fi
 
-	git stash
-	git remote set-url origin $1
-	git checkout master
-	retval=$(get_friends_servers)
-	if [ "${FRIENDS_MIRRORS_SERVER}" ]; then
-		if [ ${#FRIENDS_MIRRORS_SERVER} -gt 2 ]; then
-			if [ "$FRIENDS_MIRRORS_PASSWORD" ]; then
-				if [ ${#FRIENDS_MIRRORS_PASSWORD} -gt 2 ]; then
-					sshpass -p "$FRIENDS_MIRRORS_PASSWORD" git pull
-					if [ $2 ]; then
-						git checkout $2 -b $2
-					fi
-					return
-				fi
-			fi
-		fi
-	fi
-	git pull
+    git stash
+    git remote set-url origin $1
+    git checkout master
+    retval=$(get_friends_servers)
+    if [ "${FRIENDS_MIRRORS_SERVER}" ]; then
+        if [ ${#FRIENDS_MIRRORS_SERVER} -gt 2 ]; then
+            if [ "$FRIENDS_MIRRORS_PASSWORD" ]; then
+                if [ ${#FRIENDS_MIRRORS_PASSWORD} -gt 2 ]; then
+                    sshpass -p "$FRIENDS_MIRRORS_PASSWORD" git pull
+                    if [ $2 ]; then
+                        git checkout $2 -b $2
+                    fi
+                    return
+                fi
+            fi
+        fi
+    fi
+    git pull
 
-	if [ $2 ]; then
-		# delete any existing branch
-		git branch -D $2
-		# check out the new branch
-		git checkout $2 -b $2
-		if [ ! "$?" = "0" ]; then
-			echo $"Unable to checkout $1 $2"
-			exit 72357
-		fi
-	fi
+    if [ $2 ]; then
+        # delete any existing branch
+        git branch -D $2
+        # check out the new branch
+        git checkout $2 -b $2
+        if [ ! "$?" = "0" ]; then
+            echo $"Unable to checkout $1 $2"
+            exit 72357
+        fi
+    fi
 }
 
 # This ensures that a given repo is on a given commit
 # If it isn't then it attempts to upgrade
 function set_repo_commit {
-	repo_dir=$1
-	repo_commit_name=$2
-	repo_commit=$3
-	repo_url=$4
-	if [ -d $repo_dir ]; then
-		if grep -q "$repo_commit_name" $COMPLETION_FILE; then
-			CURRENT_REPO_COMMIT=$(grep "$repo_commit_name" $COMPLETION_FILE | awk -F ':' '{print $2}')
-			if [[ "$CURRENT_REPO_COMMIT" != "$repo_commit" ]]; then
-				cd $repo_dir
-				git_pull $repo_url $repo_commit
+    repo_dir=$1
+    repo_commit_name=$2
+    repo_commit=$3
+    repo_url=$4
+    if [ -d $repo_dir ]; then
+        if grep -q "$repo_commit_name" $COMPLETION_FILE; then
+            CURRENT_REPO_COMMIT=$(grep "$repo_commit_name" $COMPLETION_FILE | awk -F ':' '{print $2}')
+            if [[ "$CURRENT_REPO_COMMIT" != "$repo_commit" ]]; then
+                cd $repo_dir
+                git_pull $repo_url $repo_commit
 
-				# application specific stuff after updating the repo
-				if [[ $repo_dir == *"www"* ]]; then
-					chown -R www-data:www-data $repo_dir
-				fi
-				if [[ $repo_dir == *"cjdns" ]]; then
-					./do
-				fi
-				if [[ $repo_dir == *"tlsdate" ]]; then
-					cd $INSTALL_DIR/tlsdate
-					make clean
-					./configure
-					if [ ! "$?" = "0" ]; then
-						echo $'Failed to configure tlsdate'
-						exit 727824
-					fi
-					make
-					if [ ! "$?" = "0" ]; then
-						echo $'Failed to build tlsdate'
-						exit 728752
-					fi
-					make install
-				fi
-				if [[ $repo_dir == *"gpgit" ]]; then
-					cp gpgit.pl /usr/bin/gpgit.pl
-				fi
-				if [[ $repo_dir == *"cleanup-maildir" ]]; then
-					cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
-				fi
-				if [[ $repo_dir == *"nginx_ensite" ]]; then
-					make install
-				fi
-				if [[ $repo_dir == *"gogs" ]]; then
-					git checkout master
-					go get -u ./...
-					if [ ! "$?" = "0" ]; then
-						echo $'Failed to get gogs'
-						exit 52792
-					fi
-					git checkout $repo_commit
-					go build
-					if [ ! "$?" = "0" ]; then
-						echo $'Failed to build gogs'
-						exit 36226
-					fi
-					systemctl restart gogs
-				fi
-				if [[ $repo_dir == *"toxcore" ]]; then
-					sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' $rootdir/etc/systemd/system/tox-bootstrapd.service
-					autoreconf -i
-					./configure --enable-daemon
-					make
-					make install
-					systemctl daemon-reload
-					systemctl restart tox-bootstrapd.service
-				fi
-				if [[ $repo_dir == *"toxic" ]]; then
-					make
-					make install
-				fi
-				if [[ $repo_dir == $RSS_READER_PATH ]]; then
-					function_check rss_reader_modifications
-					rss_reader_modifications
-				fi
-				if [[ $repo_dir == *"inadyn" ]]; then
-					./configure
-					USE_OPENSSL=1 make
-					make install
-					systemctl restart inadyn
-				fi
-				if [[ $repo_dir == *"ipfs" ]]; then
-					chown -R git:git /home/git
-					systemctl restart ipfs
-					systemctl daemon-reload
-				fi
+                # application specific stuff after updating the repo
+                if [[ $repo_dir == *"www"* ]]; then
+                    chown -R www-data:www-data $repo_dir
+                fi
+                if [[ $repo_dir == *"cjdns" ]]; then
+                    ./do
+                fi
+                if [[ $repo_dir == *"gpgit" ]]; then
+                    cp gpgit.pl /usr/bin/gpgit.pl
+                fi
+                if [[ $repo_dir == *"cleanup-maildir" ]]; then
+                    cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
+                fi
+                if [[ $repo_dir == *"nginx_ensite" ]]; then
+                    make install
+                fi
+                if [[ $repo_dir == *"gogs" ]]; then
+                    git checkout master
+                    go get -u ./...
+                    if [ ! "$?" = "0" ]; then
+                        echo $'Failed to get gogs'
+                        exit 52792
+                    fi
+                    git checkout $repo_commit
+                    go build
+                    if [ ! "$?" = "0" ]; then
+                        echo $'Failed to build gogs'
+                        exit 36226
+                    fi
+                    systemctl restart gogs
+                fi
+                if [[ $repo_dir == *"toxcore" ]]; then
+                    sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' $rootdir/etc/systemd/system/tox-bootstrapd.service
+                    autoreconf -i
+                    ./configure --enable-daemon
+                    make
+                    make install
+                    systemctl daemon-reload
+                    systemctl restart tox-bootstrapd.service
+                fi
+                if [[ $repo_dir == *"toxic" ]]; then
+                    make
+                    make install
+                fi
+                if [[ $repo_dir == $RSS_READER_PATH ]]; then
+                    function_check rss_reader_modifications
+                    rss_reader_modifications
+                fi
+                if [[ $repo_dir == *"inadyn" ]]; then
+                    ./configure
+                    USE_OPENSSL=1 make
+                    make install
+                    systemctl restart inadyn
+                fi
+                if [[ $repo_dir == *"ipfs" ]]; then
+                    chown -R git:git /home/git
+                    systemctl restart ipfs
+                    systemctl daemon-reload
+                fi
 
-				sed -i "s/${repo_commit_name}.*/${repo_commit_name}:$repo_commit/g" $COMPLETION_FILE
-			fi
-		else
-			echo "${repo_commit_name}:${repo_commit}" >> $COMPLETION_FILE
-		fi
-	fi
+                sed -i "s/${repo_commit_name}.*/${repo_commit_name}:$repo_commit/g" $COMPLETION_FILE
+            fi
+        else
+            echo "${repo_commit_name}:${repo_commit}" >> $COMPLETION_FILE
+        fi
+    fi
 }
 
 # NOTE: deliberately no exit 0
