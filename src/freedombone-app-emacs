@@ -33,11 +33,6 @@ VARIANTS='full'
 emacs_variables=(USB_MOUNT
                  MY_USERNAME)
 
-function install_interactive_emacs {
-    echo -n ''
-    APP_INSTALLED=1
-}
-
 function change_password_emacs {
     echo -n ''
 }
@@ -109,9 +104,27 @@ function remove_emacs {
     apt-get -y remove --purge emacs24
     update-alternatives --set editor /usr/bin/nano
     sed -i '/install_emacs/d' $COMPLETION_FILE
+
+    # remove emacs as the mutt email editor
+    if [ -f /etc/Muttrc ]; then
+        if grep -q "set editor=" /etc/Muttrc; then
+            sed -i '/set editor=/d' /etc/Muttrc
+        fi
+        for d in /home/*/ ; do
+            USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+            if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+                if [ -f /home/$USERNAME/.muttrc ]; then
+                    if grep -q "set editor=" /home/$USERNAME/.muttrc; then
+                        sed -i '/set editor=/d' /home/$USERNAME/.muttrc
+                    fi
+                fi
+            fi
+        done
+    fi
 }
 
 function install_emacs {
+    apt-get -y install emacs24
     update-alternatives --set editor /usr/bin/emacs24
 
     # A minimal emacs configuration
@@ -186,7 +199,62 @@ function install_emacs {
     echo '(epa-file-enable)' >> /home/$MY_USERNAME/.emacs
     cp /home/$MY_USERNAME/.emacs /root/.emacs
     chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.emacs
+
+    # add a mutt entry to use emacs to compose emails
+    if [ -f /etc/Muttrc ]; then
+        if ! grep -q "set editor=" /etc/Muttrc; then
+            echo 'set editor="emacs -q --load ~/.emacs-mutt"' >> /etc/Muttrc
+        else
+            sed -i 's|set editor=.*|set editor="emacs -q --load ~/.emacs-mutt"|g' /etc/Muttrc
+        fi
+        for d in /home/*/ ; do
+            USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+            if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+                if [ -f /home/$USERNAME/.muttrc ]; then
+                    if ! grep -q "set editor=" /home/$USERNAME/.muttrc; then
+                        echo 'set editor="emacs -q --load ~/.emacs-mutt"' >> /home/$USERNAME/.muttrc
+                    else
+                        sed -i 's|set editor=.*|set editor="emacs -q --load ~/.emacs-mutt"|g' /home/$USERNAME/.muttrc
+                    fi
+                fi
+
+                # create an Emacs configuration specifically for use with Mutt, which
+                # has word wrap and spell checking on by default
+                if [ ! -f /home/$USERNAME/.emacs-mutt ]; then
+                    echo "(add-hook 'before-save-hook 'delete-trailing-whitespace)" > /home/$USERNAME/.emacs-mutt
+                    echo '(setq org-support-shift-select t)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq standard-indent 4)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq-default tab-width 4)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq c-basic-offset 4)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(mouse-wheel-mode t)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq make-backup-files t)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq version-control t)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq backup-directory-alist (quote ((".*" . "~/.emacs_backups/"))))' >> /home/$USERNAME/.emacs-mutt
+                    echo "(setq default-major-mode 'text-mode)" >> /home/$USERNAME/.emacs-mutt
+                    echo "(dolist (hook '(text-mode-hook))" >> /home/$USERNAME/.emacs-mutt
+                    echo '    (add-hook hook (lambda () (flyspell-mode 1))))' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq-default fill-column 72)' >> /home/$USERNAME/.emacs-mutt
+                    echo '(setq auto-fill-mode 0)' >> /home/$USERNAME/.emacs-mutt
+                    echo "(add-hook 'text-mode-hook 'turn-on-auto-fill)" >> /home/$USERNAME/.emacs-mutt
+                    echo "(setq-default auto-fill-function 'do-auto-fill)" >> /home/$USERNAME/.emacs-mutt
+                    chown $USERNAME:$USERNAME /home/$USERNAME/.emacs-mutt
+
+                    # add the emacs mutt configuration to the user profile skeleton
+                    if [ ! -f /etc/skel/.emacs-mutt ]; then
+                        cp /home/$USERNAME/.emacs-mutt /etc/skel/.emacs-mutt
+                        chown root:root /etc/skel/.emacs-mutt
+                    fi
+                fi
+
+            fi
+        done
+    fi
+
     APP_INSTALLED=1
+}
+
+function install_interactive_emacs {
+    install_emacs
 }
 
 # NOTE: deliberately no exit 0
