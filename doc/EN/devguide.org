@@ -1,0 +1,234 @@
+#+TITLE:
+#+AUTHOR: Bob Mottram
+#+EMAIL: bob@robotics.uk.to
+#+KEYWORDS: freedombox, debian, beaglebone, red matrix, email, web server, home server, internet, censorship, surveillance, social network, irc, jabber
+#+DESCRIPTION: Turn the Beaglebone Black into a personal communications server
+#+OPTIONS: ^:nil toc:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="freedombone.css" />
+
+#+BEGIN_CENTER
+[[file:images/logo.png]]
+#+END_CENTER
+
+#+begin_export html
+<center><h1>Developers Guide</h1></center>
+#+end_export
+
+* Adding extra apps
+Suppose you have some internet application which you want to add to the system. To do this you need to create an app script which tells the system how to install/remove and also backup/restore. On an installed system the app scripts go into the directory:
+
+#+begin_src bash
+/usr/share/freedombone/apps
+#+end_src
+
+and within the project repo they appear within the /src/ directory. Your new app script should have the name:
+
+#+begin_src bash
+freedombone-app-[myappname]
+#+end_src
+
+The /myappname/ value should not contain any spaces and will appear in the list of available apps.
+
+An example template for an app script is shown below. Copy this and add whatever variables and configuration you need. Search and replace /myappname/ with your own.
+
+#+begin_src bash
+#!/bin/bash
+# Copyright (C) Year YourName <YourEmail>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full'
+
+SOME_IMPORTANT_CONFIG_VARIABLE='some important value'
+ANOTHER_IMPORTANT_CONFIG_VARIABLE='foo'
+MY_FUNKY_AVATAR=fro.png
+MYAPPNAME_ONION_PORT=[port number]
+MYAPPNAME_DB_PASSWORD=
+
+# A directory where the data exists
+MYAPP_DATA_DIR=/var/lib/somedirectory
+
+myappname_variables=(ONION_ONLY
+                     MY_USERNAME
+                     SOME_IMPORTANT_CONFIG_VARIABLE
+                     ANOTHER_IMPORTANT_CONFIG_VARIABLE
+                     MY_FUNKY_AVATAR
+                     MYAPPNAME_ONION_PORT
+                     MYAPPNAME_DB_PASSWORD)
+
+function change_password_myappname {
+    PASSWORD_USERNAME="$1"
+    PASSWORD_NEW="$2"
+    # Do something to change the password
+}
+
+function reconfigure_myappname {
+    echo -n ''
+    # Do something to delete existing keys/identity and generate new ones
+}
+
+function upgrade_myappname {
+    echo -n ''
+    # Do something to upgrade this app.
+    # If it's a debian package then it will be maintained by the
+    # operating system and you don't need anything here
+}
+
+function backup_local_myappname {
+    # If your app has a MariaDB/MySQL database
+    backup_database_to_usb myappname
+
+    # To backup a directory
+    backup_directory_to_usb $MYAPP_DATA_DIR myappname
+
+    # if you need to backup data within individual user home directories
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+            echo $"Backing up myappname config for $USERNAME"
+            if [ -d /home/$USERNAME/.config/myappname ]; then
+                backup_directory_to_usb /home/$USERNAME/.config/myappname myappname_users/$USERNAME
+            fi
+        fi
+    done
+}
+
+function restore_local_myappname {
+    temp_restore_dir=/root/tempmyappname
+
+    # If your app has a MariaDB/MySQL database
+    restore_database myappname
+
+    # Restore some data from a directory
+    # Note that we don't restore directly but to a temporary directory
+    # and then copy the files. This ensures that if there is a restore
+    # failure you don't end up with half-copied or corrupted files
+    restore_directory_from_usb $MYAPP_DATA_DIR myappname
+    cp -r $temp_restore_dir/$MYAPP_DATA_DIR $MYAPP_DATA_DIR
+    rm -rf $temp_restore_dir
+
+    # If you need to restore a configuration directory for each user
+    if [ -d $USB_MOUNT/backup/myappname_users ]; then
+        for d in $USB_MOUNT/backup/myappname_users/*/ ; do
+            USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
+            if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+                if [ ! -d /home/$USERNAME ]; then
+                    ${PROJECT_NAME}-adduser $USERNAME
+                fi
+                echo $"Restoring Vim config for $USERNAME"
+                function_check restore_directory_from_usb
+                restore_directory_from_usb $temp_restore_dir myappname_users/$USERNAME
+                cp -r $temp_restore_dir/home/$USERNAME/.config /home/$USERNAME/
+                if [ ! "$?" = "0" ]; then
+                    rm -rf $temp_restore_dir
+                    set_user_permissions
+                    backup_unmount_drive
+                    exit 664
+                fi
+                rm -rf $temp_restore_dir
+            fi
+        done
+    fi
+}
+
+function backup_remote_myappname {
+    # this should be the same as backup_local_myappname,
+    # but call the backup functions backup_directory_to_friend
+    # and backup_database_to_friend
+}
+
+function restore_remote_vim {
+    # this should be the same as restore_local_myappname,
+    # but call the restore function restore_directory_from_friend
+    # and restore_database_from_friend
+}
+
+function remove_myappname {
+    # if it's a debian package then:
+    apt-get -y remove --purge [my-app-package-name]
+
+    # If your app has a MariaDB/MySQL database
+    drop_database myappname
+
+    # If your app uses an onion address
+    remove_onion_service myappname ${MYAPPNAME_ONION_PORT}
+}
+
+function install_myappname {
+    # if it's a debian package then:
+    apt-get -y install [my-app-package-name]
+
+    # If you need to create a MariaDB/MySQL database for the app
+    MYAPPNAME_DB_PASSWORD="$(create_password 20)"
+    create_database myappname "$MYAPPNAME_DB_PASSWORD" $MY_USERNAME
+
+    # If you need to create an onion address for the app
+    MYAPPNAME_ONION_HOSTNAME=$(add_onion_service myappname 80 ${MYAPPNAME_ONION_PORT})
+
+    # Do any other configuration
+    # Here you might use $ONION_ONLY or $SOME_IMPORTANT_CONFIG_VARIABLE
+
+    # Mark the app as having installed successfully
+    # If this variable isn't set then it will be assumed that
+    # the install has failed
+    APP_INSTALLED=1
+}
+
+function install_interactive_myappname {
+    # Interactively obtain some values using dialog, such as
+    # domain names. An avatar changing example is:
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Change your avatar" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Enter a URL for an image. It should be approximately a square image." 8 75 2>$data
+    sel=$?
+    case $sel in
+        0)
+            MY_FUNKY_AVATAR=$(<$data)
+            if [ ${#MY_FUNKY_AVATAR} -gt 3 ]; then
+                clear
+
+                # do whatever is needed to change the avatar in your app
+
+                dialog --title $"Change your avatar" \
+                       --msgbox $"Your avatar has been changed" 6 40
+            fi
+            ;;
+    esac
+
+    # Then do the main install
+    install_myappname
+}
+
+# NOTE: deliberately no exit 0
+#+end_src
+
+To test your app log into your system, select *Exit to command line* then gain root powers with:
+
+#+begin_src bash
+sudo su
+#+end_src
+
+Copy your app script to */usr/share/freedombone/apps/freedombone-app-myappname*.
+
+And run the admin control panel:
+
+#+begin_src bash
+control
+#+end_src
+
+Select *Add/Remove Apps* and if all is well then you should see your app listed as installable. Test that installing and removing it works as expected.
+
+Submit your working app to *https://github.com/bashrc/freedombone/issues*
