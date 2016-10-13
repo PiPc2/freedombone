@@ -44,9 +44,6 @@ WIFI_INTERFACE='wlan0'
 BATMAN_CELLID='02:BA:00:00:03:01'
 WIFI_SSID='mesh'
 
-# Babel
-BABEL_PORT=6696
-
 rootdir=''
 FN=
 CHROOT_PREFIX=''
@@ -95,95 +92,6 @@ function show_help {
     exit 0
 }
 
-
-function install_babel {
-    $CHROOT_PREFIX apt-get -y install babeld
-
-    babel_script=${rootdir}/var/lib/babel
-
-    echo '#!/bin/bash' > $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ $1 == "ls" || $1 == "list" ]]; then' >> $babel_script
-    echo '    avahi-browse -atl' >> $babel_script
-    echo '    exit 0' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ $1 == "start" ]]; then' >> $babel_script
-    echo '    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf' >> $babel_script
-    echo '    systemctl restart avahi-daemon' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo "IFACE=$WIFI_INTERFACE" >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan1" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan1' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan2" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan2' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan3" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan3' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ ! grep -q "$IFACE" /proc/net/dev || $1 == "stop" ]]; then' >> $babel_script
-    echo '    if ! grep -q "$IFACE" /proc/net/dev; then' >> $babel_script
-    echo '        echo "Interface $IFACE was not found"' >> $babel_script
-    echo '    else' >> $babel_script
-    echo '        echo "Stopping"' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo '    ifconfig $IFACE down' >> $babel_script
-    echo '    pkill babeld' >> $babel_script
-    echo '    systemctl restart network-manager' >> $babel_script
-    echo '    exit 1' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'systemctl stop network-manager' >> $babel_script
-    echo 'ifconfig $IFACE down' >> $babel_script
-    echo -n 'iwconfig $IFACE mode ad-hoc channel ' >> $babel_script
-    echo "$WIFI_CHANNEL essid \"$WIFI_SSID\"" >> $babel_script
-    echo 'ifconfig $IFACE up' >> $babel_script
-    echo -n 'ifconfig $IFACE:avahi ' >> $babel_script
-    echo -n "$LOCAL_NETWORK_STATIC_IP_ADDRESS netmask " >> $babel_script
-    echo '255.255.255.0 broadcast 192.168.13.255' >> $babel_script
-    echo -n 'babeld -D $IFACE:avahi -p ' >> $babel_script
-    echo -n "$BABEL_PORT -d 5 " >> $babel_script
-    echo '$IFACE' >> $babel_script
-    echo 'exit 0' >> $babel_script
-    chmod +x $babel_script
-
-    echo '[Unit]' > ${rootdir}/etc/systemd/system/babel.service
-    echo 'Description=Babel Mesh' >> ${rootdir}/etc/systemd/system/babel.service
-    echo '' >> ${rootdir}/etc/systemd/system/babel.service
-    echo '[Service]' >> ${rootdir}/etc/systemd/system/babel.service
-    echo 'Type=oneshot' >> ${rootdir}/etc/systemd/system/babel.service
-    echo "ExecStart=$babel_script start" >> ${rootdir}/etc/systemd/system/babel.service
-    echo "ExecStop=$babel_script stop" >> ${rootdir}/etc/systemd/system/babel.service
-    echo 'RemainAfterExit=yes' >> ${rootdir}/etc/systemd/system/babel.service
-    echo '' >> ${rootdir}/etc/systemd/system/babel.service
-    echo '# Allow time for the server to start/stop' >> ${rootdir}/etc/systemd/system/babel.service
-    echo 'TimeoutSec=300' >> ${rootdir}/etc/systemd/system/babel.service
-    echo '' >> ${rootdir}/etc/systemd/system/babel.service
-    echo '[Install]' >> /etc/systemd/system/babel.service
-    echo 'WantedBy=multi-user.target' >> ${rootdir}/etc/systemd/system/babel.service
-    $CHROOT_PREFIX systemctl enable babel
-}
-
-function install_babel_remove {
-    $CHROOT_PREFIX systemctl stop babel
-    $CHROOT_PREFIX apt-get -y remove --purge babeld
-    rm ${rootdir}/var/lib/babel
-    rm ${rootdir}/etc/systemd/system/babel.service
-}
-
 function mesh_avahi {
     $CHROOT_PREFIX apt-get -y install avahi-utils avahi-autoipd avahi-dnsconfd
 
@@ -192,12 +100,12 @@ function mesh_avahi {
     sed -i "s|#host-name=.*|host-name=P$PEER_ID|g" $rootdir/etc/avahi/avahi-daemon.conf
 
     if [ ! -d $rootdir/etc/avahi/services ]; then
-	mkdir -p $rootdir/etc/avahi/services
+    mkdir -p $rootdir/etc/avahi/services
     fi
 
     # remove an avahi service which isn't used
     if [ -f $rootdir/etc/avahi/services/udisks.service ]; then
-	rm $rootdir/etc/avahi/services/udisks.service
+    rm $rootdir/etc/avahi/services/udisks.service
     fi
 
     # Add an ssh service
@@ -224,108 +132,6 @@ function mesh_avahi {
     chmod +x $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
 }
 
-function install_babel_client {
-    # TODO to be fixed
-    TOXIC_FILE=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
-
-    if [ ! -f ${rootdir}/tmp/meshtype ]; then
-	$CHROOT_PREFIX sudo apt-get -y install babeld
-	if [ ! -f $TOXIC_FILE ]; then
-	    $CHROOT_PREFIX sudo apt-get -y install toxic
-	fi
-
-	CURR_DIR=$(pwd)
-	if [ ! -f ~/develop/toxid ]; then
-	    if [ ! -f ~/develop ]; then
-		mkdir ~/develop
-	    fi
-	    cd ~/develop
-	    git_clone $TOXID_REPO ~/develop/toxid
-	fi
-	cd ~/develop/toxid
-	sudo make install
-	cd $CURR_DIR
-    fi
-
-    babel_script=${rootdir}/tmp/babel
-
-    echo '#!/bin/bash' > $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ $1 == "ls" || $1 == "list" ]]; then' >> $babel_script
-    echo '    avahi-browse -atl' >> $babel_script
-    echo '    exit 0' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ $1 == "start" ]]; then' >> $babel_script
-    echo '    if [ -f /tmp/meshtype ] ; then' >> $babel_script
-    echo '        echo "Mesh already running"' >> $babel_script
-    echo '        return' >> $babel_script
-    echo '    fi' >> $batman_script
-    echo '    # install avahi' >> $babel_script
-    echo '    apt-get -y install avahi-utils avahi-autoipd avahi-daemon avahi-dnsconfd bittornado' >> $babel_script
-    echo '    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf' >> $babel_script
-    echo '    if [ -f /bin/systemctl ]; then' >> $babel_script
-    echo '        systemctl restart avahi-daemon' >> $babel_script
-    echo '    else' >> $babel_script
-    echo '        service avahi-daemon restart' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo '    echo "babel" > /tmp/meshtype' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo "IFACE=$WIFI_INTERFACE" >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan1" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan1' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan2" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan2' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo 'if [[ $IFACE == "wlan0" ]]; then' >> $babel_script
-    echo '    if grep -q "wlan3" /proc/net/dev; then' >> $babel_script
-    echo '        IFACE=wlan3' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'if [[ ! grep -q "$IFACE" /proc/net/dev || $1 == "stop" ]]; then' >> $babel_script
-    echo '    if ! grep -q "$IFACE" /proc/net/dev; then' >> $babel_script
-    echo '        echo "Interface $IFACE was not found"' >> $babel_script
-    echo '    else' >> $babel_script
-    echo '        echo "Stopping"' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo '    ifconfig $IFACE down' >> $babel_script
-    echo '    pkill babeld' >> $babel_script
-    echo '    if [ -f /bin/systemctl ]; then' >> $babel_script
-    echo '        systemctl restart network-manager' >> $babel_script
-    echo '    else' >> $babel_script
-    echo '        service network-manager restart' >> $babel_script
-    echo '    fi' >> $babel_script
-    echo '    exit 1' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo '' >> $babel_script
-    echo 'if [ -f /bin/systemctl ]; then' >> $babel_script
-    echo '    systemctl stop network-manager' >> $babel_script
-    echo 'else' >> $babel_script
-    echo '    service network-manager stop' >> $babel_script
-    echo 'fi' >> $babel_script
-    echo 'ifconfig $IFACE down' >> $babel_script
-    echo -n 'iwconfig $IFACE mode ad-hoc channel ' >> $babel_script
-    echo "$WIFI_CHANNEL essid \"$WIFI_SSID\"" >> $babel_script
-    echo 'ifconfig $IFACE up' >> $babel_script
-    echo -n 'ifconfig $IFACE:avahi ' >> $babel_script
-    echo -n "$LOCAL_NETWORK_STATIC_IP_ADDRESS netmask " >> $babel_script
-    echo '255.255.255.0 broadcast 192.168.13.255' >> $babel_script
-    echo -n 'babeld -D $IFACE:avahi -p ' >> $babel_script
-    echo -n "$BABEL_PORT -d 5 " >> $babel_script
-    echo '$IFACE' >> $babel_script
-    echo 'exit 0' >> $babel_script
-    chmod +x $babel_script
-    sudo mv $babel_script ${rootdir}/usr/bin/babel
-}
-
 function install_batman_remove {
     systemctl stop batman
     rm $rootdir/var/lib/batman
@@ -338,15 +144,15 @@ function install_batman {
     $CHROOT_PREFIX apt-get -y install wireless-tools rfkill
 
     if ! grep -q "batman_adv" $rootdir/etc/modules; then
-	echo 'batman_adv' >> $rootdir/etc/modules
+    echo 'batman_adv' >> $rootdir/etc/modules
     fi
 
     BATMAN_SCRIPT=$rootdir/var/lib/batman
 
     if [ -f /usr/local/bin/${PROJECT_NAME}-mesh-batman ]; then
-	cp /usr/local/bin/${PROJECT_NAME}-mesh-batman $BATMAN_SCRIPT
+    cp /usr/local/bin/${PROJECT_NAME}-mesh-batman $BATMAN_SCRIPT
     else
-	cp /usr/bin/${PROJECT_NAME}-mesh-batman $BATMAN_SCRIPT
+    cp /usr/bin/${PROJECT_NAME}-mesh-batman $BATMAN_SCRIPT
     fi
 
     BATMAN_DAEMON=$rootdir/etc/systemd/system/batman.service
@@ -450,48 +256,38 @@ do
     key="$1"
 
     case $key in
-	-h|--help)
-	    show_help
-	    ;;
-	-f|--function)
-	    shift
-	    FN="$1"
-	    ;;
-	-r|--rootdir)
-	    shift
-	    rootdir="$1"
-	    CHROOT_PREFIX='chroot "${rootdir}"'
-	    ;;
-	-w|--wifi|--interface)
-	    shift
-	    WIFI_INTERFACE="$1"
-	    ;;
-	-m|--mirror)
-	    shift
-	    FRIENDS_MIRRORS_SERVER="$1"
-	    ;;
-	--remove)
-	    shift
-	    REMOVE="$1"
-	    ;;
-	*)
-	    # unknown option
-	    ;;
+    -h|--help)
+        show_help
+        ;;
+    -f|--function)
+        shift
+        FN="$1"
+        ;;
+    -r|--rootdir)
+        shift
+        rootdir="$1"
+        CHROOT_PREFIX='chroot "${rootdir}"'
+        ;;
+    -w|--wifi|--interface)
+        shift
+        WIFI_INTERFACE="$1"
+        ;;
+    -m|--mirror)
+        shift
+        FRIENDS_MIRRORS_SERVER="$1"
+        ;;
+    --remove)
+        shift
+        REMOVE="$1"
+        ;;
+    *)
+        # unknown option
+        ;;
 
     esac
     shift
 done
 
-if [[ $FN == 'babel' ]]; then
-    if [[ $REMOVE != 'yes' ]]; then
-	install_babel
-    else
-	install_babel_remove
-    fi
-fi
-if [[ $FN == 'babel_client' ]]; then
-    install_babel_client
-fi
 if [[ $FN == 'avahi' ]]; then
     mesh_avahi
 fi
@@ -500,9 +296,9 @@ if [[ $FN == 'firewall' ]]; then
 fi
 if [[ $FN == 'batman' ]]; then
     if [[ $REMOVE != 'yes' ]]; then
-	install_batman
+    install_batman
     else
-	install_batman_remove
+    install_batman_remove
     fi
 fi
 if [[ $FN == 'qtox' ]]; then
