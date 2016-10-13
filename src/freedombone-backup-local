@@ -30,11 +30,19 @@
 
 PROJECT_NAME='freedombone'
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+CONFIGURATION_FILE=$HOME/${PROJECT_NAME}.cfg
 BACKUP_EXTRA_DIRECTORIES=/root/backup-extra-dirs.csv
 ENABLE_BACKUP_VERIFICATION="no"
 
 export TEXTDOMAIN=${PROJECT_NAME}-backup-local
 export TEXTDOMAINDIR="/usr/share/locale"
+
+PROJECT_INSTALL_DIR=/usr/local/bin
+if [ -f /usr/bin/${PROJECT_NAME} ]; then
+    PROJECT_INSTALL_DIR=/usr/bin
+fi
+
+source $PROJECT_INSTALL_DIR/${PROJECT_NAME}-vars
 
 # include utils which allow function_check and drive mount
 UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
@@ -46,17 +54,7 @@ done
 USB_DRIVE=/dev/sdb1
 USB_MOUNT=/mnt/usb
 
-# get default USB from config file
-CONFIG_FILE=$HOME/${PROJECT_NAME}.cfg
-if [ -f $CONFIG_FILE ]; then
-    if grep -q "USB_DRIVE=" $CONFIG_FILE; then
-        USB_DRIVE=$(cat $CONFIG_FILE | grep "USB_DRIVE=" | awk -F '=' '{print $2}')
-    fi
-fi
-
-# get the version of Go being used
-GO_VERSION=$(cat /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-go | grep 'GO_VERSION=' | head -n 1 | awk -F '=' '{print $2}')
-GVM_HOME=$(cat /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-go | grep 'GVM_HOME=' | head -n 1 | awk -F '=' '{print $2}')
+read_config_param USB_DRIVE
 
 ADMIN_USERNAME=
 ADMIN_NAME=
@@ -199,14 +197,6 @@ function backup_users {
 }
 
 function backup_directories {
-    export GVM_ROOT=$GVM_HOME
-    if [ -d $GVM_ROOT/bin ]; then
-        cd $GVM_ROOT/bin
-        [[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
-        gvm use go${GO_VERSION} --default
-        systemctl set-environment GOPATH=$GOPATH
-    fi
-
     # directories to be backed up (source,dest)
     backup_dirs=(
         "/etc/letsencrypt,                      letsencrypt"
@@ -244,18 +234,7 @@ function remove_backup_directory {
 }
 
 function prepare_directories {
-    export GVM_ROOT=$GVM_HOME
-    if [ -d $GVM_ROOT/bin ]; then
-        cd $GVM_ROOT/bin
-        [[ -s "$GVM_ROOT/scripts/gvm" ]] && source "$GVM_ROOT/scripts/gvm"
-        gvm use go${GO_VERSION} --default
-        systemctl set-environment GOPATH=$GOPATH
-    fi
-
     # Some miscellaneous preparation for backing up directories
-    if [ -d $GOPATH/src/github.com/gogits ]; then
-        mv /home/git/gogs-repositories/*.git /home/git/gogs-repositories/$ADMIN_USERNAME
-    fi
     if [ -d /var/lib/tox-bootstrapd ]; then
         cp /etc/tox-bootstrapd.conf /var/lib/tox-bootstrapd
         if [ -d /var/lib/tox-bootstrapd/Maildir ]; then
@@ -270,7 +249,7 @@ function backup_configuration {
     if [ ! -d $temp_backup_dir ]; then
         mkdir -p $temp_backup_dir
     fi
-    cp -f $CONFIG_FILE $temp_backup_dir
+    cp -f $CONFIGURATION_FILE $temp_backup_dir
     cp -f $COMPLETION_FILE $temp_backup_dir
     if [ -f $BACKUP_EXTRA_DIRECTORIES ]; then
         cp -f $BACKUP_EXTRA_DIRECTORIES $temp_backup_dir
@@ -314,63 +293,6 @@ function backup_mariadb {
     fi
 }
 
-function valid_backup_destination {
-    destination_dir="$1"
-    is_valid="yes"
-
-    if [[ "$destination_dir" == "hubzilla" || \
-                "$destination_dir" == "hubzilladata" || \
-                "$destination_dir" == "gogs" || \
-                "$destination_dir" == "gogsrepos" || \
-                "$destination_dir" == "gogsssh" || \
-                "$destination_dir" == "gnusocial" || \
-                "$destination_dir" == "gnusocialdata" || \
-                "$destination_dir" == "mariadb" || \
-                "$destination_dir" == "config" || \
-                "$destination_dir" == "letsencrypt" || \
-                "$destination_dir" == "wiki" || \
-                "$destination_dir" == "wiki2" || \
-                "$destination_dir" == "xmpp" || \
-                "$destination_dir" == "ipfs" || \
-                "$destination_dir" == "dlna" || \
-                "$destination_dir" == "tox" || \
-                "$destination_dir" == "ssl" || \
-                "$destination_dir" == "ttrss" || \
-                "$destination_dir" == "blog" || \
-                "$destination_dir" == "syncthingconfig" || \
-                "$destination_dir" == "syncthingshared" || \
-                "$destination_dir" == "syncthing" || \
-                "$destination_dir" == "mediagoblin" || \
-                "$destination_dir" == "mailinglist" ]]; then
-        is_valid="no"
-    fi
-
-    echo $is_valid
-}
-
-function backup_extra_directories {
-    if [ ! -f $BACKUP_EXTRA_DIRECTORIES ]; then
-        return
-    fi
-
-    echo $"Backing up some additional directories"
-    while read backup_line
-    do
-        backup_dir=$(echo "$backup_line" | awk -F ',' '{print $1}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        if [ -d "$backup_dir" ]; then
-            destination_dir=$(echo "$backup_line" | awk -F ',' '{print $2}' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-            if [[ $(valid_backup_destination "$destination_dir") == "yes" ]]; then
-                backup_directory_to_usb "$backup_dir" "$destination_dir"
-            else
-                echo $"WARNING: The backup directory $destination_dir is already used."
-                echo $"Choose a different destination name for backing up $backup_dir"
-            fi
-        else
-            echo $"WARNING: Directory $backup_dir does not exist"
-        fi
-    done <$BACKUP_EXTRA_DIRECTORIES
-}
-
 # has the remove option been set ?
 remove_option=$2
 if [[ $1 == "remove" ]]; then
@@ -388,7 +310,7 @@ backup_apps local
 backup_configuration
 backup_admin_readme
 backup_mariadb
-backup_extra_directories
+backup_extra_directories local
 backup_unmount_drive $USB_DRIVE $USB_MOUNT
 echo $"Backup to USB drive is complete. You can now unplug it."
 
