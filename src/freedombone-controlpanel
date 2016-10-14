@@ -61,9 +61,6 @@ MUMBLE_ONION_PORT=8095
 
 SSH_PORT=2222
 
-IRC_PORT=6697
-IRC_ONION_PORT=8093
-
 # outgoing SMTP proxy
 SMTP_PROXY_ENABLE=$'no'
 SMTP_PROXY_PROTOCOL='smtps'
@@ -82,53 +79,22 @@ WIFI_NETWORKS_FILE=~/${PROJECT_NAME}-wifi.cfg
 USB_DRIVE=sdb
 # get default USB from config file
 CONFIGURATION_FILE=$HOME/${PROJECT_NAME}.cfg
-if [ -f $CONFIGURATION_FILE ]; then
-    if grep -q "WIFI_HOTSPOT=" $CONFIGURATION_FILE; then
-        WIFI_HOTSPOT=$(cat $CONFIGURATION_FILE | grep "WIFI_HOTSPOT=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "WIFI_INTERFACE=" $CONFIGURATION_FILE; then
-        WIFI_INTERFACE=$(cat $CONFIGURATION_FILE | grep "WIFI_INTERFACE=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "WIFI_TYPE=" $CONFIGURATION_FILE; then
-        WIFI_TYPE=$(cat $CONFIGURATION_FILE | grep "WIFI_TYPE=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "WIFI_SSID=" $CONFIGURATION_FILE; then
-        WIFI_SSID=$(cat $CONFIGURATION_FILE | grep "WIFI_SSID=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "WIFI_PASSPHRASE=" $CONFIGURATION_FILE; then
-        WIFI_PASSPHRASE=$(cat $CONFIGURATION_FILE | grep "WIFI_PASSPHRASE=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "USB_DRIVE=" $CONFIGURATION_FILE; then
-        USB_DRIVE=$(cat $CONFIGURATION_FILE | grep "USB_DRIVE=" | awk -F '=' '{print $2}')
-        if [[ $USB_DRIVE == *"dev"* ]]; then
-            USB_DRIVE=$(echo ${USB_DRIVE} | awk -F '/' '{print $3}' | sed 's|1||g' | sed 's|2||g')
-        fi
-    fi
-    if grep -q "SSH_PORT=" $CONFIGURATION_FILE; then
-        SSH_PORT=$(cat $CONFIGURATION_FILE | grep "SSH_PORT=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "IRC_PORT=" $CONFIGURATION_FILE; then
-        IRC_PORT=$(cat $CONFIGURATION_FILE | grep "IRC_PORT=" | awk -F '=' '{print $2}')
-    fi
 
-    if grep -q "SMTP_PROXY_ENABLE=" $CONFIGURATION_FILE; then
-        SMTP_PROXY_ENABLE=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_ENABLE=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "SMTP_PROXY_PROTOCOL=" $CONFIGURATION_FILE; then
-        SMTP_PROXY_PROTOCOL=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_PROTOCOL=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "SMTP_PROXY_SERVER=" $CONFIGURATION_FILE; then
-        SMTP_PROXY_SERVER=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_SERVER=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "SMTP_PROXY_PORT=" $CONFIGURATION_FILE; then
-        SMTP_PROXY_PORT=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_PORT=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "SMTP_PROXY_USERNAME=" $CONFIGURATION_FILE; then
-        SMTP_PROXY_USERNAME=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_USERNAME=" | awk -F '=' '{print $2}')
-    fi
-    if grep -q "SMTP_PROXY_PASSWORD=" $CONFIGURATION_FILE; then
-        SMTP_PROXY_PASSWORD=$(cat $CONFIGURATION_FILE | grep "SMTP_PROXY_PASSWORD=" | awk -F '=' '{print $2}')
-    fi
+read_config_param WIFI_HOTSPOT
+read_config_param WIFI_INTERFACE
+read_config_param WIFI_TYPE
+read_config_param WIFI_SSID
+read_config_param WIFI_PASSPHRASE
+read_config_param SSH_PORT
+read_config_param SMTP_PROXY_ENABLE
+read_config_param SMTP_PROXY_PROTOCOL
+read_config_param SMTP_PROXY_SERVER
+read_config_param SMTP_PROXY_PORT
+read_config_param SMTP_PROXY_USERNAME
+read_config_param SMTP_PROXY_PASSWORD
+read_config_param USB_DRIVE
+if [[ $USB_DRIVE == *"dev"* ]]; then
+    USB_DRIVE=$(echo ${USB_DRIVE} | awk -F '/' '{print $3}' | sed 's|1||g' | sed 's|2||g')
 fi
 
 # Mirrors settings
@@ -190,23 +156,9 @@ function set_main_repo {
         FRIENDS_MIRRORS_SSH_PORT=$new_mirrors_ssh_port
         FRIENDS_MIRRORS_PASSWORD=$new_mirrors_password
 
-        if ! grep -q "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE; then
-            echo "FRIENDS_MIRRORS_SERVER=$FRIENDS_MIRRORS_SERVER" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|FRIENDS_MIRRORS_SERVER=.*|FRIENDS_MIRRORS_SERVER=$FRIENDS_MIRRORS_SERVER|g" $CONFIGURATION_FILE
-        fi
-
-        if ! grep -q "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE; then
-            echo "FRIENDS_MIRRORS_SSH_PORT=$FRIENDS_MIRRORS_SSH_PORT" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|FRIENDS_MIRRORS_SSH_PORT=.*|FRIENDS_MIRRORS_SSH_PORT=$FRIENDS_MIRRORS_SSH_PORT|g" $CONFIGURATION_FILE
-        fi
-
-        if ! grep -q "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-            echo "FRIENDS_MIRRORS_PASSWORD=$FRIENDS_MIRRORS_PASSWORD" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|FRIENDS_MIRRORS_PASSWORD=.*|FRIENDS_MIRRORS_PASSWORD=$FRIENDS_MIRRORS_PASSWORD|g" $CONFIGURATION_FILE
-        fi
+        write_config_param "FRIENDS_MIRRORS_SERVER" "$FRIENDS_MIRRORS_SERVER"
+        write_config_param "FRIENDS_MIRRORS_SSH_PORT" "$FRIENDS_MIRRORS_SSH_PORT"
+        write_config_param "FRIENDS_MIRRORS_PASSWORD" "$FRIENDS_MIRRORS_PASSWORD"
 
         # re-read the repos
         read_repo_servers
@@ -270,7 +222,7 @@ function show_domains {
     get_apps_installed_names
     clear
 
-    DEFAULT_DOMAIN_NAME=$(cat $CONFIGURATION_FILE | grep "DEFAULT_DOMAIN_NAME=" | awk -F '=' '{print $2}')
+    read_config_param "DEFAULT_DOMAIN_NAME"
 
     echo 'Domains'
     echo '======='
@@ -368,16 +320,18 @@ function show_users {
             echo -n -e "$(pad_string ${USRNAME})"
             # get the SIP extension
             SIPEXT=
-            while read ext; do
-                if [[ $ext == *"user id"* ]]; then
-                    CURR_UID=$(echo "$ext" | awk -F '"' '{print $2}' | awk -F '"' '{print $1}')
-                fi
-                if [[ $ext == *"extension"* ]]; then
-                    if [[ $CURR_UID == $USRNAME ]]; then
-                        SIPEXT=$(echo "$ext" | awk -F '>' '{print $2}' | awk -F '<' '{print $1}')
+            if [ -f $SIP_CONFIGURATION_FILE ]; then
+                while read ext; do
+                    if [[ $ext == *"user id"* ]]; then
+                        CURR_UID=$(echo "$ext" | awk -F '"' '{print $2}' | awk -F '"' '{print $1}')
                     fi
-                fi
-            done < $SIP_CONFIGURATION_FILE
+                    if [[ $ext == *"extension"* ]]; then
+                        if [[ $CURR_UID == $USRNAME ]]; then
+                            SIPEXT=$(echo "$ext" | awk -F '>' '{print $2}' | awk -F '<' '{print $1}')
+                        fi
+                    fi
+                done < $SIP_CONFIGURATION_FILE
+            fi
             if [ $SIPEXT ]; then
                 echo -n -e "$(pad_string SIP:${SIPEXT})"
             else
@@ -395,9 +349,7 @@ function show_mirrors_password {
     if [ ! /home/mirrors ]; then
         return
     fi
-    if grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-        MY_MIRRORS_PASSWORD=$(grep "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
+    read_config_param "MY_MIRRORS_PASSWORD"
     echo 'Local Mirrors'
     echo '============='
     echo ''
@@ -501,36 +453,12 @@ function smtp_proxy {
     fi
 
     # save settings within the main configuration file
-    if ! grep -q "SMTP_PROXY_ENABLE=" $CONFIGURATION_FILE; then
-        echo "SMTP_PROXY_ENABLE=$SMTP_PROXY_ENABLE" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|SMTP_PROXY_ENABLE=.*|SMTP_PROXY_ENABLE=$SMTP_PROXY_ENABLE|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "SMTP_PROXY_PROTOCOL=" $CONFIGURATION_FILE; then
-        echo "SMTP_PROXY_PROTOCOL=$SMTP_PROXY_PROTOCOL" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|SMTP_PROXY_PROTOCOL=.*|SMTP_PROXY_PROTOCOL=$SMTP_PROXY_PROTOCOL|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "SMTP_PROXY_SERVER=" $CONFIGURATION_FILE; then
-        echo "SMTP_PROXY_SERVER=$SMTP_PROXY_SERVER" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|SMTP_PROXY_SERVER=.*|SMTP_PROXY_SERVER=$SMTP_PROXY_SERVER|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "SMTP_PROXY_PORT=" $CONFIGURATION_FILE; then
-        echo "SMTP_PROXY_PORT=$SMTP_PROXY_PORT" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|SMTP_PROXY_PORT=.*|SMTP_PROXY_PORT=$SMTP_PROXY_PORT|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "SMTP_PROXY_USERNAME=" $CONFIGURATION_FILE; then
-        echo "SMTP_PROXY_USERNAME=$SMTP_PROXY_USERNAME" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|SMTP_PROXY_USERNAME=.*|SMTP_PROXY_USERNAME=$SMTP_PROXY_USERNAME|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "SMTP_PROXY_PASSWORD=" $CONFIGURATION_FILE; then
-        echo "SMTP_PROXY_PASSWORD=$SMTP_PROXY_PASSWORD" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|SMTP_PROXY_PASSWORD=.*|SMTP_PROXY_PASSWORD=$SMTP_PROXY_PASSWORD|g" $CONFIGURATION_FILE
-    fi
+    write_config_param "SMTP_PROXY_ENABLE" "$SMTP_PROXY_ENABLE"
+    write_config_param "SMTP_PROXY_PROTOCOL" "$SMTP_PROXY_PROTOCOL"
+    write_config_param "SMTP_PROXY_SERVER" "$SMTP_PROXY_SERVER"
+    write_config_param "SMTP_PROXY_PORT" "$SMTP_PROXY_PORT"
+    write_config_param "SMTP_PROXY_USERNAME" "$SMTP_PROXY_USERNAME"
+    write_config_param "SMTP_PROXY_PASSWORD" "$SMTP_PROXY_PASSWORD"
 }
 
 function delete_user {
@@ -1535,26 +1463,10 @@ function hotspot_settings {
     fi
 
     # store any changes
-    if ! grep -q "WIFI_HOTSPOT" $CONFIGURATION_FILE; then
-        echo "WIFI_HOTSPOT=$WIFI_HOTSPOT" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|WIFI_HOTSPOT=.*|WIFI_HOTSPOT=$WIFI_HOTSPOT|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "WIFI_SSID" $CONFIGURATION_FILE; then
-        echo "WIFI_SSID=$WIFI_SSID" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|WIFI_SSID=.*|WIFI_SSID=$WIFI_SSID|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "WIFI_TYPE" $CONFIGURATION_FILE; then
-        echo "WIFI_TYPE=$WIFI_TYPE" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|WIFI_TYPE=.*|WIFI_SSID=$WIFI_TYPE|g" $CONFIGURATION_FILE
-    fi
-    if ! grep -q "WIFI_PASSPHRASE" $CONFIGURATION_FILE; then
-        echo "WIFI_PASSPHRASE=$WIFI_PASSPHRASE" >> $CONFIGURATION_FILE
-    else
-        sed -i "s|WIFI_PASSPHRASE=.*|WIFI_PASSPHRASE=$WIFI_PASSPHRASE|g" $CONFIGURATION_FILE
-    fi
+    write_config_param "WIFI_HOTSPOT" "$WIFI_HOTSPOT"
+    write_config_param "WIFI_SSID" "$WIFI_SSID"
+    write_config_param "WIFI_TYPE" "$WIFI_TYPE"
+    write_config_param "WIFI_PASSPHRASE" "$WIFI_PASSPHRASE"
 
     dialog --title $"Wifi Settings" \
            --msgbox $"Hotspot settings were changed" 6 40
