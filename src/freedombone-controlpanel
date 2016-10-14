@@ -965,17 +965,62 @@ function backup_data {
     any_key
 }
 
-function restore_from_usb {
+function restore_data_from_storage {
+    restore_type="$1"
+
+    restore_command="${PROJECT_NAME}-restore-local $USB_DRIVE"
+    if [[ $restore_type != "local" ]]; then
+        restore_command="${PROJECT_NAME}-restore-remote $remote_domain_name configuration;;"
+    else
+        remote_domain_name="$1"
+        restore_command="${PROJECT_NAME}-restore-remote $remote_domain_name"
+    fi
+
+    utils_installed=(configuration
+                     mariadb
+                     letsencrypt
+                     mutt
+                     gpg
+                     procmail
+                     spamassassin
+                     readme
+                     ssh
+                     userconfig
+                     userlocal
+                     userfin
+                     certs
+                     personal)
+
     detect_apps
-    applist="all"
+
+    app_list=()
+    AllStr=$"all"
     n=1
+    applist="$n $AllStr off"
+    n=$[n+1]
+
+    util_index=0
+    for a in "${utils_installed[@]}"
+    do
+        applist="$applist $n $a off"
+        app_name=${utils_installed[util_index]}
+        n=$[n+1]
+        util_index=$[util_index+1]
+        app_list+=("$app_name")
+    done
+
     app_index=0
     for a in "${APPS_INSTALLED_NAMES[@]}"
     do
         applist="$applist $n $a off"
         n=$[n+1]
         app_index=$[app_index+1]
+        app_name=${APPS_INSTALLED_NAMES[app_index]}
+        app_list+=("$app_name")
     done
+    ExitStr=$"Exit"
+    applist="$applist $n $ExitStr on"
+    n=$[n+1]
 
     choices=$(dialog --stdout --backtitle $"Freedombone" \
                      --title $"Restore apps" \
@@ -984,16 +1029,52 @@ function restore_from_usb {
 
     if [ $? -eq 0 ]; then
         clear
+
+        # Test for exit
+        for choice in $choices
+        do
+            app_index=$[choice-1]
+            app_name=${app_list[app_index]}
+            if [[ $app_name == "$ExitStr" ]]; then
+                return
+            fi
+        done
+
+        # Test for restoring all apps
+        for choice in $choices
+        do
+            app_index=$[choice-1]
+            app_name=${app_list[app_index]}
+            if [[ $app_name == "$AllStr" ]]; then
+                $restore_command
+                if [ ! "$?" = "0" ]; then
+                    if [[ "$1" == "local" ]]; then
+                        dialog --title $"Restore all apps from USB" \
+                               --msgbox $"Restore failed with code $?" 6 40
+                    else
+                        dialog --title $"Restore all apps from $1" \
+                               --msgbox $"Restore failed with code $?" 6 40
+                    fi
+                    return
+                fi
+
+                if [[ "$1" == "local" ]]; then
+                    dialog --title $"Restore all apps from USB" \
+                           --msgbox $"Restore complete" 6 40
+                else
+                    dialog --title $"Restore all apps from $1" \
+                           --msgbox $"Restore complete" 6 40
+                fi
+                return
+            fi
+        done
+
         ctr=0
         for choice in $choices
         do
             app_index=$[choice-1]
-            app_name=${APPS_INSTALLED_NAMES[app_index]}
-            if [[ "${app_name}" == 'all' ]]; then
-                ${PROJECT_NAME}-restore-local $USB_DRIVE
-            else
-                ${PROJECT_NAME}-restore-local $USB_DRIVE "${app_name}"
-            fi
+            app_name=${app_list[app_index]}
+            $restore_command "${app_name}"
             if [ ! "$?" = "0" ]; then
                 dialog --title $"Restore apps from USB" \
                        --msgbox $"Restore of ${app_name} failed with code $?" 6 40
@@ -1002,95 +1083,16 @@ function restore_from_usb {
             ctr=$((ctr + 1))
         done
         if [ $ctr -gt 0 ]; then
-            dialog --title $"Restore apps from USB" \
-                   --msgbox $"Restore complete" 6 40
+            if [[ "$1" == "local" ]]; then
+                dialog --title $"Restore apps from USB" \
+                       --msgbox $"Restore complete" 6 40
+            else
+                dialog --title $"Restore apps from $1" \
+                       --msgbox $"Restore complete" 6 40
+            fi
+            return
         fi
     fi
-}
-
-function restore_from_remote {
-    remote_domain_name=$1
-
-    while true
-    do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Restore from ${remote_domain_name}" \
-               --radiolist $"Choose an application to restore:" 31 70 28 \
-               1 $"Everything" off \
-               2 $"Return to the backup and restore menu" on \
-               3 $"Configuration files" off \
-               4 $"MariaDB settings" off \
-               5 $"Let's Encrypt account" off \
-               6 $"Mutt email client settings" off \
-               7 $"GPG keys" off \
-               8 $"Email processing rules" off \
-               9 $"Spam filtering rules" off \
-               10 $"Administrator's README file" off \
-               11 $"IPFS" off \
-               12 $"SSH keys" off \
-               13 $"User configuration files" off \
-               14 $"User local files" off \
-               15 $"User fin files" off \
-               16 $"SSL/TLS certificates" off \
-               17 $"Personal settings" off \
-               18 $"Mailing List" off \
-               19 $"XMPP chat" off \
-               20 $"GNU Social" off \
-               21 $"Hubzilla" off \
-               22 $"Syncthing" off \
-               23 $"Gogs" off \
-               24 $"Wiki" off \
-               25 $"Blog" off \
-               26 $"Email" off \
-               27 $"DLNA" off \
-               28 $"Mumble" off \
-               29 $"RSS reader" off \
-               30 $"Tox" off 2> $data
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-
-        if [ $(cat $data) -ne 2 ]; then
-            clear
-        fi
-
-        case $(cat $data) in
-            1) ${PROJECT_NAME}-restore-remote $remote_domain_name;;
-            2) return;;
-            3) ${PROJECT_NAME}-restore-remote $remote_domain_name configuration;;
-            4) ${PROJECT_NAME}-restore-remote $remote_domain_name mariadb;;
-            5) ${PROJECT_NAME}-restore-remote $remote_domain_name letsencrypt;;
-            6) ${PROJECT_NAME}-restore-remote $remote_domain_name mutt;;
-            7) ${PROJECT_NAME}-restore-remote $remote_domain_name gpg;;
-            8) ${PROJECT_NAME}-restore-remote $remote_domain_name procmail;;
-            9) ${PROJECT_NAME}-restore-remote $remote_domain_name spamassassin;;
-            10) ${PROJECT_NAME}-restore-remote $remote_domain_name readme;;
-            11) ${PROJECT_NAME}-restore-remote $remote_domain_name ipfs;;
-            12) ${PROJECT_NAME}-restore-remote $remote_domain_name ssh;;
-            13) ${PROJECT_NAME}-restore-remote $remote_domain_name userconfig;;
-            14) ${PROJECT_NAME}-restore-remote $remote_domain_name userlocal;;
-            15) ${PROJECT_NAME}-restore-remote $remote_domain_name userfin;;
-            16) ${PROJECT_NAME}-restore-remote $remote_domain_name certs;;
-            17) ${PROJECT_NAME}-restore-remote $remote_domain_name personal;;
-            18) ${PROJECT_NAME}-restore-remote $remote_domain_name mailinglist;;
-            19) ${PROJECT_NAME}-restore-remote $remote_domain_name xmpp;;
-            20) ${PROJECT_NAME}-restore-remote $remote_domain_name gnusocial;;
-            21) ${PROJECT_NAME}-restore-remote $remote_domain_name hubzilla;;
-            22) ${PROJECT_NAME}-restore-remote $remote_domain_name syncthing;;
-            23) ${PROJECT_NAME}-restore-remote $remote_domain_name gogs;;
-            24) ${PROJECT_NAME}-restore-remote $remote_domain_name wiki;;
-            25) ${PROJECT_NAME}-restore-remote $remote_domain_name blog;;
-            26) ${PROJECT_NAME}-restore-remote $remote_domain_name email;;
-            27) ${PROJECT_NAME}-restore-remote $remote_domain_name dlna;;
-            28) ${PROJECT_NAME}-restore-remote $remote_domain_name mumble;;
-            29) ${PROJECT_NAME}-restore-remote $remote_domain_name ttrss;;
-            30) ${PROJECT_NAME}-restore-remote $remote_domain_name tox;;
-        esac
-    done
     any_key
 }
 
@@ -1100,7 +1102,7 @@ function restore_data {
     clear
     echo ' '
     echo $'Enter the passphrase for your LUKS encrypted backup drive:'
-    restore_from_usb
+    restore_data_from_storage local
 }
 
 function restore_data_remote {
@@ -1129,7 +1131,7 @@ function restore_data_remote {
                 return
             fi
 
-            restore_from_remote $friend_server_domain_name
+            restore_data_from_storage $friend_server_domain_name
             ;;
     esac
 }
