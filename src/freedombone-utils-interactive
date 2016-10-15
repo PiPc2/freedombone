@@ -111,8 +111,8 @@ function interactive_site_details {
     site_name_upper=${site_name^^}
 
     SITE_BACKTITLE=$"Freedombone Configuration"
-    SITE_CONFIG_TITLE=$"${site_name} Configuration"
-    SITE_FORM_TEXT=$"\nPlease enter your ${site_name} details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:"
+    SITE_CONFIG_TITLE=$"${site_name^} Configuration"
+    SITE_FORM_TEXT=$"\nPlease enter your ${site_name^} details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:"
     SITE_DOMAIN_NAME=
     SITE_CODE=
     SITE_DETAILS_COMPLETE=
@@ -165,6 +165,74 @@ function interactive_site_details {
     write_config_param "${site_name_upper}_DOMAIN_NAME" "$SITE_DOMAIN_NAME"
     if [ $SITE_CODE ]; then
         write_config_param "${site_name_upper}_CODE" "$SITE_CODE"
+    fi
+}
+
+function interactive_site_details_with_title {
+    site_name="${1}"
+
+    SITE_BACKTITLE=$"Freedombone Configuration"
+    SITE_CONFIG_TITLE=$"${site_name^} Configuration"
+    SITE_FORM_TEXT=$"\nPlease enter your ${site_name^} details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:"
+    SITE_TITLE=$2
+    SITE_DOMAIN_NAME=$3
+    SITE_CODE=$4
+    SITE_DETAILS_COMPLETE=
+    while [ ! $SITE_DETAILS_COMPLETE ]
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title "$SITE_BACKTITLE" \
+                       --form "$SITE_FORM_TEXT" 14 55 4 \
+                       $"Title:" 1 1 "$(grep '$SITE_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 33 40 \
+                       $"Domain:" 2 1 "$(grep '$SITE_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 33 40 \
+                       $"Code:" 3 1 "$(grep '$SITE_CODE' temp.cfg | awk -F '=' '{print $2}')" 3 16 33 255 \
+                       2> $data
+        else
+            dialog --backtitle "$SITE_BACKTITLE" \
+                   --title "$SITE_CONFIG_TITLE" \
+                   --form "$SITE_FORM_TEXT" 11 55 3 \
+                   $"Title:" 1 1 "$(grep '$SITE_TITLE' temp.cfg | awk -F '=' '{print $2}')" 1 16 33 40 \
+                   $"Domain:" 2 1 "$(grep '$SITE_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2 16 33 40 \
+                   2> $data
+        fi
+        sel=$?
+        case $sel in
+            1) exit 1;;
+            255) exit 1;;
+        esac
+        ${!SITE_TITLE}=$(cat $data | sed -n 1p)
+        ${!SITE_DOMAIN_NAME}=$(cat $data | sed -n 2p)
+        if [ ${!SITE_DOMAIN_NAME} ]; then
+            TEST_DOMAIN_NAME=${!SITE_DOMAIN_NAME}
+            validate_domain_name
+            if [[ $TEST_DOMAIN_NAME != ${!SITE_DOMAIN_NAME} ]]; then
+                ${!SITE_DOMAIN_NAME}=
+                dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+            else
+                if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    ${!SITE_CODE}=$(cat $data | sed -n 3p)
+                    validate_freedns_code "${!SITE_CODE}"
+                    if [ ! $VALID_CODE ]; then
+                        ${!SITE_DOMAIN_NAME}=
+                    fi
+                fi
+            fi
+        fi
+        if [ ${!SITE_TITLE} ]; then
+            if [ ${!SITE_DOMAIN_NAME} ]; then
+                SITE_DETAILS_COMPLETE="yes"
+            fi
+        fi
+    done
+
+    # save the results in the config file
+    write_config_param "$SITE_TITLE" "${!SITE_TITLE}"
+    write_config_param "$SITE_DOMAIN_NAME" "${!SITE_DOMAIN_NAME}"
+    if [ ${!SITE_CODE} ]; then
+        write_config_param "$SITE_CODE" "${!SITE_CODE}"
     fi
 }
 
