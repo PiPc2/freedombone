@@ -27,7 +27,6 @@ install:
 	cp img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
 	cp img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
 	cp src/* ${DESTDIR}${PREFIX}/bin
-	cp src/${APP}-meshweb ${DESTDIR}${PREFIX}/bin/meshweb
 	cp src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
 	cp src/${APP}-mesh-batman ${DESTDIR}${PREFIX}/bin/batman
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
@@ -58,7 +57,6 @@ uninstall:
 	rm -f ${PREFIX}/bin/backup2friends
 	rm -f ${PREFIX}/bin/restore
 	rm -f ${PREFIX}/bin/restorefromfriend
-	rm -f ${PREFIX}/bin/meshweb
 	rm -f ${PREFIX}/bin/batman
 	rm -rf /etc/${APP}
 	bash -c "./translate uninstall"
