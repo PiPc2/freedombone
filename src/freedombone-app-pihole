@@ -1,0 +1,211 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# pi-hole ad blocker
+#
+# Adapted from instructions at:
+#  http://jacobsalmela.com/block-millions-ads-network-wide-with-a-raspberry-pi-hole-2-0/#manualsetup
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@robotics.uk.to>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS=''
+
+PIHOLE_IFACE=eth0
+PIHOLE_DNS1='8.8.8.8'
+PIHOLE_DNS2='8.8.4.4'
+
+piholeBasename=pihole
+piholeDir=/etc/$piholeBasename
+PIHOLE_ADLIST=$piholeDir/gravity.list
+PIHOLE_BLACKLIST=$piholeDir/blacklist.txt
+PIHOLE_WHITELIST=$piholeDir/whitelist.txt
+
+PIHOLE_REPO="https://github.com/pi-hole/pi-hole"
+PIHOLE_COMMIT='dce24df37922171cef1dd3c3a025c09cb4a6a818'
+
+pihole_variables=(ONION_ONLY
+                  PIHOLE_IFACE
+                  PIHOLE_DNS1
+                  PIHOLE_DNS2)
+
+function pihole_update {
+    if [ ! -f /usr/local/bin/gravity.sh ]; then
+        return
+    fi
+
+    IPv4dev=$(ip route get 8.8.8.8 | awk '{for(i=1;i<=NF;i++)if($i~/dev/)print $(i+1)}')
+    IPv4_address=$(ip -o -f inet addr show dev "$IPv4dev" | awk '{print $4}' | awk 'END {print}')
+    IPv6_address=$(ip -6 route get 2001:4860:4860::8888 | awk -F " " '{ for(i=1;i<=NF;i++) if ($i == "src") print $(i+1) }')
+
+    setupVars=$piholeDir/setupVars.conf
+    echo "piholeInterface=${PIHOLE_IFACE}" > ${setupVars}
+    echo "IPv4_address=${IPv4_address}" >> ${setupVars}
+    echo "IPv6_address=${IPv6_address}" >> ${setupVars}
+    echo "piholeDNS1=${PIHOLE_DNS1}" >> ${setupVars}
+    echo "piholeDNS2=${PIHOLE_DNS1}" >> ${setupVars}
+
+    /usr/local/bin/gravity.sh
+}
+
+function configure_interactive_pihole {
+    echo -n ''
+    # TODO allow editing of blacklist
+}
+
+function install_interactive_pihole {
+    APP_INSTALLED=1
+}
+
+function change_password_pihole {
+    echo -n ''
+}
+
+function reconfigure_pihole {
+    echo -n ''
+}
+
+function upgrade_pihole {
+    pihole_update
+}
+
+function backup_local_pihole {
+    echo -n ''
+}
+
+function restore_local_pihole {
+    echo -n ''
+}
+
+function backup_remote_pihole {
+    echo -n ''
+}
+
+function restore_remote_pihole {
+    echo -n ''
+}
+
+function remove_pihole {
+    apt-get -y remove --purge dnsmasq
+
+    if [ ! -d /var/www/pihole ]; then
+        rm -rf /var/www/pihole
+    fi
+
+    if [ -f /usr/local/bin/gravity.sh ]; then
+        rm /usr/local/bin/gravity.sh
+    fi
+
+    if [ -f /usr/local/bin/pihole ]; then
+        rm /usr/local/bin/pihole
+    fi
+
+    if [ -d /opt/pihole ]; then
+        rm -rf /opt/pihole
+    fi
+
+    if [ -d $piholeDir ]; then
+        rm -rf $piholeDir
+    fi
+
+    if [ -f /var/log/pihole.log ]; then
+        rm /var/log/pihole.log
+    fi
+
+    if [ -f /etc/cron.d/pihole ]; then
+        rm /etc/cron.d/pihole
+    fi
+
+    userdel -r pihole
+}
+
+function install_pihole {
+    apt-get -y install dnsmasq curl
+    adduser --disabled-login --gecos 'pi-hole' pihole
+    usermod -a -G www-data pihole
+
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir -p $INSTALL_DIR
+    fi
+
+    cd $INSTALL_DIR
+    git_clone $PIHOLE_REPO pihole
+    if [ ! -d $INSTALL_DIR/pihole ]; then
+        exit 523925
+    fi
+    cd $INSTALL_DIR/pihole
+    git checkout $PIHOLE_COMMIT -b $PIHOLE_COMMIT
+
+    if [ ! -d /var/www/pihole/htdocs ]; then
+        mkdir -p /var/www/pihole/htdocs
+    fi
+
+    # blank file which takes the place of ads
+    echo '<html>' > /var/www/pihole/htdocs/index.html
+    echo '<body>' >> /var/www/pihole/htdocs/index.html
+    echo '</body>' >> /var/www/pihole/htdocs/index.html
+    echo '</html>' >> /var/www/pihole/htdocs/index.html
+
+    echo 'domain-needed' > /etc/dnsmasq.conf
+    echo 'bogus-priv' >> /etc/dnsmasq.conf
+    echo 'no-resolv' >> /etc/dnsmasq.conf
+    echo "server=${PIHOLE_DNS1}" >> /etc/dnsmasq.conf
+    echo "server=${PIHOLE_DNS2}" >> /etc/dnsmasq.conf
+    echo "interface=${PIHOLE_IFACE}" >> /etc/dnsmasq.conf
+    echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
+    echo 'cache-size=10000' >> /etc/dnsmasq.conf
+    echo 'log-queries' >> /etc/dnsmasq.conf
+    echo 'log-facility=/var/log/pihole.log' >> /etc/dnsmasq.conf
+    echo 'local-ttl=300' >> /etc/dnsmasq.conf
+    echo 'log-async' >> /etc/dnsmasq.conf
+
+    if [ ! -f $INSTALL_DIR/pihole/gravity.sh ]; then
+        exit 26738
+    fi
+    cp $INSTALL_DIR/pihole/gravity.sh /usr/local/bin/gravity.sh
+    cp $INSTALL_DIR/pihole/pihole /usr/local/bin/pihole
+    chmod 755 /usr/local/bin/gravity.sh
+    chmod 755 /usr/local/bin/pihole
+
+    if [ ! -d $piholeDir ]; then
+        mkdir $piholeDir
+    fi
+    if [ ! -d /opt/pihole ]; then
+        mkdir -p /opt/pihole
+    fi
+    cp $INSTALL_DIR/pihole/adlists.default $piholeDir/adlists.default:
+    cp $INSTALL_DIR/pihole/advanced/Scripts/* /opt/$piholeBasename
+    cp $INSTALL_DIR/pihole/advanced/01-pihole.conf /etc/dnsmasq.d/01-pihole.conf
+    cp $INSTALL_DIR/pihole/advanced/pihole.cron /etc/cron.d/pihole
+
+    systemctl enable dnsmasq
+    chown -R www-data:www-data /var/www/pihole/htdocs
+
+    pihole_update
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
