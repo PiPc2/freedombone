@@ -31,11 +31,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VARIANTS=''
+VARIANTS='full full-vim adblocker'
 
 PIHOLE_IFACE=eth0
-PIHOLE_DNS1='8.8.8.8'
-PIHOLE_DNS2='8.8.4.4'
+PIHOLE_DNS1='85.214.73.63'
+PIHOLE_DNS2='213.73.91.35'
 
 piholeBasename=pihole
 piholeDir=/etc/$piholeBasename
@@ -50,6 +50,16 @@ pihole_variables=(ONION_ONLY
                   PIHOLE_IFACE
                   PIHOLE_DNS1
                   PIHOLE_DNS2)
+
+function pihole_copy_files {
+    cp $INSTALL_DIR/pihole/adlists.default $piholeDir/adlists.default
+    if [ ! -f $PIHOLE_ADLIST ]; then
+        cp $INSTALL_DIR/pihole/adlists.default $PIHOLE_ADLIST
+    fi
+    cp $INSTALL_DIR/pihole/advanced/Scripts/* /opt/$piholeBasename
+    cp $INSTALL_DIR/pihole/advanced/01-pihole.conf /etc/dnsmasq.d/01-pihole.conf
+    cp $INSTALL_DIR/pihole/advanced/pihole.cron /etc/cron.d/pihole
+}
 
 function pihole_update {
     if [ ! -f /usr/local/bin/gravity.sh ]; then
@@ -67,12 +77,138 @@ function pihole_update {
     echo "piholeDNS1=${PIHOLE_DNS1}" >> ${setupVars}
     echo "piholeDNS2=${PIHOLE_DNS1}" >> ${setupVars}
 
-    /usr/local/bin/gravity.sh
+    echo 'domain-needed' > /etc/dnsmasq.conf
+    echo 'bogus-priv' >> /etc/dnsmasq.conf
+    echo 'no-resolv' >> /etc/dnsmasq.conf
+    echo "server=${PIHOLE_DNS1}" >> /etc/dnsmasq.conf
+    echo "server=${PIHOLE_DNS2}" >> /etc/dnsmasq.conf
+    echo "interface=${PIHOLE_IFACE}" >> /etc/dnsmasq.conf
+    echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
+    echo 'cache-size=10000' >> /etc/dnsmasq.conf
+    echo 'log-queries' >> /etc/dnsmasq.conf
+    echo 'log-facility=/var/log/pihole.log' >> /etc/dnsmasq.conf
+    echo 'local-ttl=300' >> /etc/dnsmasq.conf
+    echo 'log-async' >> /etc/dnsmasq.conf
+
+    systemctl reload dnsmasq
+
+    pihole -g
+}
+
+function pihole_change_upstream_dns {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Ad Blocker Upstream DNS" \
+           --radiolist $"Pick a domain name service (DNS):" 25 50 16 \
+           1 $"Digital Courage" on \
+           2 $"German Privacy Foundation 1" off \
+           3 $"German Privacy Foundation 2" off \
+           4 $"Chaos Computer Club" off \
+           5 $"ClaraNet" off \
+           6 $"OpenNIC 1" off \
+           7 $"OpenNIC 2" off \
+           8 $"OpenNIC 3" off \
+           9 $"OpenNIC 4" off \
+           10 $"OpenNIC 5" off \
+           11 $"OpenNIC 6" off \
+           12 $"OpenNIC 7" off \
+           13 $"PowerNS" off \
+           14 $"ValiDOM" off \
+           15 $"Freie Unzensierte" off \
+           16 $"Google" off 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    case $(cat $data) in
+        1) PIHOLE_DNS1='85.214.73.63'
+           PIHOLE_DNS2='213.73.91.35'
+           ;;
+        2) PIHOLE_DNS1='87.118.100.175'
+           PIHOLE_DNS2='94.75.228.29'
+           ;;
+        3) PIHOLE_DNS1='85.25.251.254'
+           PIHOLE_DNS2='2.141.58.13'
+           ;;
+        4) PIHOLE_DNS1='213.73.91.35'
+           PIHOLE_DNS2='85.214.73.63'
+           ;;
+        5) PIHOLE_DNS1='212.82.225.7'
+           PIHOLE_DNS2='212.82.226.212'
+           ;;
+        6) PIHOLE_DNS1='58.6.115.42'
+           PIHOLE_DNS2='58.6.115.43'
+           ;;
+        7) PIHOLE_DNS1='119.31.230.42'
+           PIHOLE_DNS2='200.252.98.162'
+           ;;
+        8) PIHOLE_DNS1='217.79.186.148'
+           PIHOLE_DNS2='81.89.98.6'
+           ;;
+        9) PIHOLE_DNS1='78.159.101.37'
+           PIHOLE_DNS2='203.167.220.153'
+           ;;
+        10) PIHOLE_DNS1='82.229.244.191'
+            PIHOLE_DNS2='82.229.244.191'
+            ;;
+        11) PIHOLE_DNS1='216.87.84.211'
+            PIHOLE_DNS2='66.244.95.20'
+            ;;
+        12) PIHOLE_DNS1='207.192.69.155'
+            PIHOLE_DNS2='72.14.189.120'
+            ;;
+        13) PIHOLE_DNS1='194.145.226.26'
+            PIHOLE_DNS2='77.220.232.44'
+            ;;
+        14) PIHOLE_DNS1='78.46.89.147'
+            PIHOLE_DNS2='88.198.75.145'
+            ;;
+        15) PIHOLE_DNS1='85.25.149.144'
+            PIHOLE_DNS2='87.106.37.196'
+            ;;
+        16) PIHOLE_DNS1='8.8.8.8'
+            PIHOLE_DNS2='4.4.4.4'
+            ;;
+        255) exit 1;;
+    esac
+    write_config_param "PIHOLE_DNS1" "$PIHOLE_DNS1"
+    write_config_param "PIHOLE_DNS2" "$PIHOLE_DNS2"
+    pihole_update
 }
 
 function configure_interactive_pihole {
-    echo -n ''
-    # TODO allow editing of blacklist
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"Ad Blocker" \
+               --radiolist $"Choose an operation:" 14 70 5 \
+               1 $"Edit ads list" off \
+               2 $"Edit blacklisted domain names" off \
+               3 $"Edit whitelisted domain names" off \
+               4 $"Change upstream DNS servers" off \
+               5 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) exit 1;;
+            255) exit 1;;
+        esac
+        case $(cat $data) in
+            1) editor $PIHOLE_ADLIST
+               pihole_update
+               ;;
+            2) editor $PIHOLE_BLACKLIST
+               pihole_update
+               ;;
+            3) editor $PIHOLE_WHITELIST
+               pihole_update
+               ;;
+            4) pihole_change_upstream_dns;;
+            5) break;;
+        esac
+    done
 }
 
 function install_interactive_pihole {
@@ -88,23 +224,31 @@ function reconfigure_pihole {
 }
 
 function upgrade_pihole {
+    function_check set_repo_commit
+    set_repo_commit $INSTALL_DIR/pihole "pihole commit" "$PIHOLE_COMMIT" $PIHOLE_REPO
+
+    pihole_copy_files
     pihole_update
 }
 
 function backup_local_pihole {
-    echo -n ''
+    function_check backup_directory_to_usb
+    backup_directory_to_usb $piholeDir pihole
 }
 
 function restore_local_pihole {
-    echo -n ''
+    function_check restore_directory_from_usb
+    restore_directory_from_usb / pihole
 }
 
 function backup_remote_pihole {
-    echo -n ''
+    function_check backup_directory_to_friend
+    backup_directory_to_friend $piholeDir pihole
 }
 
 function restore_remote_pihole {
-    echo -n ''
+    function_check restore_directory_from_friend
+    restore_directory_from_friend / pihole
 }
 
 function remove_pihole {
@@ -146,17 +290,22 @@ function install_pihole {
     adduser --disabled-login --gecos 'pi-hole' pihole
     usermod -a -G www-data pihole
 
+    systemctl enable dnsmasq
+
     if [ ! -d $INSTALL_DIR ]; then
         mkdir -p $INSTALL_DIR
     fi
 
-    cd $INSTALL_DIR
-    git_clone $PIHOLE_REPO pihole
     if [ ! -d $INSTALL_DIR/pihole ]; then
-        exit 523925
+        cd $INSTALL_DIR
+        git_clone $PIHOLE_REPO pihole
+        if [ ! -d $INSTALL_DIR/pihole ]; then
+            exit 523925
+        fi
+        cd $INSTALL_DIR/pihole
+        git checkout $PIHOLE_COMMIT -b $PIHOLE_COMMIT
+        set_completion_param "pihole commit" "$PIHOLE_COMMIT"
     fi
-    cd $INSTALL_DIR/pihole
-    git checkout $PIHOLE_COMMIT -b $PIHOLE_COMMIT
 
     if [ ! -d /var/www/pihole/htdocs ]; then
         mkdir -p /var/www/pihole/htdocs
@@ -168,25 +317,16 @@ function install_pihole {
     echo '</body>' >> /var/www/pihole/htdocs/index.html
     echo '</html>' >> /var/www/pihole/htdocs/index.html
 
-    echo 'domain-needed' > /etc/dnsmasq.conf
-    echo 'bogus-priv' >> /etc/dnsmasq.conf
-    echo 'no-resolv' >> /etc/dnsmasq.conf
-    echo "server=${PIHOLE_DNS1}" >> /etc/dnsmasq.conf
-    echo "server=${PIHOLE_DNS2}" >> /etc/dnsmasq.conf
-    echo "interface=${PIHOLE_IFACE}" >> /etc/dnsmasq.conf
-    echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
-    echo 'cache-size=10000' >> /etc/dnsmasq.conf
-    echo 'log-queries' >> /etc/dnsmasq.conf
-    echo 'log-facility=/var/log/pihole.log' >> /etc/dnsmasq.conf
-    echo 'local-ttl=300' >> /etc/dnsmasq.conf
-    echo 'log-async' >> /etc/dnsmasq.conf
-
     if [ ! -f $INSTALL_DIR/pihole/gravity.sh ]; then
         exit 26738
     fi
     cp $INSTALL_DIR/pihole/gravity.sh /usr/local/bin/gravity.sh
-    cp $INSTALL_DIR/pihole/pihole /usr/local/bin/pihole
     chmod 755 /usr/local/bin/gravity.sh
+
+    if [ ! -f $INSTALL_DIR/pihole/pihole ]; then
+        exit 52935
+    fi
+    cp $INSTALL_DIR/pihole/pihole /usr/local/bin/pihole
     chmod 755 /usr/local/bin/pihole
 
     if [ ! -d $piholeDir ]; then
@@ -195,12 +335,9 @@ function install_pihole {
     if [ ! -d /opt/pihole ]; then
         mkdir -p /opt/pihole
     fi
-    cp $INSTALL_DIR/pihole/adlists.default $piholeDir/adlists.default:
-    cp $INSTALL_DIR/pihole/advanced/Scripts/* /opt/$piholeBasename
-    cp $INSTALL_DIR/pihole/advanced/01-pihole.conf /etc/dnsmasq.d/01-pihole.conf
-    cp $INSTALL_DIR/pihole/advanced/pihole.cron /etc/cron.d/pihole
 
-    systemctl enable dnsmasq
+    pihole_copy_files
+
     chown -R www-data:www-data /var/www/pihole/htdocs
 
     pihole_update
