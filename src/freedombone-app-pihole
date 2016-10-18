@@ -59,6 +59,7 @@ function pihole_copy_files {
     cp $INSTALL_DIR/pihole/advanced/Scripts/* /opt/$piholeBasename
     cp $INSTALL_DIR/pihole/advanced/01-pihole.conf /etc/dnsmasq.d/01-pihole.conf
     cp $INSTALL_DIR/pihole/advanced/pihole.cron /etc/cron.d/pihole
+    cp $INSTALL_DIR/pihole/gravity.sh /opt/$piholeBasename
 }
 
 function pihole_update {
@@ -83,13 +84,13 @@ function pihole_update {
     echo "server=${PIHOLE_DNS2}" >> /etc/dnsmasq.conf
     echo "interface=${PIHOLE_IFACE}" >> /etc/dnsmasq.conf
     echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
-    echo 'cache-size=10000' >> /etc/dnsmasq.conf
     echo 'log-queries' >> /etc/dnsmasq.conf
-    echo 'log-facility=/var/log/pihole.log' >> /etc/dnsmasq.conf
-    echo 'local-ttl=300' >> /etc/dnsmasq.conf
-    echo 'log-async' >> /etc/dnsmasq.conf
 
-    systemctl reload dnsmasq
+    sed -i "0,/RE/s/server=.*/server=${PIHOLE_DNS1}/" /etc/dnsmasq.d/01-pihole.conf
+    sed -i "1,/RE/s/server=.*/server=${PIHOLE_DNS2}/" /etc/dnsmasq.d/01-pihole.conf
+    sed -i "s|interface=.*|interface=${PIHOLE_IFACE}|g" /etc/dnsmasq.d/01-pihole.conf
+
+    systemctl restart dnsmasq
 
     pihole -g
 }
@@ -173,7 +174,27 @@ function pihole_change_upstream_dns {
     esac
     write_config_param "PIHOLE_DNS1" "$PIHOLE_DNS1"
     write_config_param "PIHOLE_DNS2" "$PIHOLE_DNS2"
+}
+
+function update_pihole_interactive {
+    clear
+    echo $'Updating Ad Blocker Lists'
+    echo ''
     pihole_update
+}
+
+function configure_firewall_for_pihole {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    #iptables -A INPUT -p tcp -m tcp --dport 80 -j ACCEPT
+    iptables -A INPUT -p tcp -m tcp --dport 53 -j ACCEPT
+    iptables -A INPUT -p udp -m udp --dport 53 -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+
+    OPEN_PORTS+=('DNS      53')
+    mark_completed $FUNCNAME
 }
 
 function configure_interactive_pihole {
@@ -196,15 +217,17 @@ function configure_interactive_pihole {
         esac
         case $(cat $data) in
             1) editor $PIHOLE_ADLIST
-               pihole_update
+               update_pihole_interactive
                ;;
             2) editor $PIHOLE_BLACKLIST
-               pihole_update
+               update_pihole_interactive
                ;;
             3) editor $PIHOLE_WHITELIST
-               pihole_update
+               update_pihole_interactive
                ;;
-            4) pihole_change_upstream_dns;;
+            4) pihole_change_upstream_dns
+               update_pihole_interactive
+               ;;
             5) break;;
         esac
     done
@@ -338,6 +361,8 @@ function install_pihole {
     pihole_copy_files
 
     chown -R www-data:www-data /var/www/pihole/htdocs
+
+    configure_firewall_for_pihole
 
     pihole_update
 
