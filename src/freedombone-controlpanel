@@ -1335,8 +1335,15 @@ Enter a static local IP address for this system.\n\nIt will typically be 192.168
            ;;
     esac
 
-    if ! grep -q 'iface eth0 inet static' /etc/network/interfaces; then
-        if [[ "$NEW_STATIC_GATEWAY" == *"."* && "$NEW_STATIC_IP" == *"."* ]]; then
+    if [[ "$NEW_STATIC_GATEWAY" == *"."* && "$NEW_STATIC_IP" == *"."* ]]; then
+        ip_addresses_have_changed=
+        if ! grep -q "address ${NEW_STATIC_IP}" /etc/network/interfaces; then
+            ip_addresses_have_changed=1
+        fi
+        if ! grep -q "gateway ${NEW_STATIC_GATEWAY}" /etc/network/interfaces; then
+            ip_addresses_have_changed=1
+        fi
+        if [ $ip_addresses_have_changed ]; then
             echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
             echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
             echo '' >> /etc/network/interfaces
@@ -1372,12 +1379,26 @@ Enter a static local IP address for this system.\n\nIt will typically be 192.168
             echo '#    netmask 255.255.255.0' >> /etc/network/interfaces
             echo '#    network 192.168.7.0' >> /etc/network/interfaces
             echo '#    gateway 192.168.7.1' >> /etc/network/interfaces
-        fi
 
-        # if pi-hole is installed then update the IP address it uses
-        if [ -f /usr/local/bin/pihole ]; then
-            function_check pihole_update
-            pihole_update
+            pihole_change_ipv4 ${NEW_STATIC_IP}
+
+            systemctl restart networking
+
+            # see if the IP address has changed
+            IPv4_address=$(get_ipv4_address)
+            if [[ "$IPv4_address" == "${NEW_STATIC_IP}"* ]]; then
+                dialog --title $"Static local IP address" \
+                       --msgbox $"The IP address of this system is now set to ${NEW_STATIC_IP}" 6 50
+            else
+                dialog --title $"Static local IP address" \
+                       --backtitle $"Freedombone Control Panel" \
+                       --defaultno \
+                       --yesno $"\nFor the change to take effect your system will now need to reboot. Do this now?" 8 60
+                sel=$?
+                case $sel in
+                    0) reboot;;
+                esac
+            fi
         fi
     fi
 }
