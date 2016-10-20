@@ -79,7 +79,7 @@ If you have an existing system, such as an old laptop or netbook which you can l
 
     su
     apt-get update
-    apt-get -y install git dialog build-essential
+    apt-get -y install git dialog build-essential avahi-utils
     git clone https://github.com/bashrc/freedombone
     cd freedombone
     make install
