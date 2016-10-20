@@ -236,6 +236,113 @@ function reconfigure_gnusocial {
     echo -n ''
 }
 
+function gnusocial_set_background_image_from_url {
+    GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT=
+    if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL ]; then
+        if [[ $GNUSOCIAL_BACKGROUND_IMAGE_URL == *".jpeg" || $GNUSOCIAL_BACKGROUND_IMAGE_URL == *".jpg" ]]; then
+            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="jpg"
+        fi
+        if [[ $GNUSOCIAL_BACKGROUND_IMAGE_URL == *".png" ]]; then
+            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="png"
+        fi
+        if [[ $$GNUSOCIAL_BACKGROUND_IMAGE_URL == *".gif" ]]; then
+            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="gif"
+        fi
+    fi
+
+    if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT ]; then
+        read_config_param GNUSOCIAL_DOMAIN_NAME
+        gnusocial_config_file=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+
+        cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter
+
+        wget $GNUSOCIAL_BACKGROUND_IMAGE_URL -O img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT}
+        if [ ! -f img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT} ]; then
+            echo "$GNUSOCIAL_BACKGROUND_IMAGE_URL"
+            echo $'Custom background image for gnusocial could not be downloaded'
+            echo "1"
+            return
+        fi
+
+        if ! grep -q "'img/custom" $gnusocial_config_file; then
+            sed -i "s|'img/custom.*|'img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT}';|g" $gnusocial_config_file
+        fi
+    fi
+    echo "0"
+}
+
+
+function gnusocial_set_background_image {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"GNU Social" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'Set a login screen background image URL' 10 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            temp_background=$(<$data)
+            if [ ${#temp_background} -gt 0 ]; then
+                GNUSOCIAL_BACKGROUND_IMAGE_URL="$temp_background"
+                write_config_param "GNUSOCIAL_BACKGROUND_IMAGE_URL" "$GNUSOCIAL_BACKGROUND_IMAGE_URL"
+                if [[ $(gnusocial_set_background_image_from_url) == "0" ]]; then
+                    dialog --title $"Set GNU Social login background" \
+                           --msgbox $"The background image has been set" 6 60
+                fi
+            fi
+           ;;
+    esac
+}
+
+function gnusocial_set_welcome_message {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"GNU Social" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'Set a welcome message, which can include html formatting' 10 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            temp_welcome=$(<$data)
+            if [ ${#temp_welcome} -gt 0 ]; then
+                GNUSOCIAL_WELCOME_MESSAGE="$temp_welcome"
+                gnusocial_config_file=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+                if grep -q "customwelcometext" $gnusocial_config_file; then
+                    write_config_param "GNUSOCIAL_WELCOME_MESSAGE" "$GNUSOCIAL_WELCOME_MESSAGE"
+                    sed -i "s|customwelcometext.*|customwelcometext']['en'] = '${GNUSOCIAL_WELCOME_MESSAGE}';|g" $gnusocial_config_file
+
+                    dialog --title $"Set GNU Social welcome message" \
+                           --msgbox $"Welcome message has been set" 6 60
+                fi
+            fi
+           ;;
+    esac
+}
+
+function configure_interactive_gnusocial {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"GNU Social" \
+               --radiolist $"Choose an operation:" 12 70 3 \
+               1 $"Set a login screen background image" off \
+               2 $"Set a welcome message" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+        case $(cat $data) in
+            1) gnusocial_set_background_image;;
+            2) gnusocial_set_welcome_message;;
+            3) break;;
+        esac
+    done
+}
+
 function upgrade_gnusocial {
     if grep -q "gnusocial domain" $COMPLETION_FILE; then
         GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
@@ -842,25 +949,8 @@ function install_gnusocial_theme {
     git checkout $GNUSOCIAL_THEME_COMMIT -b $GNUSOCIAL_THEME_COMMIT
 
     # download a custom background image
-    GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT=
-    if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL ]; then
-        if [[ $$GNUSOCIAL_BACKGROUND_IMAGE_URL == *".jpeg" || $$GNUSOCIAL_BACKGROUND_IMAGE_URL == *".jpg" ]]; then
-            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="jpg"
-        fi
-        if [[ $$GNUSOCIAL_BACKGROUND_IMAGE_URL == *".png" ]]; then
-            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="png"
-        fi
-        if [[ $$GNUSOCIAL_BACKGROUND_IMAGE_URL == *".gif" ]]; then
-            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="gif"
-        fi
-        if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT ]; then
-            wget $GNUSOCIAL_BACKGROUND_IMAGE_URL -O img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT}
-            if [ ! -f img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT} ]; then
-                echo "$GNUSOCIAL_BACKGROUND_IMAGE_URL"
-                echo $'Custom background image for gnusocial could not be downloaded'
-                exit 87524
-            fi
-        fi
+    if [[ $(gnusocial_set_background_image_from_url) != "0" ]]; then
+        exit 356723
     fi
 
     gnusocial_config_file=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
