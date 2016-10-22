@@ -431,92 +431,6 @@ function select_user {
     fi
 }
 
-function email_extra_domains {
-    email_hostnames=$(cat /etc/exim4/update-exim4.conf.conf | grep "dc_other_hostnames" | awk -F "'" '{print $2}')
-
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --title $"Email Domains" \
-           --backtitle $"Freedombone Control Panel" \
-           --inputbox $"Enter the list of email domains to use, separated by semicolons" 8 60 2>$data
-    sel=$?
-    case $sel in
-        0)
-            emailhostnames=$(<$data)
-            if [ ${#emailhostnames} -gt 2 ]; then
-                if [[ "$emailhostnames" == *"."* ]]; then
-                    if [[ "$emailhostnames" != *" "* ]]; then
-                        sed -i "s|dc_other_hostnames=.*|dc_other_hostnames='$emailhostnames'|g" /etc/exim4/update-exim4.conf.conf
-                        update-exim4.conf
-                        dpkg-reconfigure --frontend noninteractive exim4-config
-                        systemctl restart saslauthd
-                        dialog --title $"Email Domains" \
-                               --backtitle $"Freedombone Control Panel" \
-                               --msgbox $"Email domains were changed" 6 50
-                    else
-                        dialog --title $"Email Domains not set" \
-                               --backtitle $"Freedombone Control Panel" \
-                               --msgbox $"There should be no spaces in the list" 6 50
-                    fi
-                fi
-            fi
-            ;;
-    esac
-}
-
-function email_smtp_proxy {
-    MUTTRC_FILE=/home/$ADMIN_USER/.muttrc
-    if [ ! -f $MUTTRC_FILE ]; then
-        return
-    fi
-
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --backtitle $"Freedombone Control Panel" \
-           --title $"SMTP Proxy for $ADMIN_USER" \
-           --form $"You may need to proxy outgoing email via your ISP's mail server. If so enter the details below." 14 75 6 \
-           $"Enable proxy:" 1 1 "$SMTP_PROXY_ENABLE" 1 24 5 5 \
-           $"Protocol (smtp/smtps):" 2 1 "$SMTP_PROXY_PROTOCOL" 2 24 5 5 \
-           $"ISP mail server:" 3 1 "$SMTP_PROXY_SERVER" 3 24 40 10000 \
-           $"Port:" 4 1 "$SMTP_PROXY_PORT" 4 24 5 5 \
-           $"Username:" 5 1 "$SMTP_PROXY_USERNAME" 5 24 40 10000 \
-           $"Password:" 6 1 "$SMTP_PROXY_PASSWORD" 6 24 40 10000 \
-           2> $data
-    sel=$?
-    case $sel in
-        1) return;;
-        255) return;;
-    esac
-    SMTP_PROXY_ENABLE=$(cat $data | sed -n 1p)
-    SMTP_PROXY_PROTOCOL=$(cat $data | sed -n 2p)
-    SMTP_PROXY_SERVER=$(cat $data | sed -n 3p)
-    SMTP_PROXY_PORT=$(cat $data | sed -n 4p)
-    SMTP_PROXY_USERNAME=$(cat $data | sed -n 5p)
-    SMTP_PROXY_PASSWORD=$(cat $data | sed -n 6p)
-
-    # change muttrc
-    if [ $SMTP_PROXY_ENABLE != $'no' ]; then
-        if ! grep "set smtp_url" $MUTTRC_FILE; then
-            echo "set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"" >> $MUTTRC_FILE
-        else
-            sed -i "s|set smtp_url=.*|set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"|g" $MUTTRC_FILE
-        fi
-        sed -i 's|#set smtp_url|set smtp_url|g' $MUTTRC_FILE
-    else
-        if grep "set smtp_url" $MUTTRC_FILE; then
-            sed -i 's|set smtp_url|#set smtp_url|g' $MUTTRC_FILE
-        fi
-    fi
-
-    # save settings within the main configuration file
-    write_config_param "SMTP_PROXY_ENABLE" "$SMTP_PROXY_ENABLE"
-    write_config_param "SMTP_PROXY_PROTOCOL" "$SMTP_PROXY_PROTOCOL"
-    write_config_param "SMTP_PROXY_SERVER" "$SMTP_PROXY_SERVER"
-    write_config_param "SMTP_PROXY_PORT" "$SMTP_PROXY_PORT"
-    write_config_param "SMTP_PROXY_USERNAME" "$SMTP_PROXY_USERNAME"
-    write_config_param "SMTP_PROXY_PASSWORD" "$SMTP_PROXY_PASSWORD"
-}
-
 function delete_user {
     select_user
     if [ ! $SELECTED_USERNAME ]; then
@@ -1605,6 +1519,92 @@ function show_firewall {
     any_key
 }
 
+function email_extra_domains {
+    email_hostnames=$(cat /etc/exim4/update-exim4.conf.conf | grep "dc_other_hostnames" | awk -F "'" '{print $2}')
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Email Domains" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Enter the list of email domains to use, separated by semicolons" 8 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            emailhostnames=$(<$data)
+            if [ ${#emailhostnames} -gt 2 ]; then
+                if [[ "$emailhostnames" == *"."* ]]; then
+                    if [[ "$emailhostnames" != *" "* ]]; then
+                        sed -i "s|dc_other_hostnames=.*|dc_other_hostnames='$emailhostnames'|g" /etc/exim4/update-exim4.conf.conf
+                        update-exim4.conf
+                        dpkg-reconfigure --frontend noninteractive exim4-config
+                        systemctl restart saslauthd
+                        dialog --title $"Email Domains" \
+                               --backtitle $"Freedombone Control Panel" \
+                               --msgbox $"Email domains were changed" 6 50
+                    else
+                        dialog --title $"Email Domains not set" \
+                               --backtitle $"Freedombone Control Panel" \
+                               --msgbox $"There should be no spaces in the list" 6 50
+                    fi
+                fi
+            fi
+            ;;
+    esac
+}
+
+function email_smtp_proxy {
+    MUTTRC_FILE=/home/$ADMIN_USER/.muttrc
+    if [ ! -f $MUTTRC_FILE ]; then
+        return
+    fi
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"SMTP Proxy for $ADMIN_USER" \
+           --form $"You may need to proxy outgoing email via your ISP's mail server. If so enter the details below." 14 75 6 \
+           $"Enable proxy:" 1 1 "$SMTP_PROXY_ENABLE" 1 24 5 5 \
+           $"Protocol (smtp/smtps):" 2 1 "$SMTP_PROXY_PROTOCOL" 2 24 5 5 \
+           $"ISP mail server:" 3 1 "$SMTP_PROXY_SERVER" 3 24 40 10000 \
+           $"Port:" 4 1 "$SMTP_PROXY_PORT" 4 24 5 5 \
+           $"Username:" 5 1 "$SMTP_PROXY_USERNAME" 5 24 40 10000 \
+           $"Password:" 6 1 "$SMTP_PROXY_PASSWORD" 6 24 40 10000 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    SMTP_PROXY_ENABLE=$(cat $data | sed -n 1p)
+    SMTP_PROXY_PROTOCOL=$(cat $data | sed -n 2p)
+    SMTP_PROXY_SERVER=$(cat $data | sed -n 3p)
+    SMTP_PROXY_PORT=$(cat $data | sed -n 4p)
+    SMTP_PROXY_USERNAME=$(cat $data | sed -n 5p)
+    SMTP_PROXY_PASSWORD=$(cat $data | sed -n 6p)
+
+    # change muttrc
+    if [ $SMTP_PROXY_ENABLE != $'no' ]; then
+        if ! grep "set smtp_url" $MUTTRC_FILE; then
+            echo "set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"" >> $MUTTRC_FILE
+        else
+            sed -i "s|set smtp_url=.*|set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"|g" $MUTTRC_FILE
+        fi
+        sed -i 's|#set smtp_url|set smtp_url|g' $MUTTRC_FILE
+    else
+        if grep "set smtp_url" $MUTTRC_FILE; then
+            sed -i 's|set smtp_url|#set smtp_url|g' $MUTTRC_FILE
+        fi
+    fi
+
+    # save settings within the main configuration file
+    write_config_param "SMTP_PROXY_ENABLE" "$SMTP_PROXY_ENABLE"
+    write_config_param "SMTP_PROXY_PROTOCOL" "$SMTP_PROXY_PROTOCOL"
+    write_config_param "SMTP_PROXY_SERVER" "$SMTP_PROXY_SERVER"
+    write_config_param "SMTP_PROXY_PORT" "$SMTP_PROXY_PORT"
+    write_config_param "SMTP_PROXY_USERNAME" "$SMTP_PROXY_USERNAME"
+    write_config_param "SMTP_PROXY_PASSWORD" "$SMTP_PROXY_PASSWORD"
+}
+
 function menu_backup_restore {
     while true
     do
@@ -1651,14 +1651,16 @@ function menu_email {
         data=$(tempfile 2>/dev/null)
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Email Filtering Rules" \
-               --radiolist $"Choose an operation:" 13 70 6 \
+               --title $"Email Menu" \
+               --radiolist $"Choose an operation:" 15 70 8 \
                1 $"Add a user to a mailing list" off \
                2 $"Remove a user from a mailing list" off \
                3 $"Add an email rule" off \
                4 $"Block/Unblock an email address" off \
                5 $"Block/Unblock email with subject text" off \
-               6 $"Back to main menu" on 2> $data
+               6 $"Outgoing Email Proxy" off \
+               7 $"Extra email domains" off \
+               8 $"Back to main menu" on 2> $data
         sel=$?
         case $sel in
             1) break;;
@@ -1670,7 +1672,9 @@ function menu_email {
             3) email_rule;;
             4) block_unblock_email;;
             5) block_unblock_subject;;
-            6) break;;
+            6) email_smtp_proxy;;
+            7) email_extra_domains;;
+            8) break;;
         esac
     done
 }
@@ -1801,7 +1805,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 29 70 22 \
+               --radiolist $"Choose an operation:" 27 70 20 \
                1 $"About this system" off \
                2 $"Backup and Restore" off \
                3 $"Show Firewall" off \
@@ -1811,18 +1815,16 @@ function menu_top_level {
                7 $"Logging on/off" off \
                8 $"Ping enable/disable" off \
                9 $"Manage Users" off \
-               10 $"Email Filtering Rules" off \
-               11 $"Outgoing Email Proxy" off \
-               12 $"Extra email domains" off \
-               13 $"Security Settings" off \
-               14 $"Set the main repository (repo mirrors)" off \
-               15 $"Change the name of this system" off \
-               16 $"Set a static local IP address" off \
-               17 $"Wifi menu" off \
-               18 $"Check for updates" off \
-               19 $"Power off the system" off \
-               20 $"Restart the system" off \
-               21 $"Exit" on 2> $data
+               10 $"Email Menu" off \
+               11 $"Security Settings" off \
+               12 $"Set the main repository (repo mirrors)" off \
+               13 $"Change the name of this system" off \
+               14 $"Set a static local IP address" off \
+               15 $"Wifi menu" off \
+               16 $"Check for updates" off \
+               17 $"Power off the system" off \
+               18 $"Restart the system" off \
+               19 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -1839,17 +1841,15 @@ function menu_top_level {
             8) ping_enable_disable;;
             9) menu_users;;
             10) menu_email;;
-            11) email_smtp_proxy;;
-            12) email_extra_domains;;
-            13) security_settings;;
-            14) set_main_repo;;
-            15) change_system_name;;
-            16) set_static_IP;;
-            17) menu_wifi;;
-            18) check_for_updates;;
-            19) shut_down_system;;
-            20) restart_system;;
-            21) break;;
+            11) security_settings;;
+            12) set_main_repo;;
+            13) change_system_name;;
+            14) set_static_IP;;
+            15) menu_wifi;;
+            16) check_for_updates;;
+            17) shut_down_system;;
+            18) restart_system;;
+            19) break;;
         esac
     done
 }
