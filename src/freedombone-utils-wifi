@@ -48,6 +48,23 @@ function wifi_is_running {
     fi
 }
 
+function wifi_static_network_interface {
+    NETWORK_IS_STATIC=0
+    read_config_param "NETWORK_IS_STATIC"
+    if [ ${NETWORK_IS_STATIC} -eq 0 ]; then
+        echo '#this line must always be here' >> /etc/network/interfaces
+        echo 'iface default inet dhcp' >> /etc/network/interfaces
+    else
+        read_config_param "STATIC_IP_ADDRESS"
+        read_config_param "ROUTER_IP_ADDRESS"
+        echo '#static address' >> /etc/network/interfaces
+        echo 'iface default inet static' >> /etc/network/interfaces
+        echo "    address ${STATIC_IP_ADDRESS}" >> /etc/network/interfaces
+        echo '    netmask 255.255.255.0' >> /etc/network/interfaces
+        echo "    gateway ${ROUTER_IP_ADDRESS}" >> /etc/network/interfaces
+    fi
+}
+
 function setup_wifi_atheros {
     if [[ $(running_as_root) == "0" ]]; then
         return
@@ -290,15 +307,19 @@ function hotspot_on {
     systemctl restart hostapd
 }
 
-function wifi_wpa2_psk {
-    ssid=$1
-    passphrase=$2
-
+function wifi_store_original_network_settings {
     if [ ! -f /etc/network/interfaces_original ]; then
         if ! grep -q "# wifi enabled" /etc/network/interfaces; then
             cp /etc/network/interfaces /etc/network/interfaces_original
         fi
     fi
+}
+
+function wifi_wpa2_psk {
+    ssid=$1
+    passphrase=$2
+
+    wifi_store_original_network_settings
 
     echo '# wifi enabled' > /etc/network/interfaces
     echo 'auto lo' >> /etc/network/interfaces
@@ -311,8 +332,7 @@ function wifi_wpa2_psk {
     echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
     echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
     echo '' >> /etc/network/interfaces
-    echo '#this line must always be here' >> /etc/network/interfaces
-    echo 'iface default inet dhcp' >> /etc/network/interfaces
+    wifi_static_network_interface
 
     wpa_passphrase "$ssid" "$passphrase" > $WIFI_CONFIG
 
@@ -323,11 +343,7 @@ function wifi_wpa2_psk {
 function wifi_none {
     ssid=$1
 
-    if [ ! -f /etc/network/interfaces_original ]; then
-        if ! grep -q "# wifi enabled" /etc/network/interfaces; then
-            cp /etc/network/interfaces /etc/network/interfaces_original
-        fi
-    fi
+    wifi_store_original_network_settings
 
     echo '# wifi enabled' > /etc/network/interfaces
     echo 'auto lo' >> /etc/network/interfaces
@@ -340,8 +356,7 @@ function wifi_none {
     echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
     echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
     echo '' >> /etc/network/interfaces
-    echo '#this line must always be here' >> /etc/network/interfaces
-    echo 'iface default inet dhcp' >> /etc/network/interfaces
+    wifi_static_network_interface
 
     echo 'update_config=1' > $WIFI_CONFIG
     echo 'eapol_version=1' >> $WIFI_CONFIG
@@ -368,11 +383,7 @@ function networks_from_file {
     fi
     read_config_param "WIFI_INTERFACE"
 
-    if [ ! -f /etc/network/interfaces_original ]; then
-        if ! grep -q "# wifi enabled" /etc/network/interfaces; then
-            cp /etc/network/interfaces /etc/network/interfaces_original
-        fi
-    fi
+    wifi_store_original_network_settings
 
     echo '# wifi enabled' > /etc/network/interfaces
     echo 'auto lo' >> /etc/network/interfaces
@@ -385,8 +396,7 @@ function networks_from_file {
     echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
     echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
     echo '' >> /etc/network/interfaces
-    echo '#this line must always be here' >> /etc/network/interfaces
-    echo 'iface default inet dhcp' >> /etc/network/interfaces
+    wifi_static_network_interface
 
     # remove wpa_supplicant.conf if it exists
     if [ -f $WIFI_CONFIG ]; then
