@@ -28,6 +28,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+FIREWALL_CONFIG=$HOME/firewall.cfg
+
 function save_firewall_settings {
     iptables-save > /etc/firewall.conf
     ip6tables-save > /etc/firewall6.conf
@@ -156,11 +158,8 @@ function configure_firewall_for_web_access {
     if [[ $ONION_ONLY != "no" ]]; then
         return
     fi
-    iptables -A INPUT -p tcp --dport 32768:61000 --sport 80 -j ACCEPT
-    iptables -A INPUT -p tcp --dport 32768:61000 --sport 443 -j ACCEPT
-    function_check save_firewall_settings
-    save_firewall_settings
-
+    firewall_remove 80 tcp
+    firewall_remove 443 tcp
     mark_completed $FUNCNAME
 }
 
@@ -175,13 +174,9 @@ function configure_firewall_for_web_server {
     if [[ $ONION_ONLY != "no" ]]; then
         return
     fi
-    iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-    iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-    function_check save_firewall_settings
-    save_firewall_settings
 
-    OPEN_PORTS+=('HTTP     80')
-    OPEN_PORTS+=('HTTPS    443')
+    firewall_add HTTP 80 tcp
+    firewall_add HTTPS 443 tcp
     mark_completed $FUNCNAME
 }
 
@@ -193,12 +188,9 @@ function configure_firewall_for_ssh {
         # docker does its own firewalling
         return
     fi
-    iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-    iptables -A INPUT -p tcp --dport $SSH_PORT -j ACCEPT
-    function_check save_firewall_settings
-    save_firewall_settings
 
-    OPEN_PORTS+=("SSH      $SSH_PORT")
+    firewall_add SSH 22 tcp
+    firewall_add SSH ${SSH_PORT} tcp
     mark_completed $FUNCNAME
 }
 
@@ -213,11 +205,8 @@ function configure_firewall_for_git {
     if [[ $ONION_ONLY != "no" ]]; then
         return
     fi
-    iptables -A INPUT -p tcp --dport 9418 -j ACCEPT
-    function_check save_firewall_settings
-    save_firewall_settings
 
-    OPEN_PORTS+=("Git      9418")
+    firewall_add Git 9418 tcp
     mark_completed $FUNCNAME
 }
 
@@ -314,3 +303,52 @@ function mesh_firewall {
     echo 'WantedBy=multi-user.target' >> $FIREWALL_FILENAME
     chroot "$rootdir" systemctl enable meshfirewall
 }
+
+function firewall_add {
+    firewall_name="$1"
+    firewall_port=$2
+    firewall_protocol="$3"
+
+    if ! grep -q "${firewall_name}=${firewall_port}" $FIREWALL_CONFIG; then
+        echo "${firewall_name}=${firewall_port}" >> $FIREWALL_CONFIG
+        if [ ! ${firewall_protocol} ]; then
+            iptables -A INPUT -p udp --dport ${firewall_port} -j ACCEPT
+            iptables -A INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+        else
+            if [[ "${firewall_protocol}" == *"udp"* ]]; then
+                iptables -A INPUT -p udp --dport ${firewall_port} -j ACCEPT
+            fi
+            if [[ "${firewall_protocol}" == *"tcp"* ]]; then
+                iptables -A INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+            fi
+        fi
+        save_firewall_settings
+    fi
+}
+
+function firewall_remove {
+    firewall_port=$1
+    firewall_protocol="$2"
+
+    if [ ! -f $FIREWALL_CONFIG ]; then
+        return
+    fi
+
+    if grep -q "=${firewall_port}" $FIREWALL_CONFIG; then
+        if [ ! ${firewall_protocol} ]; then
+            iptables -D INPUT -p udp --dport ${firewall_port} -j ACCEPT
+            iptables -D INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+        else
+            if [[ "${firewall_protocol}" == *"udp"* ]]; then
+                iptables -D INPUT -p udp --dport ${firewall_port} -j ACCEPT
+            fi
+            if [[ "${firewall_protocol}" == *"tcp"* ]]; then
+                iptables -D INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+            fi
+        fi
+        sed -i "/=${firewall_port}/d" $FIREWALL_CONFIG
+        save_firewall_settings
+    fi
+}
+
+# NOTE: deliberately no exit 0
