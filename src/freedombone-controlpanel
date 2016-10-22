@@ -431,7 +431,39 @@ function select_user {
     fi
 }
 
-function smtp_proxy {
+function email_extra_domains {
+    email_hostnames=$(cat /etc/exim4/update-exim4.conf.conf | grep "dc_other_hostnames" | awk -F "'" '{print $2}')
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Email Domains" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Enter the list of email domains to use, separated by semicolons" 8 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            emailhostnames=$(<$data)
+            if [ ${#emailhostnames} -gt 2 ]; then
+                if [[ "$emailhostnames" == *"."* ]]; then
+                    if [[ "$emailhostnames" != *" "* ]]; then
+                        sed -i "s|dc_other_hostnames=.*|dc_other_hostnames='$emailhostnames'|g" /etc/exim4/update-exim4.conf.conf
+                        update-exim4.conf
+                        systemctl restart saslauthd
+                        dialog --title $"Email Domains" \
+                               --backtitle $"Freedombone Control Panel" \
+                               --msgbox $"Email domains were changed" 6 50
+                    else
+                        dialog --title $"Email Domains not set" \
+                               --backtitle $"Freedombone Control Panel" \
+                               --msgbox $"There should be no spaces in the list" 6 50
+                    fi
+                fi
+            fi
+            ;;
+    esac
+}
+
+function email_smtp_proxy {
     MUTTRC_FILE=/home/$ADMIN_USER/.muttrc
     if [ ! -f $MUTTRC_FILE ]; then
         return
@@ -1780,15 +1812,16 @@ function menu_top_level {
                9 $"Manage Users" off \
                10 $"Email Filtering Rules" off \
                11 $"Outgoing Email Proxy" off \
-               12 $"Security Settings" off \
-               13 $"Set the main repository (repo mirrors)" off \
-               14 $"Change the name of this system" off \
-               15 $"Set a static local IP address" off \
-               16 $"Wifi menu" off \
-               17 $"Check for updates" off \
-               18 $"Power off the system" off \
-               19 $"Restart the system" off \
-               20 $"Exit" on 2> $data
+               12 $"Extra email domains" off \
+               13 $"Security Settings" off \
+               14 $"Set the main repository (repo mirrors)" off \
+               15 $"Change the name of this system" off \
+               16 $"Set a static local IP address" off \
+               17 $"Wifi menu" off \
+               18 $"Check for updates" off \
+               19 $"Power off the system" off \
+               20 $"Restart the system" off \
+               21 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
@@ -1805,16 +1838,17 @@ function menu_top_level {
             8) ping_enable_disable;;
             9) menu_users;;
             10) menu_email;;
-            11) smtp_proxy;;
-            12) security_settings;;
-            13) set_main_repo;;
-            14) change_system_name;;
-            15) set_static_IP;;
-            16) menu_wifi;;
-            17) check_for_updates;;
-            18) shut_down_system;;
-            19) restart_system;;
-            20) break;;
+            11) email_smtp_proxy;;
+            12) email_extra_domains;;
+            13) security_settings;;
+            14) set_main_repo;;
+            15) change_system_name;;
+            16) set_static_IP;;
+            17) menu_wifi;;
+            18) check_for_updates;;
+            19) shut_down_system;;
+            20) restart_system;;
+            21) break;;
         esac
     done
 }
