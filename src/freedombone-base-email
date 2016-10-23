@@ -804,7 +804,9 @@ function install_email {
     echo "dc_readhost=''" >> /etc/exim4/update-exim4.conf.conf
     echo "dc_relay_domains=''" >> /etc/exim4/update-exim4.conf.conf
     echo "dc_minimaldns='false'" >> /etc/exim4/update-exim4.conf.conf
-    RELAY_NETS='192.168.1.0/24'
+    IPv4_address=$(get_ipv4_address)
+    IPv4_address_base=$(echo "$IPv4_address" | awk -F '.' '{print $1"."$2"."$3}')
+    RELAY_NETS="${IPv4_address_base}.0/24"
     if [ $LOCAL_NETWORK_STATIC_IP_ADDRESS ]; then
         RELAY_NETS=$(echo $LOCAL_NETWORK_STATIC_IP_ADDRESS | awk -F '.' '{print $1 "." $2 "." $3 ".0/24"}')
     fi
@@ -832,9 +834,9 @@ function install_email {
 
     sed -i '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template
     if ! grep -q "MAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template; then
-        sed -i "/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME = $DEFAULT_DOMAIN_NAME\nMAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template
+        sed -i "/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME =\nMAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template
     else
-        sed -i "s|MAIN_HARDCODE_PRIMARY_HOSTNAME =.*|MAIN_HARDCODE_PRIMARY_HOSTNAME = $DEFAULT_DOMAIN_NAME|g" /etc/exim4/exim4.conf.template
+        sed -i "s|MAIN_HARDCODE_PRIMARY_HOSTNAME =.*|MAIN_HARDCODE_PRIMARY_HOSTNAME =|g" /etc/exim4/exim4.conf.template
     fi
     sed -i "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4
     if ! grep -q "tls_on_connect_ports=465" /etc/exim4/exim4.conf.template; then
@@ -847,6 +849,9 @@ function install_email {
     adduser $MY_USERNAME sasl
     addgroup Debian-exim sasl
     systemctl restart exim4
+    if [ ! -d /etc/skel/log ]; then
+        mkdir -m 700 /etc/skel/log
+    fi
     if [ ! -d /etc/skel/Maildir ]; then
         mkdir -m 700 /etc/skel/.mutt
         mkdir -m 700 /etc/skel/Maildir
@@ -895,6 +900,14 @@ function install_email {
     configure_firewall_for_email
     dpkg-reconfigure --frontend noninteractive exim4-config
     mark_completed $FUNCNAME
+}
+
+function email_change_relay {
+    curr_ip_address="$1"
+    email_relay_base=$(echo "$curr_ip_address" | awk -F '.' '{print $1"."$2"."$3}')
+    RELAY_NETS="${email_relay_base}.0/24"
+    sed -i "s|dc_relay_nets=.*|dc_relay_nets='$RELAY_NETS'|g" /etc/exim4/update-exim4.conf.conf
+    dpkg-reconfigure --frontend noninteractive exim4-config
 }
 
 function create_procmail {
@@ -1094,7 +1107,7 @@ function spam_filtering {
     # this must be accessible by root
     chown -R $MY_USERNAME:root /home/$MY_USERNAME/.spamassassin
 
-    systemctl restart spamassassin
+    systemctl start spamassassin
     systemctl restart exim4
     systemctl restart cron
 
