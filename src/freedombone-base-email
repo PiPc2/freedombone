@@ -663,14 +663,7 @@ function remove_email {
     echo ''
 }
 
-function install_email {
-    if [[ $SYSTEM_TYPE == "mesh"* ]]; then
-        return
-    fi
-    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
-        return
-    fi
-
+function install_email_with_tor {
     apt-get -y remove postfix
     apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail xinetd
 
@@ -900,7 +893,115 @@ function install_email {
     function_check configure_firewall_for_email
     configure_firewall_for_email
     dpkg-reconfigure --frontend noninteractive exim4-config
-    mark_completed $FUNCNAME
+}
+
+function install_email_basic {
+    apt-get -y remove postfix
+    apt-get -y install exim4 sasl2-bin swaks libnet-ssleay-perl procmail
+
+    if [ ! -d /etc/exim4 ]; then
+        echo $"ERROR: Exim does not appear to have installed. $CHECK_MESSAGE"
+        exit 48
+    fi
+
+    # configure for Maildir format
+    sed -i 's/MAIL_DIR/#MAIL_DIR/g' /etc/login.defs
+    sed -i 's|#MAIL_FILE.*|MAIL_FILE Maildir/|g' /etc/login.defs
+
+    if ! grep -q "export MAIL" /etc/profile; then
+        echo 'export MAIL=~/Maildir' >> /etc/profile
+    fi
+
+    sed -i 's|pam_mail.so standard|pam_mail.so dir=~/Maildir standard|g' /etc/pam.d/login
+    sed -i 's|pam_mail.so standard noenv|pam_mail.so dir=~/Maildir standard|g' /etc/pam.d/sshd
+    sed -i 's|pam_mail.so nopen|pam_mail.so dir=~/Maildir nopen|g' /etc/pam.d/su
+
+    echo "dc_eximconfig_configtype='internet'" > /etc/exim4/update-exim4.conf.conf
+    echo "dc_other_hostnames='${DEFAULT_DOMAIN_NAME}'" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_local_interfaces=''" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_readhost=''" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_relay_domains=''" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_minimaldns='false'" >> /etc/exim4/update-exim4.conf.conf
+    IPv4_address=$(get_ipv4_address)
+    IPv4_address_base=$(echo "$IPv4_address" | awk -F '.' '{print $1"."$2"."$3}')
+    RELAY_NETS="${IPv4_address_base}.0/24"
+    if [ $LOCAL_NETWORK_STATIC_IP_ADDRESS ]; then
+        RELAY_NETS=$(echo $LOCAL_NETWORK_STATIC_IP_ADDRESS | awk -F '.' '{print $1 "." $2 "." $3 ".0/24"}')
+    fi
+    echo "dc_relay_nets='$RELAY_NETS'" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_smarthost=''" >> /etc/exim4/update-exim4.conf.conf
+    echo "CFILEMODE='644'" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_use_split_config='false'" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_hide_mailname=''" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_mailname_in_oh='true'" >> /etc/exim4/update-exim4.conf.conf
+    echo "dc_localdelivery='maildir_home'" >> /etc/exim4/update-exim4.conf.conf
+    update-exim4.conf
+    sed -i "s/START=no/START=yes/g" /etc/default/saslauthd
+    systemctl start saslauthd
+
+    # make a tls certificate for email
+    if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
+        ${PROJECT_NAME}-addcert -h exim --dhkey $DH_KEYLENGTH
+        check_certificates exim
+    fi
+    cp /etc/ssl/private/exim.key /etc/exim4
+    cp /etc/ssl/certs/exim.crt /etc/exim4
+    cp /etc/ssl/certs/exim.dhparam /etc/exim4
+    chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+    chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+
+    if [ ! -d /etc/skel/log ]; then
+        mkdir -m 700 /etc/skel/log
+    fi
+    if [ ! -d /etc/skel/Maildir ]; then
+        mkdir -m 700 /etc/skel/.mutt
+        mkdir -m 700 /etc/skel/Maildir
+        mkdir -m 700 /etc/skel/Maildir/new
+        mkdir -m 700 /etc/skel/Maildir/cur
+        mkdir -m 700 /etc/skel/Maildir/Sent
+        mkdir -m 700 /etc/skel/Maildir/Sent/tmp
+        mkdir -m 700 /etc/skel/Maildir/Sent/cur
+        mkdir -m 700 /etc/skel/Maildir/Sent/new
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam/cur
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam/new
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam/tmp
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham/cur
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham/new
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham/tmp
+        ln -s /etc/skel/Maildir/.learn-spam /etc/skel/Maildir/spam
+        ln -s /etc/skel/Maildir/.learn-ham /etc/skel/Maildir/ham
+    fi
+
+    if [ ! -d /home/$MY_USERNAME/Maildir ]; then
+        mkdir -m 700 /home/$MY_USERNAME/.mutt
+        mkdir -m 700 /home/$MY_USERNAME/Maildir
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/tmp
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/tmp
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/tmp
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/tmp
+        ln -s /home/$MY_USERNAME/Maildir/.learn-spam /home/$MY_USERNAME/Maildir/spam
+        ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
+        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
+    fi
+
+    function_check configure_firewall_for_email
+    configure_firewall_for_email
+
+    dpkg-reconfigure --frontend noninteractive exim4-config
+    systemctl restart exim4
 }
 
 function email_change_relay {
@@ -1507,6 +1608,20 @@ function refresh_gpg_keys {
     else
         sed -i "s|root $REFRESH_GPG_KEYS_SCRIPT.*|root cronic $REFRESH_GPG_KEYS_SCRIPT|g" /etc/crontab
     fi
+}
+
+function install_email {
+    if [[ $SYSTEM_TYPE == "mesh"* ]]; then
+        return
+    fi
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    install_email_basic
+    #install_email_with_tor
+
+    mark_completed $FUNCNAME
 }
 
 # NOTE: deliberately no exit 0
