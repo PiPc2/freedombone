@@ -47,6 +47,7 @@ WIFI_NETWORKS_FILE=~/${PROJECT_NAME}-wifi.cfg
 NETWORKS_INTERACTIVE=
 WIFI_DISABLE=
 WAIT_SEC=
+WIFI_MAX_RETRIES=5
 
 IFACE=
 IFACE_SECONDARY=
@@ -69,6 +70,7 @@ function show_help {
     echo $'     --networks [filename]         File containing wifi networks'
     echo $'     --createnetworks [filename]   Create file containing wifi networks'
     echo $'     --disable [yes/no]            Disable wifi'
+    echo $'     --retries [number]            Maximum number of retries'
     echo ''
     exit 0
 }
@@ -98,6 +100,10 @@ do
         -s|--ssid)
             shift
             WIFI_SSID=${1}
+            ;;
+        --retries)
+            shift
+            WIFI_MAX_RETRIES=${1}
             ;;
         -p|--pass|--passphrase)
             shift
@@ -160,9 +166,34 @@ if [ ${WIFI_DISABLE} ]; then
 fi
 
 if [ -f ${WIFI_NETWORKS_FILE} ]; then
-    networks_from_file
-    wpa_cli status
-    exit 0
+    wifi_established=
+    wifi_retry_ctr=0
+    while [ ! $wifi_established ]; do
+        if [ ${wifi_retry_ctr} -gt 0 ]; then
+            wpa_action ${WIFI_INTERFACE} stop
+            wpa_cli -i ${WIFI_INTERFACE} terminate
+        fi
+        networks_from_file
+        # allow some time for a connection to be established
+        sleep 5
+        # has it worked?
+        if [[ $(wifi_is_running) != "0" ]]; then
+            wifi_established=1
+            break
+        fi
+        # has the limit of retries been reached?
+        wifi_retry_ctr=$((wifi_retry_ctr+1))
+        if [ ${wifi_retry_ctr} -ge ${WIFI_MAX_RETRIES} ]; then
+            break
+        fi
+    done
+    if [ $wifi_established ]; then
+        wpa_cli status
+        exit 0
+    else
+        echo $'Wifi could not be started'
+        exit 4
+    fi
 fi
 
 if [ ! ${WIFI_SSID} ]; then
