@@ -45,6 +45,10 @@ REMOVED_APPS_FILE=/root/removed
 
 INSTALLED_APPS_LIST=/usr/share/${PROJECT_NAME}/installed.txt
 
+# keep a list of which users have been added to which apps
+# so that when a new app is added existing users can be added
+APP_USERS_FILE=$HOME/app_users.txt
+
 if [ ! $COMPLETION_FILE ]; then
     COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 fi
@@ -385,6 +389,11 @@ function remove_apps {
     do
         if [[ ${APPS_INSTALLED[$app_index]} == "1" ]]; then
             if [[ ${APPS_CHOSEN[$app_index]} == "0" ]]; then
+                echo $"Removing users for application: ${a}"
+
+                function_check remove_users_for_app
+                remove_users_for_app ${a}
+
                 echo $"Removing application: ${a}"
 
                 function_check app_load_variables
@@ -423,6 +432,76 @@ function install_apps_interactive {
     echo $"Interactive settings complete"
 }
 
+function user_added_to_app {
+    user_name="$1"
+    app_name="$2"
+
+    if [[ $(is_valid_user "$user_name") == "1" ]]; then
+        if [[ $(function_exists add_user_${app_name}) == "1" ]]; then
+            if grep -Fxq "${app_name}_${user_name}" $APP_USERS_FILE; then
+                echo "1"
+                return
+            fi
+        fi
+    fi
+    echo "0"
+}
+
+function add_users_after_install {
+    app_name="$1"
+
+    read_config_param MY_USERNAME
+
+    # ensure a minimum password length
+    if [ ! $MINIMUM_PASSWORD_LENGTH ]; then
+        MINIMUM_PASSWORD_LENGTH=20
+    fi
+    if [ ${#MINIMUM_PASSWORD_LENGTH} -lt 20 ]; then
+        MINIMUM_PASSWORD_LENGTH=20
+    fi
+
+    ADMIN_USERNAME=$(get_completion_param "Admin user")
+    if [ ! $ADMIN_USERNAME ]; then
+        ADMIN_USERNAME=$MY_USERNAME
+    fi
+
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ "$USERNAME" != "$ADMIN_USERNAME" ]]; then
+            if [[ $(user_added_to_app "${USERNAME}" "${app_name}") == "0" ]]; then
+                valstr=$"Login for user ${USERNAME}="
+                if grep -q "${valstr}" /home/${ADMIN_USERNAME}/README; then
+                    app_password=$(cat /home/${ADMIN_USERNAME}/README | grep "${valstr}" | head -n 1 | awk -F '=' '{print $2}')
+                else
+                    app_password="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+                    echo "${valstr}${app_password}" >> /home/${ADMIN_USERNAME}/README
+                fi
+                add_user_${app_name} "${USERNAME}" "${app_password}"
+                echo "${app_name}_${USERNAME}" >> $APP_USERS_FILE
+                chown ${ADMIN_USERNAME}:${ADMIN_USERNAME} /home/${ADMIN_USERNAME}/README
+            fi
+        fi
+    done
+}
+
+function remove_users_for_app {
+    app_name="$1"
+
+    read_config_param MY_USERNAME
+
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ "$USERNAME" != "$MY_USERNAME" ]]; then
+            if [[ $(user_added_to_app "${USERNAME}" "${app_name}") == "1" ]]; then
+                if [[ $(function_exists remove_user_${app_name}) == "1" ]]; then
+                    remove_user_${app_name} "${USERNAME}"
+                fi
+                sed -i "/${app_name}_${USERNAME}/d" $APP_USERS_FILE
+            fi
+        fi
+    done
+}
+
 function install_apps {
     is_interactive=$1
 
@@ -459,6 +538,9 @@ function install_apps {
                             function_check app_save_variables
                             app_save_variables ${a}
 
+                            function_check add_users_after_install
+                            add_users_after_install ${a}
+
                             function_check install_completed
                             install_completed ${a}
                             echo $"${a} was installed from interactive"
@@ -484,6 +566,9 @@ function install_apps {
                             if [ $APP_INSTALLED ]; then
                                 function_check app_save_variables
                                 app_save_variables ${a}
+
+                                function_check add_users_after_install
+                                add_users_after_install ${a}
 
                                 function_check install_completed
                                 install_completed ${a}
