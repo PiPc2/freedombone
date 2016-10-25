@@ -33,8 +33,9 @@ VARIANTS='full full-vim chat'
 IN_DEFAULT_INSTALL=1
 SHOW_ON_ABOUT=1
 
-IRC_PORT=6697
-IRC_ONION_PORT=6697
+IRC_BOUNCER_PORT=6697
+IRC_ONION_PORT=$IRC_BOUNCER_PORT
+IRC_PORT=6698
 
 # An optional password to log into IRC. This applies to all users
 IRC_PASSWORD=
@@ -42,20 +43,93 @@ IRC_PASSWORD=
 irc_variables=(MY_USERNAME
                MY_NAME
                IRC_PORT
+               IRC_BOUNCER_PORT
                IRC_PASSWORD
+               IRC_OPERATOR_PASSWORD
                DEFAULT_DOMAIN_NAME
                INSTALLED_WITHIN_DOCKER
                ONION_ONLY)
 
+function start_irc_bouncer {
+    su -c 'znc -p' - znc
+}
+
+function stop_irc_bouncer {
+    pkill znc
+}
+
+function remove_user_irc_bouncer {
+    remove_username="$1"
+
+    if [ -f /home/znc/.znc/config/znc.conf ]; then
+        stop_irc_bouncer
+        sed -i "/<User ${remove_username}>/,/</User>/d" /home/znc/.znc/config/znc.conf
+        start_irc_bouncer
+    fi
+}
+
 function remove_user_irc {
     remove_username="$1"
 
+    remove_user_irc_bouncer ${remove_username}
     if [ -d /home/${remove_username}/.irssi ]; then
         rm -rf /home/${remove_username}/.irssi
     fi
     if [ -d /home/${remove_username}/irclogs ]; then
         rm -rf /home/${remove_username}/irclogs
     fi
+}
+
+function add_user_irc_bouncer {
+    new_username="$1"
+    new_user_password="$2"
+    is_admin='true'
+    if [ ! $3 ]; then
+        is_admin='false'
+    fi
+
+    read_config_param IRC_PORT
+    read_config_param DEFAULT_DOMAIN_NAME
+
+    stop_irc_bouncer
+
+    new_user_salt_base1="$(create_password 20)"
+    new_user_salt_base2=$(echo "$new_user_salt_base1" | sed "s|#|.|g")
+    new_user_salt=$(echo "$new_user_salt_base2" | sed "s|#|.|g")
+    new_user_hash=$(echo "${new_user_password}${new_user_salt}" | sha256sum)
+    new_user_pass="sha256#${new_user_hash}#${new_user_salt}#"
+
+    echo "<User ${new_username}>" >> /home/znc/.znc/config/znc.conf
+    echo "    Pass       = ${new_user_pass}" >> /home/znc/.znc/config/znc.conf
+    echo "    Admin      = ${is_admin}" >> /home/znc/.znc/config/znc.conf
+    echo "    Nick       = ${new_username}" >> /home/znc/.znc/config/znc.conf
+    echo "    AltNick    = ${new_username}_" >> /home/znc/.znc/config/znc.conf
+    echo "    Ident      = ${new_username}" >> /home/znc/.znc/config/znc.conf
+    echo "    RealName   = ${new_username}" >> /home/znc/.znc/config/znc.conf
+    echo '    Buffer     = 100' >> /home/znc/.znc/config/znc.conf
+    echo '    AutoClearChanBuffer = true' >> /home/znc/.znc/config/znc.conf
+    echo '    ChanModes  = +stn' >> /home/znc/.znc/config/znc.conf
+    echo '' >> /home/znc/.znc/config/znc.conf
+    echo '    LoadModule = chansaver' >> /home/znc/.znc/config/znc.conf
+    echo '    LoadModule = controlpanel' >> /home/znc/.znc/config/znc.conf
+    echo '    LoadModule = perform' >> /home/znc/.znc/config/znc.conf
+    echo '' >> /home/znc/.znc/config/znc.conf
+    echo "    <Network ${PROJECT_NAME}>" >> /home/znc/.znc/config/znc.conf
+    echo '        LoadModule = chansaver' >> /home/znc/.znc/config/znc.conf
+    echo '        LoadModule = keepnick' >> /home/znc/.znc/config/znc.conf
+    echo '        LoadModule = perform' >> /home/znc/.znc/config/znc.conf
+    echo '        LoadModule = simple_away' >> /home/znc/.znc/config/znc.conf
+    echo '' >> /home/znc/.znc/config/znc.conf
+    echo "        Server     = ${DEFAULT_DOMAIN_NAME} +${IRC_PORT}" >> /home/znc/.znc/config/znc.conf
+    echo '' >> /home/znc/.znc/config/znc.conf
+    echo "        <Chan ${PROJECT_NAME}>" >> /home/znc/.znc/config/znc.conf
+    echo '        </Chan>' >> /home/znc/.znc/config/znc.conf
+    echo '    </Network>' >> /home/znc/.znc/config/znc.conf
+    echo '</User>' >> /home/znc/.znc/config/znc.conf
+
+    chown -R znc:znc /home/znc/.znc
+
+    start_irc_bouncer
 }
 
 function add_user_irc {
@@ -128,6 +202,7 @@ function add_user_irc {
 
     chown -R ${new_username}:${new_username} /home/${new_username}/.irssi
 
+    add_user_irc_bouncer "${new_username}" "${IRC_PASSWORD}"
     echo '0'
 }
 
@@ -245,10 +320,10 @@ function remove_irc {
         rm -rf /etc/ngircd
     fi
 
-    iptables -D INPUT -p tcp --dport 1024:65535 --sport ${IRC_PORT} -j ACCEPT
+    iptables -D INPUT -p tcp --dport 1024:65535 --sport ${IRC_BOUNCER_PORT} -j ACCEPT
     function_check save_firewall_settings
     save_firewall_settings
-    firewall_remove ${IRC_PORT} tcp
+    firewall_remove ${IRC_BOUNCER_PORT} tcp
 
     function_check remove_onion_service
     remove_onion_service irc ${IRC_ONION_PORT}
@@ -271,11 +346,11 @@ function configure_firewall_for_irc {
     if [[ ${ONION_ONLY} != "no" ]]; then
         return
     fi
-    iptables -I INPUT -p tcp --dport 1024:65535 --sport ${IRC_PORT} -j ACCEPT
+    iptables -I INPUT -p tcp --dport 1024:65535 --sport ${IRC_BOUNCER_PORT} -j ACCEPT
     function_check save_firewall_settings
     save_firewall_settings
 
-    firewall_add IRC ${IRC_PORT} tcp
+    firewall_add IRC ${IRC_BOUNCER_PORT} tcp
     echo 'configure_firewall_for_irc' >> ${COMPLETION_FILE}
 }
 
@@ -457,9 +532,43 @@ function install_irc_client {
     install_completed irc_client
 }
 
+function install_irc_bouncer {
+    if [[ $(app_is_installed irc_bouncer) == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq install znc
+
+    adduser --disabled-login --gecos 'znc' znc
+
+    mkdir -p /home/znc/.znc/configs
+    mkdir -p /home/znc/.znc/users
+
+    echo 'Version = 1.4' > /home/znc/.znc/configs/znc.conf
+    echo '<Listener l>' >> /home/znc/.znc/configs/znc.conf
+    echo "    Port = $IRC_PORT" >> /home/znc/.znc/configs/znc.conf
+    echo '    IPv4 = true' >> /home/znc/.znc/configs/znc.conf
+    echo '    IPv6 = true' >> /home/znc/.znc/configs/znc.conf
+    echo '    SSL = true' >> /home/znc/.znc/configs/znc.conf
+    echo '</Listener>' >> /home/znc/.znc/configs/znc.conf
+
+    chown -R znc:znc /home/znc/.znc
+
+    # certificate for use with SSL
+    start_irc_bouncer
+
+    function_check cron_add_mins
+    cron_add_mins 10 "/usr/bin/znc 2> /dev/null" znc
+
+    add_user_irc_bouncer "${MY_USERNAME}" "${IRC_PASSWORD}" true
+
+    install_completed irc_bouncer
+}
+
 function install_irc {
     install_irc_server
     install_irc_client
+    install_irc_bouncer
     APP_INSTALLED=1
 }
 
