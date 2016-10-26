@@ -46,7 +46,8 @@ xmpp_variables=(ONION_ONLY
                 XMPP_ECC_CURVE
                 XMPP_ECC_CURVE
                 MY_USERNAME
-                DEFAULT_DOMAIN_NAME)
+                DEFAULT_DOMAIN_NAME
+                XMPP_DOMAIN_CODE)
 
 function remove_user_xmpp {
     remove_username="$1"
@@ -312,7 +313,7 @@ function install_xmpp_main {
 
     if [ ! -d /etc/prosody ]; then
         echo $"ERROR: prosody does not appear to have installed. $CHECK_MESSAGE"
-        exit 52
+        exit 52367
     fi
 
     # obtain the prosody modules
@@ -331,18 +332,29 @@ function install_xmpp_main {
     fi
 
     # create a certificate
-    if [ ! -f /etc/ssl/certs/xmpp.dhparam ]; then
-        ${PROJECT_NAME}-addcert -h xmpp --dhkey $DH_KEYLENGTH
-        check_certificates xmpp
+    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        if [ ! -f /etc/ssl/certs/xmpp.dhparam ]; then
+            ${PROJECT_NAME}-addcert -h xmpp --dhkey $DH_KEYLENGTH
+            check_certificates xmpp
+        fi
     fi
     chown prosody:prosody /etc/ssl/private/xmpp.key
     chown prosody:prosody /etc/ssl/certs/xmpp.*
     cp -a /etc/prosody/conf.avail/example.com.cfg.lua /etc/prosody/conf.avail/xmpp.cfg.lua
 
-    sed -i 's|/etc/prosody/certs/example.com.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/conf.avail/xmpp.cfg.lua
-    sed -i 's|/etc/prosody/certs/example.com.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+    if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        sed -i "s|/etc/prosody/certs/example.com.key|/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/prosody/conf.avail/xmpp.cfg.lua
+        sed -i "s|/etc/prosody/certs/example.com.crt|/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/prosody/conf.avail/xmpp.cfg.lua
+    else
+        sed -i 's|/etc/prosody/certs/example.com.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+        sed -i 's|/etc/prosody/certs/example.com.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+    fi
     if ! grep -q "xmpp.dhparam" /etc/prosody/conf.avail/xmpp.cfg.lua; then
-        sed -i '/certificate =/a\        dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/conf.avail/xmpp.cfg.lua
+        if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam ]; then
+            sed -i "/certificate =/a\        dhparam = \"/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam\";" /etc/prosody/conf.avail/xmpp.cfg.lua
+        else
+            sed -i '/certificate =/a\        dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/conf.avail/xmpp.cfg.lua
+        fi
     fi
     if ! grep -q 'options = {"no_sslv2", "no_sslv3" }' /etc/prosody/conf.avail/xmpp.cfg.lua; then
         sed -i '/certificate =/a\        options = {"no_sslv2", "no_sslv3" };' /etc/prosody/conf.avail/xmpp.cfg.lua
@@ -386,10 +398,19 @@ function install_xmpp_main {
     fi
     ln -sf /etc/prosody/conf.avail/xmpp.cfg.lua /etc/prosody/conf.d/xmpp.cfg.lua
 
-    sed -i 's|/etc/prosody/certs/localhost.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/prosody.cfg.lua
-    sed -i 's|/etc/prosody/certs/localhost.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/prosody.cfg.lua
+    if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        sed -i "s|/etc/prosody/certs/localhost.key|/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/prosody/prosody.cfg.lua
+        sed -i "s|/etc/prosody/certs/localhost.crt|/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/prosody/prosody.cfg.lua
+    else
+        sed -i 's|/etc/prosody/certs/localhost.key|/etc/ssl/private/xmpp.key|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|/etc/prosody/certs/localhost.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/prosody.cfg.lua
+    fi
     if ! grep -q "xmpp.dhparam" /etc/prosody/prosody.cfg.lua; then
-        sed -i '/certificate =/a\    dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/prosody.cfg.lua
+        if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam ]; then
+            sed -i "/certificate =/a\    dhparam = \"/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam\";" /etc/prosody/prosody.cfg.lua
+        else
+            sed -i '/certificate =/a\    dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/prosody.cfg.lua
+        fi
     fi
     if ! grep -q 'options = {"no_sslv2", "no_sslv3" }' /etc/prosody/prosody.cfg.lua; then
         sed -i '/certificate =/a\    options = {"no_sslv2", "no_sslv3" };' /etc/prosody/prosody.cfg.lua
@@ -413,8 +434,14 @@ function install_xmpp_main {
     sed -i 's/--"bosh";/"bosh";/g' /etc/prosody/prosody.cfg.lua
     sed -i 's/authentication = "internal_plain"/authentication = "internal_hashed"/g' /etc/prosody/prosody.cfg.lua
     sed -i 's/enabled = false -- Remove this line to enable this host//g' /etc/prosody/prosody.cfg.lua
-    sed -i 's|key = "/etc/prosody/certs/example.com.key"|key = "/etc/ssl/private/xmpp.key"|g' /etc/prosody/prosody.cfg.lua
-    sed -i 's|certificate = "/etc/prosody/certs/example.com.crt"|certificate = "/etc/ssl/certs/xmpp.crt"|g' /etc/prosody/prosody.cfg.lua
+    if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        # use an existing cert if possible
+        sed -i "s|key = \"/etc/prosody/certs/example.com.key\"|key = \"/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key\"|g" /etc/prosody/prosody.cfg.lua
+        sed -i "s|certificate = \"/etc/prosody/certs/example.com.crt\"|certificate = \"/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem\"|g" /etc/prosody/prosody.cfg.lua
+    else
+        sed -i 's|key = "/etc/prosody/certs/example.com.key"|key = "/etc/ssl/private/xmpp.key"|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|certificate = "/etc/prosody/certs/example.com.crt"|certificate = "/etc/ssl/certs/xmpp.crt"|g' /etc/prosody/prosody.cfg.lua
+    fi
     sed -i "s/example.com/$DEFAULT_DOMAIN_NAME/g" /etc/prosody/prosody.cfg.lua
 
     systemctl restart prosody
