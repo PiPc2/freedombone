@@ -187,6 +187,43 @@ function check_certificates {
     fi
 }
 
+function cert_exists {
+    cert_type='dhparam'
+    if [ $2 ]; then
+        cert_type="$2"
+    fi
+    if [ -f /etc/ssl/certs/${1}.${cert_type} ]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+function create_self_signed_cert {
+    ${PROJECT_NAME}-addcert -h ${SITE_DOMAIN_NAME} --dhkey ${DH_KEYLENGTH}
+    function_check check_certificates
+    check_certificates ${SITE_DOMAIN_NAME}
+}
+
+function create_letsencrypt_cert {
+    ${PROJECT_NAME}-addcert -e ${SITE_DOMAIN_NAME} -s ${LETSENCRYPT_SERVER} --dhkey ${DH_KEYLENGTH} --email ${MY_EMAIL_ADDRESS}
+    if [ ! "$?" = "0" ]; then
+        if [[ ${NO_SELF_SIGNED} == 'no' ]]; then
+            echo $"Lets Encrypt failed for ${SITE_DOMAIN_NAME}, so try making a self-signed cert"
+            ${PROJECT_NAME}-addcert -h ${SITE_DOMAIN_NAME} --dhkey ${DH_KEYLENGTH}
+            function_check check_certificates
+            check_certificates ${SITE_DOMAIN_NAME}
+        else
+            echo $"Lets Encrypt failed for $SITE_DOMAIN_NAME"
+            exit 682529
+        fi
+        return
+    fi
+
+    function_check check_certificates
+    check_certificates ${SITE_DOMAIN_NAME} 'yes'
+}
+
 function create_site_certificate {
     SITE_DOMAIN_NAME="$1"
 
@@ -197,26 +234,16 @@ function create_site_certificate {
     fi
 
     if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/${SITE_DOMAIN_NAME}.dhparam ]; then
+        if [[ $(cert_exists) == "0" ]]; then
             if [[ $LETSENCRYPT_ENABLED != "yes" ]]; then
-                ${PROJECT_NAME}-addcert -h ${SITE_DOMAIN_NAME} --dhkey ${DH_KEYLENGTH}
-                function_check check_certificates
-                check_certificates ${SITE_DOMAIN_NAME}
+                create_self_signed_cert
             else
-                ${PROJECT_NAME}-addcert -e ${SITE_DOMAIN_NAME} -s ${LETSENCRYPT_SERVER} --dhkey ${DH_KEYLENGTH} --email ${MY_EMAIL_ADDRESS}
-                if [ ! "$?" = "0" ]; then
-                    if [[ ${NO_SELF_SIGNED} == 'no' ]]; then
-                        echo $"Lets Encrypt failed for ${SITE_DOMAIN_NAME}, so try making a self-signed cert"
-                        ${PROJECT_NAME}-addcert -h ${SITE_DOMAIN_NAME} --dhkey ${DH_KEYLENGTH}
-                        function_check check_certificates
-                        check_certificates ${SITE_DOMAIN_NAME}
-                    else
-                        echo $"Lets Encrypt failed for $SITE_DOMAIN_NAME"
-                        exit 682529
-                    fi
-                else
-                    function_check check_certificates
-                    check_certificates ${SITE_DOMAIN_NAME} 'yes'
+                create_letsencrypt_cert
+            fi
+        else
+            if [[ $LETSENCRYPT_ENABLED == "yes" ]]; then
+                if [[ $(cert_exists pem) == "0" ]]; then
+                    create_letsencrypt_cert
                 fi
             fi
         fi
