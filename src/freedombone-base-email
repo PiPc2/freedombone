@@ -1218,24 +1218,44 @@ function configure_imap {
         exit 48
     fi
 
-    if [ ! -f /etc/ssl/certs/dovecot.dhparam ]; then
-        ${PROJECT_NAME}-addcert -h dovecot --dhkey $DH_KEYLENGTH
-        check_certificates dovecot
+    if [[ $ONION_ONLY == 'no' ]]; then
+        # obtain a cert for the default domain
+        if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME} pem) == "0" ]]; then
+            echo $'Obtaining certificate for the main domain'
+            create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
+        fi
     fi
-    chown root:dovecot /etc/ssl/certs/dovecot.*
-    chown root:dovecot /etc/ssl/private/dovecot.*
+
+    if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME} pem) == "0" ]]; then
+        if [[ $(cert_exists dovecot) == "0" ]]; then
+            ${PROJECT_NAME}-addcert -h dovecot --dhkey $DH_KEYLENGTH
+            check_certificates dovecot
+        fi
+    fi
+
+    groupadd default
+    usermod -g default dovecot
+
+    chown root:default /etc/ssl/certs/dovecot.*
+    chown root:default /etc/ssl/private/dovecot.*
+    chown root:default /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.*
+    chown root:default /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.*
 
     if [ ! -f /etc/dovecot/conf.d/10-ssl.conf ]; then
         echo $'Unable to find /etc/dovecot/conf.d/10-ssl.conf'
         exit 83629
     fi
     sed -i 's|#ssl =.*|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
-    sed -i 's|ssl = no|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
-    sed -i 's|ssl = yes|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
-    sed -i 's|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/dovecot.crt|g' /etc/dovecot/conf.d/10-ssl.conf
-    sed -i 's|ssl_cert =.*|ssl_cert = </etc/ssl/certs/dovecot.crt|g' /etc/dovecot/conf.d/10-ssl.conf
-    sed -i 's|#ssl_key =.*|ssl_key = </etc/ssl/private/dovecot.key|g' /etc/dovecot/conf.d/10-ssl.conf
-    sed -i 's|ssl_key =.*|ssl_key = </etc/ssl/private/dovecot.key|g' /etc/dovecot/conf.d/10-ssl.conf
+    sed -i 's|ssl =.*|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
+    if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME} pem) == "1" ]]; then
+        sed -i "s|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
+        sed -i "s|ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
+    else
+        sed -i "s|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt|g" /etc/dovecot/conf.d/10-ssl.conf
+        sed -i "s|ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt|g" /etc/dovecot/conf.d/10-ssl.conf
+    fi
+    sed -i "s|#ssl_key =.*|ssl_key = </etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/dovecot/conf.d/10-ssl.conf
+    sed -i "s|ssl_key =.*|ssl_key = </etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/dovecot/conf.d/10-ssl.conf
     sed -i 's|#ssl_dh_parameters_length.*|ssl_dh_parameters_length = 2048|g' /etc/dovecot/conf.d/10-ssl.conf
     sed -i 's/#ssl_prefer_server_ciphers.*/ssl_prefer_server_ciphers = yes/g' /etc/dovecot/conf.d/10-ssl.conf
     sed -i "s|#ssl_protocols =.*|ssl_protocols = '$SSL_PROTOCOLS'|g" /etc/dovecot/conf.d/10-ssl.conf
