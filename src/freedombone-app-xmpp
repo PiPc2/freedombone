@@ -310,7 +310,7 @@ function install_xmpp_main {
     fi
 
     # obtain a cert for the default domain
-    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+    if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME} pem) == "0" ]]; then
         echo $'Obtaining certificate for the main domain'
         create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
     fi
@@ -339,9 +339,9 @@ function install_xmpp_main {
     fi
 
     # create a certificate
-    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
-        if [ ! -f /etc/ssl/certs/xmpp.dhparam ]; then
-            ${PROJECT_NAME}-addcert -h xmpp --dhkey $DH_KEYLENGTH
+    if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME} pem) == "0" ]]; then
+        if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME} xmpp) == "0" ]]; then
+            ${PROJECT_NAME}-addcert -h xmpp --dhkey ${DH_KEYLENGTH}
             check_certificates xmpp
         fi
     fi
@@ -349,7 +349,7 @@ function install_xmpp_main {
     chown prosody:prosody /etc/ssl/certs/xmpp.*
     cp -a /etc/prosody/conf.avail/example.com.cfg.lua /etc/prosody/conf.avail/xmpp.cfg.lua
 
-    if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+    if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME} pem) == "1" ]]; then
         sed -i "s|/etc/prosody/certs/example.com.key|/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/prosody/conf.avail/xmpp.cfg.lua
         sed -i "s|/etc/prosody/certs/example.com.crt|/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/prosody/conf.avail/xmpp.cfg.lua
     else
@@ -357,7 +357,7 @@ function install_xmpp_main {
         sed -i 's|/etc/prosody/certs/example.com.crt|/etc/ssl/certs/xmpp.crt|g' /etc/prosody/conf.avail/xmpp.cfg.lua
     fi
     if ! grep -q "xmpp.dhparam" /etc/prosody/conf.avail/xmpp.cfg.lua; then
-        if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam ]; then
+        if [[ $(cert_exists ${DEFAULT_DOMAIN_NAME}) == "1" ]]; then
             sed -i "/certificate =/a\        dhparam = \"/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam\";" /etc/prosody/conf.avail/xmpp.cfg.lua
         else
             sed -i '/certificate =/a\        dhparam = "/etc/ssl/certs/xmpp.dhparam";' /etc/prosody/conf.avail/xmpp.cfg.lua
@@ -450,6 +450,20 @@ function install_xmpp_main {
         sed -i 's|certificate = "/etc/prosody/certs/example.com.crt"|certificate = "/etc/ssl/certs/xmpp.crt"|g' /etc/prosody/prosody.cfg.lua
     fi
     sed -i "s/example.com/$DEFAULT_DOMAIN_NAME/g" /etc/prosody/prosody.cfg.lua
+
+    if [ $XMPP_DOMAIN_CODE ]; then
+        if [ ${#XMPP_DOMAIN_CODE} -gt 0 ]; then
+            if [[ $(cert_exists chat.${DEFAULT_DOMAIN_NAME} pem) == "1" ]]; then
+                sed -i 's|--Component "conference.|Component "chat.|g' /etc/prosody/prosody.cfg.lua
+            fi
+            if [[ $(cert_exists xmpp.${DEFAULT_DOMAIN_NAME} pem) == "1" ]]; then
+                sed -i 's|--Component "conference.|Component "xmpp.|g' /etc/prosody/prosody.cfg.lua
+            fi
+            if [[ $(cert_exists conference.${DEFAULT_DOMAIN_NAME} pem) == "1" ]]; then
+                sed -i 's|--Component "conference.|Component "conference.|g' /etc/prosody/prosody.cfg.lua
+            fi
+        fi
+    fi
 
     systemctl restart prosody
     touch /home/$MY_USERNAME/README
