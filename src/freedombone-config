@@ -251,52 +251,6 @@ function choose_default_domain_name {
     save_configuration_values
 }
 
-function choose_static_ip {
-    if [[ $MINIMAL_INSTALL == "no" && $ONION_ONLY == "no" ]]; then
-        SET_STATIC_IP="no"
-        dialog --title $"Static local IP address" \
-               --backtitle $"Freedombone Configuration" \
-               --defaultno \
-               --yesno $"\nDo you want to set a static local IP address for this system?\n\nFor example, 192.168.1.10" 10 60
-        sel=$?
-        case $sel in
-            0) SET_STATIC_IP="yes";;
-            255) exit 1;;
-        esac
-
-        if [[ $SET_STATIC_IP == "yes" ]]; then
-            if [ ! $LOCAL_NETWORK_STATIC_IP_ADDRESS ]; then
-                LOCAL_NETWORK_STATIC_IP_ADDRESS=$(grep 'LOCAL_NETWORK_STATIC_IP_ADDRESS' temp.cfg | awk -F '=' '{print $2}')
-                if [ ! $LOCAL_NETWORK_STATIC_IP_ADDRESS ]; then
-                    LOCAL_NETWORK_STATIC_IP_ADDRESS='192.168..'
-                fi
-            fi
-            if [ ! $ROUTER_IP_ADDRESS ]; then
-                ROUTER_IP_ADDRESS=$(grep 'ROUTER_IP_ADDRESS' temp.cfg | awk -F '=' '{print $2}')
-                if [ ! $ROUTER_IP_ADDRESS ]; then
-                    ROUTER_IP_ADDRESS='192.168..'
-                fi
-            fi
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            dialog --backtitle $"Freedombone Configuration" \
-                   --title $"Local Network Configuration" \
-                   --form $"\nPlease enter the IP addresses:" 11 55 3 \
-                   $"This system:" 1 1 "$LOCAL_NETWORK_STATIC_IP_ADDRESS" 1 16 16 15 \
-                   $"Internet router:" 2 1 "$ROUTER_IP_ADDRESS" 2 16 16 15 \
-                   2> $data
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            LOCAL_NETWORK_STATIC_IP_ADDRESS=$(cat $data | sed -n 1p)
-            ROUTER_IP_ADDRESS=$(cat $data | sed -n 2p)
-            save_configuration_values
-        fi
-    fi
-}
-
 function choose_dynamic_dns {
     if [[ $SYSTEM_TYPE != "mesh"* && $ONION_ONLY == "no" ]]; then
 
@@ -659,31 +613,6 @@ function choose_social_key_management {
     fi
 }
 
-function choose_beaglebone_options {
-    if [[ $MINIMAL_INSTALL == "no" ]]; then
-        if [[ $(grep "INSTALLING_ON_BBB" temp.cfg | awk -F '=' '{print $2}') == "yes" ]]; then
-            dialog --title $"Install Target" \
-                   --backtitle $"Freedombone Configuration" \
-                   --yesno $"\nAre you installing onto a Beaglebone Black?" 7 60
-        else
-            dialog --title $"Install Target" \
-                   --backtitle $"Freedombone Configuration" \
-                   --defaultno \
-                   --yesno $"\nAre you installing onto a Beaglebone Black?" 7 60
-        fi
-        sel=$?
-        case $sel in
-            0) INSTALLING_ON_BBB="yes";;
-            1) INSTALLING_ON_BBB="no";;
-            255) exit 1;;
-        esac
-        if [[ $INSTALLING_ON_BBB == "yes" ]]; then
-            USB_DRIVE=/dev/sda1
-        fi
-        save_configuration_values
-    fi
-}
-
 function choose_username {
     if [ -d /home/$GENERIC_IMAGE_USERNAME ]; then
         if [ ! -f $IMAGE_PASSWORD_FILE ]; then
@@ -874,83 +803,6 @@ do
     esac
     shift
 done
-
-# test a domain name to see if it's valid
-function validate_domain_name {
-    # count the number of dots in the domain name
-    dots=${TEST_DOMAIN_NAME//[^.]}
-    no_of_dots=${#dots}
-    if (( no_of_dots > 3 )); then
-        TEST_DOMAIN_NAME="The domain $TEST_DOMAIN_NAME has too many subdomains. It should be of the type w.x.y.z, x.y.z or y.z"
-    fi
-    if (( no_of_dots == 0 )); then
-        TEST_DOMAIN_NAME="The domain $TEST_DOMAIN_NAME has no top level domain. It should be of the type w.x.y.z, x.y.z or y.z"
-    fi
-}
-
-function interactive_gpg_from_remote {
-    REMOTE_SERVERS_LIST=/home/$MY_USERNAME/keyshareservers.txt
-
-    # get a list of remote servers
-    ${PROJECT_NAME}-remote -u $MY_USERNAME -l $REMOTE_SERVERS_LIST -t "Remote server"
-
-    if [ ! -f $REMOTE_SERVERS_LIST ]; then
-        dialog --title $"Encryption keys" --msgbox $'Error obtaining server list' 6 70
-        return 1
-    fi
-
-    # check the number of entries in the file
-    no_of_servers=$(cat $REMOTE_SERVERS_LIST | wc -l)
-    if (( no_of_servers < 3 )); then
-        dialog --title $"Encryption keys" \
-               --msgbox $'There must be at least three servers to recover the key' 6 70
-        return 2
-    fi
-
-    # try to recover the key from the servers
-    apt-get -yq install libgfshare-bin gnupg
-    ${PROJECT_NAME}-recoverkey -u $MY_USERNAME -l $REMOTE_SERVERS_LIST
-    if [ ! "$?" = "0" ]; then
-        dialog --title $"Encryption keys" --msgbox $'Your key could not be recovered' 6 70
-        return 3
-    fi
-
-    dialog --title $"Encryption keys" --msgbox $'Your key has been recovered' 6 70
-
-    return 0
-}
-
-function interactive_gpg {
-    GPG_CONFIGURED="no"
-    while [[ $GPG_CONFIGURED != "yes" ]]
-    do
-        GPG_CONFIGURED="yes"
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle $"Freedombone Configuration" \
-               --radiolist $"GPG/PGP keys for your system:" 13 70 3 \
-               1 $"Generate new keys (new user)" on \
-               2 $"Import keys from USB drive/s" off \
-               3 $"Retrieve keys from friends servers" off 2> $data
-        sel=$?
-        case $sel in
-            1) exit 1;;
-            255) exit 2;;
-        esac
-        case $(cat $data) in
-            1) if [ -d /home/${MY_USERNAME}/.gnupg ]; then
-                   rm -rf /home/${MY_USERNAME}/.gnupg
-               fi
-               break;;
-            2) interactive_gpg_from_usb
-               break;;
-            3) interactive_gpg_from_remote
-               if [ ! "$?" = "0" ]; then
-                   GPG_CONFIGURED="no"
-               fi;;
-        esac
-    done
-}
 
 function set_main_repo {
     data=$(tempfile 2>/dev/null)
@@ -1207,14 +1059,12 @@ function interactive_config {
     set_main_repo
     choose_username
     choose_full_name
-    choose_beaglebone_options
     choose_social_key_management
     choose_rng
     choose_debian_repo
     choose_dns
     ${PROJECT_NAME}-wifi --networksinteractive $WIFI_NETWORKS_FILE
     choose_dynamic_dns
-    choose_static_ip
     choose_default_domain_name
     choose_email_address
 

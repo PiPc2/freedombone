@@ -163,4 +163,68 @@ function interactive_gpg_from_usb {
     done
 }
 
+function interactive_gpg_from_remote {
+    REMOTE_SERVERS_LIST=/home/$MY_USERNAME/keyshareservers.txt
+
+    # get a list of remote servers
+    ${PROJECT_NAME}-remote -u $MY_USERNAME -l $REMOTE_SERVERS_LIST -t "Remote server"
+
+    if [ ! -f $REMOTE_SERVERS_LIST ]; then
+        dialog --title $"Encryption keys" --msgbox $'Error obtaining server list' 6 70
+        return 1
+    fi
+
+    # check the number of entries in the file
+    no_of_servers=$(cat $REMOTE_SERVERS_LIST | wc -l)
+    if (( no_of_servers < 3 )); then
+        dialog --title $"Encryption keys" \
+               --msgbox $'There must be at least three servers to recover the key' 6 70
+        return 2
+    fi
+
+    # try to recover the key from the servers
+    apt-get -yq install libgfshare-bin gnupg
+    ${PROJECT_NAME}-recoverkey -u $MY_USERNAME -l $REMOTE_SERVERS_LIST
+    if [ ! "$?" = "0" ]; then
+        dialog --title $"Encryption keys" --msgbox $'Your key could not be recovered' 6 70
+        return 3
+    fi
+
+    dialog --title $"Encryption keys" --msgbox $'Your key has been recovered' 6 70
+
+    return 0
+}
+
+function interactive_gpg {
+    GPG_CONFIGURED="no"
+    while [[ $GPG_CONFIGURED != "yes" ]]
+    do
+        GPG_CONFIGURED="yes"
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Configuration" \
+               --radiolist $"GPG/PGP keys for your system:" 13 70 3 \
+               1 $"Generate new keys (new user)" on \
+               2 $"Import keys from USB drive/s" off \
+               3 $"Retrieve keys from friends servers" off 2> $data
+        sel=$?
+        case $sel in
+            1) exit 1;;
+            255) exit 2;;
+        esac
+        case $(cat $data) in
+            1) if [ -d /home/${MY_USERNAME}/.gnupg ]; then
+                   rm -rf /home/${MY_USERNAME}/.gnupg
+               fi
+               break;;
+            2) interactive_gpg_from_usb
+               break;;
+            3) interactive_gpg_from_remote
+               if [ ! "$?" = "0" ]; then
+                   GPG_CONFIGURED="no"
+               fi;;
+        esac
+    done
+}
+
 # NOTE: deliberately there is no "exit 0"
