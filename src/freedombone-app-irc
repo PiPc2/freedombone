@@ -293,8 +293,31 @@ function irc_set_global_password {
                 fi
             done
 
+            read_config_param DEFAULT_DOMAIN_NAME
+            read_config_param IRC_PORT
+            read_config_param MY_USERNAME
+
+            stop_irc_bouncer
+            sleep 2
+
+            # change the hashes. There are multiple users, but since we're using a global
+            # password this doesn't matter
+            ZNC_SALT="$(dd if=/dev/urandom bs=16c count=1 | md5sum | awk -F ' ' '{print $1}' | cut -c1-20)"
+            new_user_hash=$(echo -n "${NEW_IRC_PASSWORD}${ZNC_SALT}" | sha256sum | awk -F ' ' '{print $1}')
+            sed -i "s|Hash = .*|Hash = ${new_user_hash}|g" /home/znc/.znc/configs/znc.conf
+            sed -i "s|Salt = .*|Salt = ${ZNC_SALT}|g" /home/znc/.znc/configs/znc.conf
+
+            # change the server password
+            sed -i "s|Server     = ${DEFAULT_DOMAIN_NAME}.*|Server     = ${DEFAULT_DOMAIN_NAME} ${IRC_PORT} ${NEW_IRC_PASSWORD}|g" /home/znc/.znc/configs/znc.conf
+
+            # Update the password in the readme
+            sed -i "s|IRC login password.*|IRC login password: $NEW_IRC_PASSWORD|g" /home/$MY_USERNAME/README
+
+            write_config_param "IRC_PASSWORD" "$NEW_IRC_PASSWORD"
+
             # restart the daemon for the new password to take effect
             systemctl restart ngircd
+            start_irc_bouncer
 
             dialog --title $"IRC Password" \
                    --msgbox $"The IRC password was changed" 6 40
