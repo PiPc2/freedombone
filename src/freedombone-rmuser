@@ -48,65 +48,72 @@ do
     source $f
 done
 
-MY_USERNAME=$1
+read_config_param MY_USERNAME
 
-if [ ! $MY_USERNAME ]; then
+REMOVE_USERNAME=$1
+
+if [ ! $REMOVE_USERNAME ]; then
     echo $'Please specify a username to remove'
     exit 1
 fi
 
-if [[ $MY_USERNAME == 'git' || $MY_USERNAME == 'mirrors' ]]; then
-    echo $'Cannot remove reserved users'
+if [[ "$REMOVE_USERNAME" == "$MY_USERNAME" ]]; then
+    echo $'You cannot remove the administrator user'
     exit 2
 fi
 
-if [ ! -d /home/$MY_USERNAME ]; then
-    echo $"Home directory does not exist for $MY_USERNAME"
+if [[ $(is_valid_user "$REMOVE_USERNAME") == "0" ]]; then
+    echo $'Cannot remove reserved users'
     exit 3
+fi
+
+if [ ! -d /home/$REMOVE_USERNAME ]; then
+    echo $"Home directory does not exist for $REMOVE_USERNAME"
+    exit 4
 fi
 
 if [ ! -f $COMPLETION_FILE ]; then
     echo $"$COMPLETION_FILE not found"
-    exit 4
+    exit 5
 fi
 
 if ! grep -q "Admin user" $COMPLETION_FILE; then
     echo $"No admin user specified in $COMPLETION_FILE"
-    exit 5
+    exit 6
 fi
 
 ADMIN_USERNAME=$(get_completion_param "Admin user")
 if [ ! $ADMIN_USERNAME ]; then
     echo $"No admin username specified in $COMPLETION_FILE"
-    exit 6
-fi
-
-if [[ $MY_USERNAME == $ADMIN_USERNAME ]]; then
-    echo $"The administrator user cannot be removed"
     exit 7
 fi
 
-echo $'>>> REMOVE USER <<<'
-read -p $"Do you really wish to remove the user '$MY_USERNAME' (y/n) ?" yn
-if [[ $yn != 'y' && $yn != 'Y' && $yn != 'yes' && $yn != 'Yes' && $yn != 'YES' ]]; then
-    echo $"User $MY_USERNAME was not removed"
+if [[ $REMOVE_USERNAME == $ADMIN_USERNAME ]]; then
+    echo $"The administrator user cannot be removed"
     exit 8
 fi
 
+echo $'>>> REMOVE USER <<<'
+read -p $"Do you really wish to remove the user '$REMOVE_USERNAME' (y/n) ?" yn
+if [[ $yn != 'y' && $yn != 'Y' && $yn != 'yes' && $yn != 'Yes' && $yn != 'YES' ]]; then
+    echo $"User $REMOVE_USERNAME was not removed"
+    exit 9
+fi
+
 if [ -f /etc/nginx/.htpasswd ]; then
-    if grep "${MY_USERNAME}:" /etc/nginx/.htpasswd; then
-        htpasswd -D /etc/nginx/.htpasswd $MY_USERNAME
+    if grep "${REMOVE_USERNAME}:" /etc/nginx/.htpasswd; then
+        htpasswd -D /etc/nginx/.htpasswd $REMOVE_USERNAME
     fi
 fi
 
 # remove gpg keys
-if [ -d /home/$MY_USERNAME/.gnupg ]; then
-    shred -zu /home/$MY_USERNAME/.gnupg/*
+if [ -d /home/$REMOVE_USERNAME/.gnupg ]; then
+    shred -zu /home/$REMOVE_USERNAME/.gnupg/*
 fi
 
 # remove ssh keys
-if [ -d /home/$MY_USERNAME/.ssh ]; then
-    shred -zu /home/$MY_USERNAME/.ssh/*
+if [ -d /home/$REMOVE_USERNAME/.ssh ]; then
+    shred -zu /home/$REMOVE_USERNAME/.ssh/*
 fi
 
 echo $'Detecting installed apps...'
@@ -117,19 +124,19 @@ do
     if [[ $(function_exists remove_user_${app_name}) == "1" ]]; then
         echo $"Removing user from ${app_name}"
         app_load_variables ${app_name}
-        remove_user_${app_name} "$MY_USERNAME"
-        if grep -q "${app_name}_${MY_USERNAME}" $APP_USERS_FILE; then
-            sed -i "/${app_name}_${MY_USERNAME}/d" $APP_USERS_FILE
+        remove_user_${app_name} "$REMOVE_USERNAME"
+        if grep -q "${app_name}_${REMOVE_USERNAME}" $APP_USERS_FILE; then
+            sed -i "/${app_name}_${REMOVE_USERNAME}/d" $APP_USERS_FILE
         fi
     fi
 done
 
-userdel -r $MY_USERNAME
+userdel -r $REMOVE_USERNAME
 
-if [ -d /home/$MY_USERNAME ]; then
-    rm -rf /home/$MY_USERNAME
+if [ -d /home/$REMOVE_USERNAME ]; then
+    rm -rf /home/$REMOVE_USERNAME
 fi
 
-echo $"User $MY_USERNAME was removed"
+echo $"User $REMOVE_USERNAME was removed"
 
 exit 0
