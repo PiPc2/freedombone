@@ -175,12 +175,13 @@ function change_ssh_settings {
             return
         fi
         if [ ! $SSH_PASSWORDS ]; then
-            return
+            SSH_PASSWORDS='yes'
         fi
 
         sed -i "s|Ciphers .*|Ciphers $SSH_CIPHERS|g" $SSH_CONFIG
         sed -i "s|MACs .*|MACs $SSH_MACS|g" $SSH_CONFIG
         sed -i "s|KexAlgorithms .*|KexAlgorithms $SSH_KEX|g" $SSH_CONFIG
+        sed -i "s|#PasswordAuthentication .*|PasswordAuthentication $SSH_PASSWORDS|g" $SSH_CONFIG
         sed -i "s|PasswordAuthentication .*|PasswordAuthentication $SSH_PASSWORDS|g" $SSH_CONFIG
         systemctl restart ssh
         echo $'ssh server security settings changed'
@@ -201,6 +202,25 @@ function change_xmpp_settings {
     sed -i "s|curve =.*|curve = \"$XMPP_ECC_CURVE\";|g" $XMPP_CONFIG
     systemctl restart prosody
     echo $'xmpp security settings changed'
+}
+
+function allow_ssh_passwords {
+    if [[ $SSH_PASSWORDS == "yes" ]]; then
+        dialog --title $"SSH Passwords" \
+               --backtitle $"Freedombone Security Configuration" \
+               --yesno $"\nAllow SSH login using passwords?" 7 60
+    else
+        dialog --title $"SSH Passwords" \
+               --backtitle $"Freedombone Security Configuration" \
+               --defaultno \
+               --yesno $"\nAllow SSH login using passwords?" 7 60
+    fi
+    sel=$?
+    case $sel in
+        0) SSH_PASSWORDS="yes";;
+        1) SSH_PASSWORDS="no";;
+        255) exit 0;;
+    esac
 }
 
 function interactive_setup {
@@ -256,23 +276,6 @@ function interactive_setup {
             255) exit 0;;
         esac
     fi
-
-    if [[ $SSH_PASSWORDS == "yes" ]]; then
-        dialog --title $"SSH Passwords" \
-               --backtitle $"Freedombone Security Configuration" \
-               --yesno $"\nAllow SSH login using passwords?" 7 60
-    else
-        dialog --title $"SSH Passwords" \
-               --backtitle $"Freedombone Security Configuration" \
-               --defaultno \
-               --yesno $"\nAllow SSH login using passwords?" 7 60
-    fi
-    sel=$?
-    case $sel in
-        0) SSH_PASSWORDS="yes";;
-        1) SSH_PASSWORDS="no";;
-        255) exit 0;;
-    esac
 
     if [ $XMPP_CIPHERS ]; then
         data=$(tempfile 2>/dev/null)
@@ -680,7 +683,7 @@ function menu_security_settings {
     trap "rm -f $data" 0 1 2 5 15
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Security Settings" \
-           --radiolist $"Choose an operation:" 15 76 15 \
+           --radiolist $"Choose an operation:" 16 76 16 \
            1 $"Regenerate ssh host keys" off \
            2 $"Regenerate Diffie-Hellman keys" off \
            3 $"Update cipersuite" off \
@@ -688,7 +691,8 @@ function menu_security_settings {
            5 $"Renew Let's Encrypt certificate" off \
            6 $"Enable GPG based authentication (monkeysphere)" off \
            7 $"Register a website with monkeysphere" off \
-           8 $"Go Back/Exit" on 2> $data
+           8 $"Allow ssh login with passwords" off \
+           9 $"Go Back/Exit" on 2> $data
     sel=$?
     case $sel in
         1) exit 1;;
@@ -733,6 +737,9 @@ function menu_security_settings {
             register_website
             ;;
         8)
+            allow_ssh_passwords
+            ;;
+        9)
             exit 0
             ;;
     esac
