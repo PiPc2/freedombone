@@ -64,8 +64,6 @@ EXPORT_FILE=
 
 CURRENT_DIR=$(pwd)
 
-REGENERATE_SSH_HOST_KEYS="no"
-REGENERATE_DH_KEYS="no"
 DH_KEYLENGTH=2048
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
@@ -83,25 +81,6 @@ function get_ciphers_from_website {
         return
     fi
     SSL_CIPHERS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_ciphers ' | awk -F "ssl_ciphers " '{print $2}' | awk -F "'" '{print $2}')
-}
-
-function get_website_settings {
-    if [ ! -d $WEBSITES_DIRECTORY ]; then
-        return
-    fi
-
-    cd $WEBSITES_DIRECTORY
-    for file in `dir -d *` ; do
-        get_protocols_from_website $file
-        if [ ${#SSL_PROTOCOLS} -gt $MINIMUM_LENGTH ]; then
-            get_ciphers_from_website $file
-            if [ ${#SSL_CIPHERS} -gt $MINIMUM_LENGTH ]; then
-                break
-            else
-                SSL_PROTOCOLS=""
-            fi
-        fi
-    done
 }
 
 function get_imap_settings {
@@ -129,19 +108,10 @@ function get_xmpp_settings {
 
 function get_ssh_settings {
     if [ -f $SSH_CONFIG ]; then
-        SSH_CIPHERS=$(cat $SSH_CONFIG | grep 'Ciphers ' | awk -F 'Ciphers ' '{print $2}')
-        SSH_MACS=$(cat $SSH_CONFIG | grep 'MACs ' | awk -F 'MACs ' '{print $2}')
-        SSH_KEX=$(cat $SSH_CONFIG | grep 'KexAlgorithms ' | awk -F 'KexAlgorithms ' '{print $2}')
         SSH_PASSWORDS=$(cat $SSH_CONFIG | grep 'PasswordAuthentication ' | awk -F 'PasswordAuthentication ' '{print $2}')
     fi
     if [ -f /etc/ssh/ssh_config ]; then
         SSH_HOST_KEY_ALGORITHMS=$(cat /etc/ssh/ssh_config | grep 'HostKeyAlgorithms ' | awk -F 'HostKeyAlgorithms ' '{print $2}')
-        if [ ! $SSH_CIPHERS ]; then
-            SSH_CIPHERS=$(cat /etc/ssh/ssh_config | grep 'Ciphers ' | awk -F 'Ciphers ' '{print $2}')
-        fi
-        if [ ! $SSH_MACS ]; then
-            SSH_MACS=$(cat /etc/ssh/ssh_config | grep 'MACs ' | awk -F 'MACs ' '{print $2}')
-        fi
     fi
 }
 
@@ -353,55 +323,51 @@ function send_monkeysphere_server_keys_to_users {
 }
 
 function regenerate_ssh_host_keys {
-    if [[ $REGENERATE_SSH_HOST_KEYS == "yes" ]]; then
-        rm -f /etc/ssh/ssh_host_*
-        dpkg-reconfigure openssh-server
-        echo $'ssh host keys regenerated'
-        # remove small moduli
-        awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
-        mv ~/moduli /etc/ssh/moduli
-        echo $'ssh small moduli removed'
-        # update monkeysphere
-        DEFAULT_DOMAIN_NAME=
-        read_config_param "DEFAULT_DOMAIN_NAME"
-        monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$DEFAULT_DOMAIN_NAME
-        SSH_ONION_HOSTNAME=$(cat ${COMPLETION_FILE} | grep 'ssh onion domain' | awk -F ':' '{print $2}')
-        monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$SSH_ONION_HOSTNAME
-        monkeysphere-host publish-key
-        send_monkeysphere_server_keys_to_users
-        echo $'updated monkeysphere ssh host key'
-        systemctl restart ssh
-    fi
+    rm -f /etc/ssh/ssh_host_*
+    dpkg-reconfigure openssh-server
+    echo $'ssh host keys regenerated'
+    # remove small moduli
+    awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
+    mv ~/moduli /etc/ssh/moduli
+    echo $'ssh small moduli removed'
+    # update monkeysphere
+    DEFAULT_DOMAIN_NAME=
+    read_config_param "DEFAULT_DOMAIN_NAME"
+    monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$DEFAULT_DOMAIN_NAME
+    SSH_ONION_HOSTNAME=$(cat ${COMPLETION_FILE} | grep 'ssh onion domain' | awk -F ':' '{print $2}')
+    monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$SSH_ONION_HOSTNAME
+    monkeysphere-host publish-key
+    send_monkeysphere_server_keys_to_users
+    echo $'updated monkeysphere ssh host key'
+    systemctl restart ssh
 }
 
 function regenerate_dh_keys {
-    if [[ $REGENERATE_DH_KEYS == "yes" ]]; then
-        if [ ! -d /etc/ssl/mycerts ]; then
-            echo $'No dhparam certificates were found'
-            return
-        fi
-
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle "Freedombone Security Configuration" \
-               --title "Diffie-Hellman key length" \
-               --radiolist "The smaller length is better suited to low power embedded systems:" 12 40 3 \
-               1 "2048 bits" off \
-               2 "3072 bits" on \
-               3 "4096 bits" off 2> $data
-        sel=$?
-        case $sel in
-            1) exit 1;;
-            255) exit 1;;
-        esac
-        case $(cat $data) in
-            1) DH_KEYLENGTH=2048;;
-            2) DH_KEYLENGTH=3072;;
-            3) DH_KEYLENGTH=4096;;
-        esac
-
-        ${PROJECT_NAME}-dhparam --recalc yes -l ${DH_KEYLENGTH}
+    if [ ! -d /etc/ssl/mycerts ]; then
+        echo $'No dhparam certificates were found'
+        return
     fi
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle "Freedombone Security Configuration" \
+           --title "Diffie-Hellman key length" \
+           --radiolist "The smaller length is better suited to low power embedded systems:" 12 40 3 \
+           1 "2048 bits" off \
+           2 "3072 bits" on \
+           3 "4096 bits" off 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    case $(cat $data) in
+        1) DH_KEYLENGTH=2048;;
+        2) DH_KEYLENGTH=3072;;
+        3) DH_KEYLENGTH=4096;;
+    esac
+
+    ${PROJECT_NAME}-dhparam --recalc yes -l ${DH_KEYLENGTH}
 }
 
 function renew_startssl {
@@ -528,11 +494,6 @@ function create_letsencrypt {
 }
 
 function update_ciphersuite {
-    read_config_param SSL_CIPHERS
-    read_config_param SSL_PROTOCOLS
-    read_config_param SSH_CIPHERS
-    read_config_param SSH_MACS
-
     RECOMMENDED_SSL_CIPHERS="$SSL_CIPHERS"
     if [ ${#RECOMMENDED_SSL_CIPHERS} -lt 5 ]; then
         return
@@ -714,50 +675,72 @@ function remove_pinning {
     esac
 }
 
-function housekeeping {
-    cmd=(dialog --separate-output \
-                --backtitle "Freedombone Security Configuration" \
-                --title "Housekeeping options" \
-                --checklist "If you don't need to do any of these things then just press Enter:" 15 76 15)
-    options=(1 "Regenerate ssh host keys" off
-             2 "Regenerate Diffie-Hellman keys" off
-             3 "Update cipersuite" off
-             4 "Create a new Let's Encrypt certificate" off
-             5 "Renew Let's Encrypt certificate" off
-             6 "Enable GPG based authentication (monkeysphere)" off
-             7 "Register a website with monkeysphere" off
-             8 "Go Back/Exit" on)
-    choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
+function menu_security_settings {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Security Settings" \
+           --radiolist $"Choose an operation:" 15 76 15 \
+           1 $"Regenerate ssh host keys" off \
+           2 $"Regenerate Diffie-Hellman keys" off \
+           3 $"Update cipersuite" off \
+           4 $"Create a new Let's Encrypt certificate" off \
+           5 $"Renew Let's Encrypt certificate" off \
+           6 $"Enable GPG based authentication (monkeysphere)" off \
+           7 $"Register a website with monkeysphere" off \
+           8 $"Go Back/Exit" on 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+
     clear
-    for choice in $choices
-    do
-        case $choice in
-            1)
-                REGENERATE_SSH_HOST_KEYS="yes"
-                ;;
-            2)
-                REGENERATE_DH_KEYS="yes"
-                ;;
-            3)
-                update_ciphersuite
-                ;;
-            4)
-                create_letsencrypt
-                ;;
-            5)
-                renew_letsencrypt
-                ;;
-            6)
-                enable_monkeysphere
-                ;;
-            7)
-                register_website
-                ;;
-            8)
-                exit 0
-                ;;
-        esac
-    done
+
+    read_config_param SSL_CIPHERS
+    read_config_param SSL_PROTOCOLS
+    read_config_param SSH_CIPHERS
+    read_config_param SSH_MACS
+    read_config_param SSH_KEX
+
+    get_imap_settings
+    get_ssh_settings
+    get_xmpp_settings
+    import_settings
+    export_settings
+
+    case $(cat $data) in
+        1)
+            regenerate_ssh_host_keys
+            ;;
+        2)
+            regenerate_dh_keys
+            ;;
+        3)
+            interactive_setup
+            update_ciphersuite
+            ;;
+        4)
+            create_letsencrypt
+            ;;
+        5)
+            renew_letsencrypt
+            ;;
+        6)
+            enable_monkeysphere
+            ;;
+        7)
+            register_website
+            ;;
+        8)
+            exit 0
+            ;;
+    esac
+
+    change_website_settings
+    change_imap_settings
+    change_ssh_settings
+    change_xmpp_settings
 }
 
 function import_settings {
@@ -1054,18 +1037,6 @@ do
     shift
 done
 
-housekeeping
-get_website_settings
-get_imap_settings
-get_ssh_settings
-get_xmpp_settings
-import_settings
-export_settings
-interactive_setup
-change_website_settings
-change_imap_settings
-change_ssh_settings
-change_xmpp_settings
-regenerate_ssh_host_keys
-regenerate_dh_keys
+menu_security_settings
+
 exit 0
