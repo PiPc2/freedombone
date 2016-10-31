@@ -1193,9 +1193,24 @@ function spam_filtering {
     # this must be accessible by root
     chown -R $MY_USERNAME:root /home/$MY_USERNAME/.spamassassin
 
+    # script to keep spamassassin running
+    # There is a systemd script from the debian package, but it doesn't restart on failure
+    # and also doesn't ensure start after networking is up. If that is eventually fixed
+    # then this script and the cron job which runs it can be removed.
+    script_name=/usr/bin/run-spamassassin
+    echo '#!/bin/bash' > $script_name
+    echo 'current_state=$(systemctl status spamassassin)' >> $script_name
+    echo 'if [[ "$current_state" != *"(running)"* ]]; then' >> $script_name
+    echo '    systemctl restart spamassassin' >> $script_name
+    echo 'fi' >> $script_name
+    echo 'exit 0' >> $script_name
+    chmod +x $script_name
+
     systemctl start spamassassin
     systemctl restart exim4
     systemctl restart cron
+    function_check cron_add_mins
+    cron_add_mins 10 "$script_name 2> /dev/null"
 
     mark_completed $FUNCNAME
 }
