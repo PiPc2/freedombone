@@ -202,20 +202,31 @@ function backup_database_local {
     if [ ! -d $USB_MOUNT/backup/${1}data ]; then
         mkdir -p $USB_MOUNT/backup/${1}data
     fi
-    if [ ! -d /root/temp${1}data ]; then
-        mkdir -p /root/temp${1}data
+    local_database_dir=/root/temp${1}data
+    if [ ! -d ${local_database_dir} ]; then
+        mkdir -p ${local_database_dir}
     fi
     echo $"Obtaining ${1} database backup"
-    mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > /root/temp${1}data/${1}.sql
-    if [ ! -s /root/temp${1}data/${1}.sql ]; then
-        echo $"${1} database could not be saved"
-        shred -zu /root/temp${1}data/*
-        rm -rf /root/temp${1}data
+    mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.sql
+    if [ -f ${local_database_dir}/${1}.sql ]; then
+        if [ ! -s ${local_database_dir}/${1}.sql ]; then
+            echo $"${1} database could not be saved"
+            shred -zu ${local_database_dir}/*
+            rm -rf ${local_database_dir}
+            umount $USB_MOUNT
+            rm -rf $USB_MOUNT
+            restart_site
+            exit 6835872
+        fi
+    else
+        echo $"${1} database could not be dumped"
+        rm -rf ${local_database_dir}
         umount $USB_MOUNT
         rm -rf $USB_MOUNT
         restart_site
-        exit 6835872
+        exit 738653
     fi
+    echo $"Database dump was created for ${1}"
 }
 
 function set_obnam_client_name {
@@ -295,8 +306,13 @@ function restore_directory_from_friend {
 
 function backup_database_to_usb {
     database_name=$1
-    backup_database_local $database_name
-    backup_directory_to_usb /root/temp${database_name}data ${database_name}data
+    local_database_dir=/root/temp${1}data
+    backup_database_local ${database_name}
+    if [ ! -d ${local_database_dir} ]; then
+        echo $"Error backing up ${1} database to ${local_database_dir}"
+        exit 62383
+    fi
+    backup_directory_to_usb ${local_database_dir} ${database_name}data
 }
 
 # after user files have been restored permissions may need to be set
@@ -370,20 +386,31 @@ function backup_database_remote {
     if [ ! -d $SERVER_DIRECTORY/backup/${1}data ]; then
         mkdir -p $SERVER_DIRECTORY/backup/${1}data
     fi
-    if [ ! -d /root/temp${1}data ]; then
-        mkdir -p /root/temp${1}data
+    local_database_dir=/root/temp${1}data
+    if [ ! -d ${local_database_dir} ]; then
+        mkdir -p ${local_database_dir}
     fi
     echo "Obtaining ${1} database backup"
-    mysqldump --password=$DATABASE_PASSWORD ${1} > /root/temp${1}data/${1}.sql
-    if [ ! -s /root/temp${1}data/${1}.sql ]; then
-        echo $"${1} database could not be saved"
-        shred -zu /root/temp${1}data/*
-        rm -rf /root/temp${1}data
+    mysqldump --password=$DATABASE_PASSWORD ${1} > ${local_database_dir}/${1}.sql
+    if [ ! -f ${local_database_dir}/${1}.sql ]; then
+        if [ ! -s ${local_database_dir}/${1}.sql ]; then
+            echo $"${1} database could not be saved"
+            shred -zu ${local_database_dir}/*
+            rm -rf ${local_database_dir}
+            # Send a warning email
+            echo $"Unable to export ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+            function_check restart_site
+            restart_site
+            exit 5738
+        fi
+    else
+        echo $"${1} database could not be dumped"
+        rm -rf ${local_database_dir}
         # Send a warning email
-        echo $"Unable to export ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
+        echo $"Unable to dump ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
         function_check restart_site
         restart_site
-        exit 5738
+        exit 3687
     fi
 }
 
