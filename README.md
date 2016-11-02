@@ -45,10 +45,6 @@ If you prefer an advanced installation with all of the options available then us
 
     freedombone-image -t beaglebone -s 8G --minimal no
 
-To build a 64bit Virtualbox image:
-
-    freedombone-image -t virtualbox-amd64 -s 8G
-
 To build a 64bit Qemu image:
 
     freedombone-image -t qemu-x86_64 -s 8G
