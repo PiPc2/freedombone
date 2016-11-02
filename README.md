@@ -127,11 +127,9 @@ Using the password 'freedombone'. Take a note of the new login password and then
 
 **As a Virtual Machine**
 
-Virtualbox and Qemu are supported. You can run a 64 bit Qemu image with:
+Qemu is currently supported. You can run a 64 bit Qemu image with:
 
     qemu-system-x86_64 filename.img
-
-If you are using Virtualbox then add a new VM and select the Freedombone **vdi** image.
 
 The default login will be username 'fbone' and password 'freedombone'. Take a note of the new login password then you can proceed through the installation.
 
