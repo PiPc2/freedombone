@@ -1,0 +1,675 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# postactiv application
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim media'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+POSTACTIV_DOMAIN_NAME=
+POSTACTIV_CODE=
+POSTACTIV_ONION_PORT=8100
+POSTACTIV_REPO="https://git.gnu.io/maiyannah/postActiv"
+POSTACTIV_COMMIT='a07d28888d97e207288c86b81905e42dae90aada'
+POSTACTIV_ADMIN_PASSWORD=
+
+# script which causes old posts to expire
+postactiv_expire_script=/usr/bin/postactiv-expire
+
+postactiv_variables=(POSTACTIV_COMMIT
+                     ONION_ONLY
+                     POSTACTIV_DOMAIN_NAME
+                     POSTACTIV_CODE
+                     DDNS_PROVIDER
+                     MY_USERNAME)
+
+function remove_user_postactiv {
+    remove_username="$1"
+
+    function_check get_completion_param
+    POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+    if [ -d /var/www/$POSTACTIV_DOMAIN_NAME ]; then
+        cd /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+        php scripts/deleteprofile.php -n $remove_username -y
+    fi
+}
+
+function add_user_postactiv {
+    new_username="$1"
+    new_user_password="$2"
+
+    POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+    if [ -d /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs ]; then
+        cd /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+        php scripts/registeruser.php -n $new_username -w "$new_user_password" -e "$new_username@$HOSTNAME"
+        ${PROJECT_NAME}-addemail -u $new_username -e "noreply@$POSTACTIV_DOMAIN_NAME" -g postactiv --public no
+        echo '0'
+    else
+        echo '1'
+    fi
+}
+
+function install_interactive_postactiv {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        POSTACTIV_DOMAIN_NAME='postactiv.local'
+    else
+        POSTACTIV_DETAILS_COMPLETE=
+        while [ ! $POSTACTIV_DETAILS_COMPLETE ]
+        do
+            data=$(tempfile 2>/dev/null)
+            trap "rm -f $data" 0 1 2 5 15
+            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"PostActiv Configuration" \
+                       --form $"\nPlease enter your postactiv details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 65 2 \
+                       $"Domain:" 1 1 "$(grep 'POSTACTIV_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       $"Code:" 2 1 "$(grep 'POSTACTIV_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 25 33 255 \
+                       2> $data
+            else
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"PostActiv Configuration" \
+                       --form $"\nPlease enter your postactiv details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 65 2 \
+                       $"Domain:" 1 1 "$(grep 'POSTACTIV_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       2> $data
+            fi
+            sel=$?
+            case $sel in
+                1) exit 1;;
+                255) exit 1;;
+            esac
+            POSTACTIV_DOMAIN_NAME=$(cat $data | sed -n 1p)
+            img_url=$(cat $data | sed -n 3p)
+            if [ $POSTACTIV_DOMAIN_NAME ]; then
+                if [[ $POSTACTIV_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
+                    POSTACTIV_DOMAIN_NAME=""
+                fi
+                TEST_DOMAIN_NAME=$POSTACTIV_DOMAIN_NAME
+                validate_domain_name
+                if [[ $TEST_DOMAIN_NAME != $POSTACTIV_DOMAIN_NAME ]]; then
+                    POSTACTIV_DOMAIN_NAME=
+                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                else
+                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                        POSTACTIV_CODE=$(cat $data | sed -n 4p)
+                        validate_freedns_code "$POSTACTIV_CODE"
+                        if [ ! $VALID_CODE ]; then
+                            POSTACTIV_DOMAIN_NAME=
+                        fi
+                    fi
+                fi
+            fi
+            if [ $POSTACTIV_DOMAIN_NAME ]; then
+                POSTACTIV_DETAILS_COMPLETE="yes"
+            fi
+        done
+
+        # save the results in the config file
+        write_config_param "POSTACTIV_CODE" "$POSTACTIV_CODE"
+    fi
+    write_config_param "POSTACTIV_DOMAIN_NAME" "$POSTACTIV_DOMAIN_NAME"
+    APP_INSTALLED=1
+}
+
+function change_password_postactiv {
+    echo -n ''
+}
+
+function get_mariadb_postactiv_admin_password {
+    if [ -f /home/$MY_USERNAME/README ]; then
+        if grep -q "MariaDB postactiv admin password" /home/$MY_USERNAME/README; then
+            POSTACTIV_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "MariaDB postactiv admin password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+        fi
+        if grep -q "postactiv administrator password" /home/$MY_USERNAME/README; then
+            POSTACTIV_ADMIN_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "postactiv administrator password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+        fi
+    fi
+}
+
+function postactiv_create_database {
+    function_check get_mariadb_postactiv_admin_password
+    get_mariadb_postactiv_admin_password
+    if [ ! $POSTACTIV_ADMIN_PASSWORD ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            POSTACTIV_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            POSTACTIV_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    if [ ! $POSTACTIV_ADMIN_PASSWORD ]; then
+        return
+    fi
+
+    function_check create_database
+    create_database postactiv "$POSTACTIV_ADMIN_PASSWORD" $MY_USERNAME
+}
+
+function postactiv_running_script {
+    # check that the daemon is running
+    echo '#!/bin/bash' > /etc/cron.hourly/postactiv-daemons
+    echo 'daemon_lines=$(ps aux | grep "scripts/queuedaemon.php" | grep "/var/www")' >> /etc/cron.hourly/postactiv-daemons
+    echo 'if [[ $daemon_lines != *"/var/www/"* ]]; then' >> /etc/cron.hourly/postactiv-daemons
+
+    echo "    ADMIN_USER=\$(cat $COMPLETION_FILE | grep 'Admin user' | awk -F ':' '{print \$2}')" >> /etc/cron.hourly/postactiv-daemons
+    echo '    MY_EMAIL_ADDRESS=$ADMIN_USER@$HOSTNAME' >> /etc/cron.hourly/postactiv-daemons
+    echo '    echo "Restarting postactiv daemons" | mail -s "postactiv daemons not found" $MY_EMAIL_ADDRESS' >> /etc/cron.hourly/postactiv-daemons
+    echo "    cd /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs" >> /etc/cron.hourly/postactiv-daemons
+    echo '    scripts/startdaemons.sh' >> /etc/cron.hourly/postactiv-daemons
+    echo 'fi' >> /etc/cron.hourly/postactiv-daemons
+    chmod +x /etc/cron.hourly/postactiv-daemons
+}
+
+function reconfigure_postactiv {
+    echo -n ''
+}
+
+function upgrade_postactiv {
+    if grep -q "postactiv domain" $COMPLETION_FILE; then
+        POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$POSTACTIV_DOMAIN_NAME/htdocs "postactiv commit" "$POSTACTIV_COMMIT" $POSTACTIV_REPO
+
+    function_check postactiv_running_script
+    postactiv_running_script
+}
+
+
+function backup_local_postactiv {
+    POSTACTIV_DOMAIN_NAME='postactiv'
+    if grep -q "postactiv domain" $COMPLETION_FILE; then
+        POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+    fi
+
+    source_directory=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
+    if [ -d $source_directory ]; then
+        dest_directory=postactiv
+        function_check suspend_site
+        suspend_site ${POSTACTIV_DOMAIN_NAME}
+
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+
+        function_check backup_database_to_usb
+        backup_database_to_usb postactiv
+
+        function_check restart_site
+        restart_site
+    fi
+}
+
+function restore_local_postactiv {
+    if ! grep -q "postactiv domain" $COMPLETION_FILE; then
+        return
+    fi
+    POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+    if [ $POSTACTIV_DOMAIN_NAME ]; then
+        temp_restore_dir=/root/temppostactiv
+        postactiv_dir=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
+        # stop the daemons
+        cd $postactiv_dir
+        scripts/stopdaemons.sh
+
+        function_check postactiv_create_database
+        postactiv_create_database
+
+        restore_database postactiv ${POSTACTIV_DOMAIN_NAME}
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
+
+        # start the daemons
+        cd $postactiv_dir
+        scripts/startdaemons.sh
+    fi
+}
+
+function backup_remote_postactiv {
+    if grep -q "postactiv domain" $COMPLETION_FILE; then
+        POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+        temp_backup_dir=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
+        if [ -d $temp_backup_dir ]; then
+            function_check suspend_site
+            suspend_site ${POSTACTIV_DOMAIN_NAME}
+
+            function_check backup_database_to_friend
+            backup_database_to_friend postactiv
+
+            function_check backup_directory_to_friend
+            backup_directory_to_friend $temp_backup_dir postactiv
+
+            function_check restart_site
+            restart_site
+        else
+            echo $"postactiv domain specified but not found in ${temp_backup_dir}"
+        fi
+    fi
+}
+
+function restore_remote_postactiv {
+    if grep -q "postactiv domain" $COMPLETION_FILE; then
+        POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+
+        # stop the daemons
+        cd /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
+        ./scripts/stopdaemons.sh
+
+        function_check postactiv_create_database
+        postactiv_create_database
+
+        function_check restore_database_from_friend
+        restore_database_from_friend postactiv ${POSTACTIV_DOMAIN_NAME}
+        if [ -d /root/temppostactiv ]; then
+            rm -rf /root/temppostactiv
+        fi
+
+        # start the daemons
+        cd /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
+        ./scripts/startdaemons.sh
+    fi
+}
+
+function remove_postactiv {
+    if [ ${#POSTACTIV_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+    read_config_param "POSTACTIV_DOMAIN_NAME"
+    read_config_param "MY_USERNAME"
+    echo "Removing $POSTACTIV_DOMAIN_NAME"
+    nginx_dissite $POSTACTIV_DOMAIN_NAME
+    remove_certs $POSTACTIV_DOMAIN_NAME
+    if [ -f /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts/stopdaemons.sh ]; then
+        cd /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts
+        ./scripts/stopdaemons.sh
+    fi
+    if [ -d /var/www/$POSTACTIV_DOMAIN_NAME ]; then
+        rm -rf /var/www/$POSTACTIV_DOMAIN_NAME
+    fi
+    if [ -f /etc/nginx/sites-available/$POSTACTIV_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$POSTACTIV_DOMAIN_NAME
+    fi
+    function_check drop_database
+    drop_database postactiv
+    function_check remove_onion_service
+    remove_onion_service postactiv ${POSTACTIV_ONION_PORT}
+    if grep -q "postactiv" /etc/crontab; then
+        sed -i "/postactiv/d" /etc/crontab
+    fi
+    remove_app postactiv
+    remove_completion_param install_postactiv
+    sed -i '/postactiv/d' $COMPLETION_FILE
+    if [ -f /etc/cron.hourly/postactiv-daemons ]; then
+        rm /etc/cron.hourly/postactiv-daemons
+    fi
+    sed -i '/Postactiv/d' /home/$MY_USERNAME/README
+}
+
+function install_postactiv_main {
+    if [ ! $POSTACTIV_DOMAIN_NAME ]; then
+        echo $'No domain name was given for postactiv'
+        exit 7359
+    fi
+
+    if [[ $(app_is_installed postactiv_main) == "1" ]]; then
+        return
+    fi
+
+    function_check postactiv_running_script
+    postactiv_running_script
+
+    function_check install_mariadb
+    install_mariadb
+
+    function_check get_mariadb_password
+    get_mariadb_password
+
+    function_check repair_databases_script
+    repair_databases_script
+
+    apt-get -yq install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
+    apt-get -yq install php5-memcached php5-intl
+
+    if [ ! -d /var/www/$POSTACTIV_DOMAIN_NAME ]; then
+        mkdir /var/www/$POSTACTIV_DOMAIN_NAME
+    fi
+    if [ ! -d /var/www/$POSTACTIV_DOMAIN_NAME/htdocs ]; then
+        function_check git_clone
+        git_clone $POSTACTIV_REPO /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+        if [ ! -d /var/www/$POSTACTIV_DOMAIN_NAME/htdocs ]; then
+            echo $'Unable to clone postactiv repo'
+            exit 87525
+        fi
+    fi
+
+    cd /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+    git checkout $POSTACTIV_COMMIT -b $POSTACTIV_COMMIT
+    set_completion_param "postactiv commit" "$POSTACTIV_COMMIT"
+
+    chmod a+w /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+    chown www-data:www-data /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+    chmod +x /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts/maildaemon.php
+
+    function_check postactiv_create_database
+    postactiv_create_database
+
+    if [ ! -f "/etc/aliases" ]; then
+        touch /etc/aliases
+    fi
+    if ! grep -q "www-data: root" /etc/aliases; then
+        echo 'www-data: root' >> /etc/aliases
+    fi
+    if ! grep -q "/var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts/maildaemon.php" /etc/aliases; then
+        echo "*: /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts/maildaemon.php" >> /etc/aliases
+    fi
+
+    function_check add_ddns_domain
+    add_ddns_domain $POSTACTIV_DOMAIN_NAME
+
+    postactiv_nginx_site=/etc/nginx/sites-available/$POSTACTIV_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $POSTACTIV_DOMAIN_NAME
+        echo 'server {' >> $postactiv_nginx_site
+        echo '  listen 443 ssl;' >> $postactiv_nginx_site
+        echo "  server_name $POSTACTIV_DOMAIN_NAME;" >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # Security' >> $postactiv_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $POSTACTIV_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $POSTACTIV_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # Logs' >> $postactiv_nginx_site
+        echo '  access_log off;' >> $postactiv_nginx_site
+        echo '  error_log off;' >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # Root' >> $postactiv_nginx_site
+        echo "  root /var/www/$POSTACTIV_DOMAIN_NAME/htdocs;" >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # Index' >> $postactiv_nginx_site
+        echo '  index index.php;' >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # PHP' >> $postactiv_nginx_site
+        echo '  location ~ \.php {' >> $postactiv_nginx_site
+        echo '    include snippets/fastcgi-php.conf;' >> $postactiv_nginx_site
+        echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $postactiv_nginx_site
+        echo '  }' >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # Location' >> $postactiv_nginx_site
+        echo '  location / {' >> $postactiv_nginx_site
+        function_check nginx_limits
+        nginx_limits $POSTACTIV_DOMAIN_NAME '15m'
+        echo '    try_files $uri $uri/ @postactiv;' >> $postactiv_nginx_site
+        echo '  }' >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # Fancy URLs' >> $postactiv_nginx_site
+        echo '  location @postactiv {' >> $postactiv_nginx_site
+        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $postactiv_nginx_site
+        echo '  }' >> $postactiv_nginx_site
+        echo '' >> $postactiv_nginx_site
+        echo '  # Restrict access that is unnecessary anyway' >> $postactiv_nginx_site
+        echo '  location ~ /\.(ht|git) {' >> $postactiv_nginx_site
+        echo '    deny all;' >> $postactiv_nginx_site
+        echo '  }' >> $postactiv_nginx_site
+        echo '}' >> $postactiv_nginx_site
+    else
+        echo -n '' > $postactiv_nginx_site
+    fi
+    echo 'server {' >> $postactiv_nginx_site
+    echo "    listen 127.0.0.1:$POSTACTIV_ONION_PORT default_server;" >> $postactiv_nginx_site
+    echo "    server_name $POSTACTIV_DOMAIN_NAME;" >> $postactiv_nginx_site
+    echo '' >> $postactiv_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $POSTACTIV_DOMAIN_NAME
+    echo '' >> $postactiv_nginx_site
+    echo '  # Logs' >> $postactiv_nginx_site
+    echo '  access_log off;' >> $postactiv_nginx_site
+    echo '  error_log off;' >> $postactiv_nginx_site
+    echo '' >> $postactiv_nginx_site
+    echo '  # Root' >> $postactiv_nginx_site
+    echo "  root /var/www/$POSTACTIV_DOMAIN_NAME/htdocs;" >> $postactiv_nginx_site
+    echo '' >> $postactiv_nginx_site
+    echo '  # Index' >> $postactiv_nginx_site
+    echo '  index index.php;' >> $postactiv_nginx_site
+    echo '' >> $postactiv_nginx_site
+    echo '  # PHP' >> $postactiv_nginx_site
+    echo '  location ~ \.php {' >> $postactiv_nginx_site
+    echo '    include snippets/fastcgi-php.conf;' >> $postactiv_nginx_site
+    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $postactiv_nginx_site
+    echo '  }' >> $postactiv_nginx_site
+    echo '' >> $postactiv_nginx_site
+    echo '  # Location' >> $postactiv_nginx_site
+    echo '  location / {' >> $postactiv_nginx_site
+    function_check nginx_limits
+    nginx_limits $POSTACTIV_DOMAIN_NAME '15m'
+    echo '    try_files $uri $uri/ @postactiv;' >> $postactiv_nginx_site
+    echo '  }' >> $postactiv_nginx_site
+    echo '' >> $postactiv_nginx_site
+    echo '  # Fancy URLs' >> $postactiv_nginx_site
+    echo '  location @postactiv {' >> $postactiv_nginx_site
+    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $postactiv_nginx_site
+    echo '  }' >> $postactiv_nginx_site
+    echo '' >> $postactiv_nginx_site
+    echo '  # Restrict access that is unnecessary anyway' >> $postactiv_nginx_site
+    echo '  location ~ /\.(ht|git) {' >> $postactiv_nginx_site
+    echo '    deny all;' >> $postactiv_nginx_site
+    echo '  }' >> $postactiv_nginx_site
+    echo '}' >> $postactiv_nginx_site
+
+    function_check configure_php
+    configure_php
+
+    function_check create_site_certificate
+    create_site_certificate $POSTACTIV_DOMAIN_NAME 'yes'
+
+    # Ensure that the database gets backed up locally, if remote
+    # backups are not being used
+    function_check backup_databases_script_header
+    backup_databases_script_header
+
+    function_check backup_database_local
+    backup_database_local postactiv
+
+    function_check nginx_ensite
+    nginx_ensite $POSTACTIV_DOMAIN_NAME
+
+    # NOTE: For the typical case always enable SSL and only
+    # disable it if in onion only mode. This is due to complexities
+    # with the way URLs are generated by postactiv
+    postactiv_ssl='always'
+    if [[ $ONION_ONLY != 'no' ]]; then
+        postactiv_ssl='never'
+    fi
+
+    POSTACTIV_ONION_HOSTNAME=$(add_onion_service postactiv 80 ${POSTACTIV_ONION_PORT})
+
+    POSTACTIV_SERVER=${POSTACTIV_DOMAIN_NAME}
+    if [[ $ONION_ONLY != 'no' ]]; then
+        POSTACTIV_SERVER=${POSTACTIV_ONION_HOSTNAME}
+    fi
+
+    # Create the configuration
+    postactiv_installer=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/scripts/install_cli.php
+    if [ ! -f $postactiv_installer ]; then
+        echo $'No postactiv commandline installer found'
+        exit 53026
+    fi
+    ${postactiv_installer} --server "${POSTACTIV_SERVER}" \
+                           --host="localhost" --database="postactiv" \
+                           --dbtype=mysql --username="root" -v \
+                           --password="$MARIADB_PASSWORD" \
+                           --sitename=$"postactiv" --fancy='yes' \
+                           --admin-nick="$MY_USERNAME" \
+                           --admin-pass="$POSTACTIV_ADMIN_PASSWORD" \
+                           --site-profile="community" \
+                           --ssl=${postactiv_ssl}
+    # There can be a lot of warnings here so the return value check is disabled
+    #if [ ! "$?" = "0" ]; then
+    #    # failed to install
+    #    echo $'Could not install postactiv'
+    #    exit 72357
+    #fi
+
+    # check postactiv has a config file
+    postactiv_config_file=/var/www/$POSTACTIV_DOMAIN_NAME/htdocs/config.php
+    if [ ! -f $postactiv_config_file ]; then
+        echo $'Postactiv config.php not found'
+        exit 87586
+    fi
+
+    # Some useful settings
+    if ! grep -q "Recommended postactiv settings" $postactiv_config_file; then
+        echo "" >> $postactiv_config_file
+        echo "// Recommended postactiv settings" >> $postactiv_config_file
+        echo "\$config['thumbnail']['maxsize'] = 3000;" >> $postactiv_config_file
+        echo "\$config['profile']['delete'] = true;" >> $postactiv_config_file
+        echo "\$config['profile']['changenick'] = true;" >> $postactiv_config_file
+        echo "\$config['public']['localonly'] = false;" >> $postactiv_config_file
+        echo "addPlugin('StoreRemoteMedia');" >> $postactiv_config_file
+        echo "\$config['queue']['enabled'] = true;" >> $postactiv_config_file
+        echo "\$config['queue']['daemon'] = true;" >> $postactiv_config_file
+        echo "\$config['ostatus']['hub_retries'] = 3;" >> $postactiv_config_file
+    fi
+
+    # This improves performance
+    sed -i "s|//\$config\['db'\]\['schemacheck'\].*|\$config\['db'\]\['schemacheck'\] = 'script';|g" $postactiv_config_file
+
+    systemctl restart php5-fpm
+    systemctl restart nginx
+
+    ${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$POSTACTIV_DOMAIN_NAME" -g postactiv --public no
+
+    # some post-install instructions for the user
+    if ! grep -q $"Postactiv administrator" /home/$MY_USERNAME/README; then
+        echo '' >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        echo $'# Postactiv' >> /home/$MY_USERNAME/README
+        echo $"Postactiv administrator nickname: $MY_USERNAME" >> /home/$MY_USERNAME/README
+        echo $"Postactiv administrator password: $POSTACTIV_ADMIN_PASSWORD" >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    else
+        if [ -f /home/$MY_USERNAME/README ]; then
+            sed -i "s|Postactiv administrator password.*|Postactiv administrator password: $POSTACTIV_ADMIN_PASSWORD|g" /home/$MY_USERNAME/README
+        fi
+    fi
+
+    if ! grep -q "Postactiv onion domain" /home/$MY_USERNAME/README; then
+        echo $"Postactiv onion domain: ${POSTACTIV_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    else
+        if [ -f /home/$MY_USERNAME/README ]; then
+            sed -i "s|Postactiv onion domain.*|Postactiv onion domain: ${POSTACTIV_ONION_HOSTNAME}|g" /home/$MY_USERNAME/README
+        fi
+    fi
+
+    set_completion_param "postactiv domain" "$POSTACTIV_DOMAIN_NAME"
+
+    install_completed postactiv_main
+}
+
+function expire_postactiv_posts {
+    # To prevent the database size from growing endlessly this script expires posts
+    # after a number of months
+    if [ ! -d /var/www/$POSTACTIV_DOMAIN_NAME/htdocs ]; then
+        return
+    fi
+
+    echo '<?php' > $postactiv_expire_script
+    echo '' >> $postactiv_expire_script
+    echo '// postactiv post expiry script, based on StatExpire by Tony Baldwin' >> $postactiv_expire_script
+    echo '// https://github.com/tonybaldwin/statexpire' >> $postactiv_expire_script
+    echo '' >> $postactiv_expire_script
+    echo '$oldate=date(("Y-m-d"), strtotime("-3 months"));' >> $postactiv_expire_script
+    echo '$username="root";' >> $postactiv_expire_script
+    echo "\$password=trim(file_get_contents(\"$DATABASE_PASSWORD_FILE\"));" >> $postactiv_expire_script
+    echo '$database="postactiv";' >> $postactiv_expire_script
+    echo '' >> $postactiv_expire_script
+    echo 'if (!$link = mysql_connect("localhost", $username, $password)) {' >> $postactiv_expire_script
+    echo '    echo "Could not connect to mariadb";' >> $postactiv_expire_script
+    echo '    exit;' >> $postactiv_expire_script
+    echo '}' >> $postactiv_expire_script
+    echo '' >> $postactiv_expire_script
+    echo 'if (!mysql_select_db($database, $link)) {' >> $postactiv_expire_script
+    echo '    echo "Could not select postactiv database";' >> $postactiv_expire_script
+    echo '    exit;' >> $postactiv_expire_script
+    echo '}' >> $postactiv_expire_script
+    echo '' >> $postactiv_expire_script
+    echo "\$notice_query=\"DELETE FROM notice WHERE created <= '\$oldate 01:01:01'\";" >> $postactiv_expire_script
+    echo "\$conversation_query=\"DELETE FROM conversation WHERE created <= '$oldate 01:01:01'\";" >> $postactiv_expire_script
+    echo "\$reply_query=\"DELETE FROM reply WHERE modified <= '\$oldate 01:01:01'\";" >> $postactiv_expire_script
+    echo '' >> $postactiv_expire_script
+    echo 'mysql_query($notice_query);' >> $postactiv_expire_script
+    echo '$rowaff1=mysql_affected_rows();' >> $postactiv_expire_script
+    echo 'mysql_query($conversation_query);' >> $postactiv_expire_script
+    echo '$rowaff2=mysql_affected_rows();' >> $postactiv_expire_script
+    echo 'mysql_query($reply_query);' >> $postactiv_expire_script
+    echo '$rowaff3=mysql_affected_rows();' >> $postactiv_expire_script
+    echo 'mysql_close();' >> $postactiv_expire_script
+    echo '' >> $postactiv_expire_script
+    echo 'echo "Expire postactiv posts: $rowaff1 notices, $rowaff2 conversations, and $rowaff3 replies deleted from database.\n";' >> $postactiv_expire_script
+    chmod +x $postactiv_expire_script
+
+    # Add a cron job
+    if ! grep -q "$postactiv_expire_script" /etc/crontab; then
+        echo "10 3 5   *   *   root /usr/bin/timeout 500 /usr/bin/php $postactiv_expire_script" >> /etc/crontab
+    fi
+
+    # remove old expire script
+    if [ -f /etc/cron.weekly/clear-postactiv-database ]; then
+        rm /etc/cron.weekly/clear-postactiv-database
+    fi
+}
+
+function install_postactiv {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    install_postactiv_main
+    expire_postactiv_posts
+
+    # unleash the daemons!
+    /etc/cron.hourly/postactiv-daemons
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately there is no "exit 0"
