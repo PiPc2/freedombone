@@ -38,6 +38,9 @@ MINIMUM_PASSWORD_LENGTH=$(cat /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-u
 
 CONFIGURATION_FILE="$HOME/${PROJECT_NAME}.cfg"
 
+# used to mirror a single application
+SYNC_SINGLE_APP=
+
 # if this is blank then just use the default repos
 FRIENDS_MIRRORS_SERVER=
 UTILS_REPOS=
@@ -120,9 +123,24 @@ function enable_mirrors_via_onion {
 
 function update_installed_apps_repos {
     INSTALLED_APPS_REPOS=()
-    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
 
     function_check app_is_installed
+
+    # only deal with a single app
+    if [ $SYNC_SINGLE_APP ]; then
+        if [[ "$(app_is_installed ${SYNC_SINGLE_APP})" == "1" ]]; then
+            filename=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${SYNC_SINGLE_APP}
+            APP_REPOS=($(cat ${MAIN_COMMAND} $filename | grep "_REPO=\"" | grep -v "(cat " | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+            for line in "${APP_REPOS[@]}"
+            do
+                INSTALLED_APPS_REPOS+=("${line}")
+            done
+        fi
+        return
+    fi
+
+    # all apps currently installed
+    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
 
     # for all the app scripts
     for filename in $FILES
@@ -203,7 +221,9 @@ function sync_mirrors_base {
 }
 
 function sync_mirrors_repos {
-    sync_mirrors_base "${UTILS_REPOS[@]}"
+    if [ ! $SYNC_SINGLE_APP ]; then
+        sync_mirrors_base "${UTILS_REPOS[@]}"
+    fi
     sync_mirrors_base "${INSTALLED_APPS_REPOS[@]}"
 }
 
@@ -237,6 +257,10 @@ case $key in
     --port)
     shift
     FRIENDS_MIRRORS_SSH_PORT=${1}
+    ;;
+    -a|--app)
+    shift
+    SYNC_SINGLE_APP="${1}"
     ;;
     *)
     # unknown option
