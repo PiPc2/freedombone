@@ -40,7 +40,8 @@ CONFIGURATION_FILE="$HOME/${PROJECT_NAME}.cfg"
 
 # if this is blank then just use the default repos
 FRIENDS_MIRRORS_SERVER=
-REPOS=
+UTILS_REPOS=
+INSTALLED_APPS_REPOS=
 MY_MIRRORS_PASSWORD=
 FRIENDS_MIRRORS_PASSWORD=
 NEW_MIRRORS='no'
@@ -51,12 +52,13 @@ if [ ! -f $MAIN_COMMAND ]; then
     MAIN_COMMAND=/usr/bin/${PROJECT_NAME}
 fi
 
-REPOS=($(cat ${MAIN_COMMAND} /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-* /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-* | grep "_REPO=\"" | grep -v "(cat " | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+# local repos for utils
+UTILS_REPOS=($(cat ${MAIN_COMMAND} /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-* /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-* | grep "_REPO=\"" | grep -v "(cat " | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
 
 UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
 for f in $UTILS_FILES
 do
-  source $f
+    source $f
 done
 
 # obtain the mirrors password if it exists
@@ -116,6 +118,39 @@ function enable_mirrors_via_onion {
     fi
 }
 
+function update_installed_apps_repos {
+    INSTALLED_APPS_REPOS=()
+    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+
+    function_check app_is_installed
+
+    # for all the app scripts
+    for filename in $FILES
+    do
+        app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+        if [[ "$(app_is_installed ${app_name})" == "1" ]]; then
+            APP_REPOS=($(cat ${MAIN_COMMAND} $filename | grep "_REPO=\"" | grep -v "(cat " | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+            for line in "${APP_REPOS[@]}"
+            do
+                INSTALLED_APPS_REPOS+=("${line}")
+            done
+        fi
+    done
+}
+
+function update_repos_from_friend_base {
+    syncrepos=${1}
+    new_repos=()
+    for line in $syncrepos
+    do
+        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
+        mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
+        friends_repo_url="ssh://mirrors@${FRIENDS_MIRRORS_SERVER}:${FRIENDS_MIRRORS_SSH_PORT}/home/mirrors/${mirrors_name}"
+        new_line="${repo_name}=\"${friends_repo_url}\""
+        new_repos+=($new_line)
+    done
+}
+
 function update_repos_from_friend {
     if [ ! $FRIENDS_MIRRORS_SERVER ]; then
        return
@@ -124,21 +159,16 @@ function update_repos_from_friend {
         return
     fi
 
-    new_repos=()
-    for line in "${REPOS[@]}"
-    do
-        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
-        mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
-        #repo_url=$(echo "$line" | awk -F '=' '{print $2}'  | awk -F '"' '{print $2}')
-        friends_repo_url="ssh://mirrors@${FRIENDS_MIRRORS_SERVER}:${FRIENDS_MIRRORS_SSH_PORT}/home/mirrors/${mirrors_name}"
-        new_line="${repo_name}=\"${friends_repo_url}\""
-        new_repos+=($new_line)
-    done
-    REPOS=("${new_repos[@]}")
+    update_repos_from_friend_base "${UTILS_REPOS[@]}"
+    UTILS_REPOS=("${new_repos[@]}")
+
+    update_repos_from_friend_base "${INSTALLED_APPS_REPOS[@]}"
+    INSTALLED_APPS_REPOS=("${new_repos[@]}")
 }
 
-function sync_mirrors_repos {
-    for line in "${REPOS[@]}"
+function sync_mirrors_base {
+    syncrepos=${1}
+    for line in $syncrepos
     do
         repo_name=$(echo "$line" | awk -F '=' '{print $1}')
         repo_url=$(echo "$line" | awk -F '=' '{print $2}'  | awk -F '"' '{print $2}')
@@ -170,6 +200,11 @@ function sync_mirrors_repos {
         fi
     done
     chown -R mirrors:mirrors /home/mirrors
+}
+
+function sync_mirrors_repos {
+    sync_mirrors_base "${UTILS_REPOS[@]}"
+    sync_mirrors_base "${INSTALLED_APPS_REPOS[@]}"
 }
 
 while [[ $# > 1 ]]
@@ -212,6 +247,7 @@ done
 
 create_mirrors_user
 enable_mirrors_via_onion
+update_installed_apps_repos
 update_repos_from_friend
 sync_mirrors_repos
 
