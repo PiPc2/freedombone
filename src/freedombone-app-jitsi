@@ -1,0 +1,529 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Jitsi meet + videobridge
+#
+# Instructions: https://github.com/jitsi/jitsi-meet/blob/master/doc/manual-install.md
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS="full full-vim writer"
+
+IN_DEFAULT_INSTALL=1
+SHOW_ON_ABOUT=1
+
+VIDEOBRIDGE_PORT=5347
+JITSI_ONION_PORT=8102
+JITSI_VIDEOBRIDGE_ONION_PORT=8103
+JITSI_AUTH_ONION_PORT=8104
+JITSI_FOCUS_ONION_PORT=8105
+
+# domains
+JITSI_DOMAIN_NAME=
+JITSI_CODE=
+JITSI_ONION_HOSTNAME=
+JITSI_VIDEOBRIDGE_ONION_HOSTNAME=
+JITSI_AUTH_ONION_HOSTNAME=
+
+# repos
+JITSI_MEET_REPO="https://github.com/jitsi/jitsi-meet"
+JITSI_MEET_COMMIT='4d335e086be74fd9074ff302ff56401beb62bf80'
+JICOFO_REPO="https://github.com/jitsi/jicofo"
+JICOFO_COMMIT='91f08b13b34a4fddedc65901c44fce15905d6a1f'
+
+# secrets
+JITSI_VIDEOBRIDGE_SECRET=
+JITSI_FOCUS_SECRET=
+JITSI_CONFERENCE_SECRET=
+
+jitsi_variables=(ONION_ONLY
+                 JITSI_DOMAIN_NAME
+                 JITSI_CODE
+                 JITSI_MEET_REPO
+                 JITSI_MEET_COMMIT
+                 DEFAULT_DOMAIN_NAME
+                 JITSI_VIDEOBRIDGE_SECRET
+                 JITSI_FOCUS_SECRET
+                 JITSI_CONFERENCE_SECRET
+                 JITSI_ONION_HOSTNAME
+                 JITSI_VIDEOBRIDGE_ONION_HOSTNAME
+                 MY_USERNAME)
+
+function can_install_videobridge {
+    check_architecture=$(uname -a)
+    if [[ "$check_architecture" == *"amd64"* || "$check_architecture" == *"i386"* ]]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+function add_jitsi_onion_domain {
+    jitsi_subdomain_name="$1"
+    jitsi_subdomain_port="$2"
+    jitsi_subdomain_onion_port="$3"
+
+    new_domain=$(add_onion_service "${jitsi_subdomain_name}" ${jitsi_subdomain_port} ${jitsi_subdomain_onion_port})
+
+    if ! grep -q "Jitsi ${jitsi_subdomain_name} onion domain" /home/${MY_USERNAME}/README; then
+        echo $"Jitsi ${jitsi_subdomain_name} onion domain: ${new_domain}" >> /home/${MY_USERNAME}/README
+        echo '' >> /home/${MY_USERNAME}/README
+        chown ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/README
+        chmod 600 /home/${MY_USERNAME}/README
+    else
+        if [ -f /home/${MY_USERNAME}/README ]; then
+            sed -i "s|Jitsi ${jitsi_subdomain_name} onion domain.*|Jitsi ${jitsi_subdomain_name} onion domain: ${new_domain}|g" /home/${MY_USERNAME}/README
+        fi
+    fi
+    echo "${new_domain}"
+}
+
+function create_jitsi_subdomains {
+    JITSI_ONION_HOSTNAME=$(add_onion_service jitsi 80 ${JITSI_ONION_PORT})
+
+    if ! grep -q "Jitsi onion domain" /home/${MY_USERNAME}/README; then
+        echo $"Jitsi onion domain: ${JITSI_ONION_HOSTNAME}" >> /home/${MY_USERNAME}/README
+        echo '' >> /home/${MY_USERNAME}/README
+        chown ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/README
+        chmod 600 /home/${MY_USERNAME}/README
+    else
+        if [ -f /home/${MY_USERNAME}/README ]; then
+            sed -i "s|Jitsi onion domain.*|Jitsi onion domain: ${JITSI_ONION_HOSTNAME}|g" /home/${MY_USERNAME}/README
+        fi
+    fi
+
+    JITSI_VIDEOBRIDGE_ONION_HOSTNAME=$(add_jitsi_onion_domain jitsi-videobridge ${VIDEOBRIDGE_PORT} ${JITSI_VIDEOBRIDGE_ONION_PORT})
+    JITSI_AUTH_ONION_HOSTNAME=$(add_jitsi_onion_domain jitsi-auth 5222 ${JITSI_AUTH_ONION_PORT})
+    JITSI_FOCUS_ONION_HOSTNAME=$(add_jitsi_onion_domain jitsi-focus 5222 ${JITSI_FOCUS_ONION_PORT})
+}
+
+function remove_jitsi_subdomains {
+    function_check remove_onion_service
+    remove_onion_service jitsi ${JITSI_ONION_PORT}
+    remove_onion_service jitsi-videobridge ${JITSI_VIDEOBRIDGE_ONION_PORT}
+    remove_onion_service jitsi-auth ${JITSI_AUTH_ONION_PORT}
+    remove_onion_service jitsi-focus ${JITSI_FOCUS_ONION_PORT}
+}
+
+function remove_user_jitsi {
+    remove_username="$1"
+}
+
+function add_user_jitsi {
+    new_username="$1"
+    new_user_password="$2"
+}
+
+function install_interactive_jitsi {
+    if [ ! ${ONION_ONLY} ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ ${ONION_ONLY} != "no" ]]; then
+        JITSI_DOMAIN_NAME='jitsi.local'
+        write_config_param "JITSI_DOMAIN_NAME" "$JITSI_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "jitsi" "JITSI_DOMAIN_NAME" "JITSI_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function configure_interactive_jitsi {
+    echo -n ''
+}
+
+function reconfigure_jitsi {
+    echo -n ''
+}
+
+function upgrade_jitsi {
+    echo -n ''
+}
+
+function backup_local_jitsi {
+    echo -n ''
+}
+
+function restore_local_jitsi {
+    echo -n ''
+}
+
+function backup_remote_jitsi {
+    echo -n ''
+}
+
+function restore_remote_jitsi {
+    echo -n ''
+}
+
+function remove_jitsi {
+    read_config_param JITSI_DOMAIN_NAME
+    if [ ${#JITSI_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+
+    if [ -f /etc/nginx/sites-available/${JITSI_DOMAIN_NAME} ]; then
+        nginx_dissite ${JITSI_DOMAIN_NAME}
+        if [ -d /var/www/${JITSI_DOMAIN_NAME} ]; then
+            rm -rf /var/www/${JITSI_DOMAIN_NAME}
+        fi
+        rm /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}
+
+        function_check remove_certs
+        remove_certs ${JITSI_DOMAIN_NAME}
+
+        systemctl reload nginx
+    fi
+
+    remove_jitsi_subdomains
+
+    systemctl stop prosody
+    if [ -f /etc/prosody/conf.d/${JITSI_DOMAIN_NAME}.cfg.lua ]; then
+        rm /etc/prosody/conf.d/${JITSI_DOMAIN_NAME}.cfg.lua
+    fi
+    if [ -f /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua ]; then
+        rm /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
+    fi
+    prosodyctl unregister focus auth.${JITSI_DOMAIN_NAME}
+    systemctl start prosody
+
+    remove_nodejs jitsi
+
+    # remove jicofo
+    if [ -f /etc/systemd/system/jicofo.service ]; then
+        systemctl stop jicofo
+        systemctl disable jicofo
+        rm /etc/systemd/system/jicofo.service
+    fi
+    if [ -d ${INSTALL_DIR}/jicofo ]; then
+        rm -rf ${INSTALL_DIR}/jicofo
+    fi
+
+    # remove videobridge
+    #firewall_remove ${VIDEOBRIDGE_PORT}
+    apt-get -yq remove --purge jitsi-videobridge
+    if [ -d /etc/jitsi ]; then
+        rm -rf /etc/jitsi
+    fi
+    deluser -r jitsi
+    if [ -d /usr/share/jitsi-videobridge ]; then
+        rm -rf /usr/share/jitsi-videobridge
+    fi
+    sed -i "/jitsi/d" /etc/apt/sources.list
+    apt-get update
+
+    remove_app jitsi
+    remove_completion_param install_jitsi
+    sed -i '/jitsi/d' ${COMPLETION_FILE}
+    sed -i '/Jitsi/d' /home/${MY_USERNAME}/README
+}
+
+function install_jitsi_videobridge {
+    apt-get -yq install wget debconf-utils
+    echo 'deb http://download.jitsi.org/nightly/deb unstable/' >> /etc/apt/sources.list
+    wget -qO - https://download.jitsi.org/nightly/deb/unstable/archive.key | apt-key add -
+    apt-get update
+
+    debconf-set-selections <<< "jitsi-videobridge jitsi-videobridge/jvb-hostname string jitsi-videobridge.${JITSI_VIDEOBRIDGE_ONION_HOSTNAME}"
+    apt-get -yq install jitsi-videobridge
+    if [ ! -d /etc/jitsi ]; then
+        echo $'Videobridge package failed to install'
+        exit 63983
+    fi
+    #firewall_add videobridge ${VIDEOBRIDGE_PORT}
+}
+
+function install_jitsi_jicofo {
+    apt-get -yq install default-jdk ant
+
+    if [ ! -d ${INSTALL_DIR} ]; then
+        mkdir -p ${INSTALL_DIR}
+    fi
+
+    function_check git_clone
+    git_clone ${JICOFO_REPO} ${INSTALL_DIR}/jicofo
+    if [ ! -d ${INSTALL_DIR}/jicofo ]; then
+        exit 63829
+    fi
+    cd ${INSTALL_DIR}/jicofo
+    git checkout ${JICOFO_COMMIT} -b ${JICOFO_COMMIT}
+    set_completion_param "jitsi jicofo commit" "${JICOFO_COMMIT}"
+
+    check_architecture=$(uname -a)
+    if [[ "$check_architecture" == *"amd64"* ]]; then
+        ant dist.lin64
+        jicofo_dir=${INSTALL_DIR}/jicofo/dist/lin64
+    else
+        ant dist.lin
+        jicofo_dir=${INSTALL_DIR}/jicofo/dist/lin
+    fi
+
+    if [ ! -d ${jicofo_dir} ]; then
+        echo $'Jicofo working directory not found'
+        exit 62825
+    fi
+
+    # TODO does this have to be run as root?
+
+    echo '[Unit]' > /etc/systemd/system/jicofo.service
+    echo 'Description=Jicofo (Jitsi Conference Focus)' >> /etc/systemd/system/jicofo.service
+    echo 'After=syslog.target network.target tor.service' >> /etc/systemd/system/jicofo.service
+    echo '' >> /etc/systemd/system/jicofo.service
+    echo '[Service]' >> /etc/systemd/system/jicofo.service
+    echo 'Type=simple' >> /etc/systemd/system/jicofo.service
+    echo 'User=root' >> /etc/systemd/system/jicofo.service
+    echo 'Group=root' >> /etc/systemd/system/jicofo.service
+    echo "WorkingDirectory=${jicofo_dir}" >> /etc/systemd/system/jicofo.service
+    echo "ExecStart=/usr/bin/torify ./jicofo.sh --domain=${JITSI_ONION_HOSTNAME} --secret=\"${JITSI_FOCUS_SECRET}\" --user_domain=${JITSI_AUTH_ONION_HOSTNAME} --user_name=focus --user_password=\"${JITSI_CONFERENCE_SECRET}\"" >> /etc/systemd/system/jicofo.service
+    echo 'Restart=on-failure' >> /etc/systemd/system/jicofo.service
+    echo 'SuccessExitStatus=3 4' >> /etc/systemd/system/jicofo.service
+    echo 'RestartForceExitStatus=3 4' >> /etc/systemd/system/jicofo.service
+    echo '' >> /etc/systemd/system/jicofo.service
+    echo '[Install]' >> /etc/systemd/system/jicofo.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/jicofo.service
+    chmod +x /etc/systemd/system/jicofo.service
+
+    systemctl enable jicofo
+    systemctl start jicofo
+}
+
+function install_jitsi_xmpp {
+    if [ ! -d /etc/prosody/conf.avail ]; then
+        echo $'Missing directory /etc/prosody/conf.avail'
+        exit 62382
+    fi
+
+    cp /var/www/${JITSI_DOMAIN_NAME}/htdocs/prosody-plugins/*.lua /usr/lib/prosody/modules
+    cp -r /var/www/${JITSI_DOMAIN_NAME}/htdocs/prosody-plugins/token /usr/lib/prosody/modules/
+
+    update_default_domain
+
+    prosody_config=/etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
+    echo "VirtualHost \"${JITSI_DOMAIN_NAME}\"" > $prosody_config
+    echo 'authentication = "anonymous"' >> $prosody_config
+    echo 'ssl = {' >> $prosody_config
+    echo "    key = \"/etc/prosody/certs/${JITSI_DOMAIN_NAME}.key\";" >> $prosody_config
+    echo "    certificate = \"/etc/prosody/certs/${JITSI_DOMAIN_NAME}.pem\";" >> $prosody_config
+    echo "    dhparam = \"/etc/prosody/certs/${JITSI_DOMAIN_NAME}.dhparam\";" >> $prosody_config
+    echo '    options = {"no_sslv2", "no_sslv3" };' >> $prosody_config
+    echo '}' >> $prosody_config
+    echo '' >> $prosody_config
+    echo 'modules_enabled = {' >> $prosody_config
+    echo '    "bosh";' >> $prosody_config
+    echo '    "pubsub";' >> $prosody_config
+    echo '    "tls";' >> $prosody_config
+    echo '    "onions";' >> $prosody_config
+    echo '    "saslauth";' >> $prosody_config
+    echo '}' >> $prosody_config
+    echo '' >> $prosody_config
+    echo "VirtualHost \"${JITSI_ONION_HOSTNAME}\"" > $prosody_config
+    echo '    authentication = "anonymous"' >> $prosody_config
+    echo '' >> $prosody_config
+    echo "VirtualHost \"${JITSI_AUTH_ONION_HOSTNAME}\"" >> $prosody_config
+    echo '    authentication = "internal_plain"' >> $prosody_config
+    echo '' >> $prosody_config
+    echo "admins = { \"focus@${JITSI_AUTH_ONION_HOSTNAME}\" }" >> $prosody_config
+    echo '' >> $prosody_config
+    echo "Component \"${JITSI_CONFERENCE_ONION_HOSTNAME}\" \"muc\"" >> $prosody_config
+    echo "Component \"${JITSI_VIDEOBRIDGE_ONION_HOSTNAME}\"" >> $prosody_config
+    echo "    component_secret = \"${JITSI_VIDEOBRIDGE_SECRET}\"" >> $prosody_config
+    echo "Component \"${JITSI_FOCUS_ONION_HOSTNAME}\"" >> $prosody_config
+    echo "    component_secret = \"${JITSI_FOCUS_SECRET}\"" >> $prosody_config
+
+    ln -s /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua /etc/prosody/conf.d/${JITSI_DOMAIN_NAME}.cfg.lua
+
+    prosodyctl register focus ${JITSI_AUTH_ONION_HOSTNAME} "${JITSI_CONFERENCE_SECRET}"
+}
+
+function install_jitsi_meet {
+    if [ ${#JITSI_DOMAIN_NAME} -eq 0 ]; then
+        exit 367839
+    fi
+
+    function_check install_nodejs
+    install_nodejs jitsi
+
+    if [ ! -d /var/www/${JITSI_DOMAIN_NAME} ]; then
+        mkdir -p /var/www/${JITSI_DOMAIN_NAME}
+    fi
+    if [ ! -d /var/www/${JITSI_DOMAIN_NAME}/htdocs ]; then
+        function_check git_clone
+        git_clone ${JITSI_MEET_REPO} /var/www/${JITSI_DOMAIN_NAME}/htdocs
+        if [ ! -d /var/www/${JITSI_DOMAIN_NAME}/htdocs ]; then
+            echo $'Unable to clone jitsi meet repo'
+            exit 345673
+        fi
+    fi
+
+    cd /var/www/${JITSI_DOMAIN_NAME}/htdocs
+    git checkout ${JITSI_MEET_COMMIT} -b ${JITSI_MEET_COMMIT}
+    set_completion_param "jitsi commit" "${JITSI_MEET_COMMIT}"
+
+    install_jitsi_xmpp
+
+    chmod a+w /var/www/${JITSI_DOMAIN_NAME}/htdocs
+
+    npm install -g browserify@13.1.1
+    npm install
+    make
+
+    jitsi_nginx_site=/etc/nginx/sites-available/$JITSI_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $JITSI_DOMAIN_NAME
+        echo 'server {' >> $jitsi_nginx_site
+        echo '  listen 443 ssl;' >> $jitsi_nginx_site
+        echo "  server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '  # Security' >> $jitsi_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $JITSI_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $JITSI_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '  # Logs' >> $jitsi_nginx_site
+        echo '  access_log off;' >> $jitsi_nginx_site
+        echo '  error_log off;' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '  # Root' >> $jitsi_nginx_site
+        echo "  root /var/www/${JITSI_DOMAIN_NAME}/htdocs;" >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '  index index.html;' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '  location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
+        echo '      rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
+        echo '  }' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '  location / {' >> $jitsi_nginx_site
+        function_check nginx_limits
+        nginx_limits $JITSI_DOMAIN_NAME '15m'
+        echo '  }' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '  location /http-bind {' >> $jitsi_nginx_site
+        echo '      proxy_pass      http://localhost:5280/http-bind;' >> $jitsi_nginx_site
+        echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
+        echo '      proxy_set_header Host $http_host;' >> $jitsi_nginx_site
+        echo '  }' >> $jitsi_nginx_site
+        echo '}' >> $jitsi_nginx_site
+    else
+        echo -n '' > $jitsi_nginx_site
+    fi
+    echo 'server {' >> $jitsi_nginx_site
+    echo "    listen 127.0.0.1:$JITSI_ONION_PORT default_server;" >> $jitsi_nginx_site
+    echo "    server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $JITSI_DOMAIN_NAME
+    echo '' >> $jitsi_nginx_site
+    echo '  # Logs' >> $jitsi_nginx_site
+    echo '  access_log off;' >> $jitsi_nginx_site
+    echo '  error_log off;' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '  # Root' >> $jitsi_nginx_site
+    echo "  root /var/www/${JITSI_DOMAIN_NAME}/htdocs;" >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '  index index.html;' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '  location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
+    echo '      rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
+    echo '  }' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '  location / {' >> $jitsi_nginx_site
+    function_check nginx_limits
+    nginx_limits $JITSI_DOMAIN_NAME '15m'
+    echo '  }' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '  location /http-bind {' >> $jitsi_nginx_site
+    echo '      proxy_pass      http://localhost:5280/http-bind;' >> $jitsi_nginx_site
+    echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
+    echo '      proxy_set_header Host $http_host;' >> $jitsi_nginx_site
+    echo '  }' >> $jitsi_nginx_site
+    echo '}' >> $jitsi_nginx_site
+
+    function_check create_site_certificate
+    create_site_certificate ${JITSI_DOMAIN_NAME} 'yes'
+
+    if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt ]; then
+        mv /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem
+    fi
+    if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
+        chown jitsi: /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem
+    fi
+    if [ -f /etc/ssl/private/${JITSI_DOMAIN_NAME}.key ]; then
+        chown jitsi: /etc/ssl/private/${JITSI_DOMAIN_NAME}.key
+    fi
+
+    function_check nginx_ensite
+    nginx_ensite ${JITSI_DOMAIN_NAME}
+
+    set_completion_param "jitsi domain" "$JITSI_DOMAIN_NAME"
+
+    chown -R www-data:www-data /var/www/${JITSI_DOMAIN_NAME}/htdocs
+    systemctl restart nginx
+}
+
+function install_jitsi {
+    if [[ "$(can_install_videobridge)" == "0" ]]; then
+        echo $'jitsi meet/videobridge can only be installed on i386 or amd64 architectures'
+        exit 83562
+    fi
+
+    if [ ! ${JITSI_DOMAIN_NAME} ]; then
+        echo $'No domain name was given for jitsi'
+        exit 47682
+    fi
+
+    if [ ! -d /etc/prosody ]; then
+        echo $'xmpp must be installed before installing jitsi'
+        exit 62394
+    fi
+
+    if [[ "${JITSI_DOMAIN_NAME}" == "${DEFAULT_DOMAIN_NAME}" ]]; then
+        echo $'The jitsi domain name should not be the same as the main domain name'
+        exit 78372
+    fi
+
+    if [ ! ${JITSI_VIDEOBRIDGE_SECRET} ]; then
+        JITSI_VIDEOBRIDGE_SECRET="$(create_password 30)"
+    fi
+    if [ ! ${JITSI_FOCUS_SECRET} ]; then
+        JITSI_FOCUS_SECRET="$(create_password 30)"
+    fi
+    if [ ! ${JITSI_CONFERENCE_SECRET} ]; then
+        JITSI_CONFERENCE_SECRET="$(create_password 30)"
+    fi
+
+    create_jitsi_subdomains
+    install_jitsi_videobridge
+    install_jitsi_jicofo
+    install_jitsi_meet
+
+    APP_INSTALLED=1
+}
