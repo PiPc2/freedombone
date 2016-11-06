@@ -35,6 +35,8 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-image
 export TEXTDOMAINDIR="/usr/share/locale"
 
+USERHOME=$HOME
+
 PROJECT_INSTALL_DIR=/usr/local/bin
 if [ -f /usr/bin/${PROJECT_NAME} ]; then
     PROJECT_INSTALL_DIR=/usr/bin
@@ -135,6 +137,17 @@ AMNESIC='no'
 # Versions used for Arch/Parabola setup
 MBR_VERSION='1.1.11'
 
+# version of cliapp to use with parabola
+CLIAPP_COMMIT='cb17626e6441a5bf43a1d3f17a769f8e44ff4977'
+
+# version of mbr to use with parabola
+MBR_COMMIT='fb7ac88f251a1529b8aa759abc49acb2e99094b2'
+
+# defining repo variables here ensures that they will be mirrored
+MULTIPATH_TOOLS_REPO="https://aur.archlinux.org/multipath-tools.git"
+MBR_REPO="https://aur.archlinux.org/mbr.git"
+CLIAPP_REPO="git://git.liw.fi/cliapp"
+
 function image_setup {
     setup_type=$1
 
@@ -151,22 +164,50 @@ function image_setup {
             sudo pacman -S --noconfirm qemu-static binfmt-qemu-static uboot-tools qemu parted
             sudo pacman -S --noconfirm dpkg-devtools bin86 arch-install-scripts qemu-arch-extra
             sudo pacman -S --noconfirm syncthing
-            mkdir ~/develop
-            if [ ! -d ~/develop/python-cliapp ]; then
-                git clone git://git.liw.fi/cliapp ~/develop/python-cliapp
+            mkdir $USERHOME/develop
+            if [ -d $USERHOME/develop/python-cliapp ]; then
+                sudo rm -rf $USERHOME/develop/python-cliapp
+            fi
+            git clone $CLIAPP_REPO $USERHOME/develop/python-cliapp
+            if [ ! "$?" = "0" ]; then
+                echo $"Failed to clone python-cliapp"
+                return
+            fi
+            if [ ! -d $USERHOME/develop/python-cliapp ]; then
+                echo $"Couldn't clone python-cliapp"
+                return
             fi
             sudo pacman -S --noconfirm python2-coverage python2-pytest-cov python2-sphinx
             sudo pacman -S --noconfirm autopep8 python2-pylint python2-yaml python2-xdg python2-pip
-            cd ~/develop/python-cliapp
+            cd $USERHOME/develop/python-cliapp
+            git checkout $CLIAPP_COMMIT -b $CLIAPP_COMMIT
             sudo python2 setup.py install
             sudo pip2 install distro-info logging
-            if [ ! -d ~/develop/mbr ]; then
-                git clone https://aur.archlinux.org/mbr.git ~/develop/mbr
+            if [ -d $USERHOME/develop/mbr ]; then
+                sudo rm -rf $USERHOME/develop/mbr
             fi
-            cd ~/develop/mbr
-            makepkg
+            git clone $MBR_REPO $USERHOME/develop/mbr
+            if [ ! "$?" = "0" ]; then
+                echo $"Failed to clone mbr"
+                return
+            fi
+            if [ ! -d $USERHOME/develop/mbr ]; then
+                echo $"Couldn't clone mbr"
+                return
+            fi
+            cd $USERHOME/develop/mbr
+            git checkout $MBR_COMMIT -b $MBR_COMMIT
+            makepkg --force --noconfirm
+            if [ ! -f mbr-${MBR_VERSION}.tar.gz ]; then
+                echo $"mbr tarball was not found for version ${MBR_VERSION}"
+                return
+            fi
             tar -xzvf mbr-${MBR_VERSION}.tar.gz
-            cd ~/develop/mbr/mbr-${MBR_VERSION}
+            if [ ! -d $USERHOME/develop/mbr/mbr-${MBR_VERSION} ]; then
+                echo $"mbr tarball could not be extracted"
+                return
+            fi
+            cd $USERHOME/develop/mbr/mbr-${MBR_VERSION}
             cp ../*.patch .
             patch -p0 < *.patch
             ./configure
@@ -177,17 +218,32 @@ function image_setup {
                 return
             fi
             sudo cp /usr/local/sbin/install-mbr /sbin
-            if [ ! -d ~/develop/multipath-tools ]; then
-                git clone https://aur.archlinux.org/multipath-tools.git ~/develop/multipath-tools
+            if [ -d $USERHOME/develop/multipath-tools ]; then
+                sudo rm -rf $USERHOME/develop/multipath-tools
+            fi
+            git clone $MULTIPATH_TOOLS_REPO $USERHOME/develop/multipath-tools
+            if [ ! "$?" = "0" ]; then
+                echo $"Failed to clone multipath-tools"
+                return
+            fi
+            if [ ! -d $USERHOME/develop/multipath-tools ]; then
+                echo $"Couldn't clone multipath-tools"
+                return
             fi
             sudo pacman -S --noconfirm device-mapper libaio liburcu fakeroot
-            cd ~/develop/multipath-tools
+            cd $USERHOME/develop/multipath-tools
             makepkg --force --noconfirm
             makepkg -i --force --noconfirm
             sudo wget https://raw.githubusercontent.com/bashrc/freedombone/stockholm/image_build/debootstrap/scripts/${DEBIAN_VERSION} -O /usr/share/debootstrap/scripts/debscript
             sudo cp -f /usr/share/debootstrap/scripts/debscript /usr/share/debootstrap/scripts/${DEBIAN_VERSION}
             if [ ! -f /usr/share/debootstrap/scripts/${DEBIAN_VERSION} ]; then
                 echo $"No debian debootstrap script was found for $DEBIAN_VERSION"
+                return
+            fi
+            debian_script_hash=$(sha256sum /usr/share/debootstrap/scripts/${DEBIAN_VERSION} | awk -F ' ' '{print $1}')
+            expected_debian_script_hash='94e01603091748e8a6a9d2c3beefec29f2a174d989500f81be4ab767830f4489'
+            if [[ "$debian_script_hash" != "$expected_debian_script_hash" ]]; then
+                echo $"Invalid hash for debootstrap ${DEBIAN_VERSION} script"
                 return
             fi
             sudo chmod +x /usr/share/debootstrap/scripts/${DEBIAN_VERSION}
