@@ -1,0 +1,307 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# mailpile app
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS="full full-vim writer"
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+MAILPILE_DOMAIN_NAME=
+MAILPILE_CODE=
+MAILPILE_ONION_PORT=8103
+MAILPILE_REPO="https://github.com/mailpile/Mailpile"
+MAILPILE_COMMIT='352ca27a29f7d9525298264c04bc5c7d55887276'
+MAILPILE_PORT=33411
+
+mailpile_variables=(MAILPILE_REPO
+                    MAILPILE_COMMIT
+                    MAILPILE_DOMAIN_NAME
+                    MAILPILE_CODE
+                    ONION_ONLY
+                    DDNS_PROVIDER
+                    MY_USERNAME)
+
+function remove_user_mailpile {
+    remove_username="$1"
+}
+
+function add_user_mailpile {
+    echo '0'
+}
+
+function install_interactive_mailpile {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        MAILPILE_DOMAIN_NAME='mailpile.local'
+        write_config_param "MAILPILE_DOMAIN_NAME" "$MAILPILE_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "mailpile" "MAILPILE_DOMAIN_NAME" "MAILPILE_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function change_password_mailpile {
+    echo -n ''
+}
+
+function reconfigure_mailpile {
+    echo -n ''
+}
+
+function upgrade_mailpile {
+    read_config_param "MAILPILE_DOMAIN_NAME"
+
+    function_check set_repo_commit
+    set_repo_commit /var/www/$MAILPILE_DOMAIN_NAME/htdocs "mailpile commit" "$MAILPILE_COMMIT" $MAILPILE_REPO
+}
+
+function backup_local_mailpile {
+    echo -n ''
+}
+
+function restore_local_mailpile {
+    echo -n ''
+}
+
+function backup_remote_mailpile {
+    echo -n ''
+}
+
+function restore_remote_mailpile {
+    echo -n ''
+}
+
+function remove_mailpile {
+    if [ ${#MAILPILE_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+
+    systemctl stop mailpile
+    systemctl disable mailpile
+    rm /etc/systemd/system/mailpile.service
+
+    read_config_param "MAILPILE_DOMAIN_NAME"
+    if [[ "$MAILPILE_DOMAIN_NAME" != "$DEFAULT_DOMAIN_NAME" ]]; then
+        nginx_dissite $MAILPILE_DOMAIN_NAME
+        remove_certs ${MAILPILE_DOMAIN_NAME}
+        if [ -f /etc/nginx/sites-available/$MAILPILE_DOMAIN_NAME ]; then
+            rm -f /etc/nginx/sites-available/$MAILPILE_DOMAIN_NAME
+        fi
+        if [ -d /var/www/$MAILPILE_DOMAIN_NAME ]; then
+            rm -rf /var/www/$MAILPILE_DOMAIN_NAME
+        fi
+        function_check remove_ddns_domain
+        remove_ddns_domain $MAILPILE_DOMAIN_NAME
+    fi
+
+    remove_config_param MAILPILE_DOMAIN_NAME
+    remove_config_param MAILPILE_CODE
+    function_check remove_onion_service
+    remove_onion_service mailpile ${MAILPILE_ONION_PORT}
+    remove_completion_param "install_mailpile"
+
+    enable_email_encryption_at_rest
+
+    sed -i '/Mailpile/d' $COMPLETION_FILE
+    sed -i '/mailpile/d' $COMPLETION_FILE
+    sed -i '/mailpile/d' /home/$MY_USERNAME/README
+    sed -i '/Mailpile/d' /home/$MY_USERNAME/README
+}
+
+function install_mailpile {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [ ! $MAILPILE_DOMAIN_NAME ]; then
+        echo $'The mailpile domain name was not specified'
+        exit 63824
+    fi
+
+    apt-get -yq install python-pip python-lxml python-dev libjpeg-dev
+
+    if [ ! -d /var/www/$MAILPILE_DOMAIN_NAME ]; then
+        mkdir /var/www/$MAILPILE_DOMAIN_NAME
+    fi
+
+    cd /var/www/$MAILPILE_DOMAIN_NAME
+    git_clone $MAILPILE_REPO htdocs
+    cd htdocs
+    git checkout $MAILPILE_COMMIT -b $MAILPILE_COMMIT
+    set_completion_param "mailpile commit" "$MAILPILE_COMMIT"
+
+    if [ ! -f requirements-dev.txt ]; then
+        echo $'No python requirements file found'
+        exit 62382
+    fi
+    pip install -r requirements.txt
+
+    adduser --system --home=/var/www/$MAILPILE_DOMAIN_NAME/htdocs/ --group mailpile
+    chown -R mailpile: /var/www/$MAILPILE_DOMAIN_NAME/htdocs/
+
+    # create folders and tags
+    su -c "cd /var/www/$MAILPILE_DOMAIN_NAME/htdocs && ./mp --setup" - mailpile
+
+    if [[ $ONION_ONLY == 'no' ]]; then
+        if [[ "$MAILPILE_DOMAIN_NAME" == "$DEFAULT_DOMAIN_NAME" ]]; then
+            su -c "cd /var/www/$MAILPILE_DOMAIN_NAME/htdocs && ./mp set sys.http_path /mail" - mailpile
+        fi
+    fi
+
+    echo '[Unit]' > /etc/systemd/system/mailpile.service
+    echo 'Description=Mailpile Email Client' >> /etc/systemd/system/mailpile.service
+    echo 'After=syslog.target network.target nginx.target' >> /etc/systemd/system/mailpile.service
+    echo '' >> /etc/systemd/system/mailpile.service
+    echo '[Service]' >> /etc/systemd/system/mailpile.service
+    echo 'User=mailpile' >> /etc/systemd/system/etherpad.service
+    echo 'Group=mailpile' >> /etc/systemd/system/etherpad.service
+    echo "WorkingDirectory=/var/www/$MAILPILE_DOMAIN_NAME/htdocs" >> /etc/systemd/system/mailpile.service
+    echo "ExecStart=./mp --www=0.0.0.0:${MAILPILE_PORT} --wait" >> /etc/systemd/system/mailpile.service
+    echo 'Restart=always' >> /etc/systemd/system/mailpile.service
+    echo 'RestartSec=10' >> /etc/systemd/system/mailpile.service
+    echo '' >> /etc/systemd/system/mailpile.service
+    echo '[Install]' >> /etc/systemd/system/mailpile.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/mailpile.service
+    chmod +x /etc/systemd/system/mailpile.service
+
+    mailpile_nginx_site=/etc/nginx/sites-available/$MAILPILE_DOMAIN_NAME
+    if [ ! -f $mailpile_nginx_site ]; then
+        if [[ $ONION_ONLY == "no" ]]; then
+            function_check nginx_http_redirect
+            nginx_http_redirect $MAILPILE_DOMAIN_NAME
+            echo 'server {' >> $mailpile_nginx_site
+            echo '  listen 443 ssl;' >> $mailpile_nginx_site
+            echo "  server_name $MAILPILE_DOMAIN_NAME;" >> $mailpile_nginx_site
+            echo '' >> $mailpile_nginx_site
+            echo '  # Security' >> $mailpile_nginx_site
+            function_check nginx_ssl
+            nginx_ssl $MAILPILE_DOMAIN_NAME
+
+            function_check nginx_disable_sniffing
+            nginx_disable_sniffing $MAILPILE_DOMAIN_NAME
+
+            echo '  add_header Strict-Transport-Security max-age=15768000;' >> $mailpile_nginx_site
+            echo '' >> $mailpile_nginx_site
+            echo '  # Logs' >> $mailpile_nginx_site
+            echo '  access_log off;' >> $mailpile_nginx_site
+            echo '  error_log off;' >> $mailpile_nginx_site
+            echo '' >> $mailpile_nginx_site
+            echo '  # Root' >> $mailpile_nginx_site
+            echo "  root /var/www/$MAILPILE_DOMAIN_NAME/htdocs;" >> $mailpile_nginx_site
+            echo '' >> $mailpile_nginx_site
+            echo '  location / {' >> $mailpile_nginx_site
+            function_check nginx_limits
+            nginx_limits $MAILPILE_DOMAIN_NAME '15m'
+            echo "    proxy_pass        http://localhost:${MAILPILE_PORT}/;" >> $mailpile_nginx_site
+            echo '    proxy_set_header  Host $host;' >> $mailpile_nginx_site
+            echo '    proxy_buffering   off;' >> $mailpile_nginx_site
+            echo '  }' >> $mailpile_nginx_site
+            echo '}' >> $mailpile_nginx_site
+        else
+            echo -n '' > $mailpile_nginx_site
+        fi
+        echo 'server {' >> $mailpile_nginx_site
+        echo "    listen 127.0.0.1:$MAILPILE_ONION_PORT default_server;" >> $mailpile_nginx_site
+        echo "    server_name $MAILPILE_DOMAIN_NAME;" >> $mailpile_nginx_site
+        echo '' >> $mailpile_nginx_site
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $MAILPILE_DOMAIN_NAME
+        echo '' >> $mailpile_nginx_site
+        echo '  # Logs' >> $mailpile_nginx_site
+        echo '  access_log off;' >> $mailpile_nginx_site
+        echo '  error_log off;' >> $mailpile_nginx_site
+        echo '' >> $mailpile_nginx_site
+        echo '  # Root' >> $mailpile_nginx_site
+        echo "  root /var/www/$MAILPILE_DOMAIN_NAME/htdocs;" >> $mailpile_nginx_site
+        echo '' >> $mailpile_nginx_site
+        echo '  location / {' >> $mailpile_nginx_site
+        function_check nginx_limits
+        nginx_limits $MAILPILE_DOMAIN_NAME '15m'
+        echo "    proxy_pass        http://localhost:${MAILPILE_PORT}/;" >> $mailpile_nginx_site
+        echo '    proxy_set_header  Host $host;' >> $mailpile_nginx_site
+        echo '    proxy_buffering   off;' >> $mailpile_nginx_site
+        echo '  }' >> $mailpile_nginx_site
+        echo '}' >> $mailpile_nginx_site
+    fi
+
+    function_check create_site_certificate
+    if [[ "$MAILPILE_DOMAIN_NAME" == "$DEFAULT_DOMAIN_NAME" ]]; then
+        if [ ! -f /etc/ssl/certs/${MAILPILE_DOMAIN_NAME}.pem ]; then
+            create_site_certificate $MAILPILE_DOMAIN_NAME 'yes'
+        fi
+    else
+        create_site_certificate $MAILPILE_DOMAIN_NAME 'yes'
+    fi
+
+    if [ -f /etc/ssl/certs/${MAILPILE_DOMAIN_NAME}.crt ]; then
+        mv /etc/ssl/certs/${MAILPILE_DOMAIN_NAME}.crt /etc/ssl/certs/${MAILPILE_DOMAIN_NAME}.pem
+    fi
+    if [ -f /etc/ssl/certs/${MAILPILE_DOMAIN_NAME}.pem ]; then
+        chown mailpile: /etc/ssl/certs/${MAILPILE_DOMAIN_NAME}.pem
+    fi
+    if [ -f /etc/ssl/private/${MAILPILE_DOMAIN_NAME}.key ]; then
+        chown mailpile: /etc/ssl/private/${MAILPILE_DOMAIN_NAME}.key
+    fi
+
+    function_check nginx_ensite
+    nginx_ensite $MAILPILE_DOMAIN_NAME
+
+    MAILPILE_ONION_HOSTNAME=$(add_onion_service mailpile 80 ${MAILPILE_ONION_PORT})
+
+    if ! grep -q "Mailpile onion domain" /home/$MY_USERNAME/README; then
+        echo $"Mailpile onion domain: ${MAILPILE_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    else
+        if [ -f /home/$MY_USERNAME/README ]; then
+            sed -i "s|Mailpile onion domain.*|Mailpile onion domain: ${MAILPILE_ONION_HOSTNAME}|g" /home/$MY_USERNAME/README
+        fi
+    fi
+
+    function_check add_ddns_domain
+    add_ddns_domain $MAILPILE_DOMAIN_NAME
+
+    disable_email_encryption_at_rest
+
+    systemctl enable mailpile
+    systemctl daemon-reload
+    systemctl start mailpile
+    systemctl restart nginx
+
+    set_completion_param "mailpile domain" "$MAILPILE_DOMAIN_NAME"
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
