@@ -10,6 +10,8 @@
 #
 # synapse matrix server
 #
+# https://matrix.org/blog/2016/02/10/advanced-synapse-setup-with-lets-encrypt/
+#
 # License
 # =======
 #
@@ -36,11 +38,140 @@ SHOW_ON_ABOUT=1
 SYNAPSE_PORT=8448
 SYNAPSE_PASSWORD=
 SYNAPSE_DIR=/etc/matrix-synapse
+MATRIX_IRC_REPO="https://github.com/matrix-org/matrix-appservice-irc"
 
 synapse_variables=(ONION_ONLY
                    MY_USERNAME
                    SYNAPSE_PASSWORD
                    DEFAULT_DOMAIN_NAME)
+
+function install_matrix_irc_bridge {
+    if [ ! -d /etc/matrix-synapse ]; then
+        return
+    fi
+    if [ ! -d /etc/ngircd ]; then
+        return
+    fi
+
+    function_check install_nodejs
+    install_nodejs synapse
+
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir -p $INSTALL_DIR
+    fi
+
+    cd $INSTALL_DIR
+    git_clone $MATRIX_IRC_REPO $INSTALL_DIR/matrix_irc_bridge
+    cd $INSTALL_DIR/matrix_irc_bridge
+    npm install
+    if [ ! -f config.sample.yaml ]; then
+        exit 623835
+    fi
+
+    IRC_PASSWORD=$(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
+
+    echo 'homeserver:' > $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  url: "http://localhost:8008"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  domain: "localhost"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo 'ircService:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  servers:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo "    localhost:" >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo "      name: \"${PROJECT_NAME} IRC\"" >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo "      port: ${IRC_PORT}" >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      ssl: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      sslselfsign: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      password: "${IRC_PASSWORD}"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      sendConnectionMessages: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      quitDebounce:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        enabled: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        quitsPerSecond: 5' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        delayMs: 3600000 # 1h' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      botConfig:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        enabled: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        nick: "MatrixBot"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        joinChannelsIfNoUsers: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      privateMessages:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        enabled: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        federate: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      dynamicChannels:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        enabled: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        createAlias: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        published: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        joinRule: public' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        federate: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        aliasTemplate: "#irc_$CHANNEL"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      membershipLists:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        enabled: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        floodDelayMs: 10000' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        global:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '          ircToMatrix:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '            initial: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '            incremental: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '          matrixToIrc:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '            initial: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '            incremental: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        rooms:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '          - room: "!fuasirouddJoxtwfge:localhost"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '            matrixToIrc:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '              initial: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '              incremental: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        channels:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo "          - channel: \"#${PROJECT_NAME}\"" >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '            ircToMatrix:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '              initial: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '              incremental: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      mappings:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        "#thepub": ["!kieouiJuedJoxtVdaG:localhost"]' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      matrixClients:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        userTemplate: "@irc_$NICK"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        displayName: "$NICK (IRC)"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '      ircClients:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        nickTemplate: "$DISPLAY[m]"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        allowNickChanges: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        maxClients: 30' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        idleTimeout: 10800' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        reconnectIntervalMs: 5000' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '        lineLimit: 3' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  ident:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    enabled: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    port: 1113' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  logging:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    level: "debug"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    logfile: "debug.log"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    errfile: "errors.log"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    toConsole: true' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    maxFileSizeBytes: 134217728 # 128 MB' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    maxFiles: 5' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  databaseUri: "nedb://data"' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  debugApi:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    enabled: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    port: 11100' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '  provisioning:' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    enabled: false' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+    echo '    requestTimeoutSeconds: 300' >> $INSTALL_DIR/matrix_irc_bridge/config.yaml
+
+    /usr/bin/node $INSTALL_DIR/matrix_irc_bridge/app.js -r -f /etc/matrix-synapse/my_registration_file.yaml -u "http://${DEFAULT_DOMAIN_NAME}:9999" -c $INSTALL_DIR/matrix_irc_bridge/config.yaml -l my_bot
+
+    if ! grep "my_registration_file.yaml" homeserver.yaml; then
+        echo 'app_service_config_files: ["my_registration_file.yaml"]' >> homeserver.yaml
+    fi
+
+    echo '[Unit]' > /etc/systemd/system/matrix_irc_bridge.service
+    echo 'Description=Matrix IRC Bridge' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo '' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo '[Service]' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo 'Type=simple' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo 'User=matrix-synapse' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo "WorkingDirectory=$INSTALL_DIR/matrix_irc_bridge" >> /etc/systemd/system/matrix_irc_bridge.service
+    echo "ExecStart=/usr/bin/node $INSTALL_DIR/matrix_irc_bridge/app.js -c $INSTALL_DIR/matrix_irc_bridge/config.yaml -f /etc/matrix-synapse/my_registration_file.yaml -p 9999" >> /etc/systemd/system/matrix_irc_bridge.service
+    echo 'Restart=always' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo 'RestartSec=3' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo '' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo '[Install]' >> /etc/systemd/system/matrix_irc_bridge.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/matrix_irc_bridge.service
+    systemctl enable matrix_irc_bridge
+    systemctl start matrix_irc_bridge
+}
 
 function can_install_synapse {
     check_architecture=$(uname -a)
@@ -178,6 +309,14 @@ function remove_synapse {
     rm /etc/apt/sources.list.d/synapse.list
     apt-get update
 
+    if [ -f /etc/systemd/system/matrix_irc_bridge.service ]; then
+        systemctl stop matrix_irc_bridge
+        systemctl disable matrix_irc_bridge
+        rm /etc/systemd/system/matrix_irc_bridge.service
+        remove_nodejs synapse
+        rm -rf $INSTALL_DIR/matrix_irc_bridge
+    fi
+
     remove_completion_param install_synapse
     sed -i '/synapse/d' $COMPLETION_FILE
     sed -i '/Synapse/d' /home/$MY_USERNAME/README
@@ -220,6 +359,19 @@ function install_synapse {
     if [ ! -d /etc/matrix-synapse ]; then
         exit 653835
     fi
+
+    apt-get -yq install matrix-synapse-angular-client
+    cp -av /etc/matrix-synapse/conf.d/webclient.yaml \
+       /etc/matrix-synapse/conf.d/webclient.yaml.orig
+    sed -e 's|,$||g' -i /etc/matrix-synapse/conf.d/webclient.yaml
+    cp -av  /etc/init.d/matrix-synapse /etc/init.d/matrix-synapse.orig
+    sed -e 's|chown $USER:nogroup $PIDFILE.*|chown $USER:nogroup $PIDFILE /var/lib/$NAME/media|g' -i /etc/init.d/matrix-synapse
+    diff -u /etc/init.d/matrix-synapse.orig /etc/init.d/matrix-synapse
+    cp -av /etc/matrix-synapse/homeserver.yaml /etc/matrix-synapse/homeserver.yaml.orig
+    sed -i 's|enable_registration: False|enable_registration: True|g' -i /etc/matrix-synapse/homeserver.yaml
+    rm -f /etc/matrix-synapse/conf.d/*.orig /etc/matrix-synapse/conf.d/*~
+
+    update_default_domain
     systemctl stop matrix-synapse
     systemctl start matrix-synapse
 
@@ -259,6 +411,8 @@ function install_synapse {
             sed -i "s|Synapse administrator password.*|Synapse administrator password: $SYNAPSE_PASSWORD|g" /home/${MY_USERNAME}/README
         fi
     fi
+
+    #install_matrix_irc_bridge
 
     APP_INSTALLED=1
 }
