@@ -1,0 +1,226 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# synapse matrix server
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim chat'
+
+IN_DEFAULT_INSTALL=1
+SHOW_ON_ABOUT=0
+
+SYNAPSE_REPO="https://github.com/matrix-org/synapse"
+SYNAPSE_COMMIT='4a9055d4465d5d6059612e7c89f2b5774efc0e18'
+SYNAPSE_PORT=8448
+SYNAPSE_PASSWORD=
+SYNAPSE_DIR=/etc/matrix-synapse
+
+synapse_variables=(ONION_ONLY
+                   MY_USERNAME
+                   SYNAPSE_PASSWORD
+                   DEFAULT_DOMAIN_NAME)
+
+function remove_user_synapse {
+    remove_username="$1"
+    # TODO
+}
+
+function add_user_synapse {
+    new_username="$1"
+    new_user_password="$2"
+
+    cd $SYNAPSE_DIR
+    register_new_matrix_user -c homeserver.yaml https://localhost:${SYNAPSE_PORT} -u "${new_username}" -p "${new_user_password}" -a
+    echo '0'
+}
+
+function install_interactive_synapse {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function change_password_synapse {
+    echo -n ''
+}
+
+function reconfigure_synapse {
+    echo -n ''
+}
+
+function upgrade_synapse {
+    echo -n ''
+}
+
+function backup_local_synapse {
+    source_directory=$SYNAPSE_DIR
+    if [ -d $source_directory ]; then
+        systemctl stop synapse
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory synapse
+        systemctl start synapse
+    fi
+}
+
+function restore_local_synapse {
+    if [ -d $SYNAPSE_DIR ]; then
+        systemctl stop synapse
+
+        temp_restore_dir=/root/tempsynapse
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir synapse
+        cp -r $temp_restore_dir$SYNAPSE_DIR/* $SYNAPSE_DIR
+        if [ ! "$?" = "0" ]; then
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 725
+        fi
+        rm -rf $temp_restore_dir
+        chown -R synapse:synapse $SYNAPSE_DIR
+
+        systemctl start synapse
+    fi
+}
+
+function backup_remote_synapse {
+    source_directory=$SYNAPSE_DIR
+    if [ -d $source_directory ]; then
+        systemctl stop synapse
+        function_check backup_directory_to_friend
+        backup_directory_to_friend $source_directory synapse
+        systemctl start synapse
+    fi
+}
+
+function restore_remote_synapse {
+    if [ -d $SYNAPSE_DIR ]; then
+        systemctl stop synapse
+
+        temp_restore_dir=/root/tempsynapse
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir synapse
+        cp -r $temp_restore_dir$SYNAPSE_DIR/* $SYNAPSE_DIR
+        if [ ! "$?" = "0" ]; then
+            exit 725
+        fi
+        rm -rf $temp_restore_dir
+        chown -R synapse:synapse $SYNAPSE_DIR
+
+        systemctl start synapse
+    fi
+}
+
+function remove_synapse {
+    systemctl stop matrix-synapse
+    firewall_remove ${SYNAPSE_PORT}
+    rm -rf $SYNAPSE_DIR
+    apt-get -yq remove --purge matrix-synapse
+    apt-get -yq autoremove
+
+    rm /etc/apt/sources.list.d/synapse.list
+    apt-get update
+
+    remove_completion_param install_synapse
+    sed -i '/synapse/d' $COMPLETION_FILE
+    sed -i '/Synapse/d' /home/$MY_USERNAME/README
+}
+
+function install_synapse {
+    if [[ ${ONION_ONLY} == 'no' ]]; then
+        # obtain a cert for the default domain
+        if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
+            echo $'Obtaining certificate for the main domain'
+            create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
+        fi
+    fi
+
+    if [ ! -d /etc/prosody ]; then
+        echo $'xmpp should be installed first'
+        exit 67382
+    fi
+
+    apt-get -yq install build-essential python2.7-dev libffi-dev \
+            python-pip python-setuptools sqlite3 \
+            libssl-dev libjpeg-dev libxslt1-dev python-virtualenv curl
+
+    curl -s https://matrix.org/packages/debian/repo-key.asc | apt-key add -
+    echo "deb https://matrix.org/packages/debian/ ${DEBIAN_VERSION} main" | tee /etc/apt/sources.list.d/synapse.list
+    apt-get update
+    apt-get -yq install python-cffi
+    apt-get -yq install python-nacl
+    apt-get -yq install python-signedjson
+
+    debconf-set-selections <<< "matrix-synapse matrix-synapse/server-name string $DEFAULT_DOMAIN_NAME"
+    debconf-set-selections <<< "matrix-synapse matrix-synapse/server_name string $DEFAULT_DOMAIN_NAME"
+    debconf-set-selections <<< "matrix-synapse matrix-synapse/report-stats boolean false"
+    apt-get -yq install matrix-synapse
+    if [ ! -d /etc/matrix-synapse ]; then
+        exit 653835
+    fi
+    systemctl stop matrix-synapse
+    systemctl start matrix-synapse
+
+    firewall_add synapse ${SYNAPSE_PORT}
+
+    SYNAPSE_ONION_HOSTNAME=$(add_onion_service synapse ${SYNAPSE_PORT} ${SYNAPSE_PORT})
+    if ! grep -q "Synapse onion domain" /home/$MY_USERNAME/README; then
+        echo $"Synapse onion domain: ${SYNAPSE_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo '' >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    else
+        if [ -f /home/$MY_USERNAME/README ]; then
+            sed -i "s|Synapse onion domain.*|Synapse onion domain: ${SYNAPSE_ONION_HOSTNAME}|g" /home/$MY_USERNAME/README
+        fi
+    fi
+
+    if [ ! ${SYNAPSE_PASSWORD} ]; then
+        if [ -f ${IMAGE_PASSWORD_FILE} ]; then
+            SYNAPSE_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            SYNAPSE_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+
+    add_user_synapse "${MY_USERNAME}" "${SYNAPSE_PASSWORD}"
+
+    if ! grep -q $"Synapse administrator" /home/${MY_USERNAME}/README; then
+        echo '' >> /home/${MY_USERNAME}/README
+        echo $'# Synapse' >> /home/${MY_USERNAME}/README
+        echo $"Synapse administrator nickname: $MY_USERNAME" >> /home/${MY_USERNAME}/README
+        echo $"Synapse administrator password: $SYNAPSE_PASSWORD" >> /home/${MY_USERNAME}/README
+        chown ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/README
+        chmod 600 /home/${MY_USERNAME}/README
+    else
+        if [ -f /home/${MY_USERNAME}/README ]; then
+            sed -i "s|Synapse administrator password.*|Synapse administrator password: $SYNAPSE_PASSWORD|g" /home/${MY_USERNAME}/README
+        fi
+    fi
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
