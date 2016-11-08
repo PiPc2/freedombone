@@ -48,6 +48,33 @@ lychee_variables=(LYCHEE_REPO
                   MY_USERNAME)
 
 
+function get_mariadb_git_admin_password {
+    if [ -f /home/${MY_USERNAME}/README ]; then
+        if grep -q "Lychee admin user password" /home/${MY_USERNAME}/README; then
+            GIT_ADMIN_PASSWORD=$(cat /home/${MY_USERNAME}/README | grep "Lychee admin user password" | awk -F ':' '{print $2}' | sed 's/^ *//')
+        fi
+    fi
+}
+
+function lychee_create_database {
+    function_check get_mariadb_git_admin_password
+    get_mariadb_git_admin_password
+
+    if [ ! ${GIT_ADMIN_PASSWORD} ]; then
+        if [ -f ${IMAGE_PASSWORD_FILE} ]; then
+            GIT_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            GIT_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    if [ ! $GIT_ADMIN_PASSWORD ]; then
+        return
+    fi
+
+    function_check create_database
+    create_database lychee "$LYCHEE_ADMIN_PASSWORD"
+}
+
 function remove_user_lychee {
     remove_username="$1"
 
@@ -109,16 +136,12 @@ function backup_local_lychee {
         LYCHEE_DOMAIN_NAME=$(get_completion_param "lychee domain")
     fi
 
-    source_directory=/var/www/${LYCHEE_DOMAIN_NAME}/htdocs
-    if [ -d $source_directory ]; then
-        dest_directory=lychee
-        function_check suspend_site
-        suspend_site ${LYCHEE_DOMAIN_NAME}
+    lychee_path=/var/www/${LYCHEE_DOMAIN_NAME}/htdocs
+    if [ -d $lychee_path ]; then
+        function_check backup_database_to_usb
+        backup_database_to_usb lychee
 
-        function_check backup_directory_to_usb
-        backup_directory_to_usb $source_directory $dest_directory
-
-        function_check restart_site
+        backup_directory_to_usb $lychee_path lychee
         restart_site
     fi
 }
@@ -129,89 +152,46 @@ function restore_local_lychee {
         LYCHEE_DOMAIN_NAME=$(get_completion_param "lychee domain")
     fi
     if [ $LYCHEE_DOMAIN_NAME ]; then
-        temp_restore_dir=/root/templychee
-        if [ -d $USB_MOUNT/backup/lychee ]; then
-            restore_directory_from_usb $temp_restore_dir lychee
-        else
-            restore_directory_from_usb $temp_restore_dir blog
-        fi
-        if [ -d /var/www/${LYCHEE_DOMAIN_NAME}/htdocs ]; then
-            if [ -d /var/www/${LYCHEE_DOMAIN_NAME}/previous ]; then
-                rm -rf /var/www/${LYCHEE_DOMAIN_NAME}/previous
-            fi
-            mv /var/www/${LYCHEE_DOMAIN_NAME}/htdocs /var/www/${LYCHEE_DOMAIN_NAME}/previous
-        fi
-        temp_source_dir=$(find ${temp_restore_dir} -name htdocs)
-        cp -r ${temp_source_dir} /var/www/${LYCHEE_DOMAIN_NAME}/
-        if [ ! "$?" = "0" ]; then
-            if [ -d /var/www/${LYCHEE_DOMAIN_NAME}/previous ]; then
-                mv /var/www/${LYCHEE_DOMAIN_NAME}/previous /var/www/${LYCHEE_DOMAIN_NAME}/htdocs
-            fi
-            set_user_permissions
-            backup_unmount_drive
-            exit 54675
-        fi
-        rm -rf ${temp_restore_dir}
-        chown -R www-data:www-data /var/www/${LYCHEE_DOMAIN_NAME}/htdocs
-        # Ensure that the bundled SSL cert is being used
-        if [ -f /etc/ssl/certs/${LYCHEE_DOMAIN_NAME}.bundle.crt ]; then
-            sed -i "s|${LYCHEE_DOMAIN_NAME}.crt|${LYCHEE_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${LYCHEE_DOMAIN_NAME}
-        fi
-        if [ -d /etc/letsencrypt/live/${LYCHEE_DOMAIN_NAME} ]; then
-            ln -s /etc/letsencrypt/live/${LYCHEE_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${LYCHEE_DOMAIN_NAME}.key
-            ln -s /etc/letsencrypt/live/${LYCHEE_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${LYCHEE_DOMAIN_NAME}.pem
-        fi
+        function_check lychee_create_database
+        lychee_create_database
+
+        function_check restore_database
+        restore_database lychee ${LYCHEE_DOMAIN_NAME}
     fi
 }
 
 function backup_remote_lychee {
+    LYCHEE_DOMAIN_NAME='lychee.local'
     if grep -q "lychee domain" $COMPLETION_FILE; then
         LYCHEE_DOMAIN_NAME=$(get_completion_param "lychee domain")
-        temp_backup_dir=/var/www/${LYCHEE_DOMAIN_NAME}/htdocs
-        if [ -d $temp_backup_dir ]; then
-            echo $"Backing up lychee"
-            backup_directory_to_friend $temp_backup_dir lychee
-            echo $"Backup of lychee complete"
-        else
-            echo $"Lychee domain specified but not found in $temp_backup_dir"
-            exit 2578
-        fi
+    fi
+
+    temp_backup_dir=/var/www/${LYCHEE_DOMAIN_NAME}/htdocs
+    if [ -d $temp_backup_dir ]; then
+        suspend_site ${LYCHEE_DOMAIN_NAME}
+        backup_database_to_friend lychee
+        backup_directory_to_friend $temp_backup_dir lychee
+        restart_site
+    else
+        echo $"Lychee domain specified but not found in /var/www/${LYCHEE_DOMAIN_NAME}"
+        exit 2578
     fi
 }
 
 function restore_remote_lychee {
-    if [ -d $SERVER_DIRECTORY/backup/lychee ]; then
+    LYCHEE_DOMAIN_NAME='lychee.local'
+    if grep -q "lychee domain" $COMPLETION_FILE; then
         LYCHEE_DOMAIN_NAME=$(get_completion_param "lychee domain")
-        echo $"Restoring lychee installation $LYCHEE_DOMAIN_NAME"
-        temp_restore_dir=/root/templychee
-        mkdir $temp_restore_dir
-        function_check restore_directory_from_friend
-        restore_directory_from_friend $temp_restore_dir lychee
-        if [ -d /var/www/${LYCHEE_DOMAIN_NAME}/htdocs ]; then
-            if [ -d /var/www/${LYCHEE_DOMAIN_NAME}/previous ]; then
-                rm -rf /var/www/${LYCHEE_DOMAIN_NAME}/previous
-            fi
-            mv /var/www/${LYCHEE_DOMAIN_NAME}/htdocs /var/www/${LYCHEE_DOMAIN_NAME}/previous
-        fi
-        temp_source_dir=$(find ${temp_restore_dir} -name htdocs)
-        cp -r ${temp_source_dir} /var/www/${LYCHEE_DOMAIN_NAME}/
-        if [ ! "$?" = "0" ]; then
-            if [ -d /var/www/${LYCHEE_DOMAIN_NAME}/previous ]; then
-                mv /var/www/${LYCHEE_DOMAIN_NAME}/previous /var/www/${LYCHEE_DOMAIN_NAME}/htdocs
-            fi
-            exit 593
-        fi
-        rm -rf ${temp_restore_dir}
-        # Ensure that the bundled SSL cert is being used
-        if [ -f /etc/ssl/certs/${LYCHEE_DOMAIN_NAME}.bundle.crt ]; then
-            sed -i "s|${LYCHEE_DOMAIN_NAME}.crt|${LYCHEE_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${LYCHEE_DOMAIN_NAME}
-        fi
-        if [ -d /etc/letsencrypt/live/${LYCHEE_DOMAIN_NAME} ]; then
-            ln -s /etc/letsencrypt/live/${LYCHEE_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${LYCHEE_DOMAIN_NAME}.key
-            ln -s /etc/letsencrypt/live/${LYCHEE_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${LYCHEE_DOMAIN_NAME}.pem
-        fi
-        echo $"Restore of lychee complete"
     fi
+
+    function_check restore_database_from_friend
+
+    function_check lychee_create_database
+    lychee_create_database
+
+    restore_database_from_friend lychee ${LYCHEE_DOMAIN_NAME}
+    restart_site
+    chown -R lychee: /var/www/$LYCHEE_DOMAIN_NAME/htdocs/
 }
 
 function remove_lychee {
@@ -222,6 +202,10 @@ function remove_lychee {
     read_config_param "LYCHEE_DOMAIN_NAME"
     nginx_dissite $LYCHEE_DOMAIN_NAME
     remove_certs ${LYCHEE_DOMAIN_NAME}
+
+    drop_database lychee
+    remove_backup_database_local lychee
+
     if [ -f /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME ]; then
         rm -f /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     fi
@@ -272,27 +256,12 @@ function install_lychee_website {
     echo '    location / {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     function_check nginx_limits
     nginx_limits $LYCHEE_DOMAIN_NAME
-    echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    }' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '        allow all;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    }' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '        expires 30d;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    }' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # block these file types' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '        deny all;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    }' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
@@ -339,7 +308,11 @@ function install_lychee_website_onion {
     echo 'server {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo "    listen 127.0.0.1:${LYCHEE_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo "    root /var/www/$LYCHEE_DOMAIN_NAME/htdocs;" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo "    server_name $LYCHEE_DOMAIN_NAME;" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
+    if [[ $ONION_ONLY == 'no' ]]; then
+        echo "    server_name $LYCHEE_DOMAIN_NAME;" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
+    else
+        echo "    server_name $LYCHEE_ONION_HOSTNAME;" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
+    fi
     echo '    access_log off;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo "    error_log /var/log/nginx/${LYCHEE_DOMAIN_NAME}_error_ssl.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    index index.php;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
@@ -353,22 +326,12 @@ function install_lychee_website_onion {
     echo '    location / {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     function_check nginx_limits
     nginx_limits $LYCHEE_DOMAIN_NAME
-    echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    }' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo "    # make sure webfinger and other well known services aren't blocked" >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    # by denying dot files and rewrite request to the front controller' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    location ^~ /.well-known/ {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '        allow all;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    }' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '        expires 30d;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
-    echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    }' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     echo '    # block these file types' >> /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
@@ -451,6 +414,9 @@ function install_lychee {
     else
         echo -n '' > /etc/nginx/sites-available/$LYCHEE_DOMAIN_NAME
     fi
+
+    LYCHEE_ONION_HOSTNAME=$(add_onion_service lychee 80 ${LYCHEE_ONION_PORT})
+
     function_check install_lychee_website_onion
     install_lychee_website_onion
 
@@ -464,10 +430,17 @@ function install_lychee {
     chmod -R 777 /var/www/$LYCHEE_DOMAIN_NAME/htdocs/data/
     chown -R www-data:www-data /var/www/$LYCHEE_DOMAIN_NAME/htdocs
 
-    LYCHEE_ONION_HOSTNAME=$(add_onion_service lychee 80 ${LYCHEE_ONION_PORT})
-
     function_check nginx_ensite
     nginx_ensite $LYCHEE_DOMAIN_NAME
+
+    function_check install_mariadb
+    install_mariadb
+
+    function_check get_mariadb_password
+    get_mariadb_password
+
+    function_check lychee_create_database
+    lychee_create_database
 
     systemctl restart php5-fpm
     systemctl restart nginx
