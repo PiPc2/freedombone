@@ -1,0 +1,352 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Radicale calendar system
+#
+# Configuration based upon:
+#   https://gigacog.com/blog/2016/01/radicale-and-uwsgi-on-nginx-with-systemd
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim'
+
+IN_DEFAULT_INSTALL=1
+SHOW_ON_ABOUT=1
+
+RADICALE_PASSWORD=
+RADICALE_ONION_PORT=8106
+RADICALE_PORT=5232
+RADICALE_DIRECTORY='/etc/radicale'
+
+radicale_variables=(ONION_ONLY
+                    MY_USERNAME
+                    RADICALE_PASSWORD
+                    DEFAULT_DOMAIN_NAME)
+
+function remove_user_radicale {
+    remove_username="$1"
+    if grep "$remove_username:" ${RADICALE_DIRECTORY}/users; then
+        sed -i "/$remove_username/d" ${RADICALE_DIRECTORY}/users
+        systemctl reload radicale
+    fi
+}
+
+function add_user_radicale {
+    new_username="$1"
+    new_user_password="$2"
+
+    if ! grep "$new_username:$new_user_password" ${RADICALE_DIRECTORY}/users; then
+        printf "$new_username:$new_user_password\n" >> ${RADICALE_DIRECTORY}/users
+        systemctl reload radicale
+    fi
+    echo '0'
+}
+
+function install_interactive_radicale {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function change_password_radicale {
+    echo -n ''
+}
+
+function reconfigure_radicale {
+    echo -n ''
+}
+
+function upgrade_radicale {
+    if [ -f /etc/init.d/radicale ]; then
+        systemctl stop radicale
+        rm /etc/init.d/radicale
+        systemctl daemon-reload
+        systemctl start radicale
+    fi
+}
+
+function backup_local_radicale {
+    source_directory=${RADICALE_DIRECTORY}
+    if [ -d $source_directory ]; then
+        dest_directory=radicale
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+    fi
+}
+
+function restore_local_radicale {
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        temp_restore_dir=/root/tempradicale
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir radicale
+        cp -r $temp_restore_dir${RADICALE_DIRECTORY}/* ${RADICALE_DIRECTORY}
+        if [ ! "$?" = "0" ]; then
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 46872
+        fi
+        rm -rf $temp_restore_dir
+        systemctl restart radicale
+    fi
+}
+
+function backup_remote_radicale {
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        echo $"Backing up the radicale settings"
+        backup_directory_to_friend ${RADICALE_DIRECTORY} radicale
+        echo $"Backup of radicale settings complete"
+    fi
+}
+
+function restore_remote_radicale {
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        temp_restore_dir=/root/tempradicale
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir radicale
+        cp -r $temp_restore_dir${RADICALE_DIRECTORY}/* ${RADICALE_DIRECTORY}
+        if [ ! "$?" = "0" ]; then
+            exit 463735
+        fi
+        rm -rf $temp_restore_dir
+        systemctl restart radicale
+    fi
+}
+
+function configure_firewall_for_radicale {
+    if [ ! -d ${RADICALE_DIRECTORY} ]; then
+        return
+    fi
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+        # docker does its own firewalling
+        return
+    fi
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+    firewall_add radicale ${RADICALE_PORT} tcp
+    mark_completed $FUNCNAME
+}
+
+function remove_radicale {
+    nginx_dissite radicale
+    systemctl stop radicale
+    systemctl stop uwsgi_rundir
+    systemctl disable radicale
+    systemctl disable uwsgi_rundir
+    if [ -f /etc/systemd/system/uwsgi_rundir.service ]; then
+        rm /etc/systemd/system/uwsgi_rundir.service
+    fi
+    if [ -f /etc/systemd/system/radicale.service ]; then
+        rm /etc/systemd/system/radicale.service
+    fi
+    if [ -f /etc/nginx/sites-available/radicale ]; then
+        rm /etc/nginx/sites-available/radicale
+    fi
+
+    firewall_remove ${RADICALE_PORT} tcp
+
+    function_check remove_onion_service
+    remove_onion_service radicale ${RADICALE_ONION_PORT}
+
+    apt-get -yq remove --purge radicale python-radicale
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        rm -rf ${RADICALE_DIRECTORY}
+    fi
+    if [ -d /var/www/radicale ]; then
+        rm -rf /var/www/radicale
+    fi
+
+    remove_completion_param install_radicale
+    sed -i '/radicale/d' $COMPLETION_FILE
+    sed -i '/Radicale/d' /home/$MY_USERNAME/README
+}
+
+function install_radicale {
+    if [[ $ONION_ONLY == 'no' ]]; then
+        # obtain a cert for the default domain
+        if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
+            echo $'Obtaining certificate for the main domain'
+            create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
+        fi
+    fi
+
+    apt-get -yq install python-radicale uwsgi uwsgi-plugin-python radicale
+
+    if [ ! -d ${RADICALE_DIRECTORY} ]; then
+        echo $"ERROR: radicale does not appear to have installed"
+        exit 46372
+    fi
+    systemctl stop radicale
+    if [ -f /etc/init.d/radicale ]; then
+        rm /etc/init.d/radicale
+    fi
+
+    if [ ! -d ${RADICALE_DIRECTORY}/collections ]; then
+        mkdir -p ${RADICALE_DIRECTORY}/collections
+    fi
+    chown www-data:www-data ${RADICALE_DIRECTORY}/collections
+
+    echo '[auth]' >  ${RADICALE_DIRECTORY}/config
+    echo 'type = htpasswd' >> ${RADICALE_DIRECTORY}/config
+    echo 'htpasswd_filename = ${RADICALE_DIRECTORY}/users' >> ${RADICALE_DIRECTORY}/config
+    echo 'htpasswd_encryption = crypt' >> ${RADICALE_DIRECTORY}/config
+    echo '' >> ${RADICALE_DIRECTORY}/config
+    echo '[rights]' >> ${RADICALE_DIRECTORY}/config
+    echo 'type = owner_only' >> ${RADICALE_DIRECTORY}/config
+    echo '' >> ${RADICALE_DIRECTORY}/config
+    echo '[storage]' >> ${RADICALE_DIRECTORY}/config
+    echo 'type = filesystem' >> ${RADICALE_DIRECTORY}/config
+    echo 'filesystem_folder = ${RADICALE_DIRECTORY}/collections' >> ${RADICALE_DIRECTORY}/config
+
+    if [ ${#RADICALE_PASSWORD} -lt 8 ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            RADICALE_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            RADICALE_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    add_user_radicale "$MY_USERNAME" "$RADICALE_PASSWORD"
+
+    if [ ! -f /var/www/radicale ]; then
+        mkdir /var/www/radicale
+    fi
+    echo 'import radicale' > /var/www/radicale/radicale.py
+    echo 'radicale.log.start()' >> /var/www/radicale/radicale.py
+    echo 'application = radicale.Application()' >> /var/www/radicale/radicale.py
+
+    echo '[uwsgi]' > /var/www/radicale/uwsgi.ini
+    echo 'plugins = python' >> /var/www/radicale/uwsgi.ini
+    echo 'socket = /var/run/uwsgi/radicale.sock' >> /var/www/radicale/uwsgi.ini
+    echo 'chmod-socket = 660' >> /var/www/radicale/uwsgi.ini
+    echo '' >> /var/www/radicale/uwsgi.ini
+    echo 'wsgi-file = /var/www/radicale/radicale.py' >> /var/www/radicale/uwsgi.ini
+    echo 'master' >> /var/www/radicale/uwsgi.ini
+    echo 'workers = 1' >> /var/www/radicale/uwsgi.ini
+    echo 'max-requests = 100' >> /var/www/radicale/uwsgi.ini
+    echo 'harakiri = 30' >> /var/www/radicale/uwsgi.ini
+    echo 'die-on-term' >> /var/www/radicale/uwsgi.ini
+
+    echo '#!/bin/sh' > /usr/local/bin/uwsgi_rundir.sh
+    echo 'mkdir -p /var/run/uwsgi' >> /usr/local/bin/uwsgi_rundir.sh
+    echo 'chown www-data:www-data /var/run/uwsgi' >> /usr/local/bin/uwsgi_rundir.sh
+    chmod +x /usr/local/bin/uwsgi_rundir.sh
+
+    echo '[Unit]' > /etc/systemd/system/uwsgi_rundir.service
+    echo 'Description=UWSGI socket directory' >> /etc/systemd/system/uwsgi_rundir.service
+    echo 'After=network.target' >> /etc/systemd/system/uwsgi_rundir.service
+    echo '' >> /etc/systemd/system/uwsgi_rundir.service
+    echo '[Service]' >> /etc/systemd/system/uwsgi_rundir.service
+    echo 'Type=simple' >> /etc/systemd/system/uwsgi_rundir.service
+    echo 'User=root' >> /etc/systemd/system/uwsgi_rundir.service
+    echo 'ExecStart=/usr/local/bin/uwsgi_rundir.sh' >> /etc/systemd/system/uwsgi_rundir.service
+    echo '' >> /etc/systemd/system/uwsgi_rundir.service
+    echo '[Install]' >> /etc/systemd/system/uwsgi_rundir.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/uwsgi_rundir.service
+    systemctl enable uwsgi_rundir
+
+    echo '[Unit]' > /etc/systemd/system/radicale.service
+    echo 'Description=Start uwsgi for radicale' >> /etc/systemd/system/radicale.service
+    echo 'After=network.target' >> /etc/systemd/system/radicale.service
+    echo 'Requires=uwsgi_rundir.service' >> /etc/systemd/system/radicale.service
+    echo '' >> /etc/systemd/system/radicale.service
+    echo '[Service]' >> /etc/systemd/system/radicale.service
+    echo 'Type=simple' >> /etc/systemd/system/radicale.service
+    echo 'User=www-data' >> /etc/systemd/system/radicale.service
+    echo 'Group=www-data' >> /etc/systemd/system/radicale.service
+    echo 'ExecStart=/usr/bin/uwsgi --ini /var/www/radicale/uwsgi.ini' >> /etc/systemd/system/radicale.service
+    echo '' >> /etc/systemd/system/radicale.service
+    echo '[Install]' >> /etc/systemd/system/radicale.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/radicale.service
+    systemctl enable radicale
+    systemctl start radicale
+
+    RADICALE_ONION_HOSTNAME=$(add_onion_service radicale 80 ${RADICALE_ONION_PORT})
+
+    if [[ $ONION_ONLY == 'no' ]]; then
+        echo 'server {' > /etc/nginx/sites-available/radicale
+        echo "    listen ${RADICALE_PORT} ssl;" >> /etc/nginx/sites-available/radicale
+        echo "    listen [::]:${RADICALE_PORT} ssl;" >> /etc/nginx/sites-available/radicale
+        echo '' >> /etc/nginx/sites-available/radicale
+        function_check nginx_ssl
+        nginx_ssl $DEFAULT_DOMAIN_NAME
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $DEFAULT_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/radicale
+        echo "    server_name $DEFAULT_DOMAIN_NAME;" >> /etc/nginx/sites-available/radicale
+        echo '' >> /etc/nginx/sites-available/radicale
+        echo '    location / {' >> /etc/nginx/sites-available/radicale
+        echo '        uwsgi_pass unix:/var/run/uwsgi/radicale.sock;' >> /etc/nginx/sites-available/radicale
+        echo '        include uwsgi_params;' >> /etc/nginx/sites-available/radicale
+        echo '    }' >> /etc/nginx/sites-available/radicale
+        echo '}' >> /etc/nginx/sites-available/radicale
+        echo '' >> /etc/nginx/sites-available/radicale
+    else
+        echo -n '' > /etc/nginx/sites-available/radicale
+    fi
+    echo 'server {' >> /etc/nginx/sites-available/radicale
+    echo "    listen 127.0.0.1:${RADICALE_ONION_PORT} default_server;" >> /etc/nginx/sites-available/radicale
+    echo '' >> /etc/nginx/sites-available/radicale
+    echo "    server_name ${RADICALE_ONION_HOSTNAME};" >> /etc/nginx/sites-available/radicale
+    echo '' >> /etc/nginx/sites-available/radicale
+    echo '    location / {' >> /etc/nginx/sites-available/radicale
+    echo '        uwsgi_pass unix:/var/run/uwsgi/radicale.sock;' >> /etc/nginx/sites-available/radicale
+    echo '        include uwsgi_params;' >> /etc/nginx/sites-available/radicale
+    echo '    }' >> /etc/nginx/sites-available/radicale
+    echo '}' >> /etc/nginx/sites-available/radicale
+
+    # create a certificate
+    if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
+        if [[ "$(cert_exists $DEFAULT_DOMAIN_NAME)" == "0" ]]; then
+            ${PROJECT_NAME}-addcert -h $DEFAULT_DOMAIN_NAME --dhkey ${DH_KEYLENGTH}
+            check_certificates $DEFAULT_DOMAIN_NAME
+        fi
+    fi
+
+    update_default_domain
+
+    nginx_ensite radicale
+    systemctl reload nginx
+
+    set_completion_param "radicale onion domain" "${RADICALE_ONION_HOSTNAME}"
+
+    if ! grep -q "Your RADICALE password is" /home/$MY_USERNAME/README; then
+        echo '' >> /home/$MY_USERNAME/README
+        echo $'# RADICALE' >> /home/$MY_USERNAME/README
+        echo $"RADICALE onion domain: ${RADICALE_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
+        echo $"Your RADICALE password is: ${RADICALE_PASSWORD}" >> /home/$MY_USERNAME/README
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
+        chmod 600 /home/$MY_USERNAME/README
+    fi
+
+    function_check configure_firewall_for_radicale
+    configure_firewall_for_radicale
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
