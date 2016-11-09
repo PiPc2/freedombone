@@ -52,8 +52,6 @@ JITSI_AUTH_ONION_HOSTNAME=
 # repos
 JITSI_MEET_REPO="https://github.com/jitsi/jitsi-meet"
 JITSI_MEET_COMMIT='4d335e086be74fd9074ff302ff56401beb62bf80'
-JICOFO_REPO="https://github.com/jitsi/jicofo"
-JICOFO_COMMIT='91f08b13b34a4fddedc65901c44fce15905d6a1f'
 
 # secrets
 JITSI_VIDEOBRIDGE_SECRET=
@@ -266,56 +264,29 @@ function install_jitsi_videobridge {
 }
 
 function install_jitsi_jicofo {
-    apt-get -yq install default-jdk ant
-
-    if [ ! -d ${INSTALL_DIR} ]; then
-        mkdir -p ${INSTALL_DIR}
+    apt-get -yq install jicofo
+    if [ ! -f /usr/share/jicofo/jicofo.sh ]; then
+        echo $'jicofo package install failed'
+        exit 6238345
     fi
 
-    function_check git_clone
-    git_clone ${JICOFO_REPO} ${INSTALL_DIR}/jicofo
-    if [ ! -d ${INSTALL_DIR}/jicofo ]; then
-        exit 63829
+    systemctl stop jicofo
+
+    jicofo_config=/etc/jitsi/jicofo/config
+    sed -i "s|JICOFO_HOST=.*|JICOFO_HOST=localhost|g" $jicofo_config
+    sed -i "s|JICOFO_HOSTNAME=.*|JICOFO_HOSTNAME=${JITSI_VIDEOBRIDGE_ONION_HOSTNAME}|g" $jicofo_config
+    sed -i "s|JICOFO_SECRET=.*|JICOFO_SECRET=${JITSI_VIDEOBRIDGE_SECRET}|g" $jicofo_config
+    sed -i "s|JICOFO_PORT=.*|JICOFO_PORT=${VIDEOBRIDGE_PORT}|g" $jicofo_config
+    sed -i "s|JICOFO_AUTH_DOMAIN=.*|JICOFO_AUTH_DOMAIN=${JITSI_AUTH_ONION_HOSTNAME}|g" $jicofo_config
+    sed -i "s|JICOFO_AUTH_USER=.*|JICOFO_AUTH_USER=focus|g" $jicofo_config
+    sed -i "s|JICOFO_AUTH_PASSWORD=.*|JICOFO_AUTH_PASSWORD=${JITSI_FOCUS_SECRET}|g" $jicofo_config
+
+    if [ ! -f /etc/init.d/jicofo ]; then
+        echo $'jicofo daemon not found'
+        exit 737279
     fi
-    cd ${INSTALL_DIR}/jicofo
-    git checkout ${JICOFO_COMMIT} -b ${JICOFO_COMMIT}
-    set_completion_param "jitsi jicofo commit" "${JICOFO_COMMIT}"
-
-    check_architecture=$(uname -a)
-    if [[ "$check_architecture" == *"amd64"* ]]; then
-        ant dist.lin64
-        jicofo_dir=${INSTALL_DIR}/jicofo/dist/lin64
-    else
-        ant dist.lin
-        jicofo_dir=${INSTALL_DIR}/jicofo/dist/lin
-    fi
-
-    if [ ! -d ${jicofo_dir} ]; then
-        echo $'Jicofo working directory not found'
-        exit 62825
-    fi
-
-    # TODO does this have to be run as root?
-
-    echo '[Unit]' > /etc/systemd/system/jicofo.service
-    echo 'Description=Jicofo (Jitsi Conference Focus)' >> /etc/systemd/system/jicofo.service
-    echo 'After=syslog.target network.target tor.service' >> /etc/systemd/system/jicofo.service
-    echo '' >> /etc/systemd/system/jicofo.service
-    echo '[Service]' >> /etc/systemd/system/jicofo.service
-    echo 'Type=simple' >> /etc/systemd/system/jicofo.service
-    echo 'User=root' >> /etc/systemd/system/jicofo.service
-    echo 'Group=root' >> /etc/systemd/system/jicofo.service
-    echo "WorkingDirectory=${jicofo_dir}" >> /etc/systemd/system/jicofo.service
-    echo "ExecStart=/usr/bin/torify ./jicofo.sh --domain=${JITSI_ONION_HOSTNAME} --secret=\"${JITSI_FOCUS_SECRET}\" --user_domain=${JITSI_AUTH_ONION_HOSTNAME} --user_name=focus --user_password=\"${JITSI_CONFERENCE_SECRET}\"" >> /etc/systemd/system/jicofo.service
-    echo 'Restart=on-failure' >> /etc/systemd/system/jicofo.service
-    echo 'SuccessExitStatus=3 4' >> /etc/systemd/system/jicofo.service
-    echo 'RestartForceExitStatus=3 4' >> /etc/systemd/system/jicofo.service
-    echo '' >> /etc/systemd/system/jicofo.service
-    echo '[Install]' >> /etc/systemd/system/jicofo.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/jicofo.service
-    chmod +x /etc/systemd/system/jicofo.service
-
-    systemctl enable jicofo
+    sed -i 's|exec $DAEMON|exec /usr/bin/torify $DAEMON|g' /etc/init.d/jicofo
+    systemctl daemon-reload
     systemctl start jicofo
 }
 
