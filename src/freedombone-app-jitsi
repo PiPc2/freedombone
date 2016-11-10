@@ -251,55 +251,54 @@ function install_jitsi {
     apt-get -yq install jitsi-meet jitsi-meet-prosody
 
     jitsi_nginx_site=/etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
-    if [ -f $jitsi_nginx_site ]; then
-        rm $jitsi_nginx_site
-    fi
     if [[ $ONION_ONLY == "no" ]]; then
-        function_check nginx_http_redirect
-        nginx_http_redirect ${JITSI_DOMAIN_NAME}.conf
-        echo '' >> $jitsi_nginx_site
-        echo 'server_names_hash_bucket_size 64;' >> $jitsi_nginx_site
+        echo 'server_names_hash_bucket_size 64;' > $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
         echo 'server {' >> $jitsi_nginx_site
-        echo '  listen 443 ssl;' >> $jitsi_nginx_site
-        echo "  server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
+        echo '    listen 80;' >> $jitsi_nginx_site
+        echo "    server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
+        echo '    return 301 https://$host$request_uri;' >> $jitsi_nginx_site
+        echo '}' >> $jitsi_nginx_site
+        echo 'server {' >> $jitsi_nginx_site
+        echo '    listen 443 ssl;' >> $jitsi_nginx_site
+        echo "    server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  # Security' >> $jitsi_nginx_site
-        function_check nginx_ssl
-        nginx_ssl ${JITSI_DOMAIN_NAME}.conf
-
-        function_check nginx_disable_sniffing
-        nginx_disable_sniffing ${JITSI_DOMAIN_NAME}.conf
-
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $jitsi_nginx_site
+        echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;' >> $jitsi_nginx_site
+        echo '    ssl_prefer_server_ciphers on;' >> $jitsi_nginx_site
+        echo '    ssl_ciphers "EECDH+ECDSA+AESGCM:EECDH+aRSA+AESGCM:EECDH+ECDSA+SHA256:EECDH+aRSA+SHA256:EECDH+ECDSA+SHA384:EECDH+ECDSA+SHA256:EECDH+aRSA+SHA384:EDH+aRSA+AESGCM:EDH+aRSA+SHA256:EDH+aRSA:EECDH:!aNULL:!eNULL:!MEDIUM:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED";' >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  # Logs' >> $jitsi_nginx_site
-        echo '  access_log off;' >> $jitsi_nginx_site
-        echo '  error_log off;' >> $jitsi_nginx_site
+        echo '    add_header Strict-Transport-Security "max-age=31536000";' >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  # Root' >> $jitsi_nginx_site
-        echo "  root /usr/share/jitsi-meet;" >> $jitsi_nginx_site
+        echo "    ssl_certificate /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt;" >> $jitsi_nginx_site
+        echo "    ssl_certificate_key /etc/ssl/private/${JITSI_DOMAIN_NAME}.key;" >> $jitsi_nginx_site
+        echo "    ssl_dhparam /etc/ssl/certs/${JITSI_DOMAIN_NAME}.dhparam;" >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  index index.html index.htm;' >> $jitsi_nginx_site
+        echo '    root /usr/share/jitsi-meet;' >> $jitsi_nginx_site
+        echo '    index index.html index.htm;' >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  location /config.js {' >> $jitsi_nginx_site
-        echo "      alias /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js;" >> $jitsi_nginx_site
-        echo '  }' >> $jitsi_nginx_site
+        echo '    location /config.js {' >> $jitsi_nginx_site
+        echo '        alias /etc/jitsi/meet/jitsi.freedombone.net-config.js;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
-        echo '      rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
-        echo '  }' >> $jitsi_nginx_site
+        echo '    location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
+        echo '        rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  location / {' >> $jitsi_nginx_site
-        function_check nginx_limits
-        nginx_limits ${JITSI_DOMAIN_NAME}.conf '15m'
-        echo '  }' >> $jitsi_nginx_site
+        echo '    location / {' >> $jitsi_nginx_site
+        echo '        ssi on;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '  location /http-bind {' >> $jitsi_nginx_site
-        echo "      proxy_pass      http://localhost:${JITSI_PORT}/http-bind;" >> $jitsi_nginx_site
-        echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
-        echo '      proxy_set_header Host $http_host;' >> $jitsi_nginx_site
-        echo '  }' >> $jitsi_nginx_site
+        echo '    # Backward compatibility' >> $jitsi_nginx_site
+        echo '    location ~ /external_api.* {' >> $jitsi_nginx_site
+        echo '        root /usr/share/jitsi-meet/libs;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    # BOSH' >> $jitsi_nginx_site
+        echo '    location /http-bind {' >> $jitsi_nginx_site
+        echo '        proxy_pass      http://localhost:5280/http-bind;' >> $jitsi_nginx_site
+        echo '        proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
+        echo '        proxy_set_header Host $http_host;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
         echo '}' >> $jitsi_nginx_site
     else
         echo -n '' > $jitsi_nginx_site
@@ -312,37 +311,36 @@ function install_jitsi {
         echo "    server_name ${JITSI_ONION_HOSTNAME};" >> $jitsi_nginx_site
     fi
     echo '' >> $jitsi_nginx_site
-    function_check nginx_disable_sniffing
-    nginx_disable_sniffing ${JITSI_DOMAIN_NAME}.conf
+    echo '    root /usr/share/jitsi-meet;' >> $jitsi_nginx_site
+    echo '    index index.html index.htm;' >> $jitsi_nginx_site
     echo '' >> $jitsi_nginx_site
-    echo '  # Logs' >> $jitsi_nginx_site
-    echo '  access_log off;' >> $jitsi_nginx_site
-    echo '  error_log off;' >> $jitsi_nginx_site
+    echo '    location /config.js {' >> $jitsi_nginx_site
+    echo '        alias /etc/jitsi/meet/jitsi.freedombone.net-config.js;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
     echo '' >> $jitsi_nginx_site
-    echo '  # Root' >> $jitsi_nginx_site
-    echo "  root /usr/share/jitsi-meet;" >> $jitsi_nginx_site
+    echo '    location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
+    echo '        rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
     echo '' >> $jitsi_nginx_site
-    echo '  index index.html index.htm;' >> $jitsi_nginx_site
+    echo '    location / {' >> $jitsi_nginx_site
+    echo '        ssi off;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
     echo '' >> $jitsi_nginx_site
-    echo '  location /config.js {' >> $jitsi_nginx_site
-    echo "      alias /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js;" >> $jitsi_nginx_site
-    echo '  }' >> $jitsi_nginx_site
+    echo '    # Backward compatibility' >> $jitsi_nginx_site
+    echo '    location ~ /external_api.* {' >> $jitsi_nginx_site
+    echo '        root /usr/share/jitsi-meet/libs;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
     echo '' >> $jitsi_nginx_site
-    echo '  location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
-    echo '      rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
-    echo '  }' >> $jitsi_nginx_site
-    echo '' >> $jitsi_nginx_site
-    echo '  location / {' >> $jitsi_nginx_site
-    function_check nginx_limits
-    nginx_limits ${JITSI_DOMAIN_NAME}.conf '15m'
-    echo '  }' >> $jitsi_nginx_site
-    echo '' >> $jitsi_nginx_site
-    echo '  location /http-bind {' >> $jitsi_nginx_site
-    echo "      proxy_pass      http://localhost:${JITSI_PORT}/http-bind;" >> $jitsi_nginx_site
-    echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
-    echo '      proxy_set_header Host $http_host;' >> $jitsi_nginx_site
-    echo '  }' >> $jitsi_nginx_site
+    echo '    # BOSH' >> $jitsi_nginx_site
+    echo '    location /http-bind {' >> $jitsi_nginx_site
+    echo '        proxy_pass      http://localhost:5280/http-bind;' >> $jitsi_nginx_site
+    echo '        proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
+    echo '        proxy_set_header Host $http_host;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
     echo '}' >> $jitsi_nginx_site
+
+    sed -i "s|server_name ${JITSI_DOMAIN_NAME}.conf|server_name ${JITSI_DOMAIN_NAME}|g" $jitsi_nginx_site
+    sed -i "s|/var/www/${JITSI_DOMAIN_NAME}.conf/htdocs|/usr/share/jitsi-meet|g" $jitsi_nginx_site
 
     if [ ! -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
         function_check create_site_certificate
