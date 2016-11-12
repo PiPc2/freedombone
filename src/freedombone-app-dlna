@@ -33,7 +33,7 @@ VARIANTS='full full-vim media'
 IN_DEFAULT_INSTALL=0
 
 dlna_variables=(SYSTEM_TYPE
-                USB_MOUNT
+                USB_MOUNT_DLNA
                 INSTALLED_WITHIN_DOCKER
                 MY_USERNAME)
 
@@ -54,8 +54,7 @@ function configure_interactive_dlna {
             255) break;;
         esac
         case $(cat $data) in
-            1) remove-music
-               attach-music;;
+            1) attach-music;;
             2) remove-music;;
             3) break;;
         esac
@@ -104,7 +103,7 @@ function backup_local_dlna {
 
 function restore_local_dlna {
     if [ -d /var/cache/minidlna ]; then
-        if [ -d $USB_MOUNT/backup/dlna ]; then
+        if [ -d $USB_MOUNT_DLNA/backup/dlna ]; then
             echo $"Restoring DLNA cache"
             temp_restore_dir=/root/tempdlna
             function_check restore_directory_from_usb
@@ -125,16 +124,13 @@ function restore_local_dlna {
 
 function backup_remote_dlna {
     if [ -d /var/cache/minidlna ]; then
-        echo $"Backing up DLNA cache"
         backup_directory_to_friend /var/cache/minidlna dlna
-        echo $"Backup of DLNA cache complete"
     fi
 }
 
 function restore_remote_dlna {
     if [ -d /var/cache/minidlna ]; then
         if [ -d $SERVER_DIRECTORY/backup/dlna ]; then
-            echo $"Restoring DLNA cache"
             temp_restore_dir=/root/tempdlna
             function_check restore_directory_from_friend
             restore_directory_from_friend $temp_restore_dir dlna
@@ -143,17 +139,18 @@ function restore_remote_dlna {
                 exit 982
             fi
             rm -rf $temp_restore_dir
-            echo $"Restore of DLNA complete"
         fi
     fi
 }
 
 function remove_dlna {
-    service minidlna stop
+    systemctl stop minidlna
     apt-get -yq remove --purge minidlna
     if [ -f /etc/minidlna.conf ]; then
         rm /etc/minidlna.conf
     fi
+    rm /usr/bin/attach-music
+    rm /usr/bin/remove-music
     remove_completion_param install_dlna
     firewall_remove 1900 udp
     firewall_remove 8200 tcp
@@ -171,6 +168,13 @@ function install_dlna_main {
         exit 55
     fi
 
+    if [ ! $USB_MOUNT_DLNA ]; then
+        USB_MOUNT_DLNA=/mnt/dlna
+    fi
+    if [ ${#USB_MOUNT_DLNA} -eq 0 ]; then
+        USB_MOUNT_DLNA=/mnt/dlna
+    fi
+
     sed -i "s|media_dir=/var/lib/minidlna|media_dir=A,/home/$MY_USERNAME/Music|g" /etc/minidlna.conf
     if ! grep -q "/home/$MY_USERNAME/Pictures" /etc/minidlna.conf; then
         echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
@@ -178,14 +182,14 @@ function install_dlna_main {
     if ! grep -q "/home/$MY_USERNAME/Videos" /etc/minidlna.conf; then
         echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
     fi
-    if ! grep -q "$USB_MOUNT/Music" /etc/minidlna.conf; then
-        echo "media_dir=A,$USB_MOUNT/Music" >> /etc/minidlna.conf
+    if ! grep -q "$USB_MOUNT_DLNA/Music" /etc/minidlna.conf; then
+        echo "media_dir=A,$USB_MOUNT_DLNA/Music" >> /etc/minidlna.conf
     fi
-    if ! grep -q "$USB_MOUNT/Pictures" /etc/minidlna.conf; then
-        echo "media_dir=P,$USB_MOUNT/Pictures" >> /etc/minidlna.conf
+    if ! grep -q "$USB_MOUNT_DLNA/Pictures" /etc/minidlna.conf; then
+        echo "media_dir=P,$USB_MOUNT_DLNA/Pictures" >> /etc/minidlna.conf
     fi
-    if ! grep -q "$USB_MOUNT/Videos" /etc/minidlna.conf; then
-        echo "media_dir=V,$USB_MOUNT/Videos" >> /etc/minidlna.conf
+    if ! grep -q "$USB_MOUNT_DLNA/Videos" /etc/minidlna.conf; then
+        echo "media_dir=V,$USB_MOUNT_DLNA/Videos" >> /etc/minidlna.conf
     fi
     sed -i 's/#root_container=./root_container=B/g' /etc/minidlna.conf
     if [[ $SYSTEM_TYPE != "mesh"* ]]; then
@@ -202,8 +206,7 @@ function install_dlna_main {
     sed -i 's/#inotify=yes/inotify=yes/g' /etc/minidlna.conf
     sed -i 's/#notify_interval=895/notify_interval=300/g' /etc/minidlna.conf
     sed -i "s|#presentation_url=/|presentation_url=http://localhost:8200|g" /etc/minidlna.conf
-    service minidlna force-reload
-    service minidlna reload
+    systemctl reload minidlna
 
     sed -i 's/fs.inotify.max_user_watches*/fs.inotify.max_user_watches=65536/g' /etc/sysctl.conf
     if ! grep -q "max_user_watches" $COMPLETION_FILE; then
@@ -221,36 +224,37 @@ function script_for_attaching_usb_drive {
         return
     fi
     echo '#!/bin/bash' > /usr/bin/attach-music
+    echo "source /usr/local/bin/${PROJECT_NAME}-vars" >> /usr/bin/attach-music
+    echo "UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*" >> /usr/bin/attach-music
+    echo '' >> /usr/bin/attach-music
+    echo 'for f in $UTILS_FILES' >> /usr/bin/attach-music
+    echo 'do' >> /usr/bin/attach-music
+    echo '    source $f' >> /usr/bin/attach-music
+    echo 'done' >> /usr/bin/attach-music
+    echo '' >> /usr/bin/attach-music
+    echo 'USB_DRIVE=/dev/sda1' >> /usr/bin/attach-music
+    echo 'detect_usb_drive' >> /usr/bin/attach-music
+    echo '' >> /usr/bin/attach-music
     echo 'remove-music' >> /usr/bin/attach-music
-    echo "if [ ! -d $USB_MOUNT ]; then" >> /usr/bin/attach-music
-    echo "  mkdir $USB_MOUNT" >> /usr/bin/attach-music
+    echo "if [ ! -d $USB_MOUNT_DLNA ]; then" >> /usr/bin/attach-music
+    echo "    mkdir $USB_MOUNT_DLNA" >> /usr/bin/attach-music
     echo 'fi' >> /usr/bin/attach-music
-    echo "mount /dev/sda1 $USB_MOUNT" >> /usr/bin/attach-music
-    echo "chown root:root $USB_MOUNT" >> /usr/bin/attach-music
-    echo "chown -R minidlna:minidlna $USB_MOUNT/*" >> /usr/bin/attach-music
-    echo 'service minidlna restart' >> /usr/bin/attach-music
+    echo -n 'mount $USB_DRIVE ' >> /usr/bin/attach-music
+    echo "$USB_MOUNT_DLNA" >> /usr/bin/attach-music
+    echo "chown root:root $USB_MOUNT_DLNA" >> /usr/bin/attach-music
+    echo "chown -R minidlna:minidlna $USB_MOUNT_DLNA/*" >> /usr/bin/attach-music
+    echo 'systemctl restart minidlna' >> /usr/bin/attach-music
     echo 'minidlnad -R' >> /usr/bin/attach-music
+    echo 'exit 0' >> /usr/bin/attach-music
     chmod +x /usr/bin/attach-music
-    ln -s /usr/bin/attach-music /usr/bin/attach-usb
-    ln -s /usr/bin/attach-music /usr/bin/attach-videos
-    ln -s /usr/bin/attach-music /usr/bin/attach-pictures
-    ln -s /usr/bin/attach-music /usr/bin/attach-media
 
     echo '#!/bin/bash' > /usr/bin/remove-music
-    echo "if [ -d $USB_MOUNT ]; then" >> /usr/bin/remove-music
-    echo "  umount $USB_MOUNT" >> /usr/bin/remove-music
-    echo "  rm -rf $USB_MOUNT" >> /usr/bin/remove-music
+    echo "if [ -d $USB_MOUNT_DLNA ]; then" >> /usr/bin/remove-music
+    echo "  umount $USB_MOUNT_DLNA" >> /usr/bin/remove-music
+    echo "  rm -rf $USB_MOUNT_DLNA" >> /usr/bin/remove-music
     echo 'fi' >> /usr/bin/remove-music
+    echo 'exit 0' >> /usr/bin/remove-music
     chmod +x /usr/bin/remove-music
-    ln -s /usr/bin/remove-music /usr/bin/detach-music
-    ln -s /usr/bin/remove-music /usr/bin/detach-usb
-    ln -s /usr/bin/remove-music /usr/bin/remove-usb
-    ln -s /usr/bin/remove-music /usr/bin/detach-media
-    ln -s /usr/bin/remove-music /usr/bin/remove-media
-    ln -s /usr/bin/remove-music /usr/bin/detach-videos
-    ln -s /usr/bin/remove-music /usr/bin/remove-videos
-    ln -s /usr/bin/remove-music /usr/bin/detach-pictures
-    ln -s /usr/bin/remove-music /usr/bin/remove-pictures
 
     mark_completed $FUNCNAME
 }
