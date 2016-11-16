@@ -36,6 +36,8 @@ VARIANTS='full full-vim'
 IN_DEFAULT_INSTALL=1
 SHOW_ON_ABOUT=1
 
+RADICALE_VERSION='1.1.1'
+RADICALE_HASH='e2c9812913c464ab88ae1f66b29e81f87a4cc6ee1c94d167b33508c530dab4b0'
 RADICALE_PASSWORD=
 RADICALE_ONION_PORT=8106
 RADICALE_PORT=5232
@@ -83,18 +85,19 @@ function reconfigure_radicale {
 }
 
 function upgrade_radicale {
-    if [ -f /etc/init.d/radicale ]; then
-        systemctl stop radicale
-        rm /etc/init.d/radicale
-        systemctl daemon-reload
-        systemctl start radicale
-    fi
+    echo -n ''
 }
 
 function backup_local_radicale {
     source_directory=${RADICALE_DIRECTORY}
     if [ -d $source_directory ]; then
         dest_directory=radicale
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+    fi
+    source_directory=/var/www/radicale/collections
+    if [ -d $source_directory ]; then
+        dest_directory=radicalecollections
         function_check backup_directory_to_usb
         backup_directory_to_usb $source_directory $dest_directory
     fi
@@ -112,6 +115,18 @@ function restore_local_radicale {
             exit 46872
         fi
         rm -rf $temp_restore_dir
+
+        temp_restore_dir=/root/tempradicalecollections
+        restore_directory_from_usb $temp_restore_dir radicalecollections
+        cp -r $temp_restore_dir/var/www/radicale/collections/* /var/www/radicale/collections
+        if [ ! "$?" = "0" ]; then
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 367363
+        fi
+        rm -rf $temp_restore_dir
+        chown -R www-data:www-data /var/www/radicale
+
         systemctl restart radicale
     fi
 }
@@ -120,6 +135,7 @@ function backup_remote_radicale {
     if [ -d ${RADICALE_DIRECTORY} ]; then
         echo $"Backing up the radicale settings"
         backup_directory_to_friend ${RADICALE_DIRECTORY} radicale
+        backup_directory_to_friend /var/www/radicale/collections radicalecollections
         echo $"Backup of radicale settings complete"
     fi
 }
@@ -131,26 +147,21 @@ function restore_remote_radicale {
         restore_directory_from_friend $temp_restore_dir radicale
         cp -r $temp_restore_dir${RADICALE_DIRECTORY}/* ${RADICALE_DIRECTORY}
         if [ ! "$?" = "0" ]; then
-            exit 463735
+            exit 236746
         fi
         rm -rf $temp_restore_dir
+
+        temp_restore_dir=/root/tempradicalecollections
+        restore_directory_from_friend $temp_restore_dir radicalecollections
+        cp -r $temp_restore_dir/var/www/radicale/collections/* /var/www/radicale/collections
+        if [ ! "$?" = "0" ]; then
+            exit 3674284
+        fi
+        rm -rf $temp_restore_dir
+        chown -R www-data:www-data /var/www/radicale
+
         systemctl restart radicale
     fi
-}
-
-function configure_firewall_for_radicale {
-    if [ ! -d ${RADICALE_DIRECTORY} ]; then
-        return
-    fi
-    if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
-        # docker does its own firewalling
-        return
-    fi
-    if [[ $ONION_ONLY != "no" ]]; then
-        return
-    fi
-    firewall_add radicale ${RADICALE_PORT} tcp
-    mark_completed $FUNCNAME
 }
 
 function remove_radicale {
@@ -205,6 +216,9 @@ function install_radicale {
         fi
     fi
 
+    apt-get -yq remove --purge radicale python-radicale
+
+    # create directories
     if [ ! -d /var/log/radicale ]; then
         mkdir /var/log/radicale
     fi
@@ -213,22 +227,44 @@ function install_radicale {
     fi
     chown -R www-data:www-data /var/log/radicale
 
-    apt-get -yq install python-radicale uwsgi uwsgi-plugin-python radicale apache2-utils
+    apt-get -yq install apache2-utils
+
+    if [ ! -d /var/www/radicale ]; then
+        mkdir -p /var/www/radicale
+    fi
+
+    # get the source
+    cd /var/www/radicale
+    wget http://pypi.python.org/packages/source/R/Radicale/Radicale-${RADICALE_VERSION}.tar.gz
+
+    # check the hash
+    hash=$(sha256sum Radicale-${RADICALE_VERSION}.tar.gz | awk -F ' ' '{print $1}')
+    if [[ "$hash" != "$RADICALE_HASH" ]]; then
+        echo $'radicale hash does not match'
+        exit 638532
+    fi
+
+    tar -xzf Radicale-${RADICALE_VERSION}.tar.gz
+    if [ ! -d Radicale-${RADICALE_VERSION} ]; then
+        exit 623252
+    fi
+    rm Radicale-${RADICALE_VERSION}.tar.gz
+    cd Radicale-${RADICALE_VERSION}
+    python setup.py install
+    if [ ! -f /usr/local/bin/radicale ]; then
+        echo $'Radicale did not install'
+        exit 7283554
+    fi
 
     if [ ! -d ${RADICALE_DIRECTORY} ]; then
-        echo $"ERROR: radicale does not appear to have installed"
-        exit 46372
+        mkdir ${RADICALE_DIRECTORY}
     fi
-    systemctl stop radicale
-    if [ -f /etc/init.d/radicale ]; then
-        rm /etc/init.d/radicale
+    if [ ! -d /var/www/radicale/collections ]; then
+        mkdir -p /var/www/radicale/collections
     fi
+    chown -R www-data:www-data /var/www/radicale
 
-    if [ ! -d ${RADICALE_DIRECTORY}/collections ]; then
-        mkdir -p ${RADICALE_DIRECTORY}/collections
-    fi
-    chown www-data:www-data ${RADICALE_DIRECTORY}/collections
-
+    # create the configuration
     echo '[server]' >  ${RADICALE_DIRECTORY}/config
     echo 'hosts=127.0.0.1:52322' >> ${RADICALE_DIRECTORY}/config
     echo 'ssl = False' >> ${RADICALE_DIRECTORY}/config
@@ -244,8 +280,9 @@ function install_radicale {
     echo '' >> ${RADICALE_DIRECTORY}/config
     echo '[storage]' >> ${RADICALE_DIRECTORY}/config
     echo 'type = filesystem' >> ${RADICALE_DIRECTORY}/config
-    echo "filesystem_folder = ${RADICALE_DIRECTORY}/collections" >> ${RADICALE_DIRECTORY}/config
+    echo "filesystem_folder = /var/www/radicale/collections" >> ${RADICALE_DIRECTORY}/config
 
+    # create an admin password
     if [ ${#RADICALE_PASSWORD} -lt 8 ]; then
         if [ -f $IMAGE_PASSWORD_FILE ]; then
             RADICALE_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
@@ -255,53 +292,15 @@ function install_radicale {
     fi
     add_user_radicale "$MY_USERNAME" "$RADICALE_PASSWORD"
 
-    if [ ! -f /var/www/radicale ]; then
-        mkdir /var/www/radicale
-    fi
-    #echo 'import radicale' > /var/www/radicale/radicale.py
-    #echo 'radicale.log.start()' >> /var/www/radicale/radicale.py
-    #echo 'application = radicale.Application()' >> /var/www/radicale/radicale.py
-
-    #echo '[uwsgi]' > /var/www/radicale/uwsgi.ini
-    #echo 'plugins = python' >> /var/www/radicale/uwsgi.ini
-    #echo 'socket = /var/run/uwsgi/radicale.sock' >> /var/www/radicale/uwsgi.ini
-    #echo 'chmod-socket = 660' >> /var/www/radicale/uwsgi.ini
-    #echo '' >> /var/www/radicale/uwsgi.ini
-    #echo 'wsgi-file = /var/www/radicale/radicale.py' >> /var/www/radicale/uwsgi.ini
-    #echo 'master' >> /var/www/radicale/uwsgi.ini
-    #echo 'workers = 1' >> /var/www/radicale/uwsgi.ini
-    #echo 'max-requests = 100' >> /var/www/radicale/uwsgi.ini
-    #echo 'harakiri = 30' >> /var/www/radicale/uwsgi.ini
-    #echo 'die-on-term' >> /var/www/radicale/uwsgi.ini
-
-    #echo '#!/bin/sh' > /usr/local/bin/uwsgi_rundir.sh
-    #echo 'mkdir -p /var/run/uwsgi' >> /usr/local/bin/uwsgi_rundir.sh
-    #echo 'chown www-data:www-data /var/run/uwsgi' >> /usr/local/bin/uwsgi_rundir.sh
-    #chmod +x /usr/local/bin/uwsgi_rundir.sh
-
-    #echo '[Unit]' > /etc/systemd/system/uwsgi_rundir.service
-    #echo 'Description=UWSGI socket directory' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo 'After=network.target' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo '' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo '[Service]' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo 'Type=simple' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo 'User=root' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo 'ExecStart=/usr/local/bin/uwsgi_rundir.sh' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo '' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo '[Install]' >> /etc/systemd/system/uwsgi_rundir.service
-    #echo 'WantedBy=multi-user.target' >> /etc/systemd/system/uwsgi_rundir.service
-    #systemctl enable uwsgi_rundir
-
     echo '[Unit]' > /etc/systemd/system/radicale.service
     echo 'Description=Radicale CalDAV Server' >> /etc/systemd/system/radicale.service
     echo 'After=network.target' >> /etc/systemd/system/radicale.service
-    #echo 'Requires=uwsgi_rundir.service' >> /etc/systemd/system/radicale.service
     echo '' >> /etc/systemd/system/radicale.service
     echo '[Service]' >> /etc/systemd/system/radicale.service
     echo 'Type=simple' >> /etc/systemd/system/radicale.service
     echo 'User=www-data' >> /etc/systemd/system/radicale.service
     echo 'Group=www-data' >> /etc/systemd/system/radicale.service
-    echo "ExecStart=/usr/bin/radicale --config ${RADICALE_DIRECTORY}/config" >> /etc/systemd/system/radicale.service
+    echo "ExecStart=/usr/local/bin/radicale --config ${RADICALE_DIRECTORY}/config" >> /etc/systemd/system/radicale.service
     echo '' >> /etc/systemd/system/radicale.service
     echo '[Install]' >> /etc/systemd/system/radicale.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/radicale.service
@@ -327,9 +326,9 @@ function install_radicale {
         echo '    error_log /var/log/radicale/radicale.log warn;' >> /etc/nginx/sites-available/radicale
         echo '' >> /etc/nginx/sites-available/radicale
         echo '    location / {' >> /etc/nginx/sites-available/radicale
+        echo '        auth basic "Radicale";' >> /etc/nginx/sites-available/radicale
+        echo "        auth basic user file ${RADICALE_DIRECTORY}/users;" >> /etc/nginx/sites-available/radicale
         echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/radicale
-        #echo '        uwsgi_pass unix:/var/run/uwsgi/radicale.sock;' >> /etc/nginx/sites-available/radicale
-        #echo '        include uwsgi_params;' >> /etc/nginx/sites-available/radicale
         echo '    }' >> /etc/nginx/sites-available/radicale
         echo '}' >> /etc/nginx/sites-available/radicale
         echo '' >> /etc/nginx/sites-available/radicale
@@ -345,11 +344,19 @@ function install_radicale {
     echo '    error_log /var/log/radicale/radicale.log warn;' >> /etc/nginx/sites-available/radicale
     echo '' >> /etc/nginx/sites-available/radicale
     echo '    location / {' >> /etc/nginx/sites-available/radicale
+    echo '        auth basic "Radicale";' >> /etc/nginx/sites-available/radicale
+    echo "        auth basic user file ${RADICALE_DIRECTORY}/users;" >> /etc/nginx/sites-available/radicale
     echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/radicale
-    #echo '        uwsgi_pass unix:/var/run/uwsgi/radicale.sock;' >> /etc/nginx/sites-available/radicale
-    #echo '        include uwsgi_params;' >> /etc/nginx/sites-available/radicale
     echo '    }' >> /etc/nginx/sites-available/radicale
     echo '}' >> /etc/nginx/sites-available/radicale
+
+    # create a certificate
+    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt ]; then
+            ${PROJECT_NAME}-addcert -h $DEFAULT_DOMAIN_NAME --dhkey ${DH_KEYLENGTH}
+            check_certificates $DEFAULT_DOMAIN_NAME
+        fi
+    fi
 
     if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
         sed -i "s|radicale.crt|${DEFAULT_DOMAIN_NAME}.pem|g" /etc/nginx/sites-available/radicale
@@ -357,14 +364,6 @@ function install_radicale {
     fi
     sed -i "s|radicale.key|${DEFAULT_DOMAIN_NAME}.key|g" /etc/nginx/sites-available/radicale
     sed -i "s|radicale.dhparam|${DEFAULT_DOMAIN_NAME}.dhparam|g" /etc/nginx/sites-available/radicale
-
-    # create a certificate
-    #if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
-    #    if [[ "$(cert_exists $DEFAULT_DOMAIN_NAME)" == "0" ]]; then
-    #        ${PROJECT_NAME}-addcert -h $DEFAULT_DOMAIN_NAME --dhkey ${DH_KEYLENGTH}
-    #        check_certificates $DEFAULT_DOMAIN_NAME
-    #    fi
-    #fi
 
     update_default_domain
 
@@ -384,9 +383,6 @@ function install_radicale {
         sed -i "s|Radicale onion domain.*|Radicale onion domain: ${RADICALE_ONION_HOSTNAME}|g" /home/$MY_USERNAME/README
         sed -i "s|Your Radicale password is.*|Your Radicale password is: ${RADICALE_PASSWORD}|g" /home/$MY_USERNAME/README
     fi
-
-    function_check configure_firewall_for_radicale
-    configure_firewall_for_radicale
 
     APP_INSTALLED=1
 }
