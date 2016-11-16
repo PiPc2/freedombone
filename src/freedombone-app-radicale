@@ -207,6 +207,8 @@ function remove_radicale {
     remove_completion_param install_radicale
     sed -i '/radicale/d' $COMPLETION_FILE
     sed -i '/Radicale/d' /home/$MY_USERNAME/README
+    sed -i '@location /radicale@,@}@d' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+    systemctl restart nginx
 }
 
 function install_radicale {
@@ -271,6 +273,7 @@ function install_radicale {
     echo 'hosts=127.0.0.1:52322' >> ${RADICALE_DIRECTORY}/config
     echo 'ssl = False' >> ${RADICALE_DIRECTORY}/config
     echo 'daemon = False' >> ${RADICALE_DIRECTORY}/config
+    echo 'base_prefix=/radicale/' >> ${RADICALE_DIRECTORY}/config
     echo '' >> ${RADICALE_DIRECTORY}/config
     echo '[storage]' >> ${RADICALE_DIRECTORY}/config
     echo 'type = filesystem' >> ${RADICALE_DIRECTORY}/config
@@ -304,48 +307,64 @@ function install_radicale {
     systemctl enable radicale
     systemctl start radicale
 
-    RADICALE_ONION_HOSTNAME=$(add_onion_service radicale 80 ${RADICALE_ONION_PORT})
+    if [ ! -f /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME} ]; then
+        # create a new site config
+        RADICALE_ONION_HOSTNAME=$(add_onion_service radicale 80 ${RADICALE_ONION_PORT})
 
-    if [[ $ONION_ONLY == 'no' ]]; then
-        echo 'server {' > /etc/nginx/sites-available/radicale
-        echo "    listen ${RADICALE_PORT} ssl;" >> /etc/nginx/sites-available/radicale
-        echo "    listen [::]:${RADICALE_PORT} ssl;" >> /etc/nginx/sites-available/radicale
-        echo '' >> /etc/nginx/sites-available/radicale
-        function_check nginx_ssl
-        nginx_ssl radicale
-        function_check nginx_disable_sniffing
-        nginx_disable_sniffing radicale
-        echo '' >> /etc/nginx/sites-available/radicale
-        echo "    server_name $DEFAULT_DOMAIN_NAME;" >> /etc/nginx/sites-available/radicale
+        if [[ $ONION_ONLY == 'no' ]]; then
+            echo 'server {' > /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "    listen 443 ssl;" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "    listen [::]:443 ssl;" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            function_check nginx_ssl
+            nginx_ssl ${DEFAULT_DOMAIN_NAME}
+            function_check nginx_disable_sniffing
+            nginx_disable_sniffing ${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "    server_name ${DEFAULT_DOMAIN_NAME};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
 
-        echo '' >> /etc/nginx/sites-available/radicale
-        echo '    access_log /dev/null;' >> /etc/nginx/sites-available/radicale
-        echo '    error_log /var/log/radicale/radicale.log warn;' >> /etc/nginx/sites-available/radicale
-        echo '' >> /etc/nginx/sites-available/radicale
-        echo '    location / {' >> /etc/nginx/sites-available/radicale
-        echo '        auth_basic "Radicale";' >> /etc/nginx/sites-available/radicale
-        echo "        auth_basic_user_file ${RADICALE_USERS};" >> /etc/nginx/sites-available/radicale
-        echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/radicale
-        echo '    }' >> /etc/nginx/sites-available/radicale
-        echo '}' >> /etc/nginx/sites-available/radicale
-        echo '' >> /etc/nginx/sites-available/radicale
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    access_log /dev/null;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    error_log /var/log/radicale/radicale.log warn;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    location / {' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '        auth_basic "Radicale";' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "        auth_basic_user_file ${RADICALE_USERS};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    }' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '}' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        else
+            echo -n '' > /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        fi
+        echo 'server {' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo "    listen 127.0.0.1:${RADICALE_ONION_PORT} default_server;" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo "    server_name ${RADICALE_ONION_HOSTNAME};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    access_log /dev/null;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    error_log /var/log/radicale/radicale.log warn;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    location / {' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '        auth_basic "Radicale";' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo "        auth_basic_user_file ${RADICALE_USERS};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    }' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '}' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+
+        set_completion_param "radicale onion domain" "${RADICALE_ONION_HOSTNAME}"
     else
-        echo -n '' > /etc/nginx/sites-available/radicale
+        # alter the existing site config
+        if ! grep "radicale" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}; then
+            sed -i '@server_name@a
+    location /radicale {
+        auth_basic "Radicale";
+        auth_basic_user_file /var/www/radicale/users;
+        proxy_pass http://127.0.0.1:52322;
+    }
+' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        fi
     fi
-    echo 'server {' >> /etc/nginx/sites-available/radicale
-    echo "    listen 127.0.0.1:${RADICALE_ONION_PORT} default_server;" >> /etc/nginx/sites-available/radicale
-    echo '' >> /etc/nginx/sites-available/radicale
-    echo "    server_name ${RADICALE_ONION_HOSTNAME};" >> /etc/nginx/sites-available/radicale
-    echo '' >> /etc/nginx/sites-available/radicale
-    echo '    access_log /dev/null;' >> /etc/nginx/sites-available/radicale
-    echo '    error_log /var/log/radicale/radicale.log warn;' >> /etc/nginx/sites-available/radicale
-    echo '' >> /etc/nginx/sites-available/radicale
-    echo '    location / {' >> /etc/nginx/sites-available/radicale
-    echo '        auth_basic "Radicale";' >> /etc/nginx/sites-available/radicale
-    echo "        auth_basic_user_file ${RADICALE_USERS};" >> /etc/nginx/sites-available/radicale
-    echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/radicale
-    echo '    }' >> /etc/nginx/sites-available/radicale
-    echo '}' >> /etc/nginx/sites-available/radicale
 
     # create a certificate
     if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
@@ -367,17 +386,14 @@ function install_radicale {
     nginx_ensite radicale
     systemctl reload nginx
 
-    set_completion_param "radicale onion domain" "${RADICALE_ONION_HOSTNAME}"
-
     if ! grep -q "# Radicale" /home/$MY_USERNAME/README; then
         echo '' >> /home/$MY_USERNAME/README
         echo $'# Radicale' >> /home/$MY_USERNAME/README
-        echo $"Radicale onion domain: ${RADICALE_ONION_HOSTNAME}" >> /home/$MY_USERNAME/README
         echo $"Your Radicale password is: ${RADICALE_PASSWORD}" >> /home/$MY_USERNAME/README
+        echo $"Radicale is accessible via https://${DEFAULT_DOMAIN_NAME}/radicale/${MY_USERNAME}/calendar/" >> /home/$MY_USERNAME/README
         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
         chmod 600 /home/$MY_USERNAME/README
     else
-        sed -i "s|Radicale onion domain.*|Radicale onion domain: ${RADICALE_ONION_HOSTNAME}|g" /home/$MY_USERNAME/README
         sed -i "s|Your Radicale password is.*|Your Radicale password is: ${RADICALE_PASSWORD}|g" /home/$MY_USERNAME/README
     fi
 
