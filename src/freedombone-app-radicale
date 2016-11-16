@@ -49,7 +49,7 @@ radicale_variables=(ONION_ONLY
 function remove_user_radicale {
     remove_username="$1"
     if grep "$remove_username:" ${RADICALE_DIRECTORY}/users; then
-        sed -i "/$remove_username/d" ${RADICALE_DIRECTORY}/users
+        sed -i "/$remove_username:/d" ${RADICALE_DIRECTORY}/users
         systemctl reload radicale
     fi
 }
@@ -57,10 +57,13 @@ function remove_user_radicale {
 function add_user_radicale {
     new_username="$1"
     new_user_password="$2"
-    new_user_hash=$(echo -n "$new_user_password" | sha1sum | awk -F ' ' '{print $1}')
 
-    if ! grep "$new_username:$new_user_hash" ${RADICALE_DIRECTORY}/users; then
-        printf "$new_username:$new_user_hash\n" >> ${RADICALE_DIRECTORY}/users
+    if [ ! -f ${RADICALE_DIRECTORY}/users ]; then
+        touch ${RADICALE_DIRECTORY}/users
+    fi
+
+    if ! grep "$new_username:" ${RADICALE_DIRECTORY}/users; then
+        htpasswd -Bb ${RADICALE_DIRECTORY}/users "$new_username" "$new_user_password"
         systemctl reload radicale
     fi
     echo '0'
@@ -207,7 +210,7 @@ function install_radicale {
     fi
     chown -R www-data:www-data /var/log/radicale
 
-    apt-get -yq install python-radicale uwsgi uwsgi-plugin-python radicale
+    apt-get -yq install python-radicale uwsgi uwsgi-plugin-python radicale apache2-utils
 
     if [ ! -d ${RADICALE_DIRECTORY} ]; then
         echo $"ERROR: radicale does not appear to have installed"
@@ -226,7 +229,7 @@ function install_radicale {
     echo '[auth]' >  ${RADICALE_DIRECTORY}/config
     echo 'type = htpasswd' >> ${RADICALE_DIRECTORY}/config
     echo "htpasswd_filename = ${RADICALE_DIRECTORY}/users" >> ${RADICALE_DIRECTORY}/config
-    echo 'htpasswd_encryption = sha1' >> ${RADICALE_DIRECTORY}/config
+    echo 'htpasswd_encryption = bcrypt' >> ${RADICALE_DIRECTORY}/config
     echo '' >> ${RADICALE_DIRECTORY}/config
     echo '[rights]' >> ${RADICALE_DIRECTORY}/config
     echo 'type = owner_only' >> ${RADICALE_DIRECTORY}/config
