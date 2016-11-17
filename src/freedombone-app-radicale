@@ -36,6 +36,7 @@ VARIANTS='full full-vim'
 IN_DEFAULT_INSTALL=1
 SHOW_ON_ABOUT=1
 
+RADICALE_DOWNLOAD_URL='http://pypi.python.org/packages/source/R/Radicale/Radicale-'
 RADICALE_VERSION='1.1.1'
 RADICALE_HASH='e2c9812913c464ab88ae1f66b29e81f87a4cc6ee1c94d167b33508c530dab4b0'
 RADICALE_PASSWORD=
@@ -108,7 +109,56 @@ function reconfigure_radicale {
 }
 
 function upgrade_radicale {
-    echo -n ''
+    if [ ! -f /usr/local/bin/radicale ]; then
+        return
+    fi
+
+    if ! grep -q "radicale version:" $COMPLETION_FILE; then
+        return
+    fi
+
+    CURR_RADICALE_VERSION=$(get_completion_param "radicale version")
+    if [[ "${CURR_RADICALE_VERSION}" == "${RADICALE_VERSION}" ]]; then
+        return
+    fi
+
+    # get the source
+    cd /var/www/radicale
+    wget ${RADICALE_DOWNLOAD_URL}${RADICALE_VERSION}.tar.gz
+
+    # check the hash
+    hash=$(sha256sum Radicale-${RADICALE_VERSION}.tar.gz | awk -F ' ' '{print $1}')
+    if [[ "$hash" != "$RADICALE_HASH" ]]; then
+        echo $'radicale hash does not match'
+        exit 638532
+    fi
+
+    tar -xzf Radicale-${RADICALE_VERSION}.tar.gz
+    if [ ! -d Radicale-${RADICALE_VERSION} ]; then
+        exit 73529
+    fi
+    rm Radicale-${RADICALE_VERSION}.tar.gz
+    cd Radicale-${RADICALE_VERSION}
+
+    # move the old command
+    mv /usr/local/bin/radicale /usr/local/bin/radicale_previous
+
+    # do the install
+    python setup.py install
+
+    # check for install success
+    if [ ! -f /usr/local/bin/radicale ]; then
+        mv /usr/local/bin/radicale_previous /usr/local/bin/radicale
+        echo $'Radicale did not upgrade'
+        exit 692353
+    fi
+
+    # remove the old source
+    rm -rf Radicale-${CURR_RADICALE_VERSION}
+
+    sed -i "s|radicale version.*|radicale version:$RADICALE_VERSION|g" ${COMPLETION_FILE}
+    chown -R www-data:www-data /var/www/radicale
+    systemctl restart radicale
 }
 
 function backup_local_radicale {
@@ -260,7 +310,7 @@ function install_radicale {
 
     # get the source
     cd /var/www/radicale
-    wget http://pypi.python.org/packages/source/R/Radicale/Radicale-${RADICALE_VERSION}.tar.gz
+    wget ${RADICALE_DOWNLOAD_URL}${RADICALE_VERSION}.tar.gz
 
     # check the hash
     hash=$(sha256sum Radicale-${RADICALE_VERSION}.tar.gz | awk -F ' ' '{print $1}')
@@ -417,6 +467,13 @@ function install_radicale {
         chmod 600 /home/$MY_USERNAME/README
     else
         sed -i "s|Your Radicale password is.*|Your Radicale password is: ${RADICALE_PASSWORD}|g" /home/$MY_USERNAME/README
+    fi
+
+    # keep track of the version so we can check for upgrades
+    if ! grep -q "radicale version:" ${COMPLETION_FILE}; then
+        echo "radicale version:${RADICALE_VERSION}" >> ${COMPLETION_FILE}
+    else
+        sed -i "s|radicale version.*|radicale version:${RADICALE_VERSION}|g" ${COMPLETION_FILE}
     fi
 
     APP_INSTALLED=1
