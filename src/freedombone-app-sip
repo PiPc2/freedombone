@@ -54,6 +54,8 @@ function remove_user_sip {
     remove_username="$1"
     ${PROJECT_NAME}-rmsipuser ${remove_username}
 
+    ${PROJECT_NAME}-pass -u $remove_username --rmapp sip
+
     # remove user from SIP TURN/STUN
     if [ -f /etc/turnserver/turnusers.txt ]; then
         sed -i "/${remove_username}:/d" /etc/turnserver/turnusers.txt
@@ -63,6 +65,8 @@ function remove_user_sip {
 function add_user_sip {
     new_username="$1"
     new_user_password="$2"
+
+    ${PROJECT_NAME}-pass -u $new_username -a sip -p "$new_user_password"
 
     SIP_EXTENSION=$(${PROJECT_NAME}-sipfreeext)
     ${PROJECT_NAME}-addsipuser -u $new_username -e $SIP_EXTENSION -p "$new_user_password"
@@ -93,7 +97,7 @@ function install_interactive_sip {
 }
 
 function change_password_sip {
-    echo -n ''
+    ${PROJECT_NAME}-pass -u $1 -a sip -p "$2"
 }
 
 function reconfigure_sip {
@@ -177,7 +181,6 @@ function remove_sip {
     remove_completion_param install_sip
     remove_completion_param configure_firewall_for_turn
     remove_completion_param configure_firewall_for_sip4
-    sed -i '/SIP /d' /home/$MY_USERNAME/README
 }
 
 function configure_firewall_for_turn {
@@ -195,16 +198,6 @@ function configure_firewall_for_sip4 {
     fi
     firewall_add SIP ${SIP_PORT}
     firewall_add "SIP TLS" ${SIP_TLS_PORT}
-}
-
-function get_sip_server_password {
-    if [ -f /home/$MY_USERNAME/README ]; then
-        if grep -q "sip server password" /home/$MY_USERNAME/README; then
-            if [ ! $SIP_SERVER_PASSWORD ]; then
-                SIP_SERVER_PASSWORD=$(cat /home/$MY_USERNAME/README | grep "sip server password" | awk -F ':' '{print $2}' | sed 's/^ *//')
-            fi
-        fi
-    fi
 }
 
 function update_sipwitch_daemon {
@@ -251,12 +244,10 @@ function install_sip_main {
 
     apt-get -yq install sipwitch
 
-    function_check get_sip_server_password
-    get_sip_server_password
-    if [ ! $SIP_SERVER_PASSWORD ]; then
-        if [ -f $IMAGE_PASSWORD_FILE ]; then
-            SIP_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-        else
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        SIP_SERVER_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        if [ ! $SIP_SERVER_PASSWORD ]; then
             SIP_SERVER_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
         fi
     fi
@@ -310,17 +301,7 @@ function install_sip_main {
 
     SIP_ONION_HOSTNAME=$(add_onion_service sip ${SIP_PORT} ${SIP_PORT})
 
-    if ! grep -q $"SIP Server" /home/$MY_USERNAME/README; then
-        echo '' >> /home/$MY_USERNAME/README
-        echo '' >> /home/$MY_USERNAME/README
-        echo $'# SIP Server' >> /home/$MY_USERNAME/README
-        echo $"SIP onion_domain: $SIP_ONION_HOSTNAME" >> /home/$MY_USERNAME/README
-        echo $"SIP server username: $MY_USERNAME" >> /home/$MY_USERNAME/README
-        echo $"SIP server extension: 201" >> /home/$MY_USERNAME/README
-        echo $"SIP server password: $SIP_SERVER_PASSWORD" >> /home/$MY_USERNAME/README
-        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-        chmod 600 /home/$MY_USERNAME/README
-    fi
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a sip -p "$SIP_SERVER_PASSWORD"
 
     function_check configure_firewall_for_sip4
     configure_firewall_for_sip4
