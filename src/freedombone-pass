@@ -1,0 +1,137 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Simple multi-user password store using symmetric encryption
+# and the backup gpg key
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-pass
+export TEXTDOMAINDIR="/usr/share/locale"
+
+MY_BACKUP_KEY_ID=
+CURR_USERNAME=
+CURR_APP=
+CURR_PASSWORD=
+
+function get_backup_key_id {
+    MY_BACKUP_KEY_ID=$(gpg --list-keys "(backup key)" | \
+                           grep 'pub ' | awk -F ' ' '{print $2}' | \
+                           awk -F '/' '{print $2}')
+    if [ ${#MY_BACKUP_KEY_ID} -lt 4 ]; then
+        echo $"gpg backup key was not found"
+        return 58213
+    fi
+}
+
+function show_help {
+    echo ''
+    echo $"${PROJECT_NAME}-pass"
+    echo ''
+    echo $'Password store using gpg'
+    echo ''
+    echo $'     --help                        Show help'
+    echo $'  -u --user                        Username'
+    echo $'  -a --app [name]                  Name of the application'
+    echo $'  -p --pass [password]             The password to store'
+    echo ''
+    echo $'To encrypt a password:'
+    echo ''
+    echo $"  ${PROJECT_NAME}-pass -u [username] -a [app] -p [password]"
+    echo ''
+    echo $'To retrieve a password:'
+    echo $''
+    echo $"  ${PROJECT_NAME}-pass -u [username] -a [app]"
+    echo ''
+    exit 0
+}
+
+while [[ $# > 1 ]]
+do
+    key="$1"
+
+    case $key in
+        --help)
+            show_help
+            ;;
+        -u|--user|--username)
+            shift
+            CURR_USERNAME="${1}"
+            ;;
+        -a|--app|--application)
+            shift
+            CURR_APP="${1}"
+            ;;
+        -p|--pass|--password|--passphrase)
+            shift
+            CURR_PASSWORD="${1}"
+            ;;
+        *)
+            # unknown option
+            ;;
+    esac
+    shift
+done
+
+MASTER_PASSWORD=$(gpg -q --armor --export-secret-key 'backup key')
+
+if [ ! $CURR_USERNAME ]; then
+    echo $'No username given'
+    exit 1
+fi
+
+if [ ! -d /home/$CURR_USERNAME ]; then
+    echo $"User $CURR_USERNAME does not exist"
+    exit 2
+fi
+
+if [ ! $CURR_APP ]; then
+    echo $'No app name given'
+    exit 3
+fi
+
+if [ ! $CURR_PASSWORD ]; then
+    # retrieve password
+    if [ ! -f ~/.passwords/$CURR_USER/$CURR_APP ]; then
+        echo ""
+        exit 4
+    else
+        gpg -dq --passphrase "$MASTER_PASSWORD" ~/.passwords/$CURR_USER/$CURR_APP
+    fi
+else
+    # store password
+    if [ ! -d ~/.passwords/$CURR_USER ]; then
+        mkdir -p ~/.passwords/$CURR_USER
+    fi
+    echo “$CURR_PASSWORD” | gpg -ca --cipher-algo AES256 --passphrase "$MASTER_PASSWORD" > ~/.passwords/$CURR_USER/$CURR_APP
+    if [ ! -f ~/.passwords/$CURR_USER/$CURR_APP ]; then
+        exit 5
+    fi
+fi
+
+exit 0
