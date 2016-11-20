@@ -172,6 +172,73 @@ function remove_user_irc {
     fi
 }
 
+function irc_get_global_password {
+    echo $(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
+}
+
+function irc_set_global_password_base {
+    NEW_IRC_PASSWORD="$1"
+    EXISTING_IRC_PASSWORD=$(irc_get_global_password)
+    sed -i "0,/RE/s/Password =.*/Password =$NEW_IRC_PASSWORD/" /etc/ngircd/ngircd.conf
+
+    # replace the password for all users
+    for d in /home/*/ ; do
+        IRC_USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$IRC_USERNAME") == "1" ]]; then
+            if [ -f /home/${IRC_USERNAME}/.irssi/config ]; then
+                sed -i "s|$EXISTING_IRC_PASSWORD|$NEW_IRC_PASSWORD|g" /home/${IRC_USERNAME}/.irssi/config
+                chown -R ${IRC_USERNAME}:${IRC_USERNAME} /home/${IRC_USERNAME}/.irssi
+            fi
+        fi
+    done
+
+    read_config_param DEFAULT_DOMAIN_NAME
+    read_config_param IRC_PORT
+    read_config_param MY_USERNAME
+
+    stop_irc_bouncer
+    sleep 2
+
+    # change the hashes. There are multiple users, but since we're using a global
+    # password this doesn't matter
+    ZNC_SALT="$(dd if=/dev/urandom bs=16c count=1 | md5sum | awk -F ' ' '{print $1}' | cut -c1-20)"
+    new_user_hash=$(echo -n "${NEW_IRC_PASSWORD}${ZNC_SALT}" | sha256sum | awk -F ' ' '{print $1}')
+    sed -i "s|Hash = .*|Hash = ${new_user_hash}|g" /home/znc/.znc/configs/znc.conf
+    sed -i "s|Salt = .*|Salt = ${ZNC_SALT}|g" /home/znc/.znc/configs/znc.conf
+
+    # change the server password
+    sed -i "s|Server     = 127.0.0.1.*|Server     = 127.0.0.1 ${IRC_PORT} ${NEW_IRC_PASSWORD}|g" /home/znc/.znc/configs/znc.conf
+
+    # Update the password
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a irc -p "$NEW_IRC_PASSWORD"
+
+    # matrix bridge to irc
+    if [ -f $INSTALL_DIR/matrix_irc_bridge/config.yaml ]; then
+        sed -i "s|password: .*|password: \"$NEW_IRC_PASSWORD\"|g" $INSTALL_DIR/matrix_irc_bridge/config.yaml
+        systemctl restart matrix_irc_bridge
+    fi
+
+    write_config_param "IRC_PASSWORD" "$NEW_IRC_PASSWORD"
+
+    # restart the daemon for the new password to take effect
+    systemctl restart ngircd
+    start_irc_bouncer
+}
+
+function change_password_irc {
+    new_global_password="$2"
+
+    # Change the password for all users
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+            ${PROJECT_NAME}-pass -u "$USERNAME" -a irc -p "$new_global_password"
+        fi
+    done
+
+    irc_set_global_password_base "$new_global_password"
+}
+
 function add_user_irc_bouncer {
     new_username="$1"
     new_user_password="$2"
@@ -180,11 +247,12 @@ function add_user_irc_bouncer {
         is_admin='false'
     fi
 
-    ${PROJECT_NAME}-pass -u $new_username -a irc -p "$new_user_password"
 
     if [[ $(is_valid_user "$new_username") == "0" ]]; then
         return
     fi
+
+    ${PROJECT_NAME}-pass -u $new_username -a irc -p "$new_user_password"
 
     read_config_param IRC_PORT
     read_config_param DEFAULT_DOMAIN_NAME
@@ -284,7 +352,7 @@ function add_user_irc {
     new_username="$1"
     new_user_password="$2"
 
-    IRC_PASSWORD=$(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
+    IRC_PASSWORD=$(irc_get_global_password)
     if [ ${#IRC_PASSWORD} -lt 2 ]; then
         IRC_PASSWORD=
     fi
@@ -303,66 +371,22 @@ function run_client_irc {
 }
 
 function irc_show_password {
-    IRC_PASSWORD=$(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
+    IRC_PASSWORD=$(irc_get_global_password)
     dialog --title $"IRC Password" \
            --msgbox "$IRC_PASSWORD" 6 40
 }
 
 function irc_set_global_password {
+    EXISTING_IRC_PASSWORD=$(irc_get_global_password)
     dialog --title $"IRC Password" \
            --clear \
            --backtitle $"Freedombone Control Panel" \
-           --passwordbox $"Password for all IRC users, or press Enter for no password" 10 60 2> $data
+           --passwordbox $"Password for all IRC users, or press Enter for no password" 10 60 "$EXISTING_IRC_PASSWORD" 2> $data
     sel=$?
     case $sel in
         0)
-            EXISTING_IRC_PASSWORD=$(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
             NEW_IRC_PASSWORD=$(<$data)
-            sed -i "0,/RE/s/Password =.*/Password =$NEW_IRC_PASSWORD/" /etc/ngircd/ngircd.conf
-
-            # replace the password for all users
-            for d in /home/*/ ; do
-                IRC_USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-                if [[ $(is_valid_user "$IRC_USERNAME") == "1" ]]; then
-                    if [ -f /home/${IRC_USERNAME}/.irssi/config ]; then
-                        sed -i "s|$EXISTING_IRC_PASSWORD|$NEW_IRC_PASSWORD|g" /home/${IRC_USERNAME}/.irssi/config
-                        chown -R ${IRC_USERNAME}:${IRC_USERNAME} /home/${IRC_USERNAME}/.irssi
-                    fi
-                fi
-            done
-
-            read_config_param DEFAULT_DOMAIN_NAME
-            read_config_param IRC_PORT
-            read_config_param MY_USERNAME
-
-            stop_irc_bouncer
-            sleep 2
-
-            # change the hashes. There are multiple users, but since we're using a global
-            # password this doesn't matter
-            ZNC_SALT="$(dd if=/dev/urandom bs=16c count=1 | md5sum | awk -F ' ' '{print $1}' | cut -c1-20)"
-            new_user_hash=$(echo -n "${NEW_IRC_PASSWORD}${ZNC_SALT}" | sha256sum | awk -F ' ' '{print $1}')
-            sed -i "s|Hash = .*|Hash = ${new_user_hash}|g" /home/znc/.znc/configs/znc.conf
-            sed -i "s|Salt = .*|Salt = ${ZNC_SALT}|g" /home/znc/.znc/configs/znc.conf
-
-            # change the server password
-            sed -i "s|Server     = 127.0.0.1.*|Server     = 127.0.0.1 ${IRC_PORT} ${NEW_IRC_PASSWORD}|g" /home/znc/.znc/configs/znc.conf
-
-            # Update the password
-            ${PROJECT_NAME}-pass -u $MY_USERNAME -a irc -p "$NEW_IRC_PASSWORD"
-
-
-            if [ -f $INSTALL_DIR/matrix_irc_bridge/config.yaml ]; then
-                sed -i "s|password: .*|password: \"$NEW_IRC_PASSWORD\"|g" $INSTALL_DIR/matrix_irc_bridge/config.yaml
-                systemctl restart matrix_irc_bridge
-            fi
-
-            write_config_param "IRC_PASSWORD" "$NEW_IRC_PASSWORD"
-
-            # restart the daemon for the new password to take effect
-            systemctl restart ngircd
-            start_irc_bouncer
-
+            irc_set_global_password_base "$NEW_IRC_PASSWORD"
             dialog --title $"IRC Password" \
                    --msgbox $"The IRC password was changed" 6 40
             ;;
