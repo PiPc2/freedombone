@@ -47,13 +47,16 @@ irc_variables=(MY_USERNAME
                MY_NAME
                IRC_PORT
                IRC_BOUNCER_PORT
-               IRC_PASSWORD
                IRC_ONION_HOSTNAME
                IRC_OPERATOR_PASSWORD
                DEFAULT_DOMAIN_NAME
                INSTALLED_WITHIN_DOCKER
                IRC_BUFFER_LENGTH
                ONION_ONLY)
+
+function irc_get_global_password {
+    echo $(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
+}
 
 function start_irc_bouncer {
     update_default_domain
@@ -75,7 +78,7 @@ function create_irssi_config {
 
     read_config_param IRC_BOUNCER_PORT
     read_config_param IRC_ONION_PORT
-    read_config_param IRC_PASSWORD
+    IRC_PASSWORD=$(irc_get_global_password)
 
     new_name="$2"
     if [ ${#new_name} -eq 0 ]; then
@@ -172,10 +175,6 @@ function remove_user_irc {
     fi
 }
 
-function irc_get_global_password {
-    echo $(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
-}
-
 function irc_set_global_password_base {
     NEW_IRC_PASSWORD="$1"
     EXISTING_IRC_PASSWORD=$(irc_get_global_password)
@@ -241,25 +240,21 @@ function change_password_irc {
 
 function add_user_irc_bouncer {
     new_username="$1"
-    new_user_password="$2"
+    new_user_password=$(irc_get_global_password)
+    IRC_PASSWORD="$new_user_password"
     is_admin='true'
     if [ ! $3 ]; then
         is_admin='false'
     fi
 
-
     if [[ $(is_valid_user "$new_username") == "0" ]]; then
         return
     fi
 
-    ${PROJECT_NAME}-pass -u $new_username -a irc -p "$new_user_password"
-
     read_config_param IRC_PORT
     read_config_param DEFAULT_DOMAIN_NAME
-    if [ ! $2 ]; then
-        read_config_param IRC_PASSWORD
-        new_user_password="$IRC_PASSWORD"
-    fi
+
+    ${PROJECT_NAME}-pass -u $new_username -a irc -p "$new_user_password"
 
     stop_irc_bouncer
 
@@ -525,12 +520,15 @@ function install_irc_server {
 
     DEFAULTDOMAIN=${DEFAULT_DOMAIN_NAME}
 
-    # create a login password if needed
-    if [ ! ${IRC_PASSWORD} ]; then
-        IRC_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-    fi
+    IRC_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
 
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a irc -p "$IRC_PASSWORD"
+    # Change the password for all users
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+            ${PROJECT_NAME}-pass -u "$USERNAME" -a irc -p "$IRC_PASSWORD"
+        fi
+    done
 
     echo '**************************************************' > /etc/ngircd/motd
     echo $'*           F R E E D O M B O N E   I R C        *' >> /etc/ngircd/motd
