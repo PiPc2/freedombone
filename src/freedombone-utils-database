@@ -34,10 +34,6 @@ MARIADB_PASSWORD=
 # Used to indicate whether the backup contains MariaDB databases or not
 BACKUP_INCLUDES_DATABASES="no"
 
-# contains the mysql root password which
-# is used for backups and repair
-DATABASE_PASSWORD_FILE=/root/dbpass
-
 function remove_backup_database_local {
     database_name=$1
 
@@ -114,9 +110,18 @@ function backup_database_local {
 }
 
 function get_mariadb_password {
+    # migrate from database password file to using the password store
+    DATABASE_PASSWORD_FILE=/root/dbpass
     if [ -f $DATABASE_PASSWORD_FILE ]; then
         MARIADB_PASSWORD=$(cat $DATABASE_PASSWORD_FILE)
+        ${PROJECT_NAME}-pass -u root -a mariadb -p "$MARIADB_PASSWORD"
+        if [[ "$(${PROJECT_NAME}-pass -u root -a mariadb)" == "$MARIADB_PASSWORD" ]]; then
+            shred -zu $DATABASE_PASSWORD_FILE
+            echo $'MariaDB password moved into password store'
+            return
+        fi
     fi
+    MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
 }
 
 function install_mariadb {
@@ -135,8 +140,7 @@ function install_mariadb {
         else
             MARIADB_PASSWORD="$(openssl rand -base64 32 | cut -c1-${MINIMUM_PASSWORD_LENGTH})"
         fi
-        echo "$MARIADB_PASSWORD" > $DATABASE_PASSWORD_FILE
-        chmod 600 $DATABASE_PASSWORD_FILE
+        ${PROJECT_NAME}-pass -u root -a mariadb -p "$MARIADB_PASSWORD"
     fi
 
     debconf-set-selections <<< "mariadb-server mariadb-server/root_password password $MARIADB_PASSWORD"
@@ -164,8 +168,7 @@ function backup_databases_script_header {
         echo '' >> /usr/bin/backupdatabases
         echo "EMAIL='$MY_EMAIL_ADDRESS'" >> /usr/bin/backupdatabases
         echo '' >> /usr/bin/backupdatabases
-        echo -n 'MYSQL_PASSWORD=$(cat ' >> /usr/bin/backupdatabases
-        echo "$DATABASE_PASSWORD_FILE)" >> /usr/bin/backupdatabases
+        echo "MYSQL_PASSWORD=\$(${PROJECT_NAME}-pass -u root -a mariadb)" >> /usr/bin/backupdatabases
         echo 'umask 0077' >> /usr/bin/backupdatabases
         echo '' >> /usr/bin/backupdatabases
         echo '# exit if we are backing up to friends servers' >> /usr/bin/backupdatabases
@@ -207,7 +210,8 @@ function repair_databases_script {
         return
     fi
 
-    if [ ! -f $DATABASE_PASSWORD_FILE ]; then
+    db_pass=$(${PROJECT_NAME}-pass -u root -p mariadb)
+    if [[ "$db_pass" == 'Error:'* ]]; then
         return
     fi
 

@@ -66,10 +66,7 @@ if [ -f $COMPLETION_FILE ]; then
 fi
 
 # MariaDB password
-DATABASE_PASSWORD=''
-if [ -f /root/dbpass ]; then
-    DATABASE_PASSWORD=$(cat /root/dbpass)
-fi
+DATABASE_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
 
 function check_backup_exists {
     if [ ! -d $USB_MOUNT/backup ]; then
@@ -182,18 +179,14 @@ function restore_mariadb {
         echo $"Restoring mysql settings"
         temp_restore_dir=/root/tempmariadb
         restore_directory_from_usb $temp_restore_dir mariadb
-        echo $"Get the MariaDB password from the backup"
-        if [ ! -f ${temp_restore_dir}${temp_restore_dir}/db ]; then
-            echo $"MariaDB password file not found"
-            exit 495
-        fi
-        BACKUP_MARIADB_PASSWORD=$(cat ${temp_restore_dir}${temp_restore_dir}/db)
-        if [[ $BACKUP_MARIADB_PASSWORD != $DATABASE_PASSWORD ]]; then
+        echo $'Obtaining MariaDB password'
+        db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        if [ ${#db_pass} -gt 0 ]; then
             echo $"Restore the MariaDB user table"
-            mysqlsuccess=$(mysql -u root --password=$DATABASE_PASSWORD mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             if [ ! "$?" = "0" ]; then
                 echo $"Try again using the password obtained from backup"
-                mysqlsuccess=$(mysql -u root --password=$BACKUP_MARIADB_PASSWORD mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+                mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             fi
             if [ ! "$?" = "0" ]; then
                 echo "$mysqlsuccess"
@@ -204,14 +197,10 @@ function restore_mariadb {
             echo $"Restarting database"
             service mysql restart
             echo $"Change the MariaDB password to the backup version"
-            DATABASE_PASSWORD=$BACKUP_MARIADB_PASSWORD
+            DATABASE_PASSWORD="$db_pass"
+            ${PROJECT_NAME}-pass -u root -a mariadb -p "$DATABASE_PASSWORD"
         fi
-        shred -zu ${temp_restore_dir}${temp_restore_dir}/db
         rm -rf $temp_restore_dir
-
-        # Change database password file
-        echo "$DATABASE_PASSWORD" > /root/dbpass
-        chmod 600 /root/dbpass
     fi
 }
 
@@ -723,9 +712,9 @@ check_admin_user
 copy_gpg_keys
 restore_configfiles
 same_admin_user
+restore_passwordstore
 restore_mariadb
 restore_letsencrypt
-restore_passwordstore
 restore_tor
 restore_mutt_settings
 restore_gpg
