@@ -48,6 +48,7 @@ REMOVE_USERNAME=
 CURR_APP=
 REMOVE_APP=
 CURR_PASSWORD=""
+TESTS=
 
 function get_backup_key_id {
     MY_BACKUP_KEY_ID=$(gpg --list-keys "(backup key)" | \
@@ -90,7 +91,35 @@ function pass_show_help {
 }
 
 function pad_string {
-    echo -n -e "$1" | sed -e :a -e 's/^.\{1,128\}$/& /;ta'
+    pass_string="$1"
+    str_length=${#pass_string}
+    total_padding=$((128 - str_length))
+    leading_padding=$((1 + RANDOM % $total_padding))
+    trailing_padding=$((total_padding - leading_padding))
+    leading=printf "%-${leading_padding}s"
+    trailing=printf "%-${trailing_padding}s"
+    echo "${leading}${pass_string}${trailing}"
+}
+
+function remove_padding {
+    padded_string="$1"
+    echo -e "${padded_string}" | tr -d '[:space:]'
+}
+
+function run_tests {
+    pass="SuperSecretPassword"
+    padded=$(pad_string "$pass")
+    echo "|${padded}|"
+    ${PROJECT_NAME}-pass -u root -a tests -p "$pass"
+    returned_pass=$(${PROJECT_NAME}-pass -u root -a tests)
+    if [[ "$pass" != "$returned_pass" ]]; then
+        echo "pass     :${pass}:"
+        echo "padded   :${padded}:"
+        echo "returned :${pass}:"
+        exit 73825
+    fi
+    ${PROJECT_NAME}-pass -u root --rmapp tests
+    echo "Tests passed"
 }
 
 while [[ $# > 1 ]]
@@ -100,6 +129,9 @@ do
     case $key in
         -h|--help)
             pass_show_help
+            ;;
+        -t|--test)
+            TESTS=1
             ;;
         -u|--user|--username)
             shift
@@ -140,6 +172,11 @@ get_backup_key_id
 # Use the backups private key as a symmetric passphrase
 MASTER_PASSWORD=$(gpg -q --armor --export-secret-key $MY_BACKUP_KEY_ID | sed '/---/d' | sed '/Version/d' | sed '/^$/d')
 
+if [ $TESTS ]; then
+    run_tests
+    exit 0
+fi
+
 if [ ! $CURR_USERNAME ]; then
     echo $'Error: No username given'
     exit 1
@@ -171,7 +208,7 @@ if [ ${#CURR_PASSWORD} -eq 0 ]; then
         exit 4
     else
         pass=$(gpg -dq --passphrase "$MASTER_PASSWORD" ~/.passwords/$CURR_USERNAME/$CURR_APP)
-        echo "${pass}" | xargs
+        remove_padding "${pass}"
     fi
 else
     # store password
