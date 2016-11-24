@@ -1,8 +1,8 @@
-<img src="https://github.com/bashrc/freedombone/blob/master/img/logo.png?raw=true" width=640/>
+<img src="https://github.com/bashrc/freedombone/blob/master/img/logo.png?raw=true" width=800/>
 
 > _"With the increasing move of our computing to cloud infrastructures, we give up the control of our computing to the managers of those infrastructures. Our terminals (laptops, desktops) might now be running entirely on Free Software, but this is increasingly irrelevant given that most of what actually matters gets executed on a remote closed system that we don’t control. The Free Software community needs to work to help users keep the control of all their computing, by developing suitable alternatives and facilitating their deployment."_ -- Lucas Nussbaum
 
-<img src="https://github.com/bashrc/freedombone/blob/master/img/beaglebone_logo.jpg?raw=true" width=640/>
+<img src="https://github.com/bashrc/freedombone/blob/master/img/beaglebone_logo.jpg?raw=true" width=800/>
 
 So you want to run your own internet services? Email, chat, VoIP, web sites, file synchronisation, wikis, blogs, social networks, backups. Freedombone enables you to do all of that in a self-hosted way, where you keep control of your data and it resides in your own home.
 
