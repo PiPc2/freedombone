@@ -1,0 +1,152 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# batman adv mesh functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS=''
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=0
+
+ENABLE_BATMAN="no"
+BATMAN_CELLID='any'
+
+batman_variables=(MY_USERNAME
+                  BATMAN_CELLID)
+
+function install_interactive_batman {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function configure_firewall_for_batman {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $ENABLE_BATMAN != "yes" ]]; then
+        return
+    fi
+
+    function_check save_firewall_settings
+    save_firewall_settings
+    mark_completed $FUNCNAME
+}
+
+function reconfigure_batman {
+    echo -n ''
+}
+
+function upgrade_batman {
+    echo -n ''
+}
+
+function backup_local_batman {
+    echo -n ''
+}
+
+function restore_local_batman {
+    echo -n ''
+}
+
+function backup_remote_batman {
+    echo -n ''
+}
+
+function restore_remote_batman {
+    echo -n ''
+}
+
+function remove_batman {
+    ${PROJECT_NAME}-mesh-install -f batman --remove yes
+    if [ ! "$?" = "0" ]; then
+        echo $'Failed to remove batman'
+        exit 79353
+    fi
+    remove_completion_param install_batman
+    remove_completion_param configure_firewall_for_batman
+}
+
+function mesh_install_batman {
+    chroot "$rootdir" apt-get -yq install iproute bridge-utils libnetfilter-conntrack3 batctl
+    chroot "$rootdir" apt-get -yq install python-dev libevent-dev ebtables python-pip git
+    chroot "$rootdir" apt-get -yq install wireless-tools rfkill
+
+    if ! grep -q "batman_adv" $rootdir/etc/modules; then
+        echo 'batman_adv' >> $rootdir/etc/modules
+    fi
+
+    BATMAN_SCRIPT=$rootdir/var/lib/batman
+
+    if [ -f /usr/local/bin/${PROJECT_NAME}-mesh-batman ]; then
+        cp /usr/local/bin/${PROJECT_NAME}-mesh-batman $BATMAN_SCRIPT
+    else
+        cp /usr/bin/${PROJECT_NAME}-mesh-batman $BATMAN_SCRIPT
+    fi
+
+    BATMAN_DAEMON=$rootdir/etc/systemd/system/batman.service
+    echo '[Unit]' > $BATMAN_DAEMON
+    echo 'Description=B.A.T.M.A.N. Advanced' >> $BATMAN_DAEMON
+    echo 'After=network.target' >> $BATMAN_DAEMON
+    echo '' >> $BATMAN_DAEMON
+    echo '[Service]' >> $BATMAN_DAEMON
+    echo 'RemainAfterExit=yes' >> $BATMAN_DAEMON
+    echo "ExecStart=/var/lib/batman start" >> $BATMAN_DAEMON
+    echo "ExecStop=/var/lib/batman stop" >> $BATMAN_DAEMON
+    echo 'Restart=on-failure' >> $BATMAN_DAEMON
+    echo 'SuccessExitStatus=3 4' >> $BATMAN_DAEMON
+    echo 'RestartForceExitStatus=3 4' >> $BATMAN_DAEMON
+    echo '' >> $BATMAN_DAEMON
+    echo '# Allow time for the server to start/stop' >> $BATMAN_DAEMON
+    echo 'TimeoutSec=300' >> $BATMAN_DAEMON
+    echo '' >> $BATMAN_DAEMON
+    echo '[Install]' >> $BATMAN_DAEMON
+    echo 'WantedBy=multi-user.target' >> $BATMAN_DAEMON
+    chroot "$rootdir" systemctl enable batman
+}
+
+function install_batman {
+    if [ $INSTALLING_MESH ]; then
+        mesh_install_batman
+        return
+    fi
+    if [[ $ENABLE_BATMAN != "yes" ]]; then
+        return
+    fi
+
+    ${PROJECT_NAME}-mesh-install -f batman
+    if [ ! "$?" = "0" ]; then
+        echo $'Failed to install batman'
+        exit 72524
+    fi
+
+    function_check configure_firewall_for_batman
+    configure_firewall_for_batman
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0

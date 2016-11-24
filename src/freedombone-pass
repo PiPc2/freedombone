@@ -1,0 +1,264 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# It's useful to be able to store user passwords, but not a good
+# idea to do that in plain text. This implements a simple password
+# store. It gpg symmetric encrypts passwords using the backups
+# private key as the passphrase.
+#
+# In order for an adversary to obtain the passwords they must have
+# the backups GPG key, which is not obtainable from local or remote
+# backups and can only happen if they get root access to the system
+# (in which case it's game over anyhow) or if they can decrypt
+# a master keydrive or obtain sufficient keydrive fragments.
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-pass
+export TEXTDOMAINDIR="/usr/share/locale"
+
+MY_BACKUP_KEY_ID=
+CURR_USERNAME=
+REMOVE_USERNAME=
+CURR_APP=
+REMOVE_APP=
+CURR_PASSWORD=""
+TESTS=
+
+# If this file is present then don't store passwords
+NO_PASSWORD_STORE_FILE=~/.nostore
+
+function get_backup_key_id {
+    MY_BACKUP_KEY_ID=$(gpg --list-keys "(backup key)" | \
+                           grep 'pub ' | awk -F ' ' '{print $2}' | \
+                           awk -F '/' '{print $2}')
+    if [ ${#MY_BACKUP_KEY_ID} -lt 4 ]; then
+        echo $"Error: gpg backup key was not found"
+        return 58213
+    fi
+}
+
+function pass_show_help {
+    echo ''
+    echo $"${PROJECT_NAME}-pass"
+    echo ''
+    echo $'Password store using gpg'
+    echo ''
+    echo $'  -h --help                        Show help'
+    echo $'  -u --user [name]                 Username'
+    echo $'  -a --app [name]                  Name of the application'
+    echo $'  -p --pass [password]             The password to store'
+    echo ''
+    echo $'To encrypt a password:'
+    echo ''
+    echo $"  ${PROJECT_NAME}-pass -u [username] -a [app] -p [password]"
+    echo ''
+    echo $'To retrieve a password:'
+    echo $''
+    echo $"  ${PROJECT_NAME}-pass -u [username] -a [app]"
+    echo ''
+    echo $'To remove passwords for a user:'
+    echo $''
+    echo $"  ${PROJECT_NAME}-pass -r [username]"
+    echo ''
+    echo $'To remove an application password for a user:'
+    echo $''
+    echo $"  ${PROJECT_NAME}-pass --u [username] --rmapp [name]"
+    echo ''
+    exit 0
+}
+
+function pad_string {
+    pass_string="$1"
+    str_length=${#pass_string}
+    total_padding=$((128 - str_length))
+    leading_padding=$((1 + RANDOM % $total_padding))
+    trailing_padding=$((total_padding - leading_padding))
+    leading=$(printf "%-${leading_padding}s")
+    trailing=$(printf "%-${trailing_padding}s")
+    echo "${leading}${pass_string}${trailing}"
+}
+
+function remove_padding {
+    padded_string="$1"
+    echo -e "${padded_string}" | tr -d '[:space:]'
+}
+
+function run_tests {
+    pass="SuperSecretPassword"
+    padded=$(pad_string "$pass")
+    if [ ${#padded} -ne 128 ]; then
+        echo $'Incorrect padded length'
+        exit 78352
+    fi
+    ${PROJECT_NAME}-pass -u root -a tests -p "$pass"
+    returned_pass=$(${PROJECT_NAME}-pass -u root -a tests)
+    if [[ "$pass" != "$returned_pass" ]]; then
+        echo "pass     :${pass}:"
+        echo "padded   :${padded}:"
+        echo "returned :${returned_pass}:"
+        exit 73825
+    fi
+    ${PROJECT_NAME}-pass -u root --rmapp tests
+    echo "Tests passed"
+}
+
+function clear_passwords {
+    # remove all passwords except for the root one, which is needed
+    # for automatic database backups
+    for d in /root/.passwords/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $4}')
+        if [[ "$USERNAME" != 'root' ]]; then
+            shred -zu /root/.passwords/$USERNAME/*
+            rm -rf /root/.passwords/$USERNAME
+        fi
+    done
+    if [ ! -f $NO_PASSWORD_STORE_FILE ]; then
+        touch $NO_PASSWORD_STORE_FILE
+    fi
+    echo $'Passwords cleared. Future passwords will not be stored.'
+    exit 0
+}
+
+while [[ $# > 1 ]]
+do
+    key="$1"
+
+    case $key in
+        -h|--help)
+            pass_show_help
+            ;;
+        -t|--test)
+            shift
+            TESTS=1
+            ;;
+        -c|--clear|--erase)
+            clear_passwords
+            ;;
+        -e|--enable)
+            shift
+            if [ -f $NO_PASSWORD_STORE_FILE ]; then
+                rm $NO_PASSWORD_STORE_FILE
+                echo $'Password storage has been enabled'
+            fi
+            ;;
+        -u|--user|--username)
+            shift
+            CURR_USERNAME="${1}"
+            ;;
+        -r|--rm|--remove)
+            shift
+            REMOVE_USERNAME="${1}"
+            ;;
+        --rmapp|--removeapp)
+            shift
+            REMOVE_APP="${1}"
+            ;;
+        -a|--app|--application)
+            shift
+            CURR_APP="${1}"
+            ;;
+        -p|--pass|--password|--passphrase)
+            shift
+            CURR_PASSWORD="${1}"
+            ;;
+        *)
+            # unknown option
+            ;;
+    esac
+    shift
+done
+
+if [ ${REMOVE_USERNAME} ]; then
+    if [ -d ~/.passwords/${REMOVE_USERNAME} ]; then
+        rm -rf ~/.passwords/${REMOVE_USERNAME}
+    fi
+    exit 0
+fi
+
+get_backup_key_id
+
+# Use the backups private key as a symmetric passphrase
+MASTER_PASSWORD=$(gpg -q --armor --export-secret-key $MY_BACKUP_KEY_ID | sed '/---/d' | sed '/Version/d' | sed '/^$/d')
+
+if [ $TESTS ]; then
+    run_tests
+    exit 0
+fi
+
+if [ ! $CURR_USERNAME ]; then
+    echo $'Error: No username given'
+    exit 1
+fi
+
+if [ ! -d /home/$CURR_USERNAME ]; then
+    if [[ "$CURR_USERNAME" != "root" ]]; then
+        echo $"Error: User $CURR_USERNAME does not exist"
+        exit 2
+    fi
+fi
+
+if [ ${REMOVE_APP} ]; then
+    if [ -d ~/.passwords/${CURR_USERNAME}/${REMOVE_APP} ]; then
+        shred -zu ~/.passwords/${CURR_USERNAME}/${REMOVE_APP}
+    fi
+    exit 0
+fi
+
+if [ ! $CURR_APP ]; then
+    echo $'Error: No app name given'
+    exit 3
+fi
+
+if [ ${#CURR_PASSWORD} -eq 0 ]; then
+    # retrieve password
+    if [ ! -f ~/.passwords/$CURR_USERNAME/$CURR_APP ]; then
+        echo ""
+        exit 4
+    else
+        pass=$(gpg -dq --passphrase "$MASTER_PASSWORD" ~/.passwords/$CURR_USERNAME/$CURR_APP)
+        remove_padding "${pass}"
+    fi
+else
+    # store password
+    if [ -f $NO_PASSWORD_STORE_FILE ]; then
+        if [[ "$CURR_USERNAME" != 'root' ]]; then
+            exit 0
+        fi
+    fi
+    if [ ! -d ~/.passwords/$CURR_USERNAME ]; then
+        mkdir -p ~/.passwords/$CURR_USERNAME
+    fi
+    # padding helps to ensure than nothing can be learned from the length of the cyphertext
+    pad_string "${CURR_PASSWORD}" | gpg -ca --cipher-algo AES256 --passphrase "$MASTER_PASSWORD" > ~/.passwords/$CURR_USERNAME/$CURR_APP
+    if [ ! -f ~/.passwords/$CURR_USERNAME/$CURR_APP ]; then
+        exit 5
+    fi
+fi
+
+exit 0

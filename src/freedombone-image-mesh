@@ -31,12 +31,18 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-image-mesh
 export TEXTDOMAINDIR="/usr/share/locale"
 
+# The browser application to use
+BROWSER=midori
+BROWSER_OPTIONS='-p'
+
 MY_USERNAME='fbone'
 PEER_ID=
 INSTALL_DIR=/root/build
 INSTALL_LOG=/var/log/${PROJECT_NAME}.log
 
 DEFAULT_USERNAME=fbone
+
+GO_VERSION=1.7
 
 TOX_NODES=
 #TOX_NODES=(
@@ -45,427 +51,570 @@ TOX_NODES=
 #)
 
 MESH_INSTALL_DIR=/var/lib
+MESH_INSTALL_COMPLETED=/root/.mesh_setup_completed
+MESH_INSTALL_SETUP=/root/.initial_mesh_setup
+MESH_AMNESIC=/root/.amnesic
+FIRST_BOOT=/home/$MY_USERNAME/.first_boot
+
+# Tomb containing logs
+TOMB_LOG_SIZE_MB=10
+
+# tmp directory
+TOMB_TMP_SIZE_MB=10
+
+# size of the tomb used to store qtox settings
+TOMB_TOX_SIZE_MB=10
+
+# Tomb containing tox bootstrap
+TOMB_TOX_BOOTSTRAP_SIZE_MB=10
+
+MESH_INSTALL_DIR=/var/lib
+
+IPFS_PORT=4001
+
+CURRENT_BLOG_INDEX=/home/$MY_USERNAME/.blog-index
+
+function create_avahi_mesh_service {
+    service_name=$1
+    service_type=$2
+    service_protocol=$3
+    service_port=$4
+    service_description="$5"
+
+    if [ ! -d /etc/avahi ]; then
+        echo $'create_avahi_mesh_service: avahi was not installed'
+        exit 52925
+    fi
+
+    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /etc/avahi/services/${service_name}.service
+    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /etc/avahi/services/${service_name}.service
+    echo '<service-group>' >> /etc/avahi/services/${service_name}.service
+    echo "  <name replace-wildcards=\"yes\">%h ${service_type}</name>" >> /etc/avahi/services/${service_name}.service
+    echo '  <service>' >> /etc/avahi/services/${service_name}.service
+    echo "    <type>_${service_type}._${service_protocol}</type>" >> /etc/avahi/services/${service_name}.service
+    echo "    <port>${service_port}</port>" >> /etc/avahi/services/${service_name}.service
+    echo "    <txt-record>$service_description</txt-record>" >> /etc/avahi/services/${service_name}.service
+    echo '  </service>' >> /etc/avahi/services/${service_name}.service
+    echo '</service-group>' >> /etc/avahi/services/${service_name}.service
+}
+
+function create_ram_disk {
+    ramdisk_size_mb=$1
+    if [ ! -d /mnt/ramdisk ]; then
+        mkdir -p /mnt/ramdisk
+    fi
+    if ! grep -q "ramdisk" /etc/fstab; then
+        mount -t tmpfs -o size=${ramdisk_size_mb}m tmpfs /mnt/ramdisk
+        echo "tmpfs       /mnt/ramdisk tmpfs   nodev,nosuid,noexec,nodiratime,size=${ramdisk_size_mb}M   0 0" >> /etc/fstab
+    fi
+}
+
+function tmp_ram_disk {
+    ramdisk_size_mb=$1
+    if [ ! -d /tmp ]; then
+        mkdir -p /tmp
+    fi
+    if ! grep -q '/tmp' /etc/fstab; then
+        mount -t tmpfs -o size=${ramdisk_size_mb}m tmpfs /tmp
+        echo "tmpfs       /tmp tmpfs   nodev,nosuid,noexec,nodiratime,size=${ramdisk_size_mb}M   0 0" >> /etc/fstab
+    fi
+}
 
 function set_hostname {
-	DEFAULT_DOMAIN_NAME="$1"
+    DEFAULT_DOMAIN_NAME="$1"
 
-	echo "$DEFAULT_DOMAIN_NAME" > /etc/hostname
-	hostname $DEFAULT_DOMAIN_NAME
+    echo "$DEFAULT_DOMAIN_NAME" > /etc/hostname
+    echo "$DEFAULT_DOMAIN_NAME" > /etc/mailname
+    hostname $DEFAULT_DOMAIN_NAME
 
-	if grep -q "127.0.1.1" /etc/hosts; then
-		sed -i "s/127.0.1.1.*/127.0.1.1       $DEFAULT_DOMAIN_NAME/g" /etc/hosts
-	else
-		echo "127.0.1.1  $DEFAULT_DOMAIN_NAME" >> /etc/hosts
-	fi
+    if grep -q "127.0.1.1" /etc/hosts; then
+        sed -i "s/127.0.1.1.*/127.0.1.1       $DEFAULT_DOMAIN_NAME/g" /etc/hosts
+    else
+        echo "127.0.1.1  $DEFAULT_DOMAIN_NAME" >> /etc/hosts
+    fi
 }
 
 function change_avahi_name {
-	decarray=( 1 2 3 4 5 6 7 8 9 0 )
-	PEER_ID=${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}
-	sed -i "s|#host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
-	sed -i "s|host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
-	set_hostname P$PEER_ID
+    decarray=( 1 2 3 4 5 6 7 8 9 0 )
+    PEER_ID=${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}${decarray[$RANDOM%10]}
+    sed -i "s|#host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|host-name=.*|host-name=P$PEER_ID|g" /etc/avahi/avahi-daemon.conf
+    set_hostname P$PEER_ID
+    systemctl restart avahi-daemon
 
-	echo "New avahi name for this peer is P$PEER_ID"
-	toilet "mesh-$PEER_ID"
-	echo $"avahi name changed to P${PEER_ID}.local" >> $INSTALL_LOG
-}
-
-function regenerate_ssh_host_keys {
-	echo $"Regenerating ssh host keys" >> $INSTALL_LOG
-	rm -f /etc/ssh/ssh_host_*
-	dpkg-reconfigure openssh-server
-	echo $'ssh host keys regenerated' >> $INSTALL_LOG
-	# remove small moduli
-	awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
-	mv ~/moduli /etc/ssh/moduli
-	echo $'ssh small moduli removed' >> $INSTALL_LOG
-}
-
-function configure_zeronet {
-	sed -i "s|ExecStart=.*|ExecStart=/usr/bin/python zeronet.py --ip_external P${PEER_ID}.local --trackers_file $MESH_INSTALL_DIR/zeronet/bootstrap|g" /etc/systemd/system/zeronet.service
-	echo $"zeronet daemon updated to P${PEER_ID}.local" >> $INSTALL_LOG
-}
-
-function configure_zeronet_blog {
-	echo $'Updating ZeroNet Blog' >> $INSTALL_LOG
-	ZERONET_DEFAULT_BLOG_TITLE="${MY_USERNAME}'s Blog"
-
-	cd $MESH_INSTALL_DIR/zeronet
-	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/blog.txt
-	if [ ! -f $MESH_INSTALL_DIR/zeronet/blog.txt ]; then
-		echo $'Unable to create ZeroNet blog' >> $INSTALL_LOG
-		exit 7386
-	fi
-	blog_address=$(cat blog.txt | grep "Site address" | awk -F ':' '{print $2}')
-	blog_private_key=$(cat blog.txt | grep "Site private key" | awk -F ':' '{print $2}')
-	ZERONET_BLOG_ADDRESS=${blog_address//[[:blank:]]/}
-	ZERONET_BLOG_PRIVATE_KEY=${blog_private_key//[[:blank:]]/}
-
-	if [ ${#ZERONET_BLOG_ADDRESS} -lt 20 ]; then
-		echo $"Address:    $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create zeronet blog address' >> $INSTALL_LOG
-		exit 7358
-	fi
-
-	if [ ${#ZERONET_BLOG_PRIVATE_KEY} -lt 20 ]; then
-		echo $"Address:    $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create zeronet blog private key' >> $INSTALL_LOG
-		exit 1639
-	fi
-
-	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS" ]; then
-		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-		exit 7638
-	fi
-
-	echo $"ZeroNet Blog address:     $ZERONET_BLOG_ADDRESS" >> $INSTALL_LOG
-	echo $"ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY" >> $INSTALL_LOG
-	cp -r $MESH_INSTALL_DIR/zeronet/ZeroBlog/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS
-
-	if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data ]; then
-		mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
-	fi
-	cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
-	sed -i "s/MyZeroBlog/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
-	sed -i "s/My ZeroBlog./$ZERONET_DEFAULT_BLOG_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
-	sed -i "s/ZeroBlog Demo/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
-	sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_BLOG_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
-	sed -i "s/Blogging platform Demo/Blogging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/content.json
-	python zeronet.py siteSign $ZERONET_BLOG_ADDRESS $ZERONET_BLOG_PRIVATE_KEY
-
-	# update the avahi service
-	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-blog.service
-	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-blog.service
-	echo '<service-group>' >> /tmp/zeronet-blog.service
-	echo '  <name replace-wildcards="yes">%h ZeroNet Blog</name>' >> /tmp/zeronet-blog.service
-	echo '  <service>' >> /tmp/zeronet-blog.service
-	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-blog.service
-	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-blog.service
-	echo "    <txt-record>$ZERONET_URL/$ZERONET_BLOG_ADDRESS</txt-record>" >> /tmp/zeronet-blog.service
-	echo '  </service>' >> /tmp/zeronet-blog.service
-	echo '</service-group>' >> /tmp/zeronet-blog.service
-	cp /tmp/zeronet-blog.service /etc/avahi/services/zeronet-blog.service
-
-	if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
-		mkdir -p /home/$MY_USERNAME/.config/zeronet
-		chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
-	fi
-	echo "$ZERONET_URL/$ZERONET_BLOG_ADDRESS" > /home/$MY_USERNAME/.config/zeronet/myblog
-
-	sed -i "s|ZeroNet Blog address.*|ZeroNet Blog address: $ZERONET_BLOG_ADDRESS|g" /home/$MY_USERNAME/README
-	sed -i "s|ZeroNet Blog private key.*|ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY|g" /home/$MY_USERNAME/README
-
-	echo $'Update of ZeroNet Blog completed' >> $INSTALL_LOG
-}
-
-function configure_zeronet_mail {
-	echo $'Updating ZeroNet Mail' >> $INSTALL_LOG
-	ZERONET_DEFAULT_MAIL_TITLE="${MY_USERNAME}'s Mail"
-
-	cd $MESH_INSTALL_DIR/zeronet
-	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/mail.txt
-	if [ ! -f $MESH_INSTALL_DIR/zeronet/mail.txt ]; then
-		echo $'Unable to create ZeroNet mail' >> $INSTALL_LOG
-		exit 72574
-	fi
-	mail_address=$(cat mail.txt | grep "Site address" | awk -F ':' '{print $2}')
-	mail_private_key=$(cat mail.txt | grep "Site private key" | awk -F ':' '{print $2}')
-	ZERONET_MAIL_ADDRESS=${mail_address//[[:blank:]]/}
-	ZERONET_MAIL_PRIVATE_KEY=${mail_private_key//[[:blank:]]/}
-
-	if [ ${#ZERONET_MAIL_ADDRESS} -lt 20 ]; then
-		echo $"Address:    $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create zeronet mail address' >> $INSTALL_LOG
-		exit 7358
-	fi
-
-	if [ ${#ZERONET_MAIL_PRIVATE_KEY} -lt 20 ]; then
-		echo $"Address:    $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create zeronet mail private key' >> $INSTALL_LOG
-		exit 1639
-	fi
-
-	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS" ]; then
-		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-		exit 7638
-	fi
-
-	echo $"ZeroNet Mail address:     $ZERONET_MAIL_ADDRESS" >> $INSTALL_LOG
-	echo $"ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY" >> $INSTALL_LOG
-	cp -r $MESH_INSTALL_DIR/zeronet/ZeroMail/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS
-
-	if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data ]; then
-		mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
-	fi
-	cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
-	sed -i "s/MyZeroMail/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
-	sed -i "s/My ZeroMail./$ZERONET_DEFAULT_MAIL_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
-	sed -i "s/ZeroMail Demo/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
-	sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_MAIL_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
-	sed -i "s/Mailging platform Demo/Mailging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/content.json
-	python zeronet.py siteSign $ZERONET_MAIL_ADDRESS $ZERONET_MAIL_PRIVATE_KEY
-
-	# Add an avahi service
-	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-mail.service
-	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-mail.service
-	echo '<service-group>' >> /tmp/zeronet-mail.service
-	echo '  <name replace-wildcards="yes">%h ZeroNet Mail</name>' >> /tmp/zeronet-mail.service
-	echo '  <service>' >> /tmp/zeronet-mail.service
-	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-mail.service
-	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-mail.service
-	echo "    <txt-record>$ZERONET_URL/$ZERONET_MAIL_ADDRESS</txt-record>" >> /tmp/zeronet-mail.service
-	echo '  </service>' >> /tmp/zeronet-mail.service
-	echo '</service-group>' >> /tmp/zeronet-mail.service
-	cp /tmp/zeronet-mail.service /etc/avahi/services/zeronet-mail.service
-
-	if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
-		mkdir -p /home/$MY_USERNAME/.config/zeronet
-		chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
-	fi
-	echo "$ZERONET_URL/$ZERONET_MAIL_ADDRESS" > /home/$MY_USERNAME/.config/zeronet/mymail
-
-	sed -i "s|ZeroNet Mail address.*|ZeroNet Mail address: $ZERONET_MAIL_ADDRESS|g" /home/$MY_USERNAME/README
-	sed -i "s|ZeroNet Mail private key.*|ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY|g" /home/$MY_USERNAME/README
-
-	echo $'Update of ZeroNet Mail completed' >> $INSTALL_LOG
-}
-
-function configure_zeronet_forum {
-	echo $'Updating ZeroNet Forum' >> $INSTALL_LOG
-	ZERONET_DEFAULT_FORUM_TITLE="${MY_USERNAME}'s Forum"
-
-	cd $MESH_INSTALL_DIR/zeronet
-	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/forum.txt
-	if [ ! -f $MESH_INSTALL_DIR/zeronet/forum.txt ]; then
-		echo $'Unable to create ZeroNet forum' >> $INSTALL_LOG
-		exit 47962
-	fi
-	forum_address=$(cat forum.txt | grep "Site address" | awk -F ':' '{print $2}')
-	forum_private_key=$(cat forum.txt | grep "Site private key" | awk -F ':' '{print $2}')
-	ZERONET_FORUM_ADDRESS=${forum_address//[[:blank:]]/}
-	ZERONET_FORUM_PRIVATE_KEY=${forum_private_key//[[:blank:]]/}
-
-	if [ ${#ZERONET_FORUM_ADDRESS} -lt 20 ]; then
-		echo $"Address:    $ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create zeronet forum address' >> $INSTALL_LOG
-		exit 76352
-	fi
-
-	if [ ${#ZERONET_FORUM_PRIVATE_KEY} -lt 20 ]; then
-		echo $"Address:    $ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create zeronet forum private key' >> $INSTALL_LOG
-		exit 87356
-	fi
-
-	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS" ]; then
-		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS" >> $INSTALL_LOG
-		exit 7638
-	fi
-
-	echo $"Forum address:     $ZERONET_FORUM_ADDRESS"
-	echo $"Forum private key: $ZERONET_FORUM_PRIVATE_KEY"
-	cp -r $MESH_INSTALL_DIR/zeronet/ZeroTalk/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS
-	sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
-	sed -i "s/ZeroTalk/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
-	sed -i "s|Demo for dynamic, decentralized content publishing.|$ZERONET_DEFAULT_FORUM_TAGLINE|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
-	sed -i 's/Messaging Board Demo/Messaging Board/g' $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
-	sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
-	python zeronet.py siteSign $ZERONET_FORUM_ADDRESS $ZERONET_FORUM_PRIVATE_KEY --inner_path data/users/content.json
-
-	# Add an avahi service
-	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-forum.service
-	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-forum.service
-	echo '<service-group>' >> /tmp/zeronet-forum.service
-	echo '  <name replace-wildcards="yes">%h ZeroNet Forum</name>' >> /tmp/zeronet-forum.service
-	echo '  <service>' >> /tmp/zeronet-forum.service
-	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-forum.service
-	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-forum.service
-	echo "    <txt-record>$ZERONET_URL/$ZERONET_FORUM_ADDRESS</txt-record>" >> /tmp/zeronet-forum.service
-	echo '  </service>' >> /tmp/zeronet-forum.service
-	echo '</service-group>' >> /tmp/zeronet-forum.service
-	sudo cp /tmp/zeronet-forum.service /etc/avahi/services/zeronet-forum.service
-
-	if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
-		mkdir -p /home/$MY_USERNAME/.config/zeronet
-		chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
-	fi
-	echo "$ZERONET_URL/$ZERONET_FORUM_ADDRESS" > /home/$MY_USERNAME/.config/zeronet/myforum
-
-	sed -i "s|ZeroNet Forum address.*|ZeroNet Forum address: $ZERONET_FORUM_ADDRESS|g" /home/$MY_USERNAME/README
-	sed -i "s|ZeroNet Forum private key.*|ZeroNet Forum private key: $ZERONET_FORUM_PRIVATE_KEY|g" /home/$MY_USERNAME/README
-
-	echo $'Update of ZeroNet Forum completed' >> $INSTALL_LOG
-}
-
-function configure_zeronet_id {
-	echo $'Updating ZeroID' >> $INSTALL_LOG
-
-	cd $MESH_INSTALL_DIR/zeronet
-	python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/zeroid.txt
-	if [ ! -f $MESH_INSTALL_DIR/zeronet/zeroid.txt ]; then
-		echo $'Unable to create ZeroID' >> $INSTALL_LOG
-		exit 47962
-	fi
-	zeroid_address=$(cat zeroid.txt | grep "Site address" | awk -F ':' '{print $2}')
-	zeroid_private_key=$(cat zeroid.txt | grep "Site private key" | awk -F ':' '{print $2}')
-	ZERONET_ID_ADDRESS=${zeroid_address//[[:blank:]]/}
-	ZERONET_ID_PRIVATE_KEY=${zeroid_private_key//[[:blank:]]/}
-
-	if [ ${#ZERONET_ID_ADDRESS} -lt 20 ]; then
-		echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create ZeroID address' >> $INSTALL_LOG
-		exit 76352
-	fi
-
-	if [ ${#ZERONET_ID_PRIVATE_KEY} -lt 20 ]; then
-		echo $"Address:    $ZERONET_ID_ADDRESS" >> $INSTALL_LOG
-		echo $"Public key: $ZERONET_ID_PRIVATE_KEY" >> $INSTALL_LOG
-		echo $'Unable to create ZeroID private key' >> $INSTALL_LOG
-		exit 87356
-	fi
-
-	if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS" ]; then
-		echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS" >> $INSTALL_LOG
-		exit 378434
-	fi
-
-	echo $"ZeroID address:     $ZERONET_ID_ADDRESS"
-	echo $"ZeroID private key: $ZERONET_ID_PRIVATE_KEY"
-	cp -r $MESH_INSTALL_DIR/zeronet/ZeroID/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS
-	# TODO
-	sed -i "s///g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_ID_ADDRESS/content.json
-	python zeronet.py siteSign $ZERONET_ID_ADDRESS $ZERONET_ID_PRIVATE_KEY --inner_path data/users/content.json
-
-	# Add an avahi service
-	echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /tmp/zeronet-id.service
-	echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /tmp/zeronet-id.service
-	echo '<service-group>' >> /tmp/zeronet-id.service
-	echo '  <name replace-wildcards="yes">%h ZeroID</name>' >> /tmp/zeronet-id.service
-	echo '  <service>' >> /tmp/zeronet-id.service
-	echo '    <type>_zeronet._udp</type>' >> /tmp/zeronet-id.service
-	echo "    <port>$ZERONET_PORT</port>" >> /tmp/zeronet-id.service
-	echo "    <txt-record>$ZERONET_URL/$ZERONET_ID_ADDRESS</txt-record>" >> /tmp/zeronet-id.service
-	echo '  </service>' >> /tmp/zeronet-id.service
-	echo '</service-group>' >> /tmp/zeronet-id.service
-	sudo cp /tmp/zeronet-id.service /etc/avahi/services/zeronet-id.service
-
-	if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
-		mkdir -p /home/$MY_USERNAME/.config/zeronet
-		chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
-	fi
-	echo "$ZERONET_URL/$ZERONET_ID_ADDRESS" > /home/$MY_USERNAME/.config/zeronet/myzeroid
-
-	sed -i "s|ZeroID address.*|ZeroID address: $ZERONET_ID_ADDRESS|g" /home/$MY_USERNAME/README
-	sed -i "s|ZeroID private key.*|ZeroID private key: $ZERONET_ID_PRIVATE_KEY|g" /home/$MY_USERNAME/README
-
-	echo $'Update of ZeroID completed' >> $INSTALL_LOG
+    echo "New avahi name for this peer is P$PEER_ID"
+    echo $"avahi name changed to P${PEER_ID}.local" >> $INSTALL_LOG
 }
 
 function configure_toxcore {
-	echo $'Configuring toxcore' >> $INSTALL_LOG
+    echo $'Configuring toxcore' >> $INSTALL_LOG
 
-	if [ -f /usr/local/bin/${PROJECT_NAME} ]; then
-		TOXIC_FILE=$(cat /usr/local/bin/${PROJECT_NAME} | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
-	else
-		TOXIC_FILE=$(cat /usr/bin/${PROJECT_NAME} | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
-	fi
+    TOXIC_FILE=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox | grep "TOXIC_FILE=" | head -n 1 | awk -F '=' '{print $2}')
 
-	echo $'Enabling toxcore daemon' >> $INSTALL_LOG
-	systemctl enable tox-bootstrapd.service
-	echo $'Regenerating Tox bootstrap node keys' >> $INSTALL_LOG
-	systemctl stop tox-bootstrapd.service
-	if [ -f /var/lib/tox-bootstrapd/keys ]; then
-		rm /var/lib/tox-bootstrapd/keys
-	fi
-	systemctl start tox-bootstrapd.service
-	# sleep for a while so that the tox keys can be generated
-	sleep 30
-	TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
-	TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
-	if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
-		echo $'WARNING: Could not obtain the tox node public key' >> $INSTALL_LOG
-		exit 46362
-	fi
+    if [ -f $MESH_AMNESIC ]; then
+        # change to the amnesic mount
+        sed -i 's|/var/lib/tox-bootstrapd|/media/tox-bootstrapd|g' /etc/tox-bootstrapd.conf
+        systemctl stop tox-bootstrapd.service
+        sed -i 's|WorkingDirectory=.*|WorkingDirectory=/media/tox-bootstrapd|g' /etc/systemd/system/tox-bootstrapd.service
+        systemctl daemon-reload
+        userdel -r tox-bootstrapd
+        useradd --home-dir /media/tox-bootstrapd --create-home --system --shell /sbin/nologin --comment "Account to run Tox's DHT bootstrap daemon" --user-group tox-bootstrapd
+        chmod 700 /media/tox-bootstrapd
+    fi
 
-	# save the public key for later reference
-	echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
-	echo $'Configured toxcore' >> $INSTALL_LOG
+    echo $'Enabling toxcore daemon' >> $INSTALL_LOG
+    chmod +x /etc/systemd/system/tox-bootstrapd.service
+    systemctl enable tox-bootstrapd.service
 
-	echo $'Clearing toxic client settings' >> $INSTALL_LOG
-	if [ -d /home/$MY_USERNAME/.config/tox ]; then
-		rm -rf /home/$MY_USERNAME/.config/tox
-	fi
-	echo $'toxic client configured' >> $INSTALL_LOG
+    echo $'Regenerating Tox bootstrap node keys' >> $INSTALL_LOG
+    systemctl stop tox-bootstrapd.service
+    if [ -f /var/lib/tox-bootstrapd/keys ]; then
+        rm /var/lib/tox-bootstrapd/keys
+    fi
+    systemctl start tox-bootstrapd.service
+    # sleep for a while so that the tox keys can be generated
+    sleep 30
+    TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
+    if [ -f $MESH_AMNESIC ]; then
+        TOX_BOOTSTRAP_ID_FILE=/media/tox-bootstrapd/pubkey.txt
+    fi
+    TOX_PUBLIC_KEY=$(cat /var/log/syslog | grep tox | grep "Public Key" | awk -F ' ' '{print $8}' | tail -1)
+    if [ ${#TOX_PUBLIC_KEY} -lt 30 ]; then
+        echo $'WARNING: Could not obtain the tox node public key' >> $INSTALL_LOG
+        exit 46362
+    fi
+
+    # save the public key for later reference
+    echo "$TOX_PUBLIC_KEY" > $TOX_BOOTSTRAP_ID_FILE
+    echo $'Configured toxcore' >> $INSTALL_LOG
 }
 
-function disable_password_logins {
-	if [ ! -d /home/$DEFAULT_USERNAME ]; then
-		echo $"Home directory for $DEFAULT_USERNAME not found"
-		exit 3682572
-	fi
+function create_tox_user {
+    # remove any existing user
+    if [ -f /home/${MY_USERNAME}/.config/tox/data.tox ]; then
+        rm -f /home/${MY_USERNAME}/.config/tox/data*
+    fi
+    if [ -d /home/${MY_USERNAME}/.config/tox/avatars ]; then
+        rm -rf /home/${MY_USERNAME}/.config/tox/avatars
+    fi
+    if [ ! -f /home/${MY_USERNAME}/.first_boot ]; then
+        touch /home/${MY_USERNAME}/.first_boot
+    fi
 
-	# create an authorized_keys file
-	if [ ! -d /home/$DEFAULT_USERNAME/.ssh ]; then
-		mkdir -p /home/$DEFAULT_USERNAME/.ssh
-	fi
-	if [ ! -f /home/$DEFAULT_USERNAME/.ssh/authorized_keys ]; then
-		touch /home/$DEFAULT_USERNAME/.ssh/authorized_keys
-	fi
-	chown -R $DEFAULT_USERNAME:$DEFAULT_USERNAME /home/$DEFAULT_USERNAME/.ssh
+    if [ ! -d /home/$MY_USERNAME/Desktop ]; then
+        return
+    fi
 
-	# disable password logins
-	sed -i 's|#PasswordAuthentication.*|PasswordAuthentication no|g' /etc/ssh/sshd_config
-	sed -i 's|PasswordAuthentication.*|PasswordAuthentication no|g' /etc/ssh/sshd_config
+    toxid -u $MY_USERNAME -n data
+    chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config/tox
+
+    chmod +x /home/$MY_USERNAME/Desktop/*.desktop
+    chown ${MY_USERNAME}:${MY_USERNAME} /home/$MY_USERNAME/Desktop/*
+    echo $'Created Tox user' >> $INSTALL_LOG
 }
 
-function disable_screen_lock {
-	dconf write /org/gnome/desktop/screensaver/lock-enabled false
+function show_desktop_icons {
+    if [ ! -d /home/$MY_USERNAME/Desktop ]; then
+        return
+    fi
+
+    echo '#!/bin/bash' > /home/$MY_USERNAME/.showhelp
+    echo "pkill $BROWSER" >> /home/$MY_USERNAME/.showhelp
+    echo "$BROWSER $BROWSER_OPTIONS /home/$MY_USERNAME/help/mesh.html" >> /home/$MY_USERNAME/.showhelp
+    chmod +x /home/$MY_USERNAME/.showhelp
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.showhelp
+
+    echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/help.desktop
+    echo 'Version=1.0' >> /home/$MY_USERNAME/Desktop/help.desktop
+    echo 'Name=Help' >> /home/$MY_USERNAME/Desktop/help.desktop
+    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/help.desktop
+    echo 'Comment=Show help' >> /home/$MY_USERNAME/Desktop/help.desktop
+    echo "Exec=bash -c /home/$MY_USERNAME/.showhelp" >> /home/$MY_USERNAME/Desktop/help.desktop
+    echo 'Icon=/usr/share/freedombone/avatars/help.png' >> /home/$MY_USERNAME/Desktop/help.desktop
+    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/help.desktop
+    echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/help.desktop
+
+    echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Version=1.0' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Name=Wifi' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Comment=Check wifi status' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Exec=mate-terminal -e "sudo batman monitor"' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Icon=/usr/share/freedombone/avatars/wifi.png' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+    echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/wifi.desktop
+
+    echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Version=1.0' >> /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Name=Network Restart' >> /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Comment=Restart batman' >> /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Exec=mate-terminal -e "sudo batman restart 2> /dev/null"' >> /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Icon=/usr/share/freedombone/avatars/restart.png' >> /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/restart.desktop
+    echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/restart.desktop
+
+    echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Version=1.0' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Name=New Identity' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Comment=Create a new identity' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Exec=mate-terminal -e freedombone-mesh-reset' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Icon=/usr/share/freedombone/avatars/newidentity.png' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+
+    # set permissions
+    chmod +x /home/$MY_USERNAME/Desktop/*.desktop
+    chown ${MY_USERNAME}:${MY_USERNAME} /home/$MY_USERNAME/Desktop/*
+    chown ${MY_USERNAME}:${MY_USERNAME} /home/$MY_USERNAME/.config
+    chown -R ${MY_USERNAME}:${MY_USERNAME} /home/$MY_USERNAME/.config/tox
+    chown -R ${MY_USERNAME}:${MY_USERNAME} /home/$MY_USERNAME/.config/autostart
+    chown ${MY_USERNAME}:${MY_USERNAME} /home/$MY_USERNAME/*.sh
+
+    # link to Tahoe-LAFS Magic folder
+    #ln -s /home/${MY_USERNAME}/Desktop/${TAHOELAFS_SHARED_DIR} /home/${MY_USERNAME}/${TAHOELAFS_SHARED_DIR}
+
+    # restart caja
+    killall caja
+    killall mate-panel
 }
 
 function enable_batman_daemon {
-	systemctl enable batman
-	systemctl daemon-reload
+    systemctl enable batman
+    systemctl daemon-reload
 }
 
-if [ -f /root/.initial_mesh_setup ]; then
-	if [ $1 ]; then
-		MY_USERNAME=$1
-	fi
+function mesh_amnesic {
+    if [ ! -f $MESH_AMNESIC ]; then
+        return
+    fi
 
-	# sleep in order to allow other daemons to start up
-	sleep 15
+    echo '#!/bin/bash' > /usr/bin/amnesic
+    echo '' >> /usr/bin/amnesic
+    echo 'MY_USERNAME=$1' >> /usr/bin/amnesic
+    echo 'tomb slam all' >> /usr/bin/amnesic
+    echo "if [ -f /home/${MY_USERNAME}/.bash_history ]; then" >> /usr/bin/amnesic
+    echo "    shred -zu /home/${MY_USERNAME}/.bash_history" >> /usr/bin/amnesic
+    echo 'fi' >> /usr/bin/amnesic
+    echo "if [ -f /home/${MY_USERNAME}/.xsession-errors ]; then" >> /usr/bin/amnesic
+    echo "    shred -zu /home/${MY_USERNAME}/.xsession-errors" >> /usr/bin/amnesic
+    echo 'fi' >> /usr/bin/amnesic
+    echo '' >> /usr/bin/amnesic
+    echo 'exit 0' >> /usr/bin/amnesic
+    chmod +x /usr/bin/amnesic
 
-	# clear the install log
-	if [ -f $INSTALL_LOG ]; then
-		rm $INSTALL_LOG
-	fi
+    if [ ! -f /etc/systemd/system/amnesic.service ]; then
+        echo '[Unit]' > /etc/systemd/system/amnesic.service
+        echo 'Description=Amnesic Mesh' >> /etc/systemd/system/amnesic.service
+        echo '' >> /etc/systemd/system/amnesic.service
+        echo '[Service]' >> /etc/systemd/system/amnesic.service
+        echo 'User=root' >> /etc/systemd/system/amnesic.service
+        echo 'Group=root' >> /etc/systemd/system/amnesic.service
+        echo 'Type=oneshot' >> /etc/systemd/system/amnesic.service
+        echo 'RemainAfterExit=true' >> /etc/systemd/system/amnesic.service
+        echo 'ExecStart=/bin/true' >> /etc/systemd/system/amnesic.service
+        echo "ExecStop=/usr/bin/amnesic $MY_USERNAME" >> /etc/systemd/system/amnesic.service
+        echo '' >> /etc/systemd/system/amnesic.service
+        echo '[Install]' >> /etc/systemd/system/amnesic.service
+        echo 'WantedBy=multi-user.target' >> /etc/systemd/system/amnesic.service
 
-	echo $'Beginning mesh node setup' >> $INSTALL_LOG
-	enable_batman_daemon
-	change_avahi_name
-	regenerate_ssh_host_keys
-	configure_zeronet_blog
-	configure_zeronet_mail
-	configure_zeronet_forum
-	configure_zeronet_id
-	configure_toxcore
-	configure_zeronet
-	disable_password_logins
-	disable_screen_lock
+        chmod +x /etc/systemd/system/amnesic.service
+        systemctl daemon-reload
+    fi
+    systemctl enable amnesic
+    systemctl start amnesic
+}
 
-	rm /root/.initial_mesh_setup
-	systemctl disable mesh-setup.service
-	touch /root/.mesh_setup_completed
-	echo $'Mesh node setup complete. Rebooting...' >> $INSTALL_LOG
-	reboot
+function mesh_restart_daemons {
+    systemctl restart avahi-daemon
+    systemctl restart tox-bootstrapd
+    echo $'Daemons restarted' >> $INSTALL_LOG
+}
+
+function create_tomb {
+    tomb_name=$1
+    tomb_size=$2
+
+    if [ -f /tmp/${tomb_name}.tomb ]; then
+        tomb slam /tmp/${tomb_name}.tomb
+    fi
+
+    # make a temporary password
+    tomb dig -s ${tomb_size} /tmp/${tomb_name}.tomb
+    if [ ! -f /tmp/${tomb_name}.tomb ]; then
+        echo "WARNING: ${tomb_name} tomb did not install properly" >> /var/log/${PROJECT_NAME}.log
+        tomb >> /var/log/${PROJECT_NAME}.log
+    fi
+    TOMB_TEMP_PASSWORD="$(openssl rand -base64 32 | cut -c1-30)"
+    tomb forge /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
+    tomb lock /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
+    tomb open /tmp/${tomb_name}.tomb -k /mnt/ramdisk/${tomb_name}.tomb.key --tomb-pwd "${TOMB_TEMP_PASSWORD}" --unsafe
+    # stop stuff from popping up
+    pkill caja
+
+    # clear the temporary password
+    TOMB_TEMP_PASSWORD=
+}
+
+function setup_amnesic_data {
+    if [ ! -f $MESH_AMNESIC ]; then
+        return
+    fi
+    if [ ! -d /mnt/ramdisk ]; then
+        return
+    fi
+
+    # clear crypttab
+    if [ -f /etc/crypttab ]; then
+        shred -zu /etc/crypttab
+        touch /etc/crypttab
+    fi
+
+    tomb_name=log
+    create_tomb ${tomb_name} $TOMB_LOG_SIZE_MB
+    if [ -d /media/${tomb_name} ]; then
+        if [ -d /var/log ]; then
+            if [ ! -d /var/log_base ]; then
+                mv /var/log /var/log_base
+            fi
+        fi
+        ln -s /media/${tomb_name} /var/log
+        if [ -d /var/log_base ]; then
+            cp -rp /var/log_base/* /media/${tomb_name}
+        fi
+        echo "${tomb_name} tomb created" >> $INSTALL_LOG
+    else
+        echo "WARNING: ${tomb_name} tomb not found" >> $INSTALL_LOG
+    fi
+
+    tomb_name=tox-bootstrapd
+    if [ -f /etc/systemd/system/${tomb_name}.service ]; then
+        systemctl stop ${tomb_name}
+    fi
+    create_tomb ${tomb_name} $TOMB_TOX_BOOTSTRAP_SIZE_MB
+    if [ -d /media/${tomb_name} ]; then
+        if [ -d /var/lib/tox-bootstrapd ]; then
+            if [ ! -d /var/lib/tox-bootstrapd_base ]; then
+                mv /var/lib/tox-bootstrapd /var/lib/tox-bootstrapd_base
+            fi
+        fi
+        if [ -d /var/lib/tox-bootstrapd ]; then
+            shred -zu /var/lib/tox-bootstrapd/*
+            rm -rf /var/lib/tox-bootstrapd
+        fi
+        ln -s /media/${tomb_name} /var/lib/tox-bootstrapd
+        if [ -d /var/lib/tox-bootstrapd_base ]; then
+            cp -rp /var/lib/tox-bootstrapd_base/* /media/${tomb_name}
+        fi
+        echo "${tomb_name} tomb created" >> $INSTALL_LOG
+    else
+        echo "WARNING: ${tomb_name} tomb not found" >> $INSTALL_LOG
+    fi
+
+    tomb_name=tox
+    create_tomb ${tomb_name} $TOMB_TOX_SIZE_MB
+    if [ -d /media/${tomb_name} ]; then
+        if [ ! -d /home/${MY_USERNAME}/.config ]; then
+            mkdir -p /home/${MY_USERNAME}/.config
+            chown ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config
+        fi
+        if [ -d /home/${MY_USERNAME}/.config/${tomb_name} ]; then
+            rm -rf /home/${MY_USERNAME}/.config/${tomb_name}
+        fi
+        ln -s /media/${tomb_name} /home/${MY_USERNAME}/.config/${tomb_name}
+        chown -R ${MY_USERNAME}:${MY_USERNAME} /home/${MY_USERNAME}/.config/${tomb_name}
+        chown -R ${MY_USERNAME}:${MY_USERNAME} /media/${tomb_name}
+        echo "${tomb_name} tomb created" >> $INSTALL_LOG
+    else
+        echo "WARNING: ${tomb_name} tomb not found" >> $INSTALL_LOG
+    fi
+}
+
+function setup_ipfs {
+    IPFS_PATH=/usr/bin
+    IPFS_KEY_LENGTH=2048
+    IPFS_COMMAND=$IPFS_PATH/ipfs
+    IPFS_PUBLIC=/home/$MY_USERNAME/.ipfs-public
+
+    su -c "systemctl --user enable ipfs" - $MY_USERNAME
+
+    if [ -f $CURRENT_BLOG_INDEX ]; then
+        shred -zu $CURRENT_BLOG_INDEX
+    fi
+
+    if [ -d /home/$MY_USERNAME/Public ]; then
+        rm /home/$MY_USERNAME/Desktop/Public
+        rm -rf /home/$MY_USERNAME/Public
+    fi
+
+    if [ -d /home/$MY_USERNAME/CreateBlog/content/images ]; then
+        shred -zu /home/$MY_USERNAME/CreateBlog/content/images/*
+    fi
+
+    if [ -d /home/$MY_USERNAME/CreateBlog/content ]; then
+        shred -zu /home/$MY_USERNAME/CreateBlog/content/*
+        if grep -q "THEME=" /home/$MY_USERNAME/CreateBlog/pelicanconf.py; then
+            sed -i "s|THEME=.*|THEME='themes/nice-blog'|g" /home/$MY_USERNAME/CreateBlog/pelicanconf.py
+        else
+            echo "THEME='themes/nice-blog'" >> /home/$MY_USERNAME/CreateBlog/pelicanconf.py
+        fi
+    fi
+
+    if [ -d /home/$MY_USERNAME/.ipfs ]; then
+        shred -zu /home/$MY_USERNAME/.ipfs/config
+        rm -rf /home/$MY_USERNAME/.ipfs
+        su -c "systemctl --user restart ipfs" - $MY_USERNAME
+    else
+        su -c "systemctl --user start ipfs" - $MY_USERNAME
+    fi
+
+    if [ -f /home/$MY_USERNAME/.blog-index ]; then
+        shred -zu /home/$MY_USERNAME/.blog-index
+    fi
+
+    if [ -f /home/$MY_USERNAME/.blog-theme-index ]; then
+        shred -zu /home/$MY_USERNAME/.blog-theme-index
+    fi
+
+    if [ -f /home/$MY_USERNAME/.ipfs-id ]; then
+        shred -zu /home/$MY_USERNAME/.ipfs-id
+    fi
+
+    if [ -f /home/$MY_USERNAME/.ipfs-public ]; then
+        shred -zu /home/$MY_USERNAME/.ipfs-public
+    fi
+
+    su -c "$IPFS_COMMAND init -b $IPFS_KEY_LENGTH" - $MY_USERNAME
+    if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
+        echo "IPFS could not be initialised for user $MY_USERNAME" >> $INSTALL_LOG
+        return
+    fi
+
+    MY_IPFS_ID=/home/$MY_USERNAME/.ipfs-id
+    su -c "echo \$($IPFS_COMMAND id | grep '\"ID\":' | awk -F '\"' '{print \$4}') > $MY_IPFS_ID" - $MY_USERNAME
+    if [ ! -f $MY_IPFS_ID ]; then
+        echo 'No IPFS identity was created' >> $INSTALL_LOG
+        return
+    fi
+
+    IPFS_PEER_ID=$(cat $MY_IPFS_ID)
+    if [ ${#IPFS_PEER_ID} -lt 10 ]; then
+        echo 'Invalid IPFS peer ID' >> $INSTALL_LOG
+        echo "$IPFS_PEER_ID" >> $INSTALL_LOG
+        return
+    fi
+
+    # make a public directory
+    TOX_ID='none'
+    if [ -d /home/$MY_USERNAME/Desktop ]; then
+        if [ ! -d /home/$MY_USERNAME/Public ]; then
+            mkdir /home/$MY_USERNAME/Public
+            echo $'Files within this directory will be publicly visible on the network' > /home/$MY_USERNAME/Public/README.txt
+            chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Public
+            ln -s /home/$MY_USERNAME/Public /home/$MY_USERNAME/Desktop/Public
+            su -c "echo \$($IPFS_COMMAND add -rq /home/$MY_USERNAME/Public | tail -n 1) > $IPFS_PUBLIC" - $MY_USERNAME
+            if [ ! -f $IPFS_PUBLIC ]; then
+                echo $'Unable to create public IPFS directory' >> $INSTALL_LOG
+                exit 368225
+            fi
+        fi
+        TOX_ID=$(su -c 'toxid' - $MY_USERNAME)
+    fi
+
+    create_avahi_mesh_service "ipfs_id" "ipfs_id" "udp" "$IPFS_PORT" "${IPFS_PEER_ID}:${TOX_ID}"
+
+    echo "IPFS installed with ID ${IPFS_PEER_ID}" >> $INSTALL_LOG
+}
+
+function setup_tahoelafs {
+    reconfigure_tahoelafs
+
+    TAHOELAFS_CONFIG=/home/${MY_USERNAME}/.tahoe/tahoe.cfg
+    if [ ! -f ${TAHOELAFS_CONFIG} ]; then
+        exit 673923
+    fi
+    echo $'Configured Tahoe-LAFS' >> $INSTALL_LOG
+}
+
+# whether to reset the identity
+set_new_identity=
+if [ $2 ]; then
+    if [[ "$2" == $"new"* ]]; then
+        if [ ! -f $MESH_INSTALL_SETUP ]; then
+            touch $MESH_INSTALL_SETUP
+        fi
+        set_new_identity=1
+    fi
+    if [[ "$2" == $"amnesic"* ]]; then
+        if [ ! -f $MESH_AMNESIC ]; then
+            touch $MESH_AMNESIC
+        fi
+        if [ ! -f $MESH_INSTALL_SETUP ]; then
+            touch $MESH_INSTALL_SETUP
+        fi
+        set_new_identity=1
+    fi
+fi
+
+if [ -f $MESH_INSTALL_SETUP ]; then
+    if [ $1 ]; then
+        MY_USERNAME=$1
+    fi
+
+    if [ ! $set_new_identity ]; then
+        # sleep in order to allow other daemons to start up
+        sleep 5
+    fi
+
+    # clear the install log
+    if [ -f $INSTALL_LOG ]; then
+        rm $INSTALL_LOG
+    fi
+
+    echo $'Beginning mesh node setup' >> $INSTALL_LOG
+
+    if [ -d /home/$MY_USERNAME/.config ]; then
+        chown ${MY_USERNAME}:${MY_USERNAME} /home/$MY_USERNAME/.config
+    fi
+
+    #tomb slam all
+    tmp_ram_disk 10
+    enable_batman_daemon
+    #create_ram_disk 1
+    #setup_amnesic_data
+    change_avahi_name
+    configure_toxcore
+    create_tox_user
+    #setup_tahoelafs
+    setup_ipfs
+    mesh_amnesic
+
+    if [ ! -f $MESH_AMNESIC ]; then
+        rm $MESH_INSTALL_SETUP
+        systemctl disable mesh-setup.service
+    fi
+
+    show_desktop_icons
+
+    mesh_restart_daemons
+    if [ ! -f $MESH_INSTALL_COMPLETED ]; then
+        echo $'Mesh node setup complete' >> $INSTALL_LOG
+        touch $MESH_INSTALL_COMPLETED
+        if [ -d /home/$MY_USERNAME/Desktop ]; then
+            touch $FIRST_BOOT
+            chown ${MY_USERNAME}:${MY_USERNAME} $FIRST_BOOT
+        fi
+
+        # set the desktop background
+        if [ -d /home/$MY_USERNAME/Desktop ]; then
+            MESH_DESKTOP_BACKGROUND_IMAGE=/usr/local/share/${PROJECT_NAME}_mesh_background.png
+            cp $MESH_DESKTOP_BACKGROUND_IMAGE /usr/share/images/desktop-base/${PROJECT_NAME}_mesh_background.png
+            rm /usr/share/images/desktop-base/desktop-background
+            ln -s /usr/share/images/desktop-base/${PROJECT_NAME}_mesh_background.png /usr/share/images/desktop-base/desktop-background
+        fi
+        reboot
+    fi
 fi
 
 exit 0

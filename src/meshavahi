@@ -1,0 +1,203 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# A script for using avahi to discover peers and update tox/ipfs
+
+# License
+# =======
+#
+# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=$PROJECT_NAME-meshavahi
+export TEXTDOMAINDIR="/usr/share/locale"
+
+MESH_USERNAME='fbone'
+MY_USERNAME=$MESH_USERNAME
+
+IPFS_PORT=4001
+IPFS_PATH=/usr/bin
+IPFS_COMMAND=$IPFS_PATH/ipfs
+IPFS_USERS_FILE=/tmp/.ipfs-users
+IPFS_PUBLIC=/home/$MY_USERNAME/.ipfs-public
+
+# contains the output of the avahi command
+TEMPFILE_BASE=$(mktemp /tmp/meshavahibase.XXXXXX)
+TEMPFILE=$(mktemp /tmp/meshavahi.XXXXXX)
+
+# List of tox users previously seen
+PREV_TOX_USERS_FILE=/root/.prev_tox_users
+
+function ipfs_publish {
+    # Publishes anything within the ~/Public directory
+
+    DIR_TO_CHECK=/home/$MY_USERNAME/Public
+    if [ ! -d $DIR_TO_CHECK ]; then
+        return
+    fi
+
+    OLD_STAT_FILE=/home/$MY_USERNAME/.old_stat.txt
+
+    if [ -e $OLD_STAT_FILE ]
+    then
+        OLD_STAT=$(cat $OLD_STAT_FILE)
+    else
+        OLD_STAT="nothing"
+    fi
+
+    NEW_STAT=$(stat -t $DIR_TO_CHECK)
+
+    if [ "$OLD_STAT" != "$NEW_STAT" ]; then
+        su -c "echo \$($IPFS_COMMAND add -rq /home/$MY_USERNAME/Public | tail -n 1) > $IPFS_PUBLIC" - $MY_USERNAME
+        echo "$NEW_STAT" > $OLD_STAT_FILE
+        chown $MY_USERNAME:$MY_USERNAME $OLD_STAT_FILE
+    fi
+
+    if [ -f $IPFS_PUBLIC ]; then
+        IPFS_PUBLIC_ID=$(cat $IPFS_PUBLIC)
+        su -c "$IPFS_COMMAND name publish /ipfs/$IPFS_PUBLIC_ID" - $MY_USERNAME
+    fi
+}
+
+function ipfs_bootstrap {
+    cat $TEMPFILE_BASE | grep "ipfs_id\|hostname =\|address =\|port =\|txt =" > $TEMPFILE
+
+    state=0
+    address=""
+    peer=""
+    if [ -d /home/$MY_USERNAME/Desktop ]; then
+        echo -n '' > ${IPFS_USERS_FILE}.new
+    fi
+    while IFS='' read -r line || [[ -n "$line" ]]; do
+        if [ ${state} -eq "3" ]; then
+            if [[ $line == *"txt ="* ]]; then
+                ipfs_txt=$(echo "$line" | awk -F '[' '{print $2}' | awk -F ']' '{print $1}' | awk -F '"' '{print $2}')
+                ipfs_peer_id=$(echo "$ipfs_txt" | awk -F ':' '{print $1}')
+                ipfs_tox_id=$(echo "$ipfs_txt" | awk -F ':' '{print $2}')
+                su -c "$IPFS_COMMAND bootstrap add /ip4/${address}/tcp/${IPFS_PORT}/ipfs/${ipfs_peer_id}" - $MY_USERNAME
+                if [ -d /home/$MY_USERNAME/Desktop ]; then
+                    if [[ $ipfs_tox_id != 'none' ]]; then
+                        echo "$ipfs_tox_id:$ipfs_peer_id" >> ${IPFS_USERS_FILE}.new
+                    fi
+                fi
+                state=0
+            fi
+        fi
+        if [ ${state} -eq "2" ]; then
+            if [[ $line == *"address ="* ]]; then
+                address=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+                state=3
+            fi
+        fi
+        if [ ${state} -eq "1" ]; then
+            if [[ $line == *"hostname ="* ]]; then
+                peer=$(echo $line | awk -F '[' '{print $2}' | awk -F ']' '{print $1}')
+                state=2
+            fi
+        fi
+        if [[ $line == *"ipfs_id"* && $line == "= "* ]]; then
+            state=1
+        fi
+    done < "$TEMPFILE"
+
+    # Create a list of user sites, in alphabetical order by Tox nick
+    if [ -d /home/$MY_USERNAME/Desktop ]; then
+        if [ -f ${IPFS_USERS_FILE}.new ]; then
+            sites_list=$(cat ${IPFS_USERS_FILE}.new | sort -d)
+            echo "${sites_list}" > ${IPFS_USERS_FILE}
+            chown $MY_USERNAME:$MY_USERNAME ${IPFS_USERS_FILE}
+            rm ${IPFS_USERS_FILE}.new
+        fi
+    fi
+}
+
+function detect_new_tox_users {
+    CURRENT_USERS_FILE=$1
+
+    if [ ! -f $CURRENT_USERS_FILE ]; then
+        return
+    fi
+
+    # Check that this is a GUI installation with a desktop
+    if [ ! -d /home/$MESH_USERNAME/Desktop ]; then
+        return
+    fi
+
+    # Produce notifications if new users appear
+    if [ -f $PREV_TOX_USERS_FILE ]; then
+        while IFS='' read -r line || [[ -n "$line" ]]; do
+            if [[ $line != "Failed*" && $line != "data "* && $line != "Anon "* && $line != "anon "* ]]; then
+                if ! grep -q "$line" $PREV_TOX_USERS_FILE; then
+                    # get the nick of the user
+                    toxidstr=$(echo "$line" | awk -F ' ' '{print $(NF)}')
+                    toxuser=$(echo "$line" | sed "s| $toxidstr||g")
+
+                    if [ -r "/home/$MESH_USERNAME/.dbus/Xdbus" ]; then
+                        . "/home/$MESH_USERNAME/.dbus/Xdbus"
+                    fi
+                    export DISPLAY=:0.0
+                    export XAUTHORITY=/home/$MESH_USERNAME/.Xauthority
+                    sudo -u $MESH_USERNAME /usr/bin/notify-send $"$toxuser" $"has joined the mesh" --icon=dialog-information
+                    break
+                fi
+            fi
+        done < "$CURRENT_USERS_FILE"
+    fi
+
+    # Store the previous tox users list
+    cp -f $CURRENT_USERS_FILE $PREV_TOX_USERS_FILE
+}
+
+function detect_tox_users {
+    # don't show the first peer field
+    lstox | awk -F ' ' '{$1=""; print $0}' | sed -e 's/^[[:space:]]*//' | sort -d > $TEMPFILE
+
+    detect_new_tox_users $TEMPFILE
+}
+
+function avahi_extract_info {
+    # Create a list of bootstrap nodes
+    avahi-browse -atr > $TEMPFILE_BASE
+    cat $TEMPFILE_BASE | grep "hostname =\|address =\|port =" > $TEMPFILE
+    if [ ! -f $TEMPFILE ]; then
+        exit 1
+    fi
+}
+
+function avahi_remove_info {
+    rm -f $TEMPFILE_BASE
+    rm -f $TEMPFILE
+}
+
+if [ ! -d /etc/avahi ]; then
+    exit 0
+fi
+
+avahi_extract_info
+ipfs_bootstrap
+ipfs_publish
+detect_tox_users
+avahi_remove_info
+
+exit 0

@@ -1,0 +1,257 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Encryption key related functions
+
+# License
+# =======
+#
+# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+function reconstruct_key {
+    if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
+        return
+    fi
+    cd /home/$MY_USERNAME/.gnupg_fragments
+    no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
+    if (( no_of_shares < 4 )); then
+        dialog --title $"Recover Encryption Keys" --msgbox $'Not enough fragments to reconstruct the key' 6 70
+        exit 7348
+    fi
+    apt-get -yq install libgfshare-bin gnupg
+    gfcombine /home/$MY_USERNAME/.gnupg_fragments/keyshare*
+    if [ ! "$?" = "0" ]; then
+        dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
+        exit 7348
+    fi
+
+    KEYS_FILE=/home/$MY_USERNAME/.gnupg_fragments/keyshare.asc
+    if [ ! -f $KEYS_FILE ]; then
+        dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
+    fi
+
+    su -c "gpg --allow-secret-key-import --import $KEYS_FILE" - $MY_USERNAME
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to import gpg key'
+        shred -zu $KEYS_FILE
+        rm -rf /home/$MY_USERNAME/.tempgnupg
+        exit 9654
+    fi
+    shred -zu $KEYS_FILE
+
+    dialog --title $"Recover Encryption Keys" --msgbox $'Key has been reconstructed' 6 70
+}
+
+function interactive_gpg_from_usb {
+    dialog --title $"Recover Encryption Keys" \
+           --msgbox $'Plug in a USB keydrive containing a copy of your full key or key fragment' 6 70
+
+    HOME_DIR=/home/$MY_USERNAME
+    GPG_LOADING="yes"
+    SSH_IMPORTED="no"
+    GPG_CTR=0
+    while [[ $GPG_LOADING == "yes" ]]
+    do
+        detect_usb_drive
+
+        if [ ! -b $USB_DRIVE ]; then
+            if (( GPG_CTR > 0 )); then
+                reconstruct_key
+                return 0
+            fi
+            dialog --title $"Recover Encryption Keys" --msgbox $'No USB drive found' 6 30
+            exit 739836
+        fi
+
+        backup_mount_drive ${USB_DRIVE} ${MY_USERNAME}
+
+        if [ ! -d $USB_MOUNT ]; then
+            if (( GPG_CTR > 0 )); then
+                backup_unmount_drive ${USB_DRIVE}
+                reconstruct_key
+                return 0
+            fi
+            dialog --title $"Recover Encryption Keys" \
+                   --msgbox $"There was a problem mounting the USB drive $USB_DRIVE to $USB_MOUNT" 6 70
+            backup_unmount_drive ${USB_DRIVE}
+            exit 74393
+        fi
+
+        if [ ! -d $USB_MOUNT/.gnupg ]; then
+            if [ ! -d $USB_MOUNT/.gnupg_fragments ]; then
+                if (( GPG_CTR > 0 )); then
+                    backup_unmount_drive ${USB_DRIVE}
+                    reconstruct_key
+                    return 0
+                fi
+                dialog --title $"Recover Encryption Keys" \
+                       --msgbox $"The directory $USB_MOUNT/.gnupg or $USB_MOUNT/.gnupg_fragments was not found" 6 70
+                backup_unmount_drive ${USB_DRIVE}
+                exit 723814
+            fi
+        fi
+
+        if [ -d $USB_MOUNT/letsencrypt ]; then
+            if [ ! -d /etc/letsencrypt ]; then
+                mkdir /etc/letsencrypt
+            fi
+            echo $'Recovering LetsEncrypt keys'
+            cp -r $USB_MOUNT/letsencrypt/* /etc/letsencrypt
+        fi
+
+        if [ -d $USB_MOUNT/.gnupg ]; then
+            if [ ! -d $HOME_DIR/.gnupg ]; then
+                mkdir $HOME_DIR/.gnupg
+            fi
+            echo $'Recovering GPG keys'
+            cp -r $USB_MOUNT/.gnupg/* $HOME_DIR/.gnupg
+            GPG_LOADING="no"
+            dialog --title $"Recover Encryption Keys" \
+                   --msgbox $"GPG Keyring loaded to $HOME_DIR" 6 70
+        else
+            if [ ! -d $HOME_DIR/.gnupg_fragments ]; then
+                mkdir $HOME_DIR/.gnupg_fragments
+            fi
+            cp -r $USB_MOUNT/.gnupg_fragments/* $HOME_DIR/.gnupg_fragments
+        fi
+
+        if [[ $SSH_IMPORTED == "no" ]]; then
+            if [ -d $USB_MOUNT/.ssh ]; then
+                if [ ! -d $HOME_DIR/.ssh ]; then
+                    mkdir $HOME_DIR/.ssh
+                fi
+                cp $USB_MOUNT/.ssh/* $HOME_DIR/.ssh
+                dialog --title $"Recover Encryption Keys" \
+                       --msgbox $"ssh keys imported" 6 70
+                SSH_IMPORTED="yes"
+            fi
+        fi
+
+        if [ -d $USB_MOUNT ]; then
+            backup_unmount_drive ${USB_DRIVE}
+        fi
+        if [[ $GPG_LOADING == "yes" ]]; then
+            dialog --title $"Recover Encryption Keys" \
+                   --msgbox $"Now remove the USB drive. Insert the next drive containing a key fragment, or select Ok to finish" 6 70
+        fi
+        GPG_CTR=$((GPG_CTR + 1))
+    done
+}
+
+function interactive_gpg_from_remote {
+    REMOTE_SERVERS_LIST=/home/$MY_USERNAME/keyshareservers.txt
+
+    # get a list of remote servers
+    ${PROJECT_NAME}-remote -u $MY_USERNAME -l $REMOTE_SERVERS_LIST -t "Remote server"
+
+    if [ ! -f $REMOTE_SERVERS_LIST ]; then
+        dialog --title $"Encryption Keys Recovery" --msgbox $'Error obtaining server list' 6 70
+        return 1
+    fi
+
+    # check the number of entries in the file
+    no_of_servers=$(cat $REMOTE_SERVERS_LIST | wc -l)
+    if (( no_of_servers < 3 )); then
+        dialog --title $"Encryption Keys Recovery" \
+               --msgbox $'There must be at least three servers to recover the key' 6 70
+        return 2
+    fi
+
+    # try to recover the key from the servers
+    apt-get -yq install libgfshare-bin gnupg
+    ${PROJECT_NAME}-recoverkey -u $MY_USERNAME -l $REMOTE_SERVERS_LIST
+    if [ ! "$?" = "0" ]; then
+        dialog --title $"Encryption Keys Recovery" --msgbox $'Your key could not be recovered' 6 70
+        return 3
+    fi
+
+    dialog --title $"Encryption Keys Recovery" --msgbox $'Your key has been recovered' 6 70
+
+    return 0
+}
+
+function interactive_gpg {
+    GPG_CONFIGURED="no"
+    while [[ $GPG_CONFIGURED != "yes" ]]
+    do
+        GPG_CONFIGURED="yes"
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Configuration" \
+               --radiolist $"GPG/PGP keys for your system:" 13 70 3 \
+               1 $"Generate new keys (new user)" on \
+               2 $"Import keys from USB drive/s" off \
+               3 $"Retrieve keys from friends servers" off 2> $data
+        sel=$?
+        case $sel in
+            1) exit 1;;
+            255) exit 2;;
+        esac
+        case $(cat $data) in
+            1) if [ -d /home/${MY_USERNAME}/.gnupg ]; then
+                   rm -rf /home/${MY_USERNAME}/.gnupg
+               fi
+               break;;
+            2) interactive_gpg_from_usb
+               break;;
+            3) interactive_gpg_from_remote
+               if [ ! "$?" = "0" ]; then
+                   GPG_CONFIGURED="no"
+               fi;;
+        esac
+    done
+}
+
+function interactive_key_recovery {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+
+    dialog --title $"Encryption Keys Recovery" \
+           --backtitle $"Freedombone Configuration" \
+           --defaultno \
+           --yesno $"Do you wish to recover your previous encryption keys from a USB master keydrive?" 7 60
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    apt-get -yq install cryptsetup
+    ${PROJECT_NAME}-recoverkey -u $MY_USERNAME
+    if [ -d /home/$MY_USERNAME/.gnupg ]; then
+        cp -rf /home/$MY_USERNAME/.gnupg /root
+    fi
+}
+
+function set_password_for_all_users {
+    app_name="$1"
+    change_password="$2"
+
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+            ${PROJECT_NAME}-pass -u "${USERNAME}" -a "${app_name}" -p "${change_password}"
+        fi
+    done
+}
+
+# NOTE: deliberately there is no "exit 0"

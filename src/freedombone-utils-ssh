@@ -1,0 +1,166 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# ssh functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+SSH_PORT=2222
+
+# Settings from bettercrypto.org
+SSH_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes128-ctr"
+SSH_MACS="hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,hmac-ripemd160"
+SSH_KEX="diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha1,diffie-hellman-group-exchange-sha1"
+SSH_HOST_KEY_ALGORITHMS="ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-rsa-cert-v00@openssh.com,ssh-ed25519,ssh-rsa"
+
+function configure_ssh {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    sed -i "s/Port .*/Port $SSH_PORT/g" /etc/ssh/sshd_config
+    sed -i 's/PermitRootLogin.*/PermitRootLogin no/g' /etc/ssh/sshd_config
+    sed -i 's/X11Forwarding.*/X11Forwarding no/g' /etc/ssh/sshd_config
+    sed -i 's/ServerKeyBits.*/ServerKeyBits 4096/g' /etc/ssh/sshd_config
+    sed -i 's/TCPKeepAlive.*/TCPKeepAlive no/g' /etc/ssh/sshd_config
+    sed -i 's|HostKey /etc/ssh/ssh_host_dsa_key|#HostKey /etc/ssh/ssh_host_dsa_key|g' /etc/ssh/sshd_config
+    sed -i 's|HostKey /etc/ssh/ssh_host_ecdsa_key|#HostKey /etc/ssh/ssh_host_ecdsa_key|g' /etc/ssh/sshd_config
+    if ! grep -q 'DebianBanner' /etc/ssh/sshd_config; then
+        echo 'DebianBanner no' >> /etc/ssh/sshd_config
+    else
+        sed -i 's|DebianBanner.*|DebianBanner no|g' /etc/ssh/sshd_config
+    fi
+    if grep -q 'ClientAliveInterval' /etc/ssh/sshd_config; then
+        sed -i 's/ClientAliveInterval.*/ClientAliveInterval 60/g' /etc/ssh/sshd_config
+    else
+        echo 'ClientAliveInterval 60' >> /etc/ssh/sshd_config
+    fi
+    if grep -q 'ClientAliveCountMax' /etc/ssh/sshd_config; then
+        sed -i 's/ClientAliveCountMax.*/ClientAliveCountMax 3/g' /etc/ssh/sshd_config
+    else
+        echo 'ClientAliveCountMax 3' >> /etc/ssh/sshd_config
+    fi
+    if grep -q 'Ciphers' /etc/ssh/sshd_config; then
+        sed -i "s|Ciphers.*|Ciphers $SSH_CIPHERS|g" /etc/ssh/sshd_config
+    else
+        echo "Ciphers $SSH_CIPHERS" >> /etc/ssh/sshd_config
+    fi
+    if grep -q 'MACs' /etc/ssh/sshd_config; then
+        sed -i "s|MACs.*|MACs $SSH_MACS|g" /etc/ssh/sshd_config
+    else
+        echo "MACs $SSH_MACS" >> /etc/ssh/sshd_config
+    fi
+    if grep -q 'KexAlgorithms' /etc/ssh/sshd_config; then
+        sed -i "s|KexAlgorithms.*|KexAlgorithms $SSH_KEX|g" /etc/ssh/sshd_config
+    else
+        echo "KexAlgorithms $SSH_KEX" >> /etc/ssh/sshd_config
+    fi
+
+    apt-get -yq install fail2ban vim-common
+
+    function_check configure_firewall_for_ssh
+    configure_firewall_for_ssh
+    mark_completed $FUNCNAME
+}
+
+# see https://stribika.github.io/2015/01/04/secure-secure-shell.html
+function ssh_remove_small_moduli {
+    awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
+    mv ~/moduli /etc/ssh/moduli
+}
+
+function configure_ssh_client {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    #sed -i 's/#   PasswordAuthentication.*/   PasswordAuthentication no/g' /etc/ssh/ssh_config
+    #sed -i 's/#   ChallengeResponseAuthentication.*/   ChallengeResponseAuthentication no/g' /etc/ssh/ssh_config
+    sed -i "s/#   HostKeyAlgorithms.*/   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS/g" /etc/ssh/ssh_config
+    sed -i "s/#   Ciphers.*/   Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
+    sed -i "s/#   MACs.*/   MACs $SSH_MACS/g" /etc/ssh/ssh_config
+    if ! grep -q "HostKeyAlgorithms" /etc/ssh/ssh_config; then
+        echo "   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS" >> /etc/ssh/ssh_config
+    fi
+    sed -i "s/Ciphers.*/Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
+    if ! grep -q "Ciphers " /etc/ssh/ssh_config; then
+        echo "   Ciphers $SSH_CIPHERS" >> /etc/ssh/ssh_config
+    fi
+    sed -i "s/MACs.*/MACs $SSH_MACS/g" /etc/ssh/ssh_config
+    if ! grep -q "MACs " /etc/ssh/ssh_config; then
+        echo "   MACs $SSH_MACS" >> /etc/ssh/ssh_config
+    fi
+
+    # Create ssh keys
+    if [ ! -f ~/.ssh/id_ed25519 ]; then
+        ssh-keygen -t ed25519 -o -a 100
+    fi
+    if [ ! -f ~/.ssh/id_rsa ]; then
+        ssh-keygen -t rsa -b 4096 -o -a 100
+    fi
+
+    function_check ssh_remove_small_moduli
+    ssh_remove_small_moduli
+    mark_completed $FUNCNAME
+}
+
+function regenerate_ssh_keys {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    rm -f /etc/ssh/ssh_host_*
+    dpkg-reconfigure openssh-server
+
+    function_check ssh_remove_small_moduli
+    ssh_remove_small_moduli
+
+    systemctl restart ssh
+    mark_completed $FUNCNAME
+}
+
+function configure_firewall_for_ssh {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+        # docker does its own firewalling
+        return
+    fi
+
+    firewall_add SSH ${SSH_PORT} tcp
+    mark_completed $FUNCNAME
+}
+
+function get_ssh_server_key {
+    if [ -f /etc/ssh/ssh_host_rsa_key.pub ]; then
+        echo "RSA Md5:       $(ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub | awk -F ' ' '{print $2}')"
+        echo "RSA SHA256:    $(awk '{print $2}' /etc/ssh/ssh_host_rsa_key.pub | base64 -d | sha256sum -b | awk '{print $1}' | xxd -r -p | base64 | sed 's|=||g')"
+    fi
+    if [ -f /etc/ssh/ssh_host_ed25519_key.pub ]; then
+        echo "ED25519 Md5:   $(ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub | awk -F ' ' '{print $2}')"
+        echo "ED25519 SHA256:$(awk '{print $2}' /etc/ssh/ssh_host_ed25519_key.pub | base64 -d | sha256sum -b | awk '{print $1}' | xxd -r -p | base64 | sed 's|=||g')"
+    fi
+}
+
+# NOTE: deliberately no exit 0

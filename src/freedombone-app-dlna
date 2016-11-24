@@ -1,0 +1,265 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# DLNA application
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim media'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=0
+
+dlna_variables=(SYSTEM_TYPE
+                USB_MOUNT_DLNA
+                INSTALLED_WITHIN_DOCKER
+                MY_USERNAME)
+
+function configure_interactive_dlna {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"Media Menu" \
+               --radiolist $"Choose an operation:" 13 70 3 \
+               1 $"Attach a drive containing playable media" off \
+               2 $"Remove a drive containing playable media" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) attach-music;;
+            2) remove-music;;
+            3) break;;
+        esac
+    done
+}
+
+function install_interactive_dlna {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function reconfigure_dlna {
+    echo ''
+}
+
+function upgrade_dlna {
+    echo ''
+}
+
+function configure_firewall_for_dlna {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+        # docker does its own firewalling
+        return
+    fi
+
+    firewall_add DLNA 1900 udp
+    firewall_add DLNA 8200 tcp
+    mark_completed $FUNCNAME
+}
+
+function backup_local_dlna {
+    source_directory=/var/cache/minidlna
+    if [ -d $source_directory ]; then
+        dest_directory=dlna
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+    fi
+}
+
+function restore_local_dlna {
+    if [ -d /var/cache/minidlna ]; then
+        if [ -d $USB_MOUNT_DLNA/backup/dlna ]; then
+            echo $"Restoring DLNA cache"
+            temp_restore_dir=/root/tempdlna
+            function_check restore_directory_from_usb
+            restore_directory_from_usb $temp_restore_dir dlna
+            cp -r $temp_restore_dir/var/cache/minidlna/* /var/cache/minidlna/
+            if [ ! "$?" = "0" ]; then
+                rm -rf $temp_restore_dir
+                function_check set_user_permissions
+                set_user_permissions
+                function_check backup_unmount_drive
+                backup_unmount_drive
+                exit 982572
+            fi
+            rm -rf $temp_restore_dir
+        fi
+    fi
+}
+
+function backup_remote_dlna {
+    if [ -d /var/cache/minidlna ]; then
+        backup_directory_to_friend /var/cache/minidlna dlna
+    fi
+}
+
+function restore_remote_dlna {
+    if [ -d /var/cache/minidlna ]; then
+        if [ -d $SERVER_DIRECTORY/backup/dlna ]; then
+            temp_restore_dir=/root/tempdlna
+            function_check restore_directory_from_friend
+            restore_directory_from_friend $temp_restore_dir dlna
+            cp -r $temp_restore_dir/var/cache/minidlna/* /var/cache/minidlna/
+            if [ ! "$?" = "0" ]; then
+                exit 982
+            fi
+            rm -rf $temp_restore_dir
+        fi
+    fi
+}
+
+function remove_dlna {
+    systemctl stop minidlna
+    apt-get -yq remove --purge minidlna
+    if [ -f /etc/minidlna.conf ]; then
+        rm /etc/minidlna.conf
+    fi
+    rm /usr/bin/attach-music
+    rm /usr/bin/remove-music
+    remove_completion_param install_dlna
+    firewall_remove 1900 udp
+    firewall_remove 8200 tcp
+}
+
+function install_dlna_main {
+    if [[ $(app_is_installed dlna_main) == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq install minidlna
+
+    if [ ! -f /etc/minidlna.conf ]; then
+        echo $"ERROR: minidlna does not appear to have installed. $CHECK_MESSAGE"
+        exit 55
+    fi
+
+    if [ ! $USB_MOUNT_DLNA ]; then
+        USB_MOUNT_DLNA=/mnt/dlna
+    fi
+    if [ ${#USB_MOUNT_DLNA} -eq 0 ]; then
+        USB_MOUNT_DLNA=/mnt/dlna
+    fi
+
+    sed -i "s|media_dir=/var/lib/minidlna|media_dir=A,/home/$MY_USERNAME/Music|g" /etc/minidlna.conf
+    if ! grep -q "/home/$MY_USERNAME/Pictures" /etc/minidlna.conf; then
+        echo "media_dir=P,/home/$MY_USERNAME/Pictures" >> /etc/minidlna.conf
+    fi
+    if ! grep -q "/home/$MY_USERNAME/Videos" /etc/minidlna.conf; then
+        echo "media_dir=V,/home/$MY_USERNAME/Videos" >> /etc/minidlna.conf
+    fi
+    if ! grep -q "$USB_MOUNT_DLNA/Music" /etc/minidlna.conf; then
+        echo "media_dir=A,$USB_MOUNT_DLNA/Music" >> /etc/minidlna.conf
+    fi
+    if ! grep -q "$USB_MOUNT_DLNA/Pictures" /etc/minidlna.conf; then
+        echo "media_dir=P,$USB_MOUNT_DLNA/Pictures" >> /etc/minidlna.conf
+    fi
+    if ! grep -q "$USB_MOUNT_DLNA/Videos" /etc/minidlna.conf; then
+        echo "media_dir=V,$USB_MOUNT_DLNA/Videos" >> /etc/minidlna.conf
+    fi
+    sed -i 's/#root_container=./root_container=B/g' /etc/minidlna.conf
+    if [[ $SYSTEM_TYPE != "mesh"* ]]; then
+        if [[ $(config_param_exists WIFI_INTERFACE) == "0" ]]; then
+            sed -i 's/#network_interface=/network_interface=eth0/g' /etc/minidlna.conf
+        else
+            sed -i "s/#network_interface=/network_interface=$WIFI_INTERFACE/g" /etc/minidlna.conf
+        fi
+    else
+        sed -i "s/#network_interface=/network_interface=$WIFI_INTERFACE/g" /etc/minidlna.conf
+    fi
+    sed -i "s/#friendly_name=/friendly_name=\"${PROJECT_NAME} Media\"/g" /etc/minidlna.conf
+    sed -i 's|#db_dir=/var/cache/minidlna|db_dir=/var/cache/minidlna|g' /etc/minidlna.conf
+    sed -i 's/#inotify=yes/inotify=yes/g' /etc/minidlna.conf
+    sed -i 's/#notify_interval=895/notify_interval=300/g' /etc/minidlna.conf
+    sed -i "s|#presentation_url=/|presentation_url=http://localhost:8200|g" /etc/minidlna.conf
+    systemctl reload minidlna
+
+    sed -i 's/fs.inotify.max_user_watches*/fs.inotify.max_user_watches=65536/g' /etc/sysctl.conf
+    if ! grep -q "max_user_watches" $COMPLETION_FILE; then
+        echo 'fs.inotify.max_user_watches=65536' >> /etc/sysctl.conf
+    fi
+    /sbin/sysctl -p -q
+
+    function_check configure_firewall_for_dlna
+    configure_firewall_for_dlna
+    install_completed dlna_main
+}
+
+function script_for_attaching_usb_drive {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    echo '#!/bin/bash' > /usr/bin/attach-music
+    echo "source /usr/local/bin/${PROJECT_NAME}-vars" >> /usr/bin/attach-music
+    echo "UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*" >> /usr/bin/attach-music
+    echo '' >> /usr/bin/attach-music
+    echo 'for f in $UTILS_FILES' >> /usr/bin/attach-music
+    echo 'do' >> /usr/bin/attach-music
+    echo '    source $f' >> /usr/bin/attach-music
+    echo 'done' >> /usr/bin/attach-music
+    echo '' >> /usr/bin/attach-music
+    echo 'USB_DRIVE=/dev/sda1' >> /usr/bin/attach-music
+    echo 'detect_usb_drive' >> /usr/bin/attach-music
+    echo '' >> /usr/bin/attach-music
+    echo 'remove-music' >> /usr/bin/attach-music
+    echo "if [ ! -d $USB_MOUNT_DLNA ]; then" >> /usr/bin/attach-music
+    echo "    mkdir $USB_MOUNT_DLNA" >> /usr/bin/attach-music
+    echo 'fi' >> /usr/bin/attach-music
+    echo -n 'mount $USB_DRIVE ' >> /usr/bin/attach-music
+    echo "$USB_MOUNT_DLNA" >> /usr/bin/attach-music
+    echo "chown root:root $USB_MOUNT_DLNA" >> /usr/bin/attach-music
+    echo "chown -R minidlna:minidlna $USB_MOUNT_DLNA/*" >> /usr/bin/attach-music
+    echo 'systemctl restart minidlna' >> /usr/bin/attach-music
+    echo 'minidlnad -R' >> /usr/bin/attach-music
+    echo 'exit 0' >> /usr/bin/attach-music
+    chmod +x /usr/bin/attach-music
+
+    echo '#!/bin/bash' > /usr/bin/remove-music
+    echo "if [ -d $USB_MOUNT_DLNA ]; then" >> /usr/bin/remove-music
+    echo "  umount $USB_MOUNT_DLNA" >> /usr/bin/remove-music
+    echo "  rm -rf $USB_MOUNT_DLNA" >> /usr/bin/remove-music
+    echo 'fi' >> /usr/bin/remove-music
+    echo 'exit 0' >> /usr/bin/remove-music
+    chmod +x /usr/bin/remove-music
+
+    mark_completed $FUNCNAME
+}
+
+function install_dlna {
+    install_dlna_main
+    script_for_attaching_usb_drive
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0

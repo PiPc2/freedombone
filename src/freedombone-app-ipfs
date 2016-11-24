@@ -1,0 +1,584 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# ipfs functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS=''
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=0
+
+IPFS_GO_REPO_BASE="github.com/ipfs/go-ipfs"
+IPFS_GO_REPO='https://github.com/ipfs/go-ipfs'
+IPFS_COMMIT='6fdfaaf6e4783ae1be7b348e7a6bc0640982c7df'
+IPFS_PORT=4001
+IPFS_NODE_VERSION='6.2.2'
+IPFS_N_VERSION='2.1.4'
+IPFS_JS_VERSION='0.14.3'
+IPFS_JS_RONIN_VERSION='0.3.11'
+IPFS_KEY_LENGTH=2048
+IPFS_GO_VERSION=0.4.2
+
+ipfs_variables=(IPFS_COMMIT
+                IPFS_GO_VERSION
+                IPFS_KEY_LENGTH
+                IPFS_PORT)
+
+function install_interactive_ipfs {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function reconfigure_ipfs {
+    echo -n ''
+}
+
+function upgrade_ipfs_go {
+    if [[ $(app_is_installed ipfs_go) == "0" ]]; then
+        return
+    fi
+
+    function_check set_repo_commit
+    set_repo_commit $GOPATH/src/github.com/ipfs/go-ipfs "ipfs commit" "$IPFS_COMMIT" $IPFS_REPO
+}
+
+function upgrade_ipfs_js {
+    if [[ $(app_is_installed ipfs_js) == "0" ]]; then
+        return
+    fi
+
+    npm cache clean -f
+    npm install -g n
+    n ${IPFS_NODE_VERSION}
+    npm install ronin@${IPFS_JS_RONIN_VERSION} --global
+    npm install ipfs@${IPFS_JS_VERSION} --global
+}
+
+function upgrade_ipfs {
+    upgrade_ipfs_js
+    upgrade_ipfs_go
+}
+
+function backup_local_ipfs {
+    if ! grep -q "Admin user" $COMPLETION_FILE; then
+        return
+    fi
+    ADMIN_USERNAME=$(get_completion_param "Admin user")
+    source_directory=/home/$ADMIN_USERNAME/.ipfs
+    if [ -d $source_directory ]; then
+        dest_directory=ipfs
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+    fi
+}
+
+function restore_local_ipfs {
+    if ! grep -q "Admin user" $COMPLETION_FILE; then
+        return
+    fi
+    if [ -d $USB_MOUNT/backup/ipfs ]; then
+        echo $"Restoring IPFS"
+        temp_restore_dir=/root/tempipfs
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir ipfs
+        ADMIN_USERNAME=$(get_completion_param "Admin user")
+        cp -rf $temp_restore_dir/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
+        if [ ! "$?" = "0" ]; then
+            rm -rf $temp_restore_dir
+            function_check set_user_permissions
+            set_user_permissions
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 27627
+        fi
+        rm -rf $temp_restore_dir
+        echo $"Restore of IPFS complete"
+    fi
+}
+
+function backup_remote_ipfs {
+    if ! grep -q "Admin user" $COMPLETION_FILE; then
+        return
+    fi
+    ADMIN_USERNAME=$(get_completion_param "Admin user")
+    if [ -d /home/$ADMIN_USERNAME/.ipfs ]; then
+        echo $"Backing up IPFS"
+        backup_directory_to_friend /home/$ADMIN_USERNAME/.ipfs ipfs
+        echo $"Backup of IPFS complete"
+    fi
+}
+
+function restore_remote_ipfs {
+    if [ -d $SERVER_DIRECTORY/backup/ipfs ]; then
+        echo $"Restoring IPFS"
+        temp_restore_dir=/root/tempipfs
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir ipfs
+        cp -rf $temp_restore_dir/home/$ADMIN_USERNAME/.ipfs/* /home/$ADMIN_USERNAME/.ipfs
+        if [ ! "$?" = "0" ]; then
+            function_check set_user_permissions
+            set_user_permissions
+            rm -rf $temp_restore_dir
+            exit 276357
+        fi
+        rm -rf $temp_restore_dir
+        echo $"Restore of IPFS complete"
+    fi
+}
+
+function remove_ipfs_go {
+    systemctl stop ipfs
+    systemctl disable ipfs
+    systemctl daemon-reload
+    rm /etc/systemd/system/ipfs.service
+    rm -rf $GOPATH/src/github.com/ipfs
+    firewall_remove $IPFS_PORT tcp
+    remove_completion_param install_ipfs
+    remove_completion_param configure_firewall_for_ipfs
+    sed -i '/ipfs/d' $COMPLETION_FILE
+}
+
+function remove_ipfs_js {
+    systemctl stop ipfs
+    systemctl disable ipfs
+    rm /etc/systemd/system/ipfs.service
+    systemctl daemon-reload
+
+    npm uninstall ipfs --global
+    npm uninstall ronin --global
+
+    firewall_remove $IPFS_PORT tcp
+    sed -i '/install_ipfs/d' $COMPLETION_FILE
+    sed -i '/ipfs/d' $COMPLETION_FILE
+    sed -i '/configure_firewall_for_ipfs/d' $COMPLETION_FILE
+}
+
+function remove_ipfs {
+    remove_ipfs_js
+    remove_ipfs_go
+}
+
+function configure_firewall_for_ipfs {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+
+    firewall_add IPFS $IPFS_PORT tcp
+    mark_completed $FUNCNAME
+}
+
+function mesh_install_ipfs_js {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    chroot ${rootdir} apt-get -yq install nodejs
+    chroot ${rootdir} apt-get -yq install npm curl
+    chroot ${rootdir} apt-get -yq install libpam0g-dev fuse
+
+    if [ ! -f ${rootdir}/usr/bin/nodejs ]; then
+        echo $'nodejs was not installed'
+        exit 63962
+    fi
+
+    cat <<EOF > ${rootdir}/root/install-ipfs.sh
+#!/bin/bash
+PATH="/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/bin"
+NODE_PATH="/usr/lib/node_modules"
+cp /usr/bin/nodejs /usr/local/bin/node
+cp /usr/bin/nodejs /usr/bin/node
+/usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+npm install -g n@${IPFS_N_VERSION} --save
+n ${IPFS_NODE_VERSION}
+npm install -g ronin@${IPFS_JS_RONIN_VERSION} --save
+npm install -g ipfs@${IPFS_JS_VERSION} --save
+exit 0
+EOF
+    chroot ${rootdir} /bin/chmod +x /root/install-ipfs.sh
+    chroot ${rootdir} /root/install-ipfs.sh
+    rm -f ${rootdir}/root/install-ipfs.sh
+
+    IPFS_PATH=/usr/bin
+
+    if [ ! -f ${rootdir}$IPFS_PATH/jsipfs ]; then
+        exit 637292
+    fi
+
+    # directories to mount to
+    if [ ! -d ${rootdir}/ipfs ]; then
+        chroot ${rootdir} /bin/mkdir /ipfs
+        chroot ${rootdir} /bin/mkdir /ipns
+        chroot ${rootdir} /bin/chown $MY_USERNAME:$MY_USERNAME /ipfs
+        chroot ${rootdir} /bin/chown $MY_USERNAME:$MY_USERNAME /ipns
+    fi
+
+    if [ -f ${rootdir}/etc/fuse.conf ]; then
+        chroot ${rootdir} /bin/chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
+    fi
+    if [ -f ${rootdir}/dev/fuse ]; then
+        chroot ${rootdir} /bin/chown $MY_USERNAME:$MY_USERNAME /dev/fuse
+    fi
+
+    IPFS_DAEMON_NAME=ipfs
+    IPFS_DAEMON_FILE=${rootdir}/etc/systemd/system/${IPFS_DAEMON_NAME}.service
+    echo '[Unit]' > $IPFS_DAEMON_FILE
+    echo 'Description=IPFS javascript daemon' >> $IPFS_DAEMON_FILE
+    echo 'After=syslog.target' >> $IPFS_DAEMON_FILE
+    echo 'After=network.target' >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Service]' >> $IPFS_DAEMON_FILE
+    echo 'Type=simple' >> $IPFS_DAEMON_FILE
+    echo "User=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "Group=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "WorkingDirectory=/home/$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "ExecStart=${IPFS_PATH}/jsipfs daemon --mount" >> $IPFS_DAEMON_FILE
+    echo 'Restart=on-failure' >> $IPFS_DAEMON_FILE
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\"" >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Install]' >> $IPFS_DAEMON_FILE
+    echo 'WantedBy=multi-user.target' >> $IPFS_DAEMON_FILE
+
+    chroot ${rootdir} systemctl enable ${IPFS_DAEMON_NAME}
+
+    mark_completed $FUNCNAME
+}
+
+function install_ipfs_js {
+    if [ $INSTALLING_MESH ]; then
+        mesh_install_ipfs_js
+        return
+    fi
+    if [[ $(app_is_installed ipfs_js) == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq install nodejs
+    apt-get -yq install npm
+    apt-get -yq install libpam0g-dev fuse
+
+    if [ ! -f /usr/bin/nodejs ]; then
+        echo $'nodejs was not installed'
+        exit 63962
+    fi
+
+    cp /usr/bin/nodejs /usr/local/bin/node
+    cp /usr/bin/nodejs /usr/bin/node
+    /usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+    /usr/local/bin/npm install -g n@${IPFS_N_VERSION}
+    /usr/local/bin/n ${IPFS_NODE_VERSION}
+    /usr/local/bin/npm install -g ronin@${IPFS_JS_RONIN_VERSION}
+    /usr/local/bin/npm install -g ipfs@${IPFS_JS_VERSION}
+
+    IPFS_PATH=/usr/bin
+
+    if [ ! -f $IPFS_PATH/jsipfs ]; then
+        exit 637292
+    fi
+
+    # initialise
+    su -c "$IPFS_PATH/jsipfs init -b $IPFS_KEY_LENGTH" - $MY_USERNAME
+    if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
+        echo "IPFS could not be initialised for user $MY_USERNAME"
+        exit 7358
+    fi
+
+    # directories to mount to
+    if [ ! -d /ipfs ]; then
+        mkdir /ipfs
+        mkdir /ipns
+        chown $MY_USERNAME:$MY_USERNAME /ipfs
+        chown $MY_USERNAME:$MY_USERNAME /ipns
+    fi
+
+    if [ -f /etc/fuse.conf ]; then
+        chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
+    fi
+    if [ -f /dev/fuse ]; then
+        chown $MY_USERNAME:$MY_USERNAME /dev/fuse
+    fi
+
+    IPFS_DAEMON_NAME=ipfs
+    IPFS_DAEMON_FILE=/etc/systemd/system/${IPFS_DAEMON_NAME}.service
+    echo '[Unit]' > $IPFS_DAEMON_FILE
+    echo 'Description=IPFS javascript daemon' >> $IPFS_DAEMON_FILE
+    echo 'After=syslog.target' >> $IPFS_DAEMON_FILE
+    echo 'After=network.target' >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Service]' >> $IPFS_DAEMON_FILE
+    echo 'Type=simple' >> $IPFS_DAEMON_FILE
+    echo "User=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "Group=$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "WorkingDirectory=/home/$MY_USERNAME" >> $IPFS_DAEMON_FILE
+    echo "ExecStart=${IPFS_PATH}/jsipfs daemon --mount" >> $IPFS_DAEMON_FILE
+    echo 'Restart=on-failure' >> $IPFS_DAEMON_FILE
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\"" >> $IPFS_DAEMON_FILE
+    echo '' >> $IPFS_DAEMON_FILE
+    echo '[Install]' >> $IPFS_DAEMON_FILE
+    echo 'WantedBy=multi-user.target' >> $IPFS_DAEMON_FILE
+
+    systemctl enable ${IPFS_DAEMON_NAME}
+    systemctl daemon-reload
+    systemctl restart ${IPFS_DAEMON_NAME}
+
+    if [ -d /etc/avahi ]; then
+        su -c "echo $($IPFS_PATH/jsipfs id | grep '\"ID\":' | awk -F '\"' '{print $4}') > /tmp/ipfsid" - $MY_USERNAME
+        if [ ! -f /tmp/ipfsid ]; then
+            echo 'No IPFS identity was created'
+            exit 37895
+        fi
+        IPFS_PEER_ID=$(cat /tmp/ipfsid)
+        if [ ${#IPFS_PEER_ID} -lt 10 ]; then
+            echo 'Invalid IPFS peer ID'
+            echo "$IPFS_PEER_ID"
+            exit 74782
+        fi
+        rm /tmp/ipfsid
+    fi
+
+    function_check configure_firewall_for_ipfs
+    configure_firewall_for_ipfs
+
+    install_completed ipfs_js
+}
+
+function mesh_install_ipfs_go {
+    chroot ${rootdir} apt-get -yq install libpam0g-dev fuse wget
+
+    mesh_upgrade_golang
+
+    IPFS_ARCH=
+    IPFS_PATH=/usr/bin
+
+    if [ ! -d $rootdir$INSTALL_DIR/ipfs ]; then
+        mkdir -p $rootdir$INSTALL_DIR/ipfs
+    fi
+    cd $rootdir$INSTALL_DIR/ipfs
+
+    if [[ $ARCHITECTURE == *"386" || $ARCHITECTURE == *"686" ]]; then
+        IPFS_ARCH=386
+    fi
+    if [[ $ARCHITECTURE == *"amd64" || $ARCHITECTURE == "x86_64" ]]; then
+        IPFS_ARCH=amd64
+    fi
+    if [[ $ARCHITECTURE == *"arm"* ]]; then
+        IPFS_ARCH=arm
+    fi
+    if [ ! $IPFS_ARCH ]; then
+        echo $'No architecture specified'
+        ARCHITECTURE=$(uname -m)
+        if [[ $ARCHITECTURE == "arm"* ]]; then
+            IPFS_ARCH=arm
+        fi
+        if [[ $ARCHITECTURE == "amd"* || $ARCHITECTURE == "x86_64" ]]; then
+            IPFS_ARCH=amd64
+        fi
+        if [[ $ARCHITECTURE == *"386" || $ARCHITECTURE == *"686" ]]; then
+            IPFS_ARCH=386
+        fi
+    fi
+
+    IPFS_FILE=go-ipfs_v${IPFS_GO_VERSION}_linux-${IPFS_ARCH}.tar.gz
+    wget https://ipfs.io/ipns/dist.ipfs.io/go-ipfs/v${IPFS_GO_VERSION}/${IPFS_FILE}
+    if [ ! -f $rootdir$INSTALL_DIR/ipfs/${IPFS_FILE} ]; then
+        echo $'IPFS package could not be downloaded'
+        exit 63725
+    fi
+    tar -xzvf ${IPFS_FILE}
+    if [ ! -f $rootdir$INSTALL_DIR/ipfs/go-ipfs/ipfs ]; then
+        echo $"ipfs was not found in downloaded package"
+        exit 638235
+    fi
+    chroot "$rootdir" /bin/cp $INSTALL_DIR/ipfs/go-ipfs/ipfs $IPFS_PATH
+    if [ ! -f $rootdir$IPFS_PATH/ipfs ]; then
+        echo $'IPFS was not installed'
+        exit 63722
+    fi
+
+    IPFS_USER_DAEMON=${rootdir}/home/${MY_USERNAME}/.config/systemd/user/ipfs.service
+    mkdir -p ${rootdir}/home/${MY_USERNAME}/.config/systemd/user
+
+    echo '[Unit]' > $IPFS_USER_DAEMON
+    echo 'Description=IPFS go daemon' >> $IPFS_USER_DAEMON
+    echo '' >> $IPFS_USER_DAEMON
+    echo '[Service]' >> $IPFS_USER_DAEMON
+    echo "ExecStart=$IPFS_PATH/ipfs daemon" >> $IPFS_USER_DAEMON
+    echo 'Restart=on-failure' >> $IPFS_USER_DAEMON
+    echo 'RestartSec=10' >> $IPFS_USER_DAEMON
+    echo '' >> $IPFS_USER_DAEMON
+    echo '[Install]' >> $IPFS_USER_DAEMON
+    echo 'WantedBy=default.target' >> $IPFS_USER_DAEMON
+    chroot ${rootdir} /bin/chown -R $MY_USERNAME:$MY_USERNAME /home/${MY_USERNAME}/.config
+}
+
+function install_ipfs_go {
+    if [ $INSTALLING_MESH ]; then
+        mesh_install_ipfs_go
+        return
+    fi
+    if [[ $(app_is_installed ipfs_go) == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq install golang libpam0g-dev fuse
+
+    if [ ! -d /home/git ]; then
+        # add a gogs user account
+        adduser --disabled-login --gecos 'Gogs' git
+
+        # install Go
+        if ! grep -q "export GOPATH=" ~/.bashrc; then
+            echo "export GOPATH=$GOPATH" >> ~/.bashrc
+        else
+            sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" ~/.bashrc
+        fi
+        systemctl set-environment GOPATH=$GOPATH
+        if ! grep -q "systemctl set-environment GOPATH=" ~/.bashrc; then
+            echo "systemctl set-environment GOPATH=$GOPATH" >> ~/.bashrc
+        else
+            sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
+        fi
+        if [ ! -d $GOPATH ]; then
+            mkdir -p $GOPATH
+        fi
+    fi
+
+    IPFS_PATH=$GOPATH/bin
+    export PATH="$GOPATH/bin:$PATH:"
+    if ! grep -q 'GOPATH/bin' ~/.bashrc; then
+        echo 'export PATH="$GOPATH/bin:$PATH:";' >> ~/.bashrc
+    else
+        sed -i "s|systemctl set-environment GOPATH=.*|systemctl set-environment GOPATH=$GOPATH|g" ~/.bashrc
+    fi
+
+    # set gopath for the user
+    if ! grep -q "GOPATH=" /home/$MY_USERNAME/.bashrc; then
+        echo "export GOPATH=$GOPATH" >> /home/$MY_USERNAME/.bashrc
+        echo 'export PATH="$GOPATH/bin:$PATH:";' >> /home/$MY_USERNAME/.bashrc
+    else
+        sed -i "s|export GOPATH=.*|export GOPATH=$GOPATH|g" /home/$MY_USERNAME/.bashrc
+    fi
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.bashrc
+
+    go get -u ${IPFS_GO_REPO_BASE}/cmd/ipfs
+    if [ ! "$?" = "0" ]; then
+        exit 8242
+    fi
+
+    if [ ! -d $GOPATH/src/$IPFS_GO_REPO_BASE ]; then
+        echo $'go get failed to get ipfs'
+        exit 63923
+    fi
+
+    cd $GOPATH/src/$IPFS_GO_REPO_BASE
+    git checkout $IPFS_COMMIT -b $IPFS_COMMIT
+    if [ ! "$?" = "0" ]; then
+        exit 735639
+    fi
+
+    set_completion_param "ipfs commit" "$IPFS_COMMIT"
+
+    make install
+    if [ ! "$?" = "0" ]; then
+        exit 547242
+    fi
+
+    # initialise
+    su -c "$IPFS_PATH/ipfs init -b 4096" - $MY_USERNAME
+    if [ ! -d /home/$MY_USERNAME/.ipfs ]; then
+        echo "IPFS could not be initialised for user $MY_USERNAME"
+        exit 7358
+    fi
+
+    # directories to mount to
+    if [ ! -d /ipfs ]; then
+        mkdir /ipfs
+        mkdir /ipns
+        chown $MY_USERNAME:$MY_USERNAME /ipfs
+        chown $MY_USERNAME:$MY_USERNAME /ipns
+    fi
+
+    if [ -f /etc/fuse.conf ]; then
+        chown $MY_USERNAME:$MY_USERNAME /etc/fuse.conf
+    fi
+    if [ -f /dev/fuse ]; then
+        chown $MY_USERNAME:$MY_USERNAME /dev/fuse
+    fi
+
+    echo '[Unit]' > /etc/systemd/system/ipfs.service
+    echo 'Description=IPFS go daemon' >> /etc/systemd/system/ipfs.service
+    echo 'After=syslog.target' >> /etc/systemd/system/ipfs.service
+    echo 'After=network.target' >> /etc/systemd/system/ipfs.service
+    echo '' >> /etc/systemd/system/ipfs.service
+    echo '[Service]' >> /etc/systemd/system/ipfs.service
+    echo 'Type=simple' >> /etc/systemd/system/ipfs.service
+    echo "User=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+    echo "Group=$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+    echo "WorkingDirectory=/home/$MY_USERNAME" >> /etc/systemd/system/ipfs.service
+    echo "ExecStart=$IPFS_PATH/ipfs daemon --mount" >> /etc/systemd/system/ipfs.service
+    echo 'Restart=on-failure' >> /etc/systemd/system/ipfs.service
+    echo "Environment=\"USER=$MY_USERNAME\" \"HOME=/home/$MY_USERNAME\" \"GOPATH=$GOPATH\" \"GVM_ROOT=$GVM_HOME\"" >> /etc/systemd/system/ipfs.service
+    echo '' >> /etc/systemd/system/ipfs.service
+    echo '[Install]' >> /etc/systemd/system/ipfs.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ipfs.service
+
+    systemctl enable ipfs
+    systemctl daemon-reload
+    systemctl restart ipfs
+
+    if [ -d /etc/avahi ]; then
+        su -c "echo $($IPFS_PATH/ipfs id | grep '\"ID\":' | awk -F '\"' '{print $4}') > /tmp/ipfsid" - $MY_USERNAME
+        if [ ! -f /tmp/ipfsid ]; then
+            echo 'No IPFS identity was created'
+            exit 37895
+        fi
+        IPFS_PEER_ID=$(cat /tmp/ipfsid)
+        if [ ${#IPFS_PEER_ID} -lt 10 ]; then
+            echo 'Invalid IPFS peer ID'
+            echo "$IPFS_PEER_ID"
+            exit 74782
+        fi
+        # Add an avahi service
+        function_check create_avahi_service
+        create_avahi_service ipfs_id "ipfs_id" 'udp' $IPFS_PORT "$IPFS_PEER_ID:none"
+        rm /tmp/ipfsid
+    fi
+
+    function_check configure_firewall_for_ipfs
+    configure_firewall_for_ipfs
+
+    install_completed ipfs_go
+}
+
+function install_ipfs {
+    #install_ipfs_js
+    install_ipfs_go
+    APP_INSTALLED=1
+}

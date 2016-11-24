@@ -1,0 +1,406 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Jitsi meet + videobridge
+#
+# Instructions: https://github.com/jitsi/jitsi-meet/blob/master/doc/manual-install.md
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS="full full-vim chat"
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+VIDEOBRIDGE_PORT=5347
+JITSI_ONION_PORT=8102
+JITSI_PORT=5280
+
+# domains
+JITSI_DOMAIN_NAME=
+JITSI_CODE=
+JITSI_ONION_HOSTNAME=
+
+jitsi_variables=(ONION_ONLY
+                 JITSI_DOMAIN_NAME
+                 JITSI_ONION_HOSTNAME
+                 JITSI_CODE
+                 DEFAULT_DOMAIN_NAME
+                 MY_USERNAME)
+
+function jitsi_disable_google_spyware {
+    # Presumably they included Google Analytics for benign reasons, but it's
+    # an obvious security problem. This should disable it.
+    sed -i "s|Google Analytics|Google Spyware deactivated|g" /usr/share/jitsi-meet/analytics.js
+    sed -i "s|www.google-analytics.com|${JITSI_DOMAIN_NAME}|g" /usr/share/jitsi-meet/analytics.js
+    if ! grep '//ga(' /usr/share/jitsi-meet/analytics.js; then
+        sed -i 's|ga(|//ga(|g' /usr/share/jitsi-meet/analytics.js
+    fi
+    if ! grep '//action +' /usr/share/jitsi-meet/analytics.js; then
+        sed -i 's|action +|//action +|g' /usr/share/jitsi-meet/analytics.js
+    fi
+
+    sed -i "s|Google Analytics|Google Spyware deactivated|g" /usr/share/jitsi-meet/libs/analytics.js
+    sed -i "s|www.google-analytics.com|${JITSI_DOMAIN_NAME}|g" /usr/share/jitsi-meet/libs/analytics.js
+    if ! grep '//ga(' /usr/share/jitsi-meet/libs/analytics.js; then
+        sed -i 's|ga(|//ga(|g' /usr/share/jitsi-meet/libs/analytics.js
+    fi
+    if ! grep '//action +' /usr/share/jitsi-meet/libs/analytics.js; then
+        sed -i 's|action +|//action +|g' /usr/share/jitsi-meet/libs/analytics.js
+    fi
+}
+
+function can_install_videobridge {
+    check_architecture=$(uname -a)
+    if [[ "$check_architecture" == *"amd64"* || "$check_architecture" == *"i386"* ]]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+function remove_jitsi_subdomains {
+    function_check remove_onion_service
+    remove_onion_service jitsi ${JITSI_ONION_PORT}
+}
+
+function remove_user_jitsi {
+    remove_username="$1"
+}
+
+function add_user_jitsi {
+    new_username="$1"
+    new_user_password="$2"
+}
+
+function install_interactive_jitsi {
+    if [ ! ${ONION_ONLY} ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ ${ONION_ONLY} != "no" ]]; then
+        JITSI_DOMAIN_NAME='jitsi.local'
+        write_config_param "JITSI_DOMAIN_NAME" "$JITSI_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "jitsi" "JITSI_DOMAIN_NAME" "JITSI_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function configure_interactive_jitsi {
+    echo -n ''
+}
+
+function reconfigure_jitsi {
+    echo -n ''
+}
+
+function upgrade_jitsi {
+    jitsi_disable_google_spyware
+}
+
+function backup_local_jitsi {
+    echo -n ''
+}
+
+function restore_local_jitsi {
+    echo -n ''
+}
+
+function backup_remote_jitsi {
+    echo -n ''
+}
+
+function restore_remote_jitsi {
+    echo -n ''
+}
+
+function remove_jitsi {
+    read_config_param JITSI_DOMAIN_NAME
+    if [ ${#JITSI_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+
+    if [ -f /etc/nginx/sites-available/${JITSI_DOMAIN_NAME} ]; then
+        nginx_dissite ${JITSI_DOMAIN_NAME}.conf
+        if [ -d /var/www/${JITSI_DOMAIN_NAME} ]; then
+            rm -rf /var/www/${JITSI_DOMAIN_NAME}
+        fi
+        rm /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+
+        function_check remove_certs
+        remove_certs ${JITSI_DOMAIN_NAME}
+
+        systemctl reload nginx
+    fi
+
+    remove_jitsi_subdomains
+
+    systemctl stop prosody
+    if [ -f /etc/prosody/conf.d/${JITSI_DOMAIN_NAME}.cfg.lua ]; then
+        rm /etc/prosody/conf.d/${JITSI_DOMAIN_NAME}.cfg.lua
+    fi
+    if [ -f /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua ]; then
+        rm /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
+    fi
+    prosodyctl unregister focus auth.${JITSI_DOMAIN_NAME}
+    systemctl start prosody
+
+    remove_nodejs jitsi
+
+    # remove videobridge
+    firewall_remove ${VIDEOBRIDGE_PORT}
+    firewall_remove "10000:20000"
+    apt-get -yq remove --purge jitsi-videobridge jicofo jitsi-meet jitsi-meet-prosody
+    if [ -d /etc/jitsi ]; then
+        rm -rf /etc/jitsi
+    fi
+    if [ -d /usr/share/jitsi-videobridge ]; then
+        rm -rf /usr/share/jitsi-videobridge
+    fi
+    if [ -d /usr/share/jitsi-meet ]; then
+        rm -rf /usr/share/jitsi-meet
+    fi
+    if [ -d /etc/jitsi ]; then
+        rm -rf /etc/jitsi
+    fi
+    sed -i "/jitsi/d" /etc/apt/sources.list
+    apt-get update
+
+    remove_app jitsi
+    remove_completion_param install_jitsi
+    sed -i '/jitsi/d' ${COMPLETION_FILE}
+
+    function_check remove_ddns_domain
+    remove_ddns_domain $JITSI_DOMAIN_NAME
+}
+
+function install_jitsi {
+    if [[ "$(can_install_videobridge)" == "0" ]]; then
+        echo $'jitsi meet/videobridge can only be installed on i386 or amd64 architectures'
+        exit 83562
+    fi
+
+    if [ ! ${JITSI_DOMAIN_NAME} ]; then
+        echo $'No domain name was given for jitsi'
+        exit 47682
+    fi
+
+    if [ ! -d /etc/prosody ]; then
+        echo $'xmpp must be installed before installing jitsi'
+        exit 62394
+    fi
+
+    if [[ "${JITSI_DOMAIN_NAME}" == "${DEFAULT_DOMAIN_NAME}" ]]; then
+        echo $'The jitsi domain name should not be the same as the main domain name'
+        exit 78372
+    fi
+
+    # add jitsi repo
+    jitsi_deb_repo=unstable #binary
+    apt-get -yq install wget debconf-utils default-jre
+    install_nodejs jitsi
+    npm install -g browserify@13.1.1
+    if [ ! "$?" = "0" ]; then
+        remove_nodejs jitsi
+        exit 638352
+    fi
+    if ! grep "jitsi" /etc/apt/sources.list; then
+        echo "deb http://download.jitsi.org/nightly/deb ${jitsi_deb_repo}/" >> /etc/apt/sources.list
+    fi
+    wget -qO - https://download.jitsi.org/nightly/deb/${jitsi_deb_repo}/archive.key | apt-key add -
+    apt-get update
+
+    JITSI_ONION_HOSTNAME=$(add_onion_service jitsi 80 ${JITSI_ONION_PORT})
+
+    # videobridge
+    if [[ $ONION_ONLY == 'no' ]]; then
+        debconf-set-selections <<< "jitsi-videobridge jitsi-videobridge/jvb-hostname string ${JITSI_DOMAIN_NAME}"
+    else
+        debconf-set-selections <<< "jitsi-videobridge jitsi-videobridge/jvb-hostname string ${JITSI_ONION_HOSTNAME}"
+    fi
+    apt-get -yq install jitsi-videobridge
+    if [ ! -d /etc/jitsi ]; then
+        echo $'Videobridge package failed to install'
+        exit 63983
+    fi
+    firewall_add videobridge ${VIDEOBRIDGE_PORT}
+    firewall_add_range jitsi 10000 20000 udp
+
+    # meet
+    debconf-set-selections <<< "jitsi-meet jitsi-meet/cert-choice multiselect 1"
+    apt-get -yq install jitsi-meet jitsi-meet-prosody
+
+    jitsi_nginx_site=/etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+    echo 'server_names_hash_bucket_size 64;' > $jitsi_nginx_site
+    if [[ $ONION_ONLY == "no" ]]; then
+        echo '' >> $jitsi_nginx_site
+        echo 'server {' >> $jitsi_nginx_site
+        echo '    listen 80;' >> $jitsi_nginx_site
+        echo "    server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
+        echo '    return 301 https://$host$request_uri;' >> $jitsi_nginx_site
+        echo '}' >> $jitsi_nginx_site
+        echo 'server {' >> $jitsi_nginx_site
+        echo '    listen 443 ssl;' >> $jitsi_nginx_site
+        echo '    listen [::]:443 ssl;' >> $jitsi_nginx_site
+        echo "    server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;' >> $jitsi_nginx_site
+        echo '    ssl_prefer_server_ciphers on;' >> $jitsi_nginx_site
+        echo '    ssl_ciphers "EECDH+ECDSA+AESGCM:EECDH+aRSA+AESGCM:EECDH+ECDSA+SHA256:EECDH+aRSA+SHA256:EECDH+ECDSA+SHA384:EECDH+ECDSA+SHA256:EECDH+aRSA+SHA384:EDH+aRSA+AESGCM:EDH+aRSA+SHA256:EDH+aRSA:EECDH:!aNULL:!eNULL:!MEDIUM:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED";' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    add_header Strict-Transport-Security "max-age=31536000";' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo "    ssl_certificate /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt;" >> $jitsi_nginx_site
+        echo "    ssl_certificate_key /etc/ssl/private/${JITSI_DOMAIN_NAME}.key;" >> $jitsi_nginx_site
+        echo "    ssl_dhparam /etc/ssl/certs/${JITSI_DOMAIN_NAME}.dhparam;" >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    root /usr/share/jitsi-meet;' >> $jitsi_nginx_site
+        echo '    index index.html index.htm;' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    location /config.js {' >> $jitsi_nginx_site
+        echo "        alias /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js;" >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
+        echo '        rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    location / {' >> $jitsi_nginx_site
+        echo '        ssi on;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    # Backward compatibility' >> $jitsi_nginx_site
+        echo '    location ~ /external_api.* {' >> $jitsi_nginx_site
+        echo '        root /usr/share/jitsi-meet/libs;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    # Logs' >> $jitsi_nginx_site
+        echo '    access_log /dev/null;' >> $jitsi_nginx_site
+        echo '    error_log /dev/null;' >> $jitsi_nginx_site
+        echo '' >> $jitsi_nginx_site
+        echo '    # BOSH' >> $jitsi_nginx_site
+        echo '    location /http-bind {' >> $jitsi_nginx_site
+        echo '        proxy_pass      http://localhost:5280/http-bind;' >> $jitsi_nginx_site
+        echo '        proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
+        echo '        proxy_set_header Host $http_host;' >> $jitsi_nginx_site
+        echo '    }' >> $jitsi_nginx_site
+        echo '}' >> $jitsi_nginx_site
+    fi
+    echo '' >> $jitsi_nginx_site
+    echo 'server {' >> $jitsi_nginx_site
+    echo "    listen 127.0.0.1:$JITSI_ONION_PORT default_server;" >> $jitsi_nginx_site
+    if [[ $ONION_ONLY == 'no' ]]; then
+        echo "    server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
+    else
+        echo "    server_name ${JITSI_ONION_HOSTNAME};" >> $jitsi_nginx_site
+    fi
+    echo '' >> $jitsi_nginx_site
+    echo '    root /usr/share/jitsi-meet;' >> $jitsi_nginx_site
+    echo '    index index.html index.htm;' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '    location /config.js {' >> $jitsi_nginx_site
+    echo "        alias /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js;" >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '    location ~ ^/([a-zA-Z0-9=\?]+)$ {' >> $jitsi_nginx_site
+    echo '        rewrite ^/(.*)$ / break;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '    location / {' >> $jitsi_nginx_site
+    echo '        ssi off;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '    # Backward compatibility' >> $jitsi_nginx_site
+    echo '    location ~ /external_api.* {' >> $jitsi_nginx_site
+    echo '        root /usr/share/jitsi-meet/libs;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '    # Logs' >> $jitsi_nginx_site
+    echo '    access_log /dev/null;' >> $jitsi_nginx_site
+    echo '    error_log /dev/null;' >> $jitsi_nginx_site
+    echo '' >> $jitsi_nginx_site
+    echo '    # BOSH' >> $jitsi_nginx_site
+    echo '    location /http-bind {' >> $jitsi_nginx_site
+    echo '        proxy_pass      http://localhost:5280/http-bind;' >> $jitsi_nginx_site
+    echo '        proxy_set_header X-Forwarded-For $remote_addr;' >> $jitsi_nginx_site
+    echo '        proxy_set_header Host $http_host;' >> $jitsi_nginx_site
+    echo '    }' >> $jitsi_nginx_site
+    echo '}' >> $jitsi_nginx_site
+
+    sed -i "s|server_name ${JITSI_DOMAIN_NAME}.conf|server_name ${JITSI_DOMAIN_NAME}|g" $jitsi_nginx_site
+    sed -i "s|/var/www/${JITSI_DOMAIN_NAME}.conf/htdocs|/usr/share/jitsi-meet|g" $jitsi_nginx_site
+
+    if [ ! -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
+        function_check create_site_certificate
+        create_site_certificate ${JITSI_DOMAIN_NAME} 'yes'
+    fi
+
+    if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt ]; then
+        mv /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem
+    fi
+
+    # ensure that certs are available to prosody with correct permissions
+    cp /etc/ssl/certs/${JITSI_DOMAIN_NAME}.* /etc/prosody/certs
+    cp /etc/ssl/private/${JITSI_DOMAIN_NAME}.key /etc/prosody/certs
+    chown prosody:prosody /etc/prosody/certs/${JITSI_DOMAIN_NAME}.*
+
+    if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
+        sed -i "s|.crt|.pem|g" $jitsi_nginx_site
+        sed -i "s|.crt|.pem|g" /etc/prosody/conf.d/${JITSI_DOMAIN_NAME}.cfg.lua
+    fi
+
+    sed -i "s|key =.*|key = \"/etc/prosody/certs/${JITSI_DOMAIN_NAME}.key\"|g" /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
+    sed -i "s|certificate =.*|certificate = \"/etc/prosody/certs/${JITSI_DOMAIN_NAME}.pem\"|g" /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
+
+    sed -i "s|.conf.crt|.crt|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+    sed -i "s|.conf.pem|.pem|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+    sed -i "s|.conf.key|.key|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+    sed -i "s|.conf.dhparam|.dhparam|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+
+    sed -i "s|enableWelcomePage:.*|enableWelcomePage: false,|g" /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js
+    sed -i "s|disableStats:.*|disableStats: true,|g" /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js
+    sed -i "s|minHDHeight:.*|minHDHeight: 800,|g" /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js
+    sed -i "s|clientNode:.*|clientNode: 'https://${JITSI_DOMAIN_NAME}',|g" /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js
+
+    sed -i "s|navigator.mozGetUserMedia|navigator.mediaDevices.getUserMedia|g" /usr/share/jitsi-meet/libs/lib-jitsi-meet.min.js
+
+    function_check nginx_ensite
+    nginx_ensite ${JITSI_DOMAIN_NAME}.conf
+
+    set_completion_param "jitsi domain" "$JITSI_DOMAIN_NAME"
+
+    jitsi_disable_google_spyware
+
+    systemctl restart nginx
+    systemctl restart prosody
+
+    function_check add_ddns_domain
+    add_ddns_domain $JITSI_DOMAIN_NAME
+
+    APP_INSTALLED=1
+}

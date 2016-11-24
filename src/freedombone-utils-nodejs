@@ -1,0 +1,157 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# nodejs functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# For reasons unknown we initially have to upgrade to an intermediate version
+# before getting to the version we want
+
+VARIANTS='mesh'
+
+# change these versions at your peril. Things will often crash if you don't
+# have specifically the correct versions
+NODEJS_VERSION='6.9.0'
+NODEJS_N_VERSION='2.1.4'
+NPM_VERSION='4.0.2'
+
+# This file keeps track of the apps needing nodejs
+# so that it can be removed if tere are no apps which need it
+NODEJS_INSTALLED_APPS_FILE=$HOME/.nodejs-apps
+
+function mesh_install_nodejs {
+    chroot "${rootdir}" apt-get -yq install nodejs
+    chroot "${rootdir}" apt-get -yq install npm curl
+
+    if [ ! -f ${rootdir}/usr/bin/nodejs ]; then
+        echo $'nodejs was not installed'
+        exit 63962
+    fi
+
+    cat <<EOF > ${rootdir}/root/install-nodejs.sh
+#!/bin/bash
+PATH="/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/bin"
+NODE_PATH="/usr/lib/node_modules"
+cp /usr/bin/nodejs /usr/local/bin/node
+cp /usr/bin/nodejs /usr/bin/node
+/usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+npm install -g n@${NODEJS_N_VERSION} --save
+n ${NODEJS_VERSION}
+exit 0
+EOF
+    chroot "${rootdir}" chmod +x /root/install-nodejs.sh
+    chroot "${rootdir}" /root/install-nodejs.sh
+    if [ ! "$?" = "0" ]; then
+        chroot "${rootdir}" rm -f /root/install-nodejs.sh
+        exit 7632572
+    fi
+    chroot "${rootdir}" rm -f /root/install-nodejs.sh
+}
+
+function remove_nodejs {
+    if [ ! $1 ]; then
+        return
+    fi
+    if [ ! -f $NODEJS_INSTALLED_APPS_FILE ]; then
+        remove_app nodejs
+        return
+    fi
+    sed -i "/install_${1}/d" $NODEJS_INSTALLED_APPS_FILE
+    if ! grep "install_" $NODEJS_INSTALLED_APPS_FILE; then
+        apt-get -yq remove --purge nodejs
+
+        if [ -f /usr/bin/nodejs ]; then
+            rm /usr/bin/nodejs
+        fi
+        if [ -f /usr/local/bin/node ]; then
+            rm /usr/local/bin/node
+        fi
+        if [ -f /usr/bin/node ]; then
+            rm /usr/bin/node
+        fi
+        if [ -d /usr/lib/node_modules ]; then
+            rm -rf /usr/lib/node_modules
+        fi
+
+        remove_app nodejs
+
+        rm $NODEJS_INSTALLED_APPS_FILE
+
+        apt-get -yq autoremove
+    fi
+}
+
+function install_nodejs {
+    if [ $INSTALLING_MESH ]; then
+        mesh_install_nodejs
+        return
+    fi
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq install nodejs
+    apt-get -yq install npm curl
+
+    if [ ! -f /usr/bin/nodejs ]; then
+        echo $'nodejs was not installed'
+        exit 63962
+    fi
+
+    cat <<EOF > /root/install-nodejs.sh
+#!/bin/bash
+PATH="/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/bin"
+NODE_PATH="/usr/lib/node_modules"
+cp /usr/bin/nodejs /usr/local/bin/node
+cp /usr/bin/nodejs /usr/bin/node
+/usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
+npm install -g n@${NODEJS_N_VERSION} --save
+n ${NODEJS_VERSION}
+npm upgrade -g npm@${NPM_VERSION} --save
+npm install -g pug@2.0.0-beta6 --save
+npm install -g graceful-fs@4.1.10 --save
+npm install -g minimatch@3.0.3 --save
+exit 0
+EOF
+    chmod +x /root/install-nodejs.sh
+    /root/install-nodejs.sh
+    if [ ! "$?" = "0" ]; then
+        rm -f /root/install-nodejs.sh
+        exit 7632572
+    fi
+    rm -f /root/install-nodejs.sh
+
+    if [ $1 ]; then
+        if ! grep "install_${1}" $NODEJS_INSTALLED_APPS_FILE; then
+            echo "install_${1}" >> $NODEJS_INSTALLED_APPS_FILE
+        fi
+    fi
+
+    mark_completed $FUNCNAME
+}
+
+# NOTE: deliberately there is no "exit 0"

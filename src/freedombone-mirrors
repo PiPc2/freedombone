@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2015-2016 Bob Mottram <bob@robotics.uk.to>
+# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -34,20 +34,17 @@ export TEXTDOMAIN=${PROJECT_NAME}-mirrors
 export TEXTDOMAINDIR="/usr/share/locale"
 
 # Minimum number of characters in a password
-MINIMUM_PASSWORD_LENGTH=10
-if [ -f /usr/local/bin/${PROJECT_NAME} ]; then
-	MINIMUM_PASSWORD_LENGTH=$(cat /usr/local/bin/${PROJECT_NAME} | grep 'MINIMUM_PASSWORD_LENGTH=' | head -n 1 | awk -F '=' '{print $2}')
-else
-	if [ -f /usr/bin/${PROJECT_NAME} ]; then
-		MINIMUM_PASSWORD_LENGTH=$(cat /usr/bin/${PROJECT_NAME} | grep 'MINIMUM_PASSWORD_LENGTH=' | head -n 1 | awk -F '=' '{print $2}')
-	fi
-fi
+MINIMUM_PASSWORD_LENGTH=$(cat /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-passwords | grep 'MINIMUM_PASSWORD_LENGTH=' | head -n 1 | awk -F '=' '{print $2}')
 
-CONFIGURATION_FILE="/root/${PROJECT_NAME}.cfg"
+CONFIGURATION_FILE="$HOME/${PROJECT_NAME}.cfg"
+
+# used to mirror a single application
+SYNC_SINGLE_APP=
 
 # if this is blank then just use the default repos
 FRIENDS_MIRRORS_SERVER=
-REPOS=
+UTILS_REPOS=
+INSTALLED_APPS_REPOS=
 MY_MIRRORS_PASSWORD=
 FRIENDS_MIRRORS_PASSWORD=
 NEW_MIRRORS='no'
@@ -58,23 +55,20 @@ if [ ! -f $MAIN_COMMAND ]; then
     MAIN_COMMAND=/usr/bin/${PROJECT_NAME}
 fi
 
-REPOS=($(cat ${MAIN_COMMAND} | grep "_REPO=\"" | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+# local repos for utils
+UTILS_REPOS=($(cat ${MAIN_COMMAND} /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-* /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-* | grep "_REPO=\"" | grep -v "(cat " | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+    source $f
+done
 
 # obtain the mirrors password if it exists
-if [ -f $CONFIGURATION_FILE ]; then
-    if ! grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-        MY_MIRRORS_PASSWORD=$(grep "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if ! grep -q "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE; then
-        FRIENDS_MIRRORS_SERVER=$(grep "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if ! grep -q "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-        FRIENDS_MIRRORS_PASSWORD=$(grep "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-    if ! grep -q "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE; then
-        FRIENDS_MIRRORS_SSH_PORT=$(grep "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-    fi
-fi
+read_config_param MY_MIRRORS_PASSWORD
+read_config_param FRIENDS_MIRRORS_SERVER
+read_config_param FRIENDS_MIRRORS_PASSWORD
+read_config_param FRIENDS_MIRRORS_SSH_PORT
 
 function show_help {
     echo ''
@@ -97,16 +91,12 @@ function create_mirrors_user {
         return
     fi
 
-    create_password='no'
-    if [ ! "$MY_MIRRORS_PASSWORD" ]; then
-        create_password='yes'
-    fi
-    if [ ${#MY_MIRRORS_PASSWORD} -lt ${MINIMUM_PASSWORD_LENGTH} ]; then
-        echo $'Password is too short. Creating new one.'
-        create_password='yes'
+    create_password=1
+    if [ ${#MY_MIRRORS_PASSWORD} -ge ${MINIMUM_PASSWORD_LENGTH} ]; then
+        create_password=
     fi
 
-    if [[ $create_password == 'yes' ]]; then
+    if [ $create_password ]; then
         MY_MIRRORS_PASSWORD="$(openssl rand -base64 20 | cut -c1-18)"
     fi
 
@@ -116,13 +106,7 @@ function create_mirrors_user {
     rm -rf /home/mirrors/*
 
     # store the mirrors password
-    if [ -f $CONFIGURATION_FILE ]; then
-        if ! grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-            echo "MY_MIRRORS_PASSWORD=$MY_MIRRORS_PASSWORD" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|MY_MIRRORS_PASSWORD=.*|MY_MIRRORS_PASSWORD=${MY_MIRRORS_PASSWORD}|g" $CONFIGURATION_FILE
-        fi
-    fi
+    write_config_param "MY_MIRRORS_PASSWORD" "${MY_MIRRORS_PASSWORD}"
 }
 
 function enable_mirrors_via_onion {
@@ -137,6 +121,60 @@ function enable_mirrors_via_onion {
     fi
 }
 
+function update_installed_single_repo {
+    # only deal with a single app
+    filename=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${SYNC_SINGLE_APP}
+    if [ ! -f $filename ]; then
+        echo $"The app $SYNC_SINGLE_APP was not found"
+        exit 36822
+    fi
+    APP_REPOS=($(cat ${MAIN_COMMAND} $filename | grep "_REPO=\"" | grep -v "(cat " | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+    for line in "${APP_REPOS[@]}"
+    do
+        INSTALLED_APPS_REPOS+=("${line}")
+    done
+}
+
+function update_installed_apps_repos {
+    INSTALLED_APPS_REPOS=()
+
+    function_check app_is_installed
+
+    if [ $SYNC_SINGLE_APP ]; then
+        update_installed_single_repo
+        return
+    fi
+
+    # all apps currently installed
+    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+
+    # for all the app scripts
+    for filename in $FILES
+    do
+        app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+        if [[ "$(app_is_installed ${app_name})" == "1" ]]; then
+            APP_REPOS=($(cat ${MAIN_COMMAND} $filename | grep "_REPO=\"" | grep -v "(cat " | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
+            for line in "${APP_REPOS[@]}"
+            do
+                INSTALLED_APPS_REPOS+=("${line}")
+            done
+        fi
+    done
+}
+
+function update_repos_from_friend_base {
+    syncrepos=${1}
+    new_repos=()
+    for line in $syncrepos
+    do
+        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
+        mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
+        friends_repo_url="ssh://mirrors@${FRIENDS_MIRRORS_SERVER}:${FRIENDS_MIRRORS_SSH_PORT}/home/mirrors/${mirrors_name}"
+        new_line="${repo_name}=\"${friends_repo_url}\""
+        new_repos+=($new_line)
+    done
+}
+
 function update_repos_from_friend {
     if [ ! $FRIENDS_MIRRORS_SERVER ]; then
        return
@@ -145,21 +183,16 @@ function update_repos_from_friend {
         return
     fi
 
-    new_repos=()
-    for line in "${REPOS[@]}"
-    do
-        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
-        mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
-        #repo_url=$(echo "$line" | awk -F '=' '{print $2}'  | awk -F '"' '{print $2}')
-        friends_repo_url="ssh://mirrors@${FRIENDS_MIRRORS_SERVER}:${FRIENDS_MIRRORS_SSH_PORT}/home/mirrors/${mirrors_name}"
-        new_line="${repo_name}=\"${friends_repo_url}\""
-        new_repos+=($new_line)
-    done
-    REPOS=("${new_repos[@]}")
+    update_repos_from_friend_base "${UTILS_REPOS[@]}"
+    UTILS_REPOS=("${new_repos[@]}")
+
+    update_repos_from_friend_base "${INSTALLED_APPS_REPOS[@]}"
+    INSTALLED_APPS_REPOS=("${new_repos[@]}")
 }
 
-function sync_mirrors_repos {
-    for line in "${REPOS[@]}"
+function sync_mirrors_base {
+    syncrepos=${1}
+    for line in $syncrepos
     do
         repo_name=$(echo "$line" | awk -F '=' '{print $1}')
         repo_url=$(echo "$line" | awk -F '=' '{print $2}'  | awk -F '"' '{print $2}')
@@ -193,6 +226,13 @@ function sync_mirrors_repos {
     chown -R mirrors:mirrors /home/mirrors
 }
 
+function sync_mirrors_repos {
+    if [ ! $SYNC_SINGLE_APP ]; then
+        sync_mirrors_base "${UTILS_REPOS[@]}"
+    fi
+    sync_mirrors_base "${INSTALLED_APPS_REPOS[@]}"
+}
+
 while [[ $# > 1 ]]
 do
 key="$1"
@@ -209,24 +249,12 @@ case $key in
     -m|--mypass|--mypassword)
     shift
     MY_MIRRORS_PASSWORD="$1"
-    if [ -f $CONFIGURATION_FILE ]; then
-        if ! grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-            echo "MY_MIRRORS_PASSWORD=$MY_MIRRORS_PASSWORD" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|MY_MIRRORS_PASSWORD=.*|MY_MIRRORS_PASSWORD=${MY_MIRRORS_PASSWORD}|g" $CONFIGURATION_FILE
-        fi
-    fi
+    write_config_param "MY_MIRRORS_PASSWORD" "${MY_MIRRORS_PASSWORD}"
     ;;
     -p|--pass|--password)
     shift
     FRIENDS_MIRRORS_PASSWORD="$1"
-    if [ -f $CONFIGURATION_FILE ]; then
-        if ! grep -q "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-            echo "FRIENDS_MIRRORS_PASSWORD=$FRIENDS_MIRRORS_PASSWORD" >> $CONFIGURATION_FILE
-        else
-            sed -i "s|FRIENDS_MIRRORS_PASSWORD=.*|FRIENDS_MIRRORS_PASSWORD=${FRIENDS_MIRRORS_PASSWORD}|g" $CONFIGURATION_FILE
-        fi
-    fi
+    write_config_param "FRIENDS_MIRRORS_PASSWORD" "${FRIENDS_MIRRORS_PASSWORD}"
     ;;
     -n|--new)
     shift
@@ -235,6 +263,10 @@ case $key in
     --port)
     shift
     FRIENDS_MIRRORS_SSH_PORT=${1}
+    ;;
+    -a|--app)
+    shift
+    SYNC_SINGLE_APP="${1}"
     ;;
     *)
     # unknown option
@@ -245,6 +277,7 @@ done
 
 create_mirrors_user
 enable_mirrors_via_onion
+update_installed_apps_repos
 update_repos_from_friend
 sync_mirrors_repos
 

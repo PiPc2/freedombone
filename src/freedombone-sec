@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2015-2016 Bob Mottram <bob@robotics.uk.to>
+# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -33,8 +33,14 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-sec
 export TEXTDOMAINDIR="/usr/share/locale"
 
-CONFIGURATION_FILE=/root/${PROJECT_NAME}.cfg
+CONFIGURATION_FILE=$HOME/${PROJECT_NAME}.cfg
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
+
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+    source $f
+done
 
 SSL_PROTOCOLS=
 SSL_CIPHERS=
@@ -58,8 +64,6 @@ EXPORT_FILE=
 
 CURRENT_DIR=$(pwd)
 
-REGENERATE_SSH_HOST_KEYS="no"
-REGENERATE_DH_KEYS="no"
 DH_KEYLENGTH=2048
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
@@ -77,25 +81,6 @@ function get_ciphers_from_website {
         return
     fi
     SSL_CIPHERS=$(cat $WEBSITES_DIRECTORY/$1 | grep 'ssl_ciphers ' | awk -F "ssl_ciphers " '{print $2}' | awk -F "'" '{print $2}')
-}
-
-function get_website_settings {
-    if [ ! -d $WEBSITES_DIRECTORY ]; then
-        return
-    fi
-
-    cd $WEBSITES_DIRECTORY
-    for file in `dir -d *` ; do
-        get_protocols_from_website $file
-        if [ ${#SSL_PROTOCOLS} -gt $MINIMUM_LENGTH ]; then
-            get_ciphers_from_website $file
-            if [ ${#SSL_CIPHERS} -gt $MINIMUM_LENGTH ]; then
-                break
-            else
-                SSL_PROTOCOLS=""
-            fi
-        fi
-    done
 }
 
 function get_imap_settings {
@@ -123,19 +108,10 @@ function get_xmpp_settings {
 
 function get_ssh_settings {
     if [ -f $SSH_CONFIG ]; then
-        SSH_CIPHERS=$(cat $SSH_CONFIG | grep 'Ciphers ' | awk -F 'Ciphers ' '{print $2}')
-        SSH_MACS=$(cat $SSH_CONFIG | grep 'MACs ' | awk -F 'MACs ' '{print $2}')
-        SSH_KEX=$(cat $SSH_CONFIG | grep 'KexAlgorithms ' | awk -F 'KexAlgorithms ' '{print $2}')
         SSH_PASSWORDS=$(cat $SSH_CONFIG | grep 'PasswordAuthentication ' | awk -F 'PasswordAuthentication ' '{print $2}')
     fi
     if [ -f /etc/ssh/ssh_config ]; then
         SSH_HOST_KEY_ALGORITHMS=$(cat /etc/ssh/ssh_config | grep 'HostKeyAlgorithms ' | awk -F 'HostKeyAlgorithms ' '{print $2}')
-        if [ ! $SSH_CIPHERS ]; then
-            SSH_CIPHERS=$(cat /etc/ssh/ssh_config | grep 'Ciphers ' | awk -F 'Ciphers ' '{print $2}')
-        fi
-        if [ ! $SSH_MACS ]; then
-            SSH_MACS=$(cat /etc/ssh/ssh_config | grep 'MACs ' | awk -F 'MACs ' '{print $2}')
-        fi
     fi
 }
 
@@ -199,12 +175,13 @@ function change_ssh_settings {
             return
         fi
         if [ ! $SSH_PASSWORDS ]; then
-            return
+            SSH_PASSWORDS='yes'
         fi
 
         sed -i "s|Ciphers .*|Ciphers $SSH_CIPHERS|g" $SSH_CONFIG
         sed -i "s|MACs .*|MACs $SSH_MACS|g" $SSH_CONFIG
         sed -i "s|KexAlgorithms .*|KexAlgorithms $SSH_KEX|g" $SSH_CONFIG
+        sed -i "s|#PasswordAuthentication .*|PasswordAuthentication $SSH_PASSWORDS|g" $SSH_CONFIG
         sed -i "s|PasswordAuthentication .*|PasswordAuthentication $SSH_PASSWORDS|g" $SSH_CONFIG
         systemctl restart ssh
         echo $'ssh server security settings changed'
@@ -225,6 +202,18 @@ function change_xmpp_settings {
     sed -i "s|curve =.*|curve = \"$XMPP_ECC_CURVE\";|g" $XMPP_CONFIG
     systemctl restart prosody
     echo $'xmpp security settings changed'
+}
+
+function allow_ssh_passwords {
+    dialog --title $"SSH Passwords" \
+           --backtitle $"Freedombone Security Configuration" \
+           --yesno $"\nAllow SSH login using passwords?" 7 60
+    sel=$?
+    case $sel in
+        0) SSH_PASSWORDS="yes";;
+        1) SSH_PASSWORDS="no";;
+        255) exit 0;;
+    esac
 }
 
 function interactive_setup {
@@ -281,23 +270,6 @@ function interactive_setup {
         esac
     fi
 
-    if [[ $SSH_PASSWORDS == "yes" ]]; then
-        dialog --title $"SSH Passwords" \
-               --backtitle $"Freedombone Security Configuration" \
-               --yesno $"\nAllow SSH login using passwords?" 7 60
-    else
-        dialog --title $"SSH Passwords" \
-               --backtitle $"Freedombone Security Configuration" \
-               --defaultno \
-               --yesno $"\nAllow SSH login using passwords?" 7 60
-    fi
-    sel=$?
-    case $sel in
-        0) SSH_PASSWORDS="yes";;
-        1) SSH_PASSWORDS="no";;
-        255) exit 0;;
-    esac
-
     if [ $XMPP_CIPHERS ]; then
         data=$(tempfile 2>/dev/null)
         trap "rm -f $data" 0 1 2 5 15
@@ -336,7 +308,7 @@ function send_monkeysphere_server_keys_to_users {
     monkeysphere_server_keys=$(monkeysphere-host show-key | grep $"OpenPGP fingerprint" | awk -F ' ' '{print $3}')
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
             if [ ! -d /home/$USERNAME/.monkeysphere ]; then
                 mkdir /home/$USERNAME/.monkeysphere
             fi
@@ -347,57 +319,51 @@ function send_monkeysphere_server_keys_to_users {
 }
 
 function regenerate_ssh_host_keys {
-    if [[ $REGENERATE_SSH_HOST_KEYS == "yes" ]]; then
-        rm -f /etc/ssh/ssh_host_*
-        dpkg-reconfigure openssh-server
-        echo $'ssh host keys regenerated'
-        # remove small moduli
-        awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
-        mv ~/moduli /etc/ssh/moduli
-        echo $'ssh small moduli removed'
-        # update monkeysphere
-        DEFAULT_DOMAIN_NAME=
-        if grep -q "DEFAULT_DOMAIN_NAME" $CONFIGURATION_FILE; then
-            DEFAULT_DOMAIN_NAME=$(grep "DEFAULT_DOMAIN_NAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$DEFAULT_DOMAIN_NAME
-        SSH_ONION_HOSTNAME=$(cat ${COMPLETION_FILE} | grep 'ssh onion domain' | awk -F ':' '{print $2}')
-        monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$SSH_ONION_HOSTNAME
-        monkeysphere-host publish-key
-        send_monkeysphere_server_keys_to_users
-        echo $'updated monkeysphere ssh host key'
-        systemctl restart ssh
-    fi
+    rm -f /etc/ssh/ssh_host_*
+    dpkg-reconfigure openssh-server
+    echo $'ssh host keys regenerated'
+    # remove small moduli
+    awk '$5 > 2000' /etc/ssh/moduli > ~/moduli
+    mv ~/moduli /etc/ssh/moduli
+    echo $'ssh small moduli removed'
+    # update monkeysphere
+    DEFAULT_DOMAIN_NAME=
+    read_config_param "DEFAULT_DOMAIN_NAME"
+    monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$DEFAULT_DOMAIN_NAME
+    SSH_ONION_HOSTNAME=$(cat ${COMPLETION_FILE} | grep 'ssh onion domain' | awk -F ':' '{print $2}')
+    monkeysphere-host import-key /etc/ssh/ssh_host_rsa_key ssh://$SSH_ONION_HOSTNAME
+    monkeysphere-host publish-key
+    send_monkeysphere_server_keys_to_users
+    echo $'updated monkeysphere ssh host key'
+    systemctl restart ssh
 }
 
 function regenerate_dh_keys {
-    if [[ $REGENERATE_DH_KEYS == "yes" ]]; then
-        if [ ! -d /etc/ssl/mycerts ]; then
-            echo $'No dhparam certificates were found'
-            return
-        fi
-
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
-        dialog --backtitle "Freedombone Security Configuration" \
-               --title "Diffie-Hellman key length" \
-               --radiolist "The smaller length is better suited to low power embedded systems:" 12 40 3 \
-               1 "2048 bits" off \
-               2 "3072 bits" on \
-               3 "4096 bits" off 2> $data
-        sel=$?
-        case $sel in
-            1) exit 1;;
-            255) exit 1;;
-        esac
-        case $(cat $data) in
-            1) DH_KEYLENGTH=2048;;
-            2) DH_KEYLENGTH=3072;;
-            3) DH_KEYLENGTH=4096;;
-        esac
-
-        ${PROJECT_NAME}-dhparam --recalc yes -l ${DH_KEYLENGTH}
+    if [ ! -d /etc/ssl/mycerts ]; then
+        echo $'No dhparam certificates were found'
+        return
     fi
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle "Freedombone Security Configuration" \
+           --title "Diffie-Hellman key length" \
+           --radiolist "The smaller length is better suited to low power embedded systems:" 12 40 3 \
+           1 "2048 bits" off \
+           2 "3072 bits" on \
+           3 "4096 bits" off 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    case $(cat $data) in
+        1) DH_KEYLENGTH=2048;;
+        2) DH_KEYLENGTH=3072;;
+        3) DH_KEYLENGTH=4096;;
+    esac
+
+    ${PROJECT_NAME}-dhparam --recalc yes -l ${DH_KEYLENGTH}
 }
 
 function renew_startssl {
@@ -513,9 +479,23 @@ function create_letsencrypt {
     fi
 
     if [ ! -d /var/www/${new_domain} ]; then
-        dialog --title $"Create a new Let's Encrypt certificate" \
-               --msgbox $'Domain not found within /var/www' 6 40
-        return
+        domain_found=
+        if [ -f /etc/nginx/sites-available/radicale ]; then
+            if grep "${new_domain}" /etc/nginx/sites-available/radicale; then
+                domain_found=1
+            fi
+        fi
+        if [ -f /etc/nginx/sites-available/${new_domain} ]; then
+            domain_found=1
+        fi
+        if [[ "${new_domain}" == "jitsi"* || "${new_domain}" == "meet"* ]]; then
+            domain_found=1
+        fi
+        if [ ! $domain_found ]; then
+            dialog --title $"Create a new Let's Encrypt certificate" \
+                   --msgbox $'Domain not found within /var/www' 6 40
+            return
+        fi
     fi
 
     ${PROJECT_NAME}-addcert -e $new_domain -s $LETSENCRYPT_SERVER --dhkey $DH_KEYLENGTH
@@ -524,47 +504,27 @@ function create_letsencrypt {
 }
 
 function update_ciphersuite {
-    project_filename=/usr/local/bin/${PROJECT_NAME}
-    if [ ! -f $project_filename ]; then
-        project_filename=/usr/bin/${PROJECT_NAME}
-    fi
-
-    RECOMMENDED_SSL_CIPHERS=$(cat $project_filename | grep 'SSL_CIPHERS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
-    if [ ! "$RECOMMENDED_SSL_CIPHERS" ]; then
-        return
-    fi
+    RECOMMENDED_SSL_CIPHERS="$SSL_CIPHERS"
     if [ ${#RECOMMENDED_SSL_CIPHERS} -lt 5 ]; then
         return
     fi
 
-    RECOMMENDED_SSL_PROTOCOLS=$(cat $project_filename | grep 'SSL_PROTOCOLS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
-    if [ ! "$RECOMMENDED_SSL_PROTOCOLS" ]; then
-        return
-    fi
+    RECOMMENDED_SSL_PROTOCOLS="$SSL_PROTOCOLS"
     if [ ${#RECOMMENDED_SSL_PROTOCOLS} -lt 5 ]; then
         return
     fi
 
-    RECOMMENDED_SSH_CIPHERS=$(cat $project_filename | grep 'SSH_CIPHERS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
-    if [ ! "$RECOMMENDED_SSH_CIPHERS" ]; then
-        return
-    fi
+    RECOMMENDED_SSH_CIPHERS="$SSH_CIPHERS"
     if [ ${#RECOMMENDED_SSH_CIPHERS} -lt 5 ]; then
         return
     fi
 
-    RECOMMENDED_SSH_MACS=$(cat $project_filename | grep 'SSH_MACS=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
-    if [ ! "$RECOMMENDED_SSH_MACS" ]; then
-        return
-    fi
+    RECOMMENDED_SSH_MACS="$SSH_MACS"
     if [ ${#RECOMMENDED_SSH_MACS} -lt 5 ]; then
         return
     fi
 
-    RECOMMENDED_SSH_KEX=$(cat $project_filename | grep 'SSH_KEX=' | head -n 1 | awk -F '=' '{print $2}' | awk -F '"' '{print $2}')
-    if [ ! "$RECOMMENDED_SSH_KEX" ]; then
-        return
-    fi
+    RECOMMENDED_SSH_KEX="$SSH_KEX"
     if [ ${#RECOMMENDED_SSH_KEX} -lt 5 ]; then
         return
     fi
@@ -575,11 +535,17 @@ function update_ciphersuite {
         sed -i "s|ssl_ciphers .*|ssl_ciphers '$RECOMMENDED_SSL_CIPHERS';|g" $WEBSITES_DIRECTORY/$file
     done
     systemctl restart nginx
+    write_config_param "SSL_PROTOCOLS" "$RECOMMENDED_SSL_PROTOCOLS"
+    write_config_param "SSL_CIPHERS" "$RECOMMENDED_SSL_CIPHERS"
 
     sed -i "s|Ciphers .*|Ciphers $RECOMMENDED_SSH_CIPHERS|g" $SSH_CONFIG
     sed -i "s|MACs .*|MACs $RECOMMENDED_SSH_MACS|g" $SSH_CONFIG
     sed -i "s|KexAlgorithms .*|KexAlgorithms $RECOMMENDED_SSH_KEX|g" $SSH_CONFIG
     systemctl restart ssh
+
+    write_config_param "SSH_CIPHERS" "$RECOMMENDED_SSH_CIPHERS"
+    write_config_param "SSH_MACS" "$RECOMMENDED_SSH_MACS"
+    write_config_param "SSH_KEX" "$RECOMMENDED_SSH_KEX"
 
     dialog --title $"Update ciphersuite" \
            --msgbox $"The ciphersuite has been updated to recommended versions" 6 40
@@ -611,9 +577,7 @@ function enable_monkeysphere {
     esac
 
     if [ $monkey ]; then
-        if grep -q "MY_USERNAME" $CONFIGURATION_FILE; then
-            MY_USERNAME=$(grep "MY_USERNAME" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
+        read_config_param "MY_USERNAME"
 
         if [ ! -f /home/$MY_USERNAME/.monkeysphere/authorized_user_ids ]; then
             dialog --title $"GPG based authentication" \
@@ -698,54 +662,147 @@ function register_website_interactive {
     esac
 }
 
-function housekeeping {
-    cmd=(dialog --separate-output \
-                --backtitle "Freedombone Security Configuration" \
-                --title "Housekeeping options" \
-                --checklist "If you don't need to do any of these things then just press Enter:" 17 76 17)
-    options=(1 "Regenerate ssh host keys" off
-             2 "Regenerate Diffie-Hellman keys" off
-             3 "Update cipersuite" off
-             4 "Create a new Let's Encrypt certificate" off
-             5 "Renew Let's Encrypt certificate" off
-             6 "Enable GPG based authentication (monkeysphere)" off
-             7 "Register a website with monkeysphere" off
-             8 "Pin all TLS certificates" off
-             9 "Go Back/Exit" on)
-    choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
+function pin_all_tls_certs {
+    ${PROJECT_NAME}-pin-cert all
+}
+
+function remove_pinning {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Remove pinning for a domain" \
+           --backtitle $"Freedombone Security Settings" \
+           --inputbox $"Enter the website domain name (without https://)" 8 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            domain=$(<$data)
+            ${PROJECT_NAME}-pin-cert "$domain" remove
+            if [ ! "$?" = "0" ]; then
+                dialog --title $"Removed pinning from $domain" \
+                       --msgbox "$?" 6 40
+            fi
+            ;;
+    esac
+}
+
+function store_passwords {
+    dialog --title $"Store Passwords" \
+           --backtitle $"Freedombone Security Configuration" \
+           --yesno $"\nDo you wish to store passwords on the system? Stored passwords are convenient but carry some additional security risk." 10 60
+    sel=$?
+    case $sel in
+        0)
+            if [ -f /root/.nostore ]; then
+                read_config_param "MY_USERNAME"
+                if [ ! -f /home/$MY_USERNAME/.ssh/authorized_keys ]; then
+                    dialog --title $"Store Passwords" \
+                           --msgbox $"\nYou should first enable key based ssh login to improve security" 8 60
+                    return
+                fi
+                if [[ $SSH_PASSWORDS == 'yes' ]]; then
+                    dialog --title $"Store Passwords" \
+                           --msgbox $"\nYou should disable ssh passwords to improve security" 8 60
+                    return
+                fi
+                ${PROJECT_NAME}-pass --enable yes
+                dialog --title $"Store Passwords" \
+                       --msgbox $"\nUser passwords will now be stored on the system" 8 60
+            fi
+            return
+            ;;
+        1)
+            ${PROJECT_NAME}-pass --clear yes
+            dialog --title $"Passwords were removed and will not be stored" \
+                   --msgbox $"\nFor the best security you should now manually change passwords via web interfaces so that there is no possibility of them being recovered from the disk" 9 60
+            return
+            ;;
+        255) return;;
+    esac
+}
+
+function menu_security_settings {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Security Settings" \
+           --radiolist $"Choose an operation:" 18 76 18 \
+           1 $"Show ssh host public key" off \
+           2 $"Password storage" off \
+           3 $"Regenerate ssh host keys" off \
+           4 $"Regenerate Diffie-Hellman keys" off \
+           5 $"Update cipersuite" off \
+           6 $"Create a new Let's Encrypt certificate" off \
+           7 $"Renew Let's Encrypt certificate" off \
+           8 $"Enable GPG based authentication (monkeysphere)" off \
+           9 $"Register a website with monkeysphere" off \
+           10 $"Allow ssh login with passwords" off \
+           11 $"Go Back/Exit" on 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+
     clear
-    for choice in $choices
-    do
-        case $choice in
-            1)
-                REGENERATE_SSH_HOST_KEYS="yes"
-                ;;
-            2)
-                REGENERATE_DH_KEYS="yes"
-                ;;
-            3)
-                update_ciphersuite
-                ;;
-            4)
-                create_letsencrypt
-                ;;
-            5)
-                renew_letsencrypt
-                ;;
-            6)
-                enable_monkeysphere
-                ;;
-            7)
-                register_website
-                ;;
-            8)
-                ${PROJECT_NAME}-pin-cert all
-                ;;
-            9)
-                exit 0
-                ;;
-        esac
-    done
+
+    read_config_param SSL_CIPHERS
+    read_config_param SSL_PROTOCOLS
+    read_config_param SSH_CIPHERS
+    read_config_param SSH_MACS
+    read_config_param SSH_KEX
+
+    get_imap_settings
+    get_ssh_settings
+    get_xmpp_settings
+    import_settings
+    export_settings
+
+    case $(cat $data) in
+        1)
+            dialog --title $"SSH host public keys" \
+                   --msgbox "\n$(get_ssh_server_key)" 12 60
+            exit 0
+            ;;
+        2)
+            store_passwords
+            exit 0
+            ;;
+        3)
+            regenerate_ssh_host_keys
+            ;;
+        4)
+            regenerate_dh_keys
+            ;;
+        5)
+            interactive_setup
+            update_ciphersuite
+            ;;
+        6)
+            create_letsencrypt
+            ;;
+        7)
+            renew_letsencrypt
+            ;;
+        8)
+            enable_monkeysphere
+            ;;
+        9)
+            register_website
+            ;;
+        10)
+            allow_ssh_passwords
+            change_ssh_settings
+            exit 0
+            ;;
+        11)
+            exit 0
+            ;;
+    esac
+
+    change_website_settings
+    change_imap_settings
+    change_ssh_settings
+    change_xmpp_settings
 }
 
 function import_settings {
@@ -925,7 +982,7 @@ function export_settings {
 function refresh_gpg_keys {
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
             su -c 'gpg --refresh-keys' - $USERNAME
         fi
     done
@@ -959,21 +1016,21 @@ function monkeysphere_sign_server_keys {
     exit 0
 }
 
-function blog_hash {
-    # produces a hash corresponding to a blog password
+function htmly_hash {
+    # produces a hash corresponding to a htmly password
     pass="$1"
-    BLOGHASH_FILENAME=/usr/bin/bloghash
+    HTMLYHASH_FILENAME=/usr/bin/htmlyhash
 
-    echo '<?php' > $BLOGHASH_FILENAME
-    echo 'parse_str(implode("&", array_slice($argv, 1)), $_GET);' >> $BLOGHASH_FILENAME
-    echo '$password = $_GET["password"];' >> $BLOGHASH_FILENAME
-    echo '$hash = password_hash($password, PASSWORD_BCRYPT);' >> $BLOGHASH_FILENAME
-    echo 'if (password_verify($password, $hash)) {' >> $BLOGHASH_FILENAME
-    echo '  echo $hash;' >> $BLOGHASH_FILENAME
-    echo '}' >> $BLOGHASH_FILENAME
-    echo '?>' >> $BLOGHASH_FILENAME
+    echo '<?php' > $HTMLYHASH_FILENAME
+    echo 'parse_str(implode("&", array_slice($argv, 1)), $_GET);' >> $HTMLYHASH_FILENAME
+    echo '$password = $_GET["password"];' >> $HTMLYHASH_FILENAME
+    echo '$hash = password_hash($password, PASSWORD_BCRYPT);' >> $HTMLYHASH_FILENAME
+    echo 'if (password_verify($password, $hash)) {' >> $HTMLYHASH_FILENAME
+    echo '  echo $hash;' >> $HTMLYHASH_FILENAME
+    echo '}' >> $HTMLYHASH_FILENAME
+    echo '?>' >> $HTMLYHASH_FILENAME
 
-    php $BLOGHASH_FILENAME password="$pass"
+    php $HTMLYHASH_FILENAME password="$pass"
 }
 
 function show_help {
@@ -983,13 +1040,13 @@ function show_help {
     echo $'Alters the security settings'
     echo ''
     echo ''
-    echo $'  -h --help                Show help'
-    echo $'  -e --export              Export security settings to a file'
-    echo $'  -i --import              Import security settings from a file'
-    echo $'  -r --refresh             Refresh GPG keys for all users'
-    echo $'  -s --sign                Sign monkeysphere server keys'
-    echo $'     --register [domain]   Register a https domain with monkeysphere'
-    echo $'  -b --bloghash [password] Returns the hash of a password for the blog'
+    echo $'  -h --help                 Show help'
+    echo $'  -e --export               Export security settings to a file'
+    echo $'  -i --import               Import security settings from a file'
+    echo $'  -r --refresh              Refresh GPG keys for all users'
+    echo $'  -s --sign                 Sign monkeysphere server keys'
+    echo $'     --register [domain]    Register a https domain with monkeysphere'
+    echo $'  -b --htmlyhash [password] Returns the hash of a password for a htmly blog'
     echo ''
     exit 0
 }
@@ -1029,10 +1086,10 @@ do
             shift
             monkeysphere_sign_server_keys
             ;;
-        # get a hash of the given blog password
-        -b|--bloghash)
+        # get a hash of the given htmly password
+        -b|--htmlyhash)
             shift
-            blog_hash "$1"
+            htmly_hash "$1"
             exit 0
             ;;
         *)
@@ -1042,18 +1099,6 @@ do
     shift
 done
 
-housekeeping
-get_website_settings
-get_imap_settings
-get_ssh_settings
-get_xmpp_settings
-import_settings
-export_settings
-interactive_setup
-change_website_settings
-change_imap_settings
-change_ssh_settings
-change_xmpp_settings
-regenerate_ssh_host_keys
-regenerate_dh_keys
+menu_security_settings
+
 exit 0

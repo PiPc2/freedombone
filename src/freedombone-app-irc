@@ -1,0 +1,672 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# IRC server application
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim chat'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+IRC_BOUNCER_PORT=6697
+IRC_ONION_PORT=8098
+IRC_PORT=6698
+
+# An optional password to log into IRC. This applies to all users
+IRC_PASSWORD=
+
+# Number of entries for the bouncer to buffer
+IRC_BUFFER_LENGTH=300
+
+irc_variables=(MY_USERNAME
+               MY_NAME
+               IRC_PORT
+               IRC_BOUNCER_PORT
+               IRC_ONION_HOSTNAME
+               IRC_OPERATOR_PASSWORD
+               DEFAULT_DOMAIN_NAME
+               INSTALLED_WITHIN_DOCKER
+               IRC_BUFFER_LENGTH
+               ONION_ONLY)
+
+function irc_get_global_password {
+    echo $(cat /etc/ngircd/ngircd.conf | grep "Password =" | head -n 1 | awk -F '=' '{print $2}')
+}
+
+function start_irc_bouncer {
+    update_default_domain
+    if [ ! -f /home/znc/.znc/znc.pem ]; then
+        # no certificate exists
+        su -c 'znc -p' - znc
+    else
+        # an existing certificate is being used
+        su -c 'znc' - znc
+    fi
+}
+
+function stop_irc_bouncer {
+    pkill znc
+}
+
+function create_irssi_config {
+    new_username="$1"
+
+    read_config_param IRC_BOUNCER_PORT
+    read_config_param IRC_ONION_PORT
+    IRC_PASSWORD=$(irc_get_global_password)
+
+    new_name="$2"
+    if [ ${#new_name} -eq 0 ]; then
+        new_name="$new_username"
+    fi
+
+    echo 'servers = (' > /home/${new_username}/.irssi/config
+    echo '  {' >> /home/${new_username}/.irssi/config
+    echo '    address = "chat.freenode.net";' >> /home/${new_username}/.irssi/config
+    echo '    chatnet = "Freenode";' >> /home/${new_username}/.irssi/config
+    echo '    port = "6667";' >> /home/${new_username}/.irssi/config
+    echo '    autoconnect = "no";' >> /home/${new_username}/.irssi/config
+    echo '  },' >> /home/${new_username}/.irssi/config
+    echo '  {' >> /home/${new_username}/.irssi/config
+    echo '    address = "irc.oftc.net";' >> /home/${new_username}/.irssi/config
+    echo '    chatnet = "OFTC";' >> /home/${new_username}/.irssi/config
+    echo '    port = "6667";' >> /home/${new_username}/.irssi/config
+    echo '    autoconnect = "no";' >> /home/${new_username}/.irssi/config
+    echo '  },' >> /home/${new_username}/.irssi/config
+    echo '  {' >> /home/${new_username}/.irssi/config
+    echo "    address = \"127.0.0.1\";" >> /home/${new_username}/.irssi/config
+    echo '    ssl_verify = "no";' >> /home/${new_username}/.irssi/config
+    if [[ ${ONION_ONLY} == 'no' ]]; then
+        echo '    use_ssl = "yes";' >> /home/${new_username}/.irssi/config
+        echo "    port = \"${IRC_BOUNCER_PORT}\";" >> /home/${new_username}/.irssi/config
+    else
+        echo '    use_ssl = "no";' >> /home/${new_username}/.irssi/config
+        IRC_ONION_HOSTNAME=$(cat ${COMPLETION_FILE} | grep "irc onion domain" | head -n 1 | awk -F ':' '{print $2}')
+        echo "    port = \"${IRC_ONION_PORT}\";" >> /home/${new_username}/.irssi/config
+    fi
+    echo '    chatnet = "Freedombone";' >> /home/${new_username}/.irssi/config
+    echo '    autoconnect = "yes";' >> /home/${new_username}/.irssi/config
+    if [ ${IRC_PASSWORD} ]; then
+        echo "    password = \"${IRC_PASSWORD}\";" >> /home/${new_username}/.irssi/config
+    fi
+    echo '  }' >> /home/${new_username}/.irssi/config
+    echo ');' >> /home/${new_username}/.irssi/config
+    echo '' >> /home/${new_username}/.irssi/config
+    echo 'chatnets = {' >> /home/${new_username}/.irssi/config
+    echo '  Freedombone = {' >> /home/${new_username}/.irssi/config
+    echo '    type = "IRC";' >> /home/${new_username}/.irssi/config
+    echo '    max_kicks = "1";' >> /home/${new_username}/.irssi/config
+    echo '    max_msgs = "4";' >> /home/${new_username}/.irssi/config
+    echo '    max_whois = "1";' >> /home/${new_username}/.irssi/config
+    echo '  };' >> /home/${new_username}/.irssi/config
+    echo '  Freenode = {' >> /home/${new_username}/.irssi/config
+    echo '    type = "IRC";' >> /home/${new_username}/.irssi/config
+    echo '    max_kicks = "1";' >> /home/${new_username}/.irssi/config
+    echo '    max_msgs = "4";' >> /home/${new_username}/.irssi/config
+    echo '    max_whois = "1";' >> /home/${new_username}/.irssi/config
+    echo '  };' >> /home/${new_username}/.irssi/config
+    echo '  OFTC = {' >> /home/${new_username}/.irssi/config
+    echo '    type = "IRC";' >> /home/${new_username}/.irssi/config
+    echo '    max_kicks = "1";' >> /home/${new_username}/.irssi/config
+    echo '    max_msgs = "1";' >> /home/${new_username}/.irssi/config
+    echo '    max_whois = "1";' >> /home/${new_username}/.irssi/config
+    echo '  };' >> /home/${new_username}/.irssi/config
+    echo '};' >> /home/${new_username}/.irssi/config
+    echo '' >> /home/${new_username}/.irssi/config
+    echo 'channels = (' >> /home/${new_username}/.irssi/config
+    echo '  { name = "#freedombone"; chatnet = "Freedombone"; autojoin = "Yes"; },' >> /home/${new_username}/.irssi/config
+    echo ');' >> /home/${new_username}/.irssi/config
+    echo '' >> /home/${new_username}/.irssi/config
+    echo 'settings = {' >> /home/${new_username}/.irssi/config
+    echo "  core = { real_name = \"$new_name\"; user_name = \"$new_username\"; nick = \"$new_username\"; };" >> /home/${new_username}/.irssi/config
+    echo '  "fe-text" = { actlist_sort = "refnum"; };' >> /home/${new_username}/.irssi/config
+    echo '};' >> /home/${new_username}/.irssi/config
+    echo 'ignores = ( { level = "CTCPS"; } );' >> /home/${new_username}/.irssi/config
+
+    chown -R ${new_username}:${new_username} /home/${new_username}/.irssi
+}
+
+function remove_user_irc_bouncer {
+    remove_username="$1"
+
+    if [ -f /home/znc/.znc/configs/znc.conf ]; then
+        stop_irc_bouncer
+        sed -i "/<User ${remove_username}>/,/</User>/d" /home/znc/.znc/configs/znc.conf
+        start_irc_bouncer
+    fi
+}
+
+function remove_user_irc {
+    remove_username="$1"
+
+    ${PROJECT_NAME}-pass -u $remove_username --rmapp irc
+
+    remove_user_irc_bouncer ${remove_username}
+    if [ -d /home/${remove_username}/.irssi ]; then
+        rm -rf /home/${remove_username}/.irssi
+    fi
+    if [ -d /home/${remove_username}/irclogs ]; then
+        rm -rf /home/${remove_username}/irclogs
+    fi
+}
+
+function irc_set_global_password_base {
+    NEW_IRC_PASSWORD="$1"
+    EXISTING_IRC_PASSWORD=$(irc_get_global_password)
+    sed -i "0,/RE/s/Password =.*/Password =$NEW_IRC_PASSWORD/" /etc/ngircd/ngircd.conf
+
+    # replace the password for all users
+    for d in /home/*/ ; do
+        IRC_USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$IRC_USERNAME") == "1" ]]; then
+            if [ -f /home/${IRC_USERNAME}/.irssi/config ]; then
+                sed -i "s|$EXISTING_IRC_PASSWORD|$NEW_IRC_PASSWORD|g" /home/${IRC_USERNAME}/.irssi/config
+                chown -R ${IRC_USERNAME}:${IRC_USERNAME} /home/${IRC_USERNAME}/.irssi
+            fi
+        fi
+    done
+
+    read_config_param DEFAULT_DOMAIN_NAME
+    read_config_param IRC_PORT
+    read_config_param MY_USERNAME
+
+    stop_irc_bouncer
+    sleep 2
+
+    # change the hashes. There are multiple users, but since we're using a global
+    # password this doesn't matter
+    ZNC_SALT="$(dd if=/dev/urandom bs=16c count=1 | md5sum | awk -F ' ' '{print $1}' | cut -c1-20)"
+    new_user_hash=$(echo -n "${NEW_IRC_PASSWORD}${ZNC_SALT}" | sha256sum | awk -F ' ' '{print $1}')
+    sed -i "s|Hash = .*|Hash = ${new_user_hash}|g" /home/znc/.znc/configs/znc.conf
+    sed -i "s|Salt = .*|Salt = ${ZNC_SALT}|g" /home/znc/.znc/configs/znc.conf
+
+    # change the server password
+    sed -i "s|Server     = 127.0.0.1.*|Server     = 127.0.0.1 ${IRC_PORT} ${NEW_IRC_PASSWORD}|g" /home/znc/.znc/configs/znc.conf
+
+    # Update the password
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a irc -p "$NEW_IRC_PASSWORD"
+
+    # matrix bridge to irc
+    if [ -f $INSTALL_DIR/matrix_irc_bridge/config.yaml ]; then
+        sed -i "s|password: .*|password: \"$NEW_IRC_PASSWORD\"|g" $INSTALL_DIR/matrix_irc_bridge/config.yaml
+        systemctl restart matrix_irc_bridge
+    fi
+
+    write_config_param "IRC_PASSWORD" "$NEW_IRC_PASSWORD"
+
+    # restart the daemon for the new password to take effect
+    systemctl restart ngircd
+    start_irc_bouncer
+}
+
+function change_password_irc {
+    new_global_password="$2"
+
+    set_password_for_all_users irc "$new_global_password"
+    irc_set_global_password_base "$new_global_password"
+}
+
+function add_user_irc_bouncer {
+    new_username="$1"
+    new_user_password=$(irc_get_global_password)
+    IRC_PASSWORD="$new_user_password"
+    is_admin='true'
+    if [ ! $3 ]; then
+        is_admin='false'
+    fi
+
+    if [[ $(is_valid_user "$new_username") == "0" ]]; then
+        return
+    fi
+
+    read_config_param IRC_PORT
+    read_config_param DEFAULT_DOMAIN_NAME
+
+    ${PROJECT_NAME}-pass -u $new_username -a irc -p "$new_user_password"
+
+    stop_irc_bouncer
+
+    ZNC_SALT="$(dd if=/dev/urandom bs=16c count=1 | md5sum | awk -F ' ' '{print $1}' | cut -c1-20)"
+    new_user_hash=$(echo -n "${new_user_password}${ZNC_SALT}" | sha256sum | awk -F ' ' '{print $1}')
+
+    if grep -q "<User ${new_username}>" /home/znc/.znc/configs/znc.conf; then
+        # user already exists
+        sed -i "s|Hash = .*|Hash = ${new_user_hash}|g" /home/znc/.znc/configs/znc.conf
+        sed -i "s|Salt = .*|Salt = ${ZNC_SALT}|g" /home/znc/.znc/configs/znc.conf
+        return
+    fi
+
+    echo "<User ${new_username}>" >> /home/znc/.znc/configs/znc.conf
+    echo "    Admin      = ${is_admin}" >> /home/znc/.znc/configs/znc.conf
+    echo "    AltNick = ${new_username}_" >> /home/znc/.znc/configs/znc.conf
+    echo '    AppendTimestamp = false' >> /home/znc/.znc/configs/znc.conf
+    echo '    AutoClearChanBuffer = true' >> /home/znc/.znc/configs/znc.conf
+    echo '    AutoClearQueryBuffer = true' >> /home/znc/.znc/configs/znc.conf
+    echo "    Buffer = ${IRC_BUFFER_LENGTH}" >> /home/znc/.znc/configs/znc.conf
+    echo '    DenyLoadMod = false' >> /home/znc/.znc/configs/znc.conf
+    echo '    DenySetBindHost = false' >> /home/znc/.znc/configs/znc.conf
+    echo "    Ident = ${new_username}" >> /home/znc/.znc/configs/znc.conf
+    echo '    JoinTries = 10' >> /home/znc/.znc/configs/znc.conf
+    echo '    LoadModule = chansaver' >> /home/znc/.znc/configs/znc.conf
+    echo '    LoadModule = controlpanel' >> /home/znc/.znc/configs/znc.conf
+    echo '    MaxJoins = 10' >> /home/znc/.znc/configs/znc.conf
+    echo '    MaxNetworks = 10' >> /home/znc/.znc/configs/znc.conf
+    echo '    MaxQueryBuffers = 50' >> /home/znc/.znc/configs/znc.conf
+    echo '    MultiClients = true' >> /home/znc/.znc/configs/znc.conf
+    echo "    Nick = ${new_username}" >> /home/znc/.znc/configs/znc.conf
+    echo '    PrependTimestamp = true' >> /home/znc/.znc/configs/znc.conf
+    echo '    QuitMsg = Bye' >> /home/znc/.znc/configs/znc.conf
+    echo "    RealName = ${new_username}" >> /home/znc/.znc/configs/znc.conf
+    echo '    StatusPrefix = *' >> /home/znc/.znc/configs/znc.conf
+    echo '    TimestampFormat = [%H:%M:%S]' >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+    echo "    <Network ${PROJECT_NAME}>" >> /home/znc/.znc/configs/znc.conf
+    echo '        LoadModule = chansaver' >> /home/znc/.znc/configs/znc.conf
+    echo '        LoadModule = simple_away' >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+    echo "        Server     = 127.0.0.1 ${IRC_PORT} ${IRC_PASSWORD}" >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+    echo "        <Chan #${PROJECT_NAME}>" >> /home/znc/.znc/configs/znc.conf
+    echo '        </Chan>' >> /home/znc/.znc/configs/znc.conf
+    echo '    </Network>' >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+    echo '    <Network oftc>' >> /home/znc/.znc/configs/znc.conf
+    echo '        LoadModule = chansaver' >> /home/znc/.znc/configs/znc.conf
+    echo '        LoadModule = simple_away' >> /home/znc/.znc/configs/znc.conf
+    echo '        FloodBurst = 4' >> /home/znc/.znc/configs/znc.conf
+    echo '        FloodRate = 1.00' >> /home/znc/.znc/configs/znc.conf
+    echo '        IRCConnectEnabled = true' >> /home/znc/.znc/configs/znc.conf
+    echo '        Server = irc.oftc.net 6697' >> /home/znc/.znc/configs/znc.conf
+    echo '    </Network>' >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+    echo '    <Network freenode>' >> /home/znc/.znc/configs/znc.conf
+    echo '        LoadModule = chansaver' >> /home/znc/.znc/configs/znc.conf
+    echo '        LoadModule = simple_away' >> /home/znc/.znc/configs/znc.conf
+    echo '        FloodBurst = 4' >> /home/znc/.znc/configs/znc.conf
+    echo '        FloodRate = 1.00' >> /home/znc/.znc/configs/znc.conf
+    echo '        IRCConnectEnabled = true' >> /home/znc/.znc/configs/znc.conf
+    echo '        Server = irc.freenode.net 6697' >> /home/znc/.znc/configs/znc.conf
+    echo '    </Network>' >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+    echo '    <Pass password>' >> /home/znc/.znc/configs/znc.conf
+    echo "        Hash = ${new_user_hash}" >> /home/znc/.znc/configs/znc.conf
+    echo '        Method = sha256' >> /home/znc/.znc/configs/znc.conf
+    echo "        Salt = ${ZNC_SALT}" >> /home/znc/.znc/configs/znc.conf
+    echo '    </Pass>' >> /home/znc/.znc/configs/znc.conf
+    echo '</User>' >> /home/znc/.znc/configs/znc.conf
+
+    mkdir -p /home/znc/.znc/users/${new_username}/moddata
+    mkdir -p /home/znc/.znc/users/${new_username}/networks
+    mkdir /home/znc/.znc/users/${new_username}/moddata/chanserver
+    mkdir /home/znc/.znc/users/${new_username}/moddata/controlpanel
+    mkdir /home/znc/.znc/users/${new_username}/moddata/perform
+    mkdir /home/znc/.znc/users/${new_username}/moddata/webadmin
+    mkdir -p /home/znc/.znc/users/${new_username}/networks/${PROJECT_NAME}/moddata/chansaver
+    mkdir -p /home/znc/.znc/users/${new_username}/networks/${PROJECT_NAME}/moddata/simple_away
+
+    mkdir -p /home/znc/.znc/moddata/webadmin
+
+    chown -R znc:znc /home/znc/.znc
+
+    start_irc_bouncer
+}
+
+function add_user_irc {
+    new_username="$1"
+    new_user_password="$2"
+
+    IRC_PASSWORD=$(irc_get_global_password)
+    if [ ${#IRC_PASSWORD} -lt 2 ]; then
+        IRC_PASSWORD=
+    fi
+
+    if [ ! -d /home/${new_username}/.irssi ]; then
+        mkdir /home/${new_username}/.irssi
+    fi
+
+    create_irssi_config "${new_username}"
+    add_user_irc_bouncer "${new_username}" "${IRC_PASSWORD}"
+    echo '0'
+}
+
+function run_client_irc {
+    irssi
+}
+
+function irc_show_password {
+    IRC_PASSWORD=$(irc_get_global_password)
+    dialog --title $"IRC Password" \
+           --msgbox "$IRC_PASSWORD" 6 40
+}
+
+function irc_set_global_password {
+    EXISTING_IRC_PASSWORD=$(irc_get_global_password)
+    dialog --title $"IRC Password" \
+           --clear \
+           --backtitle $"Freedombone Control Panel" \
+           --passwordbox $"Password for all IRC users, or press Enter for no password" 10 60 "$EXISTING_IRC_PASSWORD" 2> $data
+    sel=$?
+    case $sel in
+        0)
+            NEW_IRC_PASSWORD=$(<$data)
+            irc_set_global_password_base "$NEW_IRC_PASSWORD"
+            dialog --title $"IRC Password" \
+                   --msgbox $"The IRC password was changed" 6 40
+            ;;
+    esac
+}
+
+function configure_interactive_irc {
+    if [ ! -d /etc/ngircd ]; then
+        dialog --title $"IRC Menu" \
+               --msgbox $"No IRC server is installed" 6 70
+        return
+    fi
+
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"IRC Menu" \
+               --radiolist $"Choose an operation:" 14 70 4 \
+               1 $"Set a password for all IRC users" off \
+               2 $"Show current IRC login password" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) irc_set_global_password;;
+            2) irc_show_password;;
+            3) break;;
+        esac
+    done
+}
+
+function install_interactive_irc {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function reconfigure_irc {
+    echo -n ''
+}
+
+function upgrade_irc {
+    echo -n ''
+}
+
+function backup_local_irc {
+    echo -n ''
+}
+
+function restore_local_irc {
+    echo -n ''
+}
+
+function backup_remote_irc {
+    echo -n ''
+}
+
+function restore_remote_irc {
+    echo -n ''
+}
+
+function remove_irc {
+    remove_watchdog_daemon ngircd
+    systemctl stop ngircd
+    apt-get -yq remove --purge ngircd
+    apt-get -yq remove --purge irssi
+    if [ -d /etc/ngircd ]; then
+        rm -rf /etc/ngircd
+    fi
+
+    iptables -D INPUT -p tcp --dport 1024:65535 --sport ${IRC_BOUNCER_PORT} -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+    firewall_remove ${IRC_BOUNCER_PORT} tcp
+
+    function_check remove_onion_service
+    remove_onion_service irc ${IRC_ONION_PORT}
+    remove_completion_param install_irc
+    remove_completion_param configure_firewall_for_irc
+    sed -i '/IRC /d' ${COMPLETION_FILE}
+    sed -i '/znc 2> /d' /etc/crontab
+    stop_irc_bouncer
+    if [ -d /home/znc ]; then
+        userdel -r znc
+    fi
+}
+
+function configure_firewall_for_irc {
+    if [ ! -d /etc/ngircd ]; then
+        return
+    fi
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ ${INSTALLED_WITHIN_DOCKER} == "yes" ]]; then
+        # docker does its own firewalling
+        return
+    fi
+    if [[ ${ONION_ONLY} != "no" ]]; then
+        return
+    fi
+    iptables -I INPUT -p tcp --dport 1024:65535 --sport ${IRC_BOUNCER_PORT} -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+
+    firewall_add IRC ${IRC_BOUNCER_PORT} tcp
+    echo 'configure_firewall_for_irc' >> ${COMPLETION_FILE}
+}
+
+function install_irc_server {
+    if [[ $(app_is_installed irc_server) == "1" ]]; then
+        return
+    fi
+    apt-get -yq install ngircd
+
+    if [ ! -d /etc/ngircd ]; then
+        echo $"ERROR: ngircd does not appear to have installed. $CHECK_MESSAGE"
+        exit 53
+    fi
+
+    # obtain a cert for the default domain
+    if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
+        echo $'Obtaining certificate for the main domain'
+        create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
+    fi
+
+    if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME})" == "0" ]]; then
+        ${PROJECT_NAME}-addcert -h ngircd --dhkey ${DH_KEYLENGTH}
+        function_check check_certificates
+        check_certificates ngircd
+    fi
+
+    DEFAULTDOMAIN=${DEFAULT_DOMAIN_NAME}
+
+    IRC_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+
+    set_password_for_all_users irc "$IRC_PASSWORD"
+
+
+    echo '**************************************************' > /etc/ngircd/motd
+    echo $'*           F R E E D O M B O N E   I R C        *' >> /etc/ngircd/motd
+    echo '*                                                *' >> /etc/ngircd/motd
+    echo $'*               Freedom in the Cloud             *' >> /etc/ngircd/motd
+    echo '**************************************************' >> /etc/ngircd/motd
+    sed -i 's|MotdFile = /etc/ngircd/ngircd.motd|MotdFile = /etc/ngircd/motd|g' /etc/ngircd/ngircd.conf
+    sed -i "s/irc@irc.example.com/$MY_EMAIL_ADDRESS/g" /etc/ngircd/ngircd.conf
+    sed -i "s/irc.example.net/$DEFAULTDOMAIN/g" /etc/ngircd/ngircd.conf
+    sed -i "s|Yet another IRC Server running on Debian GNU/Linux|IRC Server of $DEFAULTDOMAIN|g" /etc/ngircd/ngircd.conf
+    sed -i 's/;Password = wealllikedebian/Password =/g' /etc/ngircd/ngircd.conf
+    sed -i "s/;Ports =.*/Ports = ${IRC_PORT}/g" /etc/ngircd/ngircd.conf
+    if [[ $ONION_ONLY == 'no' ]]; then
+        if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+            sed -i "s|;CertFile = /etc/ssl/certs/server.crt|CertFile = /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/ngircd/ngircd.conf
+        else
+            sed -i "s|;CertFile = /etc/ssl/certs/server.crt|CertFile = /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt|g" /etc/ngircd/ngircd.conf
+        fi
+        sed -i "s|;DHFile = /etc/ngircd/dhparams.pem|DHFile = /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam|g" /etc/ngircd/ngircd.conf
+        sed -i "s|;KeyFile = /etc/ssl/private/server.key|KeyFile = /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/ngircd/ngircd.conf
+        sed -i "s/;Ports =.*/Ports = ${IRC_PORT}/2" /etc/ngircd/ngircd.conf
+    else
+        sed -i 's|;SSLConnect.*|SSLConnect = no|g'
+        # comment out the second Ports entry
+        if ! grep ";Ports =" /etc/ngircd/ngircd.conf; then
+            sed -i '0,/Ports =/! s/Ports =/;Ports =/' /etc/ngircd/ngircd.conf
+        fi
+    fi
+    sed -i "s/;Name = #ngircd/Name = #${PROJECT_NAME}/g" /etc/ngircd/ngircd.conf
+    sed -i "s/;Topic = Our ngircd testing channel/Topic = ${PROJECT_NAME} chat channel/g" /etc/ngircd/ngircd.conf
+    sed -i 's/;MaxUsers = 23/MaxUsers = 23/g' /etc/ngircd/ngircd.conf
+    sed -i "s|;KeyFile = /etc/ngircd/#chan.key|KeyFile = /etc/ngircd/${PROJECT_NAME}.key|g" /etc/ngircd/ngircd.conf
+    sed -i "s/;CloakHost = cloaked.host/CloakHost = ${PROJECT_NAME}/g" /etc/ngircd/ngircd.conf
+    IRC_SALT="$(create_password 30)"
+    if [ -f ${IMAGE_PASSWORD_FILE} ]; then
+        IRC_OPERATOR_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        IRC_OPERATOR_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+    fi
+    sed -i "s|;CloakHostSalt = abcdefghijklmnopqrstuvwxyz|CloakHostSalt = $IRC_SALT|g" /etc/ngircd/ngircd.conf
+    sed -i 's/;ConnectIPv4 = yes/ConnectIPv4 = yes/g' /etc/ngircd/ngircd.conf
+    sed -i 's/;MorePrivacy = no/MorePrivacy = yes/g' /etc/ngircd/ngircd.conf
+    sed -i 's/;RequireAuthPing = no/RequireAuthPing = no/g' /etc/ngircd/ngircd.conf
+    sed -i "s/;Name = TheOper/Name = $MY_USERNAME/g" /etc/ngircd/ngircd.conf
+    sed -i "s/;Password = ThePwd/Password = $IRC_OPERATOR_PASSWORD/g" /etc/ngircd/ngircd.conf
+    sed -i 's|;Listen =.*|Listen = 0.0.0.0,0.0.0.0:9050,127.0.0.1,127.0.0.1:9050|g' /etc/ngircd/ngircd.conf
+    if [ ${IRC_PASSWORD} ]; then
+        sed -i "0,/RE/s/Password =.*/Password =$IRC_PASSWORD/" /etc/ngircd/ngircd.conf
+    fi
+    # upgrade a cypher
+    sed -i 's|SECURE128|SECURE256|g' /etc/ngircd/ngircd.conf
+    mkdir /var/run/ircd
+    chown -R irc:irc /var/run/ircd
+    mkdir /var/run/ngircd
+    touch /var/run/ngircd/ngircd.pid
+    chown -R irc:irc /var/run/ngircd
+
+    IRC_ONION_HOSTNAME=$(add_onion_service irc ${IRC_BOUNCER_PORT} ${IRC_ONION_PORT})
+
+    chmod 600 /etc/ngircd/ngircd.conf
+    systemctl restart ngircd
+
+    add_watchdog_daemon ngircd
+
+    function_check configure_firewall_for_irc
+    configure_firewall_for_irc
+    install_completed irc_server
+}
+
+function install_irc_client {
+    if [[ $(app_is_installed irc_client) == "1" ]]; then
+        return
+    fi
+    apt-get -yq install irssi
+
+    if [ ! -d /home/${MY_USERNAME}/.irssi ]; then
+        mkdir /home/${MY_USERNAME}/.irssi
+    fi
+
+    create_irssi_config "${MY_USERNAME}" "$MY_NAME"
+    install_completed irc_client
+}
+
+function install_irc_bouncer {
+    if [[ $(app_is_installed irc_bouncer) == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq -t jessie-backports install znc
+
+    adduser --disabled-login --gecos 'znc' znc
+
+    mkdir -p /home/znc/.znc/configs
+    mkdir -p /home/znc/.znc/users
+
+    echo 'AnonIPLimit = 10' > /home/znc/.znc/configs/znc.conf
+    echo 'ConnectDelay = 5' >> /home/znc/.znc/configs/znc.conf
+    echo 'HideVersion = false' >> /home/znc/.znc/configs/znc.conf
+    echo 'MaxBufferSize = 500' >> /home/znc/.znc/configs/znc.conf
+    echo 'ProtectWebSessions = true' >> /home/znc/.znc/configs/znc.conf
+    echo 'SSLCertFile = /home/znc/.znc/znc.pem' >> /home/znc/.znc/configs/znc.conf
+    echo 'ServerThrottle = 30' >> /home/znc/.znc/configs/znc.conf
+    echo 'Version = 1.6.2' >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+    echo '<Listener listener0>' >> /home/znc/.znc/configs/znc.conf
+    echo '  AllowIRC = true' >> /home/znc/.znc/configs/znc.conf
+    echo '  AllowWeb = false' >> /home/znc/.znc/configs/znc.conf
+    echo '  IPv4 = true' >> /home/znc/.znc/configs/znc.conf
+    echo '  IPv6 = true' >> /home/znc/.znc/configs/znc.conf
+    echo '  Port = 6697' >> /home/znc/.znc/configs/znc.conf
+    if [[ ${ONION_ONLY} == 'no' ]]; then
+        echo '  SSL = true' >> /home/znc/.znc/configs/znc.conf
+    else
+        echo '  SSL = false' >> /home/znc/.znc/configs/znc.conf
+    fi
+    echo '  URIPrefix = /' >> /home/znc/.znc/configs/znc.conf
+    echo '</Listener>' >> /home/znc/.znc/configs/znc.conf
+    echo '' >> /home/znc/.znc/configs/znc.conf
+
+    if [ $IRC_PORT -ne $IRC_ONION_PORT ]; then
+        echo '<Listener listener1>' >> /home/znc/.znc/configs/znc.conf
+        echo '  AllowIRC = true' >> /home/znc/.znc/configs/znc.conf
+        echo '  AllowWeb = false' >> /home/znc/.znc/configs/znc.conf
+        echo '  IPv4 = true' >> /home/znc/.znc/configs/znc.conf
+        echo '  IPv6 = true' >> /home/znc/.znc/configs/znc.conf
+        echo "  Port = ${IRC_ONION_PORT}" >> /home/znc/.znc/configs/znc.conf
+        echo '  SSL = false' >> /home/znc/.znc/configs/znc.conf
+        echo '  URIPrefix = /' >> /home/znc/.znc/configs/znc.conf
+        echo '</Listener>' >> /home/znc/.znc/configs/znc.conf
+        echo '' >> /home/znc/.znc/configs/znc.conf
+    fi
+
+    chown -R znc:znc /home/znc/.znc
+
+    add_user_irc_bouncer "${MY_USERNAME}" "${IRC_PASSWORD}" true
+
+    # certificate for use with SSL
+    start_irc_bouncer
+
+    function_check cron_add_mins
+    cron_add_mins 10 "/usr/bin/znc 2> /dev/null" znc
+
+    install_completed irc_bouncer
+}
+
+function install_irc {
+    install_irc_server
+    install_irc_client
+    install_irc_bouncer
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0

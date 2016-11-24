@@ -1,0 +1,617 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Zeronet functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS=''
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=0
+
+MESH_INSTALL_DIR=/var/lib
+
+ZERONET_REPO="https://github.com/HelloZeroNet/ZeroNet.git"
+ZERONET_COMMIT='675bd462556c541d65e2d95f91f899146a373aad'
+ZERONET_BLOG_REPO="https://github.com/HelloZeroNet/ZeroBlog"
+ZERONET_BLOG_COMMIT='bbb0d6c36465fed2e6df71f1aab45fcc9c6ad609'
+ZERONET_MAIL_REPO="https://github.com/HelloZeroNet/ZeroMail"
+ZERONET_MAIL_COMMIT='955af09d643c72b02e4983d71eca5c0c93a6c131'
+ZERONET_FORUM_REPO="https://github.com/HelloZeroNet/ZeroTalk"
+ZERONET_FORUM_COMMIT='e2d2c9cb1cfbfef91b244935efb5c14c2ad95faa'
+ZERONET_URL='http://127.0.0.1:43110'
+ZERONET_PORT=15441
+TRACKER_PORT=6969
+ZERONET_DEFAULT_BLOG_TAGLINE="Blogging on the Mesh"
+ZERONET_DEFAULT_FORUM_TAGLINE="A decentralized discussion group"
+ZERONET_DEFAULT_MAIL_TAGLINE="Mail for the Mesh"
+ZERONET_ID_REPO="https://github.com/HelloZeroNet/ZeroID"
+ZERONET_ID_COMMIT='ccf14fdc96fa9cdb2ddd8a7ab283a8e17a4f234b'
+
+zeronet_variables=(ZERONET_BLOG_COMMIT
+                   ZERONET_MAIL_COMMIT
+                   ZERONET_FORUM_COMMIT
+                   TRACKER_PORT
+                   ZERONET_PORT
+                   MY_USERNAME
+                   ZERONET_DEFAULT_BLOG_TAGLINE
+                   ZERONET_DEFAULT_FORUM_TAGLINE
+                   ZERONET_DEFAULT_MAIL_TAGLINE)
+
+function install_interactive_zeronet {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function reconfigure_zeronet {
+    echo -n ''
+}
+
+function upgrade_zeronet {
+    function_check set_repo_commit
+    set_repo_commit $MESH_INSTALL_DIR/zeronet "zeroNet commit" "$ZERONET_COMMIT" $ZERONET_REPO
+    set_repo_commit $MESH_INSTALL_DIR/zeronet/ZeroBlog "zeroNet blog commit" "$ZERONET_BLOG_COMMIT" $ZERONET_BLOG_REPO
+    set_repo_commit $MESH_INSTALL_DIR/zeronet/ZeroMail "zeroNet mail commit" "$ZERONET_MAIL_COMMIT" $ZERONET_MAIL_REPO
+    set_repo_commit $MESH_INSTALL_DIR/zeronet/ZeroTalk "zeroNet forum commit" "$ZERONET_FORUM_COMMIT" $ZERONET_FORUM_REPO
+}
+
+function backup_local_zeronet {
+    echo -n ''
+}
+
+function restore_local_zeronet {
+    echo -n ''
+}
+
+function backup_remote_zeronet {
+    echo -n ''
+}
+
+function restore_remote_zeronet {
+    echo -n ''
+}
+
+function remove_zeronet_blog {
+    if [ -d $MESH_INSTALL_DIR/zeronet/ZeroBlog ]; then
+        rm -rf $MESH_INSTALL_DIR/zeronet/ZeroBlog
+    fi
+    remove_completion_param install_zeronet_blog
+    sed -i '/zeronet blog/d' $COMPLETION_FILE
+}
+
+function remove_zeronet_mail {
+    if [ -d $MESH_INSTALL_DIR/zeronet/ZeroMail ]; then
+        rm -rf $MESH_INSTALL_DIR/zeronet/ZeroMail
+    fi
+    remove_completion_param install_zeronet_mail
+    sed -i '/zeronet mail/d' $COMPLETION_FILE
+}
+
+function remove_zeronet_forum {
+    if [ -d $MESH_INSTALL_DIR/zeronet/ZeroTalk ]; then
+        rm -rf $MESH_INSTALL_DIR/zeronet/ZeroTalk
+    fi
+    remove_completion_param install_zeronet_forum
+    sed -i '/zeronet forum/d' $COMPLETION_FILE
+}
+
+function remove_zeronet {
+    remove_zeronet_blog
+    remove_zeronet_mail
+    remove_zeronet_forum
+
+    firewall_remove ${ZERONET_PORT}
+    firewall_remove ${TRACKER_PORT}
+    firewall_remove 1900 udp
+
+    ${PROJECT_NAME}-mesh-install -f zeronet --remove yes
+    remove_completion_param install_zeronet
+    remove_completion_param configure_firewall_for_zeronet
+    sed -i '/zeronet/d' $COMPLETION_FILE
+}
+
+function configure_firewall_for_zeronet {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    firewall_add ZeroNet ${ZERONET_PORT}
+    firewall_add Tracker ${TRACKER_PORT}
+    firewall_add Tracker 1900 udp
+    mark_completed $FUNCNAME
+}
+
+function install_zeronet_blog {
+    if [[ $(app_is_installed zeronet_blog) == "1" ]]; then
+        return
+    fi
+
+    if [ ! -d /etc/avahi ]; then
+        echo $'Avahi is not installed'
+        exit 736
+    fi
+
+    ZERONET_DEFAULT_BLOG_TITLE="${MY_USERNAME}'s Blog"
+
+    cd $MESH_INSTALL_DIR/zeronet
+    python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/blog.txt
+    if [ ! -f $MESH_INSTALL_DIR/zeronet/blog.txt ]; then
+        echo $'Unable to create blog'
+        exit 479
+    fi
+    blog_address=$(cat blog.txt | grep "Site address" | awk -F ':' '{print $2}')
+    blog_private_key=$(cat blog.txt | grep "Site private key" | awk -F ':' '{print $2}')
+    ZERONET_BLOG_ADDRESS=${blog_address//[[:blank:]]/}
+    ZERONET_BLOG_PRIVATE_KEY=${blog_private_key//[[:blank:]]/}
+
+    if [ ${#ZERONET_BLOG_ADDRESS} -lt 20 ]; then
+        echo $"Address:    $ZERONET_BLOG_ADDRESS"
+        echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY"
+        echo $'Unable to create zeronet blog address'
+        exit 7358
+    fi
+
+    if [ ${#ZERONET_BLOG_PRIVATE_KEY} -lt 20 ]; then
+        echo $"Address:    $ZERONET_BLOG_ADDRESS"
+        echo $"Public key: $ZERONET_BLOG_PRIVATE_KEY"
+        echo $'Unable to create zeronet blog private key'
+        exit 1639
+    fi
+
+    if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS" ]; then
+        echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS"
+        exit 7638
+    fi
+
+    function_check git_clone
+    git_clone $ZERONET_BLOG_REPO ZeroBlog
+    if [ ! -d $MESH_INSTALL_DIR/zeronet/ZeroBlog ]; then
+        echo $'ZeroBlog repo could not be cloned'
+        exit 6739
+    fi
+    cd $MESH_INSTALL_DIR/zeronet/ZeroBlog
+    git checkout $ZERONET_BLOG_COMMIT -b $ZERONET_BLOG_COMMIT
+    set_completion_param "zeroNet blog commit" "$ZERONET_BLOG_COMMIT"
+
+    echo $"ZeroNet Blog address:     $ZERONET_BLOG_ADDRESS"
+    echo $"ZeroNet Blog private key: $ZERONET_BLOG_PRIVATE_KEY"
+    cp -r $MESH_INSTALL_DIR/zeronet/ZeroBlog/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS
+
+    if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data ]; then
+        mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
+    fi
+    cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data
+    sed -i "s/MyZeroBlog/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
+    sed -i "s/My ZeroBlog./$ZERONET_DEFAULT_BLOG_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/data/data.json
+    sed -i "s/ZeroBlog Demo/$ZERONET_DEFAULT_BLOG_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
+    sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_BLOG_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/index.html
+    sed -i "s/Blogging platform Demo/Blogging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_BLOG_ADDRESS/content.json
+    python zeronet.py siteSign $ZERONET_BLOG_ADDRESS $ZERONET_BLOG_PRIVATE_KEY
+
+    # Add an avahi service
+    function_check create_avahi_service
+    create_avahi_service zeronet-blog "zeronet-blog" udp $ZERONET_PORT "${ZERONET_URL}/${ZERONET_BLOG_ADDRESS}"
+    cp /tmp/zeronet-blog.service /etc/avahi/services/zeronet-blog.service
+
+    chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+
+    if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
+        mkdir -p /home/$MY_USERNAME/.config/zeronet
+        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
+    fi
+    echo "${ZERONET_URL}/${ZERONET_BLOG_ADDRESS}" > /home/$MY_USERNAME/.config/zeronet/myblog
+
+    install_completed zeronet_blog
+}
+
+function install_zeronet_mail {
+    if [[ $(app_is_installed zeronet_mail) == "1" ]]; then
+        return
+    fi
+
+    if [ ! -d /etc/avahi ]; then
+        echo 'Avahi is not installed'
+        exit 736
+    fi
+
+    ZERONET_DEFAULT_MAIL_TITLE="${MY_USERNAME}'s Mail"
+
+    cd $MESH_INSTALL_DIR/zeronet
+    python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/mail.txt
+    if [ ! -f $MESH_INSTALL_DIR/zeronet/mail.txt ]; then
+        echo $'Unable to create mail'
+        exit 479
+    fi
+    mail_address=$(cat mail.txt | grep "Site address" | awk -F ':' '{print $2}')
+    mail_private_key=$(cat mail.txt | grep "Site private key" | awk -F ':' '{print $2}')
+    ZERONET_MAIL_ADDRESS=${mail_address//[[:blank:]]/}
+    ZERONET_MAIL_PRIVATE_KEY=${mail_private_key//[[:blank:]]/}
+
+    if [ ${#ZERONET_MAIL_ADDRESS} -lt 20 ]; then
+        echo $"Address:    $ZERONET_MAIL_ADDRESS"
+        echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY"
+        echo $'Unable to create zeronet mail address'
+        exit 7358
+    fi
+
+    if [ ${#ZERONET_MAIL_PRIVATE_KEY} -lt 20 ]; then
+        echo $"Address:    $ZERONET_MAIL_ADDRESS"
+        echo $"Public key: $ZERONET_MAIL_PRIVATE_KEY"
+        echo $'Unable to create zeronet mail private key'
+        exit 1639
+    fi
+
+    if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS" ]; then
+        echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS"
+        exit 7638
+    fi
+
+    function_check git_clone
+    git_clone $ZERONET_MAIL_REPO ZeroMail
+    if [ ! -d $MESH_INSTALL_DIR/zeronet/ZeroMail ]; then
+        echo $'ZeroMail repo could not be cloned'
+        exit 6739
+    fi
+    cd $MESH_INSTALL_DIR/zeronet/ZeroMail
+    git checkout $ZERONET_MAIL_COMMIT -b $ZERONET_MAIL_COMMIT
+    set_completion_param "zeroNet mail commit" "$ZERONET_MAIL_COMMIT"
+
+    echo $"ZeroNet Mail address:     $ZERONET_MAIL_ADDRESS"
+    echo $"ZeroNet Mail private key: $ZERONET_MAIL_PRIVATE_KEY"
+    cp -r $MESH_INSTALL_DIR/zeronet/ZeroMail/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS
+
+    if [ ! -d $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data ]; then
+        mkdir $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
+    fi
+    cp $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data-default/data.json $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data
+    sed -i "s/MyZeroMail/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
+    sed -i "s/My ZeroMail./$ZERONET_DEFAULT_MAIL_TAGLINE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/data/data.json
+    sed -i "s/ZeroMail Demo/$ZERONET_DEFAULT_MAIL_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
+    sed -i "s|<h3 class=\"description\">.*|<h3 class=\"description\">$ZERONET_DEFAULT_MAIL_TAGLINE</h3>|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/index.html
+    sed -i "s/Mailging platform Demo/Mailging platform/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_MAIL_ADDRESS/content.json
+    python zeronet.py siteSign $ZERONET_MAIL_ADDRESS $ZERONET_MAIL_PRIVATE_KEY
+
+    # Add an avahi service
+    function_check create_avahi_service
+    create_avahi_service zeronet-mail "zeronet-mail" udp $ZERONET_PORT "${ZERONET_URL}/${ZERONET_MAIL_ADDRESS}"
+    cp /tmp/zeronet-mail.service /etc/avahi/services/zeronet-mail.service
+
+    chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+
+    if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
+        mkdir -p /home/$MY_USERNAME/.config/zeronet
+        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
+    fi
+    echo "${ZERONET_URL}/${ZERONET_MAIL_ADDRESS}" > /home/$MY_USERNAME/.config/zeronet/mymail
+
+    install_completed zeronet_mail
+}
+
+function install_zeronet_forum {
+    if [[ $(app_is_installed zeronet_forum) == "1" ]]; then
+        return
+    fi
+
+    if [ ! -d /etc/avahi ]; then
+        echo $'Avahi is not installed'
+        exit 736
+    fi
+
+    ZERONET_DEFAULT_FORUM_TITLE=$"${MY_USERNAME}'s Forum"
+
+    cd $MESH_INSTALL_DIR/zeronet
+    python zeronet.py --batch siteCreate 2> $MESH_INSTALL_DIR/zeronet/forum.txt
+    if [ ! -f $MESH_INSTALL_DIR/zeronet/forum.txt ]; then
+        echo $'Unable to create forum'
+        exit 479
+    fi
+    forum_address=$(cat forum.txt | grep "Site address" | awk -F ':' '{print $2}')
+    forum_private_key=$(cat forum.txt | grep "Site private key" | awk -F ':' '{print $2}')
+    ZERONET_FORUM_ADDRESS=${forum_address//[[:blank:]]/}
+    ZERONET_FORUM_PRIVATE_KEY=${forum_private_key//[[:blank:]]/}
+
+    if [ ${#ZERONET_FORUM_ADDRESS} -lt 20 ]; then
+        echo $"Address:    $ZERONET_FORUM_ADDRESS"
+        echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY"
+        echo $'Unable to create zeronet forum address'
+        exit 76352
+    fi
+
+    if [ ${#ZERONET_FORUM_PRIVATE_KEY} -lt 20 ]; then
+        echo $"Address:    $ZERONET_FORUM_ADDRESS"
+        echo $"Public key: $ZERONET_FORUM_PRIVATE_KEY"
+        echo $'Unable to create zeronet forum private key'
+        exit 87356
+    fi
+
+    if [ ! -d "$MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS" ]; then
+        echo $"Unable to find site directory: $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS"
+        exit 7638
+    fi
+
+    function_check git_clone
+    git_clone $ZERONET_FORUM_REPO ZeroTalk
+    if [ ! -d $MESH_INSTALL_DIR/zeronet/ZeroTalk ]; then
+        echo $'ZeroTalk repo could not be cloned'
+        exit 6739
+    fi
+    git checkout $ZERONET_FORUM_COMMIT -b $ZERONET_FORUM_COMMIT
+    set_completion_param "zeroNet forum commit" "$ZERONET_FORUM_COMMIT"
+
+    echo $"Forum address:     $ZERONET_FORUM_ADDRESS"
+    echo $"Forum private key: $ZERONET_FORUM_PRIVATE_KEY"
+    cp -r $MESH_INSTALL_DIR/zeronet/ZeroTalk/* $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS
+    sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
+    sed -i "s/ZeroTalk/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
+    sed -i "s|Demo for dynamic, decentralized content publishing.|$ZERONET_DEFAULT_FORUM_TAGLINE|g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/index.html
+    sed -i 's/Messaging Board Demo/Messaging Board/g' $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
+    sed -i "s/ZeroBoard/$ZERONET_DEFAULT_FORUM_TITLE/g" $MESH_INSTALL_DIR/zeronet/data/$ZERONET_FORUM_ADDRESS/content.json
+    python zeronet.py siteSign $ZERONET_FORUM_ADDRESS $ZERONET_FORUM_PRIVATE_KEY --inner_path data/users/content.json
+
+    # Add an avahi service
+    function_check create_avahi_service
+    create_avahi_service zeronet-forum "zeronet-forum" udp $ZERONET_PORT "${ZERONET_URL}/${ZERONET_FORUM_ADDRESS}"
+    sudo cp /tmp/zeronet-forum.service /etc/avahi/services/zeronet-forum.service
+
+    chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+
+    if [ ! -d /home/$MY_USERNAME/.config/zeronet ]; then
+        mkdir -p /home/$MY_USERNAME/.config/zeronet
+        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.config
+    fi
+    echo "${ZERONET_URL}/${ZERONET_FORUM_ADDRESS}" > /home/$MY_USERNAME/.config/zeronet/myforum
+
+    install_completed zeronet_forum
+}
+
+function install_zeronet_main {
+    if [[ $(app_is_installed zeronet_main) == "1" ]]; then
+        return
+    fi
+
+    ${PROJECT_NAME}-mesh-install -f zeronet
+    systemctl daemon-reload
+    systemctl start tracker.service
+    systemctl start zeronet.service
+
+    function_check configure_firewall_for_zeronet
+    configure_firewall_for_zeronet
+    install_completed zeronet_main
+}
+
+function mesh_zeronet {
+    ZERONET_REPO_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+    if [ ${#ZERONET_REPO_MAIN} -gt 4 ]; then
+        ZERONET_REPO=$ZERONET_REPO_MAIN
+    fi
+    if [ ! $ZERONET_REPO ]; then
+        echo $'No ZeroNet repo was specified'
+        exit 723539
+    fi
+
+    ZERONET_COMMIT_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+    if [ ${#ZERONET_COMMIT_MAIN} -gt 4 ]; then
+        ZERONET_COMMIT=$ZERONET_COMMIT_MAIN
+    fi
+    if [ ! $ZERONET_COMMIT ]; then
+        echo $'No ZeroNet commit was specified'
+        exit 490439
+    fi
+
+    MESH_INSTALL_DIR_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "MESH_INSTALL_DIR=" | head -n 1 | awk -F "'" '{print $2}')
+    if [ ${#MESH_INSTALL_DIR_MAIN} -gt 4 ]; then
+        MESH_INSTALL_DIR=$MESH_INSTALL_DIR_MAIN
+    fi
+    if [ ! $MESH_INSTALL_DIR ]; then
+        echo $'No mesh install dir was specified'
+        exit 432052
+    fi
+
+    chroot "$rootdir" apt-get -yq install python python-msgpack python-gevent
+    chroot "$rootdir" apt-get -yq install python-pip bittornado
+    chroot "$rootdir" pip install msgpack-python --upgrade
+
+    chroot "$rootdir" useradd -d $MESH_INSTALL_DIR/zeronet/ -s /bin/false zeronet
+    git clone $ZERONET_REPO $rootdir$MESH_INSTALL_DIR/zeronet
+    if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet ]; then
+        echo 'WARNING: Unable to clone zeronet'
+        return
+    fi
+    cd $rootdir$MESH_INSTALL_DIR/zeronet
+    git checkout $ZERONET_COMMIT -b $ZERONET_COMMIT
+    if ! grep -q "ZeroNet commit" $COMPLETION_FILE; then
+        echo "ZeroNet commit:$ZERONET_COMMIT" >> $rootdir$COMPLETION_FILE
+    else
+        sed -i "s/ZeroNet commit.*/ZeroNet commit:$ZERONET_COMMIT/g" $COMPLETION_FILE
+    fi
+    chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+
+    # Hack to ensure that the file access port is opened
+    # This is because zeronet normally relies on an internet site
+    # to do this, but on a purely local mesh the internet isn't available
+    sed -i 's|fileserver_port = 0|fileserver_port = config.fileserver_port\n            sys.modules["main"].file_server.port_opened = True|g' $rootdir$MESH_INSTALL_DIR/zeronet/src/Site/Site.py
+
+    ZERONET_DAEMON=$rootdir/etc/systemd/system/zeronet.service
+    echo '[Unit]' > $ZERONET_DAEMON
+    echo 'Description=Zeronet Server' >> $ZERONET_DAEMON
+    echo 'After=syslog.target' >> $ZERONET_DAEMON
+    echo 'After=network.target' >> $ZERONET_DAEMON
+    echo '[Service]' >> $ZERONET_DAEMON
+    echo 'Type=simple' >> $ZERONET_DAEMON
+    echo 'User=zeronet' >> $ZERONET_DAEMON
+    echo 'Group=zeronet' >> $ZERONET_DAEMON
+    echo "WorkingDirectory=$MESH_INSTALL_DIR/zeronet" >> $ZERONET_DAEMON
+    echo "ExecStart=/usr/bin/python zeronet.py --ip_external replace.local --trackers_file $MESH_INSTALL_DIR/zeronet/bootstrap" >> $ZERONET_DAEMON
+    echo '' >> $ZERONET_DAEMON
+    echo 'TimeoutSec=300' >> $ZERONET_DAEMON
+    echo '' >> $ZERONET_DAEMON
+    echo '[Install]' >> $ZERONET_DAEMON
+    echo 'WantedBy=multi-user.target' >> $ZERONET_DAEMON
+
+    TRACKER_DAEMON=$rootdir/etc/systemd/system/tracker.service
+    echo '[Unit]' > $TRACKER_DAEMON
+    echo 'Description=Torrent Tracker' >> $TRACKER_DAEMON
+    echo 'After=syslog.target' >> $TRACKER_DAEMON
+    echo 'After=network.target' >> $TRACKER_DAEMON
+    echo '[Service]' >> $TRACKER_DAEMON
+    echo 'Type=simple' >> $TRACKER_DAEMON
+    echo 'User=tracker' >> $TRACKER_DAEMON
+    echo 'Group=tracker' >> $TRACKER_DAEMON
+    echo "WorkingDirectory=$MESH_INSTALL_DIR/tracker" >> $TRACKER_DAEMON
+    echo "ExecStart=/usr/bin/bttrack --port $TRACKER_PORT --dfile $MESH_INSTALL_DIR/tracker/dstate --logfile $MESH_INSTALL_DIR/tracker/tracker.log --nat_check 0 --scrape_allowed full --ipv6_enabled 0" >> $TRACKER_DAEMON
+    echo '' >> $TRACKER_DAEMON
+    echo 'TimeoutSec=300' >> $TRACKER_DAEMON
+    echo '' >> $TRACKER_DAEMON
+    echo '[Install]' >> $TRACKER_DAEMON
+    echo 'WantedBy=multi-user.target' >> $TRACKER_DAEMON
+
+    chroot "$rootdir" useradd -d $MESH_INSTALL_DIR/tracker/ -s /bin/false tracker
+    if [ ! -d $rootdir$MESH_INSTALL_DIR/tracker ]; then
+        mkdir $rootdir$MESH_INSTALL_DIR/tracker
+    fi
+    chroot "$rootdir" chown -R tracker:tracker $MESH_INSTALL_DIR/tracker
+
+    # publish regularly
+    MESH_SYNC_COMMAND=$rootdir/usr/bin/mesh-sync
+    echo '#!/bin/bash' > $MESH_SYNC_COMMAND
+    echo '/usr/local/bin/toxavahi 2> /dev/null' >> $MESH_SYNC_COMMAND
+    echo '/usr/local/bin/meshavahi 2> /dev/null' >> $MESH_SYNC_COMMAND
+    chmod +x $MESH_SYNC_COMMAND
+
+    if ! grep -q "mesh-sync" ${rootdir}/etc/crontab; then
+        echo "*/1            * *   *   *   root /usr/bin/mesh-sync 2> /dev/null" >> ${rootdir}/etc/crontab
+        echo "*/1            * *   *   *   root ( sleep 20 ; /usr/bin/mesh-sync 2> /dev/null )" >> ${rootdir}/etc/crontab
+        echo "*/1            * *   *   *   root ( sleep 40 ; /usr/bin/mesh-sync 2> /dev/null )" >> ${rootdir}/etc/crontab
+    fi
+
+    chroot "$rootdir" systemctl enable tracker.service
+    chroot "$rootdir" systemctl enable zeronet.service
+}
+
+function mesh_zeronet_blog {
+    ZERONET_BLOG_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_BLOG_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+    ZERONET_BLOG_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_BLOG_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+    MESH_INSTALL_DIR_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "MESH_INSTALL_DIR=" | head -n 1 | awk -F "'" '{print $2}')
+    if [ ${#MESH_INSTALL_DIR_MAIN} -gt 4 ]; then
+        MESH_INSTALL_DIR=$MESH_INSTALL_DIR_MAIN
+    fi
+    if [ ! $MESH_INSTALL_DIR ]; then
+        echo $'No mesh install dir was specified'
+        exit 432052
+    fi
+
+    git clone $ZERONET_BLOG_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroBlog
+    if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroBlog ]; then
+        echo $'ZeroBlog repo could not be cloned'
+        exit 6739
+    fi
+    cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroBlog
+    git checkout $ZERONET_BLOG_COMMIT -b $ZERONET_BLOG_COMMIT
+    chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
+function mesh_zeronet_mail {
+    ZERONET_MAIL_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_MAIL_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+    ZERONET_MAIL_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_MAIL_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+    MESH_INSTALL_DIR_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "MESH_INSTALL_DIR=" | head -n 1 | awk -F "'" '{print $2}')
+    if [ ${#MESH_INSTALL_DIR_MAIN} -gt 4 ]; then
+        MESH_INSTALL_DIR=$MESH_INSTALL_DIR_MAIN
+    fi
+    if [ ! $MESH_INSTALL_DIR ]; then
+        echo $'No mesh install dir was specified'
+        exit 432052
+    fi
+
+    git clone $ZERONET_MAIL_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroMail
+    if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroMail ]; then
+        echo $'ZeroMail repo could not be cloned'
+        exit 78493
+    fi
+    cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroMail
+    git checkout $ZERONET_MAIL_COMMIT -b $ZERONET_MAIL_COMMIT
+    chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
+function mesh_zeronet_forum {
+    ZERONET_FORUM_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_FORUM_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+    ZERONET_FORUM_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_FORUM_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+    MESH_INSTALL_DIR_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "MESH_INSTALL_DIR=" | head -n 1 | awk -F "'" '{print $2}')
+    if [ ${#MESH_INSTALL_DIR_MAIN} -gt 4 ]; then
+        MESH_INSTALL_DIR=$MESH_INSTALL_DIR_MAIN
+    fi
+    if [ ! $MESH_INSTALL_DIR ]; then
+        echo $'No mesh install dir was specified'
+        exit 432052
+    fi
+
+    git clone $ZERONET_FORUM_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroTalk
+    if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroTalk ]; then
+        echo $'ZeroTalk repo could not be cloned'
+        exit 78252
+    fi
+    cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroTalk
+    git checkout $ZERONET_FORUM_COMMIT -b $ZERONET_FORUM_COMMIT
+    chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
+function mesh_zeronet_id {
+    ZERONET_ID_REPO=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_ID_REPO=" | head -n 1 | awk -F '"' '{print $2}')
+    ZERONET_ID_COMMIT=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "ZERONET_ID_COMMIT=" | head -n 1 | awk -F "'" '{print $2}')
+    MESH_INSTALL_DIR_MAIN=$(cat /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-zeronet | grep "MESH_INSTALL_DIR=" | head -n 1 | awk -F "'" '{print $2}')
+    if [ ${#MESH_INSTALL_DIR_MAIN} -gt 4 ]; then
+        MESH_INSTALL_DIR=$MESH_INSTALL_DIR_MAIN
+    fi
+    if [ ! $MESH_INSTALL_DIR ]; then
+        echo $'No mesh install dir was specified'
+        exit 432052
+    fi
+
+    git clone $ZERONET_ID_REPO $rootdir$MESH_INSTALL_DIR/zeronet/ZeroID
+    if [ ! -d $rootdir$MESH_INSTALL_DIR/zeronet/ZeroID ]; then
+        echo $'ZeroID repo could not be cloned'
+        exit 37936
+    fi
+    cd $rootdir$MESH_INSTALL_DIR/zeronet/ZeroID
+    git checkout $ZERONET_ID_COMMIT -b $ZERONET_ID_COMMIT
+    chroot "$rootdir" chown -R zeronet:zeronet $MESH_INSTALL_DIR/zeronet
+}
+
+function install_zeronet {
+    if [ $INSTALLING_MESH ]; then
+        mesh_zeronet
+        mesh_zeronet_blog
+        mesh_zeronet_mail
+        mesh_zeronet_forum
+        return
+    fi
+    install_zeronet_main
+    install_zeronet_blog
+    install_zeronet_mail
+    install_zeronet_forum
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0

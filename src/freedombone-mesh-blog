@@ -1,0 +1,253 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Blogging functions for mesh clients
+#
+# License
+# =======
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-mesh-blog
+export TEXTDOMAINDIR="/usr/share/locale"
+
+IPFS_PATH=/usr/bin
+IPFS_COMMAND=$IPFS_PATH/ipfs
+IPFS_PUBLIC=/home/$USER/.ipfs-public
+
+BLOG_PATH=~/CreateBlog
+BLOG_CONTENT_PATH=$BLOG_PATH/content
+CURRENT_BLOG_INDEX=/home/$USER/.blog-index
+BLOG_EDITOR='pluma'
+DEFAULT_BLOG_TITLE=$"Freedombone Blog"
+
+function ipfs_publish {
+    DIR_TO_CHECK=/home/$USER/Public
+    if [ ! -d $DIR_TO_CHECK ]; then
+        return
+    fi
+
+    echo ''
+    echo $'Publishing to IPFS. This may take some time...'
+
+    OLD_STAT_FILE=/home/$USER/.old_stat.txt
+    NEW_STAT=$(stat -t $DIR_TO_CHECK)
+    echo $($IPFS_COMMAND add -rq /home/$USER/Public | tail -n 1) > $IPFS_PUBLIC
+    echo "$NEW_STAT" > $OLD_STAT_FILE
+
+    if [ -f $IPFS_PUBLIC ]; then
+        IPFS_PUBLIC_ID=$(cat $IPFS_PUBLIC)
+        $IPFS_COMMAND name publish /ipfs/$IPFS_PUBLIC_ID
+    fi
+}
+
+function regenerate_blog {
+    clear
+    echo ''
+    echo $'Regenerating blog...'
+
+    cd $BLOG_PATH
+    if grep -q "SITENAME=u'${DEFAULT_BLOG_TITLE}'" $BLOG_PATH/pelicanconf.py; then
+        TOX_NICK=$(toxid --showuser)
+        BLOG_TITLE=$"${TOX_NICK}'s Blog"
+        sed -i "s|SITENAME=.*|SITENAME=u\"${BLOG_TITLE}\"|g" $BLOG_PATH/pelicanconf.py
+    fi
+    make html
+    ipfs_publish
+}
+
+function view_blog {
+    freedombone-mesh-visit-site '/Blog'
+    exit 0
+}
+
+function new_blog {
+    DATESTR=$(date "+%Y-%m-%d %H:%M:%S")
+
+    echo $'Title: Blog Post Title' > ~/.new-blog-entry
+    echo $"Date: ${DATESTR}" >> ~/.new-blog-entry
+    echo $"Author: $(toxid --showuser)" >> ~/.new-blog-entry
+    echo $'Category: default' >> ~/.new-blog-entry
+    echo $'Tags: blog, tag' >> ~/.new-blog-entry
+    echo  '' >> ~/.new-blog-entry
+    echo $'Add your text here' >> ~/.new-blog-entry
+    echo  '' >> ~/.new-blog-entry
+    echo -n $'To include an image copy it into the ~/CreateBlog/content/images directory, ' >> ~/.new-blog-entry
+    echo $'then link to it with:' >> ~/.new-blog-entry
+    echo  '' >> ~/.new-blog-entry
+    echo $'![My image]({filename}images/myimage.jpg)' >> ~/.new-blog-entry
+    echo  '' >> ~/.new-blog-entry
+
+    $BLOG_EDITOR ~/.new-blog-entry
+
+    if grep -q $"Add your text here" ~/.new-blog-entry; then
+        return
+    fi
+    if grep -q $"Blog Post Title" ~/.new-blog-entry; then
+        return
+    fi
+    if [ ! -f $CURRENT_BLOG_INDEX ]; then
+        echo '0' > $CURRENT_BLOG_INDEX
+    fi
+
+    # move to the content directory
+    CURRENT_INDEX=$(cat $CURRENT_BLOG_INDEX)
+    mv ~/.new-blog-entry $BLOG_CONTENT_PATH/${CURRENT_INDEX}_post.md
+
+    # increment the index
+    CURRENT_INDEX=$((CURRENT_INDEX + 1))
+    echo "$CURRENT_INDEX" > $CURRENT_BLOG_INDEX
+
+    regenerate_blog
+}
+
+function edit_blog {
+    if [ ! -f $CURRENT_BLOG_INDEX ]; then
+        return
+    fi
+    CURRENT_INDEX=$(cat $CURRENT_BLOG_INDEX)
+    PREVIOUS_INDEX=$((CURRENT_INDEX - 1))
+    LAST_BLOG_ENTRY=$BLOG_CONTENT_PATH/${PREVIOUS_INDEX}_post.md
+    if [ ! -f $LAST_BLOG_ENTRY ]; then
+        return
+    fi
+    $BLOG_EDITOR $LAST_BLOG_ENTRY
+    regenerate_blog
+}
+
+function delete_blog {
+    if [ ! -f $CURRENT_BLOG_INDEX ]; then
+        return
+    fi
+    CURRENT_INDEX=$(cat $CURRENT_BLOG_INDEX)
+    PREVIOUS_INDEX=$((CURRENT_INDEX - 1))
+    LAST_BLOG_ENTRY=$BLOG_CONTENT_PATH/${PREVIOUS_INDEX}_post.md
+    if [ ! -f $LAST_BLOG_ENTRY ]; then
+        return
+    fi
+
+    dialog --title $"Delete the previous blog entry" \
+           --backtitle $"Freedombone Mesh" \
+           --defaultno \
+           --yesno $"\nAre you sure that you wish to delete the previous blog entry?" 8 60
+    sel=$?
+    case $sel in
+        0) rm $LAST_BLOG_ENTRY
+           if [ $CURRENT_INDEX -gt 0 ]; then
+               CURRENT_INDEX=$PREVIOUS_INDEX
+               echo "$CURRENT_INDEX" > $CURRENT_BLOG_INDEX
+           else
+               rm -f $CURRENT_BLOG_INDEX
+           fi
+           regenerate_blog
+           ;;
+    esac
+}
+
+function change_theme {
+    THEMES=()
+    for d in $BLOG_PATH/themes/*/ ; do
+        THEME_NAME=$(echo "$d" | awk -F '/' '{print $6}')
+        THEMES+=("$THEME_NAME")
+    done
+
+    themelist=""
+    n=1
+    theme_index=0
+    curr_theme_index=
+    if [ -f /home/$USER/.blog-theme-index ]; then
+        curr_theme_index=$(cat /home/$USER/.blog-theme-index)
+    fi
+    for a in "${THEMES[@]}"
+    do
+        is_selected='off'
+        if [ $curr_theme_index ]; then
+            if [ $n -eq $curr_theme_index ]; then
+                is_selected='on'
+            fi
+        else
+            if [[ "$a" == 'nice-blog' ]]; then
+                is_selected='on'
+            fi
+        fi
+
+        themelist="$themelist $n $a $is_selected"
+        n=$[n+1]
+        theme_index=$[theme_index+1]
+    done
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Mesh" \
+           --title $"Select Blog Theme" \
+           --radiolist $'Choose:' \
+           80 40 20 $themelist 2> $data
+
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    CHOSEN_THEME_INDEX=$(cat $data)
+    echo "$CHOSEN_THEME_INDEX" > /home/$USER/.blog-theme-index
+    CHOSEN_THEME_INDEX=$((CHOSEN_THEME_INDEX - 1))
+
+    CHOSEN_THEME=${THEMES[$CHOSEN_THEME_INDEX]}
+    if grep -q "THEME=" $BLOG_PATH/pelicanconf.py; then
+        sed -i "s|THEME=.*|THEME='themes/${CHOSEN_THEME}'|g" $BLOG_PATH/pelicanconf.py
+    else
+        echo "THEME='themes/${CHOSEN_THEME}'" >> $BLOG_PATH/pelicanconf.py
+    fi
+    regenerate_blog
+}
+
+function menu_blog {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Mesh" \
+           --title $"Blogging" \
+           --radiolist $"Choose an operation:" 19 50 12 \
+           1 $"View a blog" on \
+           2 $"New blog entry" off \
+           3 $"Edit the previous blog entry" off \
+           4 $"Delete the previous blog entry" off \
+           5 $"Change theme" off \
+           6 $"Exit" off 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    case $(cat $data) in
+        1) view_blog;;
+        2) new_blog;;
+        3) edit_blog;;
+        4) delete_blog;;
+        5) change_theme;;
+        6) break;;
+    esac
+}
+
+menu_blog
+
+exit 0

@@ -1,0 +1,242 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# DNS functions
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# DNS
+NAMESERVER1='213.73.91.35'
+NAMESERVER2='85.214.20.141'
+
+# parameters used when adding a new domain
+DDNS_PROVIDER="default@freedns.afraid.org"
+DDNS_USERNAME=
+DDNS_PASSWORD=
+
+INADYN_REPO="https://github.com/bashrc/inadyn"
+INADYN_COMMIT='fadbe17f520d337dfb8d69ee4bf1fcaa23fce0d6'
+
+# web site used to obtain the external IP address of the system
+GET_IP_ADDRESS_URL="checkip.two-dns.de"
+
+# other possible services to obtain the external IP address
+EXTERNAL_IP_SERVICES=( \
+        'https://check.torproject.org/' \
+        'https://www.whatsmydns.net/whats-my-ip-address.html' \
+        'https://www.privateinternetaccess.com/pages/whats-my-ip/' \
+        'http://checkip.two-dns.de' \
+        'http://ip.dnsexit.com' \
+        'http://ifconfig.me/ip' \
+        'http://ipecho.net/plain' \
+        'http://checkip.dyndns.org/plain' \
+        'http://ipogre.com/linux.php' \
+        'http://whatismyipaddress.com/' \
+        'http://ip.my-proxy.com/' \
+        'http://websiteipaddress.com/WhatIsMyIp' \
+        'http://getmyipaddress.org/' \
+        'http://www.my-ip-address.net/' \
+        'http://myexternalip.com/raw' \
+        'http://www.canyouseeme.org/' \
+        'http://www.trackip.net/' \
+        'http://icanhazip.com/' \
+        'http://www.iplocation.net/' \
+        'http://www.howtofindmyipaddress.com/' \
+        'http://www.ipchicken.com/' \
+        'http://whatsmyip.net/' \
+        'http://www.ip-adress.com/' \
+        'http://checkmyip.com/' \
+        'http://www.tracemyip.org/' \
+        'http://checkmyip.net/' \
+        'http://www.lawrencegoetz.com/programs/ipinfo/' \
+        'http://www.findmyip.co/' \
+        'http://ip-lookup.net/' \
+        'http://www.dslreports.com/whois' \
+        'http://www.mon-ip.com/en/my-ip/' \
+        'http://www.myip.ru' \
+        'http://ipgoat.com/' \
+        'http://www.myipnumber.com/my-ip-address.asp' \
+        'http://www.whatsmyipaddress.net/' \
+        'http://formyip.com/' \
+        'http://www.displaymyip.com/' \
+        'http://www.bobborst.com/tools/whatsmyip/' \
+        'http://www.geoiptool.com/' \
+        'http://checkip.dyndns.com/' \
+        'http://myexternalip.com/' \
+        'http://www.ip-adress.eu/' \
+        'http://www.infosniper.net/' \
+        'http://wtfismyip.com/' \
+        'http://ipinfo.io/' \
+        'http://httpbin.org/ip')
+
+function create_freedns_updater {
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+
+    # currently inadyn doesn't work as expected with freeDNS, so this is a workaround
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $DDNS_PROVIDER != *"freedns"* ]]; then
+        return
+    fi
+    if [[ $SYSTEM_TYPE == "mesh"* ]]; then
+        return
+    fi
+
+    # remove any legacy command
+    if [ -f /usr/bin/dynamicdns ]; then
+        rm /usr/bin/dynamicdns
+    fi
+    if grep -q "dynamicdns" /etc/crontab; then
+        sed -i '/dynamicdns/d' /etc/crontab
+    fi
+
+    # add the update command to cron
+    if ! grep -q "/usr/local/bin/freedombone-freedns" /etc/crontab; then
+        function_check cron_add_mins
+        cron_add_mins 3 '/usr/local/bin/freedombone-freedns'
+        systemctl restart cron
+    fi
+
+    mark_completed $FUNCNAME
+}
+
+function add_ddns_domain {
+    if [ ! $1 ]; then
+        echo $'ddns domain not specified'
+        exit 5638
+    fi
+    CURRENT_DDNS_DOMAIN="$1"
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+    if [ ! -f /etc/inadyn.conf ]; then
+        echo $'Unable to find inadyn configuration file /etc/inadyn.conf'
+        exit 5745
+    fi
+    if ! grep -q "$DDNS_PROVIDER" /etc/inadyn.conf; then
+        echo '' >> /etc/inadyn.conf
+        echo "system $DDNS_PROVIDER" >> /etc/inadyn.conf
+        echo '  ssl' >> /etc/inadyn.conf
+        echo "  checkip-url $GET_IP_ADDRESS_URL /" >> /etc/inadyn.conf
+        if [ $DDNS_USERNAME ]; then
+            echo "  username $DDNS_USERNAME" >> /etc/inadyn.conf
+        fi
+        if [ $DDNS_PASSWORD ]; then
+            echo "  password $DDNS_PASSWORD" >> /etc/inadyn.conf
+        fi
+    fi
+
+    if ! grep -q "$CURRENT_DDNS_DOMAIN" /etc/inadyn.conf; then
+        echo "  alias $CURRENT_DDNS_DOMAIN" >> /etc/inadyn.conf
+    fi
+    chmod 600 /etc/inadyn.conf
+    systemctl restart inadyn
+    systemctl daemon-reload
+}
+
+function remove_ddns_domain {
+    if [ ! $1 ]; then
+        echo $'ddns domain not specified'
+        exit 5638
+    fi
+    CURRENT_DDNS_DOMAIN="$1"
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+    if [ ! -f /etc/inadyn.conf ]; then
+        echo $'Unable to find inadyn configuration file /etc/inadyn.conf'
+        exit 5745
+    fi
+    if grep -q "$CURRENT_DDNS_DOMAIN" /etc/inadyn.conf; then
+        systemctl stop inadyn
+        sed -i "/alias $CURRENT_DDNS_DOMAIN/d" /etc/inadyn.conf
+        systemctl start inadyn
+        systemctl daemon-reload
+    fi
+}
+
+function configure_dns {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    # allow changes to resolv.conf
+    chattr -i /etc/resolv.conf
+
+    echo 'domain localdomain' > /etc/resolv.conf
+    echo 'search localdomain' >> /etc/resolv.conf
+    echo "nameserver $NAMESERVER1" >> /etc/resolv.conf
+    echo "nameserver $NAMESERVER2" >> /etc/resolv.conf
+
+    # prevent resolv.conf from changing
+    chattr +i /etc/resolv.conf
+
+    mark_completed $FUNCNAME
+}
+
+function set_hostname {
+    DEFAULT_DOMAIN_NAME="$1"
+
+    echo "$DEFAULT_DOMAIN_NAME" > /etc/hostname
+    hostname $DEFAULT_DOMAIN_NAME
+    echo "$DEFAULT_DOMAIN_NAME" > /etc/mailname
+
+    if grep -q "127.0.1.1" /etc/hosts; then
+        sed -i "s/127.0.1.1.*/127.0.1.1       $DEFAULT_DOMAIN_NAME/g" /etc/hosts
+    else
+        echo "127.0.1.1  $DEFAULT_DOMAIN_NAME" >> /etc/hosts
+    fi
+}
+
+function set_your_domain_name {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    function_check set_hostname
+    set_hostname $DEFAULT_DOMAIN_NAME
+
+    mark_completed $FUNCNAME
+}
+
+function configure_firewall_for_dns {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $INSTALLED_WITHIN_DOCKER == "yes" ]]; then
+        # docker does its own firewalling
+        return
+    fi
+    iptables -A INPUT -p udp -m udp --dport 1024:65535 --sport 53 -j ACCEPT
+    function_check save_firewall_settings
+    save_firewall_settings
+    mark_completed $FUNCNAME
+}
+
+# NOTE: deliberately no exit 0

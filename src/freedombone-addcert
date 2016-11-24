@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2015-2016 Bob Mottram <bob@robotics.uk.to>
+# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -36,10 +36,11 @@ export TEXTDOMAINDIR="/usr/share/locale"
 CONFIGURATION_FILE=$HOME/${PROJECT_NAME}.cfg
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 
-source /usr/local/bin/${PROJECT_NAME}-utils-git
-if [ -f /usr/bin/${PROJECT_NAME}-utils-git ]; then
-    source /usr/bin/${PROJECT_NAME}-utils-git
-fi
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+  source $f
+done
 
 # Don't pin certs by default
 PIN_CERTS=
@@ -56,51 +57,11 @@ NODH=
 DH_KEYLENGTH=2048
 INSTALL_DIR=/root/build
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
-LETSENCRYPT_REPO="https://github.com/letsencrypt/letsencrypt"
 MY_EMAIL_ADDRESS=
 FRIENDS_MIRRORS_SERVER=
 FRIENDS_MIRRORS_PASSWORD=
 FRIENDS_MIRRORS_SSH_PORT=
 MY_MIRRORS_PASSWORD=
-
-function read_repo_servers {
-    if [ -f $CONFIGURATION_FILE ]; then
-        if grep -q "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE; then
-            FRIENDS_MIRRORS_SERVER=$(grep "FRIENDS_MIRRORS_SERVER" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        if grep -q "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE; then
-            FRIENDS_MIRRORS_SSH_PORT=$(grep "FRIENDS_MIRRORS_SSH_PORT" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        if grep -q "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-            MY_MIRRORS_PASSWORD=$(grep "MY_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-        if grep -q "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE; then
-            FRIENDS_MIRRORS_PASSWORD=$(grep "FRIENDS_MIRRORS_PASSWORD" $CONFIGURATION_FILE | awk -F '=' '{print $2}')
-        fi
-    fi
-
-    if [ ! $FRIENDS_MIRRORS_SERVER ]; then
-        return
-    fi
-    if [ ${#FRIENDS_MIRRORS_SERVER} -lt 2 ]; then
-        return
-    fi
-
-    MAIN_COMMAND=/usr/local/bin/${PROJECT_NAME}
-    if [ ! -f $MAIN_COMMAND ]; then
-        MAIN_COMMAND=/usr/bin/${PROJECT_NAME}
-    fi
-
-    REPOS=($(cat ${MAIN_COMMAND} | grep "_REPO=\"" | uniq -u | sed 's|${PROJECT_NAME}|'"${PROJECT_NAME}"'|g'))
-
-    for line in "${REPOS[@]}"
-    do
-        repo_name=$(echo "$line" | awk -F '=' '{print $1}')
-        mirrors_name=$(echo "$repo_name" | sed "s|_REPO||g" | awk '{print tolower($0)}')
-        friends_repo_url="ssh://mirrors@${FRIENDS_MIRRORS_SERVER}:${FRIENDS_MIRRORS_SSH_PORT}/home/mirrors/${mirrors_name}"
-        ${repo_name}="${friends_repo_url}"
-    done
-}
 
 function show_help {
     echo ''
@@ -128,66 +89,70 @@ function show_help {
 
 while [[ $# > 1 ]]
 do
-key="$1"
+    key="$1"
 
-case $key in
-    --help)
-    show_help
-    ;;
-    -h|--hostname)
+    case $key in
+        --help)
+            show_help
+            ;;
+        -h|--hostname)
+            shift
+            HOSTNAME="$1"
+            ;;
+        -e|--letsencrypt)
+            shift
+            LETSENCRYPT_HOSTNAME="$1"
+            ;;
+        --email)
+            shift
+            MY_EMAIL_ADDRESS="$1"
+            ;;
+        -s|--server)
+            shift
+            LETSENCRYPT_SERVER="$1"
+            ;;
+        -c|--country)
+            shift
+            COUNTRY_CODE="$1"
+            ;;
+        -a|--area)
+            shift
+            AREA="$1"
+            ;;
+        -l|--location)
+            shift
+            LOCATION="$1"
+            ;;
+        -o|--organisation)
+            shift
+            ORGANISATION="$1"
+            ;;
+        -u|--unit)
+            shift
+            UNIT="$1"
+            ;;
+        --ca)
+            shift
+            EXTENSIONS="-extensions v3_ca"
+            ORGANISATION="Freedombone-CA"
+            ;;
+        --nodh)
+            shift
+            NODH="true"
+            ;;
+        --dhkey)
+            shift
+            DH_KEYLENGTH=${1}
+            ;;
+        --pin)
+            shift
+            PIN_CERTS=${1}
+            ;;
+        *)
+            # unknown option
+            ;;
+    esac
     shift
-    HOSTNAME="$1"
-    ;;
-    -e|--letsencrypt)
-    shift
-    LETSENCRYPT_HOSTNAME="$1"
-    ;;
-    --email)
-    shift
-    MY_EMAIL_ADDRESS="$1"
-    ;;
-    -s|--server)
-    shift
-    LETSENCRYPT_SERVER="$1"
-    ;;
-    -c|--country)
-    shift
-    COUNTRY_CODE="$1"
-    ;;
-    -a|--area)
-    shift
-    AREA="$1"
-    ;;
-    -l|--location)
-    shift
-    LOCATION="$1"
-    ;;
-    -o|--organisation)
-    shift
-    ORGANISATION="$1"
-    ;;
-    -u|--unit)
-    shift
-    UNIT="$1"
-    ;;
-    --ca)
-    shift
-    EXTENSIONS="-extensions v3_ca"
-    ORGANISATION="Freedombone-CA"
-    ;;
-    --nodh)
-    shift
-    NODH="true"
-    ;;
-    --dhkey)
-    shift
-    DH_KEYLENGTH=${1}
-    ;;
-    *)
-    # unknown option
-    ;;
-esac
-shift
 done
 
 if [ ! $HOSTNAME ]; then
@@ -214,41 +179,34 @@ function add_cert_letsencrypt {
     # obtain the email address for the admin user
     if [ ! $MY_EMAIL_ADDRESS ]; then
         if [ -f $CONFIGURATION_FILE ]; then
-            if grep -q "MY_EMAIL_ADDRESS=" $CONFIGURATION_FILE; then
-                MY_EMAIL_ADDRESS=$(cat $CONFIGURATION_FILE | grep "MY_EMAIL_ADDRESS=" | awk -F '=' '{print $2}')
-            fi
+            read_config_param MY_EMAIL_ADDRESS
         fi
     fi
     if [ ! $MY_EMAIL_ADDRESS ]; then
         if [ -f $COMPLETION_FILE ]; then
             if grep -q "Admin user:" $COMPLETION_FILE; then
-                ADMIN_USER=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+                function_check get_completion_param
+                ADMIN_USER=$(get_completion_param "Admin user")
+                if [ ${#ADMIN_USER} -eq 0 ]; then
+                    exit 463732
+                fi
                 MY_EMAIL_ADDRESS=$ADMIN_USER@$HOSTNAME
             fi
         fi
     fi
 
-    if [ ! -d $INSTALL_DIR ]; then
-        mkdir -p $INSTALL_DIR
-    fi
-    cd $INSTALL_DIR
-
-    # obtain the repo
-    if [ ! -d ${INSTALL_DIR}/letsencrypt ]; then
-        git_clone $LETSENCRYPT_REPO ${INSTALL_DIR}/letsencrypt
-        if [ ! -d ${INSTALL_DIR}/letsencrypt ]; then
-            exit 76283
+    if [ ! -f /usr/bin/certbot ]; then
+        apt-get -yq install certbot -t jessie-backports
+        if [ ! -f /usr/bin/certbot ]; then
+            echo $'LetsEncrypt certbot failed to install'
+            exit 762830
         fi
-    else
-        cd ${INSTALL_DIR}/letsencrypt
-        git_pull $LETSENCRYPT_REPO
     fi
 
     # stop the web server
     systemctl stop nginx
 
-    cd ${INSTALL_DIR}/letsencrypt
-    ./letsencrypt-auto certonly --server $LETSENCRYPT_SERVER --standalone -d $LETSENCRYPT_HOSTNAME --renew-by-default --agree-tos --email $MY_EMAIL_ADDRESS
+    certbot certonly -n --server $LETSENCRYPT_SERVER --standalone -d $LETSENCRYPT_HOSTNAME --renew-by-default --agree-tos --email $MY_EMAIL_ADDRESS
     if [ ! "$?" = "0" ]; then
         echo $"Failed to install letsencrypt for domain $LETSENCRYPT_HOSTNAME"
         systemctl start nginx
@@ -287,6 +245,8 @@ function add_cert_letsencrypt {
 
     cp /etc/letsencrypt/live/${LETSENCRYPT_HOSTNAME}/fullchain.pem /etc/ssl/mycerts/${LETSENCRYPT_HOSTNAME}.pem
 
+    update_default_domain
+
     systemctl start nginx
 
     if [ $PIN_CERTS ]; then
@@ -304,9 +264,9 @@ function add_cert_selfsigned {
     fi
 
     openssl req -x509 ${EXTENSIONS} -nodes -days 3650 -sha256 \
-        -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME" \
-        -newkey rsa:4096 -keyout /etc/ssl/private/${CERTFILE}.key \
-        -out /etc/ssl/certs/${CERTFILE}.crt
+            -subj "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$HOSTNAME" \
+            -newkey rsa:4096 -keyout /etc/ssl/private/${CERTFILE}.key \
+            -out /etc/ssl/certs/${CERTFILE}.crt
     chmod 400 /etc/ssl/private/${CERTFILE}.key
     chmod 640 /etc/ssl/certs/${CERTFILE}.crt
     cp /etc/ssl/certs/${CERTFILE}.crt /etc/ssl/mycerts

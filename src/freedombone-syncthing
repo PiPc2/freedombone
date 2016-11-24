@@ -14,7 +14,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016 Bob Mottram <bob@robotics.uk.to>
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -36,6 +36,12 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=$PROJECT_NAME-syncthing
 export TEXTDOMAINDIR="/usr/share/locale"
 
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+  source $f
+done
+
 # File which keeps track of what has already been installed
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 
@@ -50,6 +56,13 @@ SYNCTHING_USER_IDS_FILE='.syncthingids'
 SYNCTHING_UPDATE_FILE='.syncthing-update'
 CHANGED=
 TEMP_IDS_FILE=/root/.synthingids
+
+function remove_user_syncthing {
+    remove_username="$1"
+
+    sed -i "/<folder id=\"${remove_username}\" /,/</folder>/d" $SYNCTHING_CONFIG_FILE
+    systemctl restart syncthing
+}
 
 function new_syncthing_id {
     for i in {1..8}
@@ -70,21 +83,17 @@ function new_syncthing_id {
 }
 
 function create_syncthing_config {
-    if grep -q "Syncthing ID" $COMPLETION_FILE; then
-        SYNCTHING_ID=$(cat $COMPLETION_FILE | grep "Syncthing ID" | awk -F ':' '{print $2}')
+    if grep -q "syncthing ID" $COMPLETION_FILE; then
+        SYNCTHING_ID=$(get_completion_param "syncthing ID")
     else
         if [ -f $SYNCTHING_CONFIG_FILE ]; then
             SYNCTHING_ID=$(cat $SYNCTHING_CONFIG_FILE | grep "device id=" | head -n 1 | awk -F '"' '{print $2}')
         else
-            SYNCTHING_ID=$(new_syncthing_id)            
-        fi      
+            SYNCTHING_ID=$(new_syncthing_id)
+        fi
     fi
 
-    if ! grep -q "Syncthing ID" $COMPLETION_FILE; then
-        echo "Syncthing ID:$SYNCTHING_ID" >> $COMPLETION_FILE
-    else
-        sed -i "s|Syncthing ID.*|Syncthing ID:$SYNCTHING_ID|g" $COMPLETION_FILE
-    fi
+    set_completion_param "syncthing ID" "$SYNCTHING_ID"
 
     if [ ! -d $SYNCTHING_CONFIG_PATH ]; then
         mkdir -p $SYNCTHING_CONFIG_PATH
@@ -97,7 +106,7 @@ function create_syncthing_config {
 
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
             echo "    <folder id=\"$USERNAME\" path=\"/home/$USERNAME/Sync/\" ro=\"false\" rescanIntervalS=\"60\" ignorePerms=\"false\" autoNormalize=\"true\">" >> $SYNCTHING_CONFIG_FILE
             # include any specified device IDs for this user
             if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
@@ -137,7 +146,7 @@ function create_syncthing_config {
     echo "" > $TEMP_IDS_FILE
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
             if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
                 while read -r line || [[ -n "$line" ]]; do
                     line2="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
@@ -169,7 +178,7 @@ function create_syncthing_config {
     echo '        <disableSparseFiles>false</disableSparseFiles>' >> $SYNCTHING_CONFIG_FILE
     echo '    </folder>' >> $SYNCTHING_CONFIG_FILE
 
-    
+
     echo "    <device id=\"$SYNCTHING_ID\" name=\"${PROJECT_NAME}\" compression=\"metadata\" introducer=\"false\">" >> $SYNCTHING_CONFIG_FILE
     echo '        <address>dynamic</address>' >> $SYNCTHING_CONFIG_FILE
     echo '    </device>' >> $SYNCTHING_CONFIG_FILE
@@ -177,7 +186,7 @@ function create_syncthing_config {
     echo "" > $TEMP_IDS_FILE
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
             if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
                 while read -r line || [[ -n "$line" ]]; do
                     line2="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
@@ -195,7 +204,7 @@ function create_syncthing_config {
             fi
         fi
     done
-    rm $TEMP_IDS_FILE   
+    rm $TEMP_IDS_FILE
 
     echo '    <options>' >> $SYNCTHING_CONFIG_FILE
     echo "        <listenAddress>tcp://0.0.0.0:$SYNCTHING_PORT</listenAddress>" >> $SYNCTHING_CONFIG_FILE
@@ -236,7 +245,7 @@ function create_syncthing_config {
     # This allows it to appear within the user control panel
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
             echo "$SYNCTHING_ID" > /home/$USERNAME/.syncthing-server-id
             chown $USERNAME:$USERNAME /home/$USERNAME/.syncthing-server-id
         fi
@@ -254,14 +263,14 @@ function user_devices_changed {
         CHANGED=1
         return
     fi
-    
+
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $USERNAME != "git" && $USERNAME != "mirrors" && $USERNAME != "sync" ]]; then
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
             if [ -f /home/$USERNAME/$SYNCTHING_UPDATE_FILE ]; then
                 CHANGED=1
             fi
-            
+
             if [ -f /home/$USERNAME/$SYNCTHING_USER_IDS_FILE ]; then
                 while read -r line || [[ -n "$line" ]]; do
                     if [[ $line != *"#"* && $line != *"*"* && $line != *'/'*  && $line == *"-"* ]]; then
@@ -272,6 +281,14 @@ function user_devices_changed {
                         fi
                     fi
                 done < /home/$USERNAME/$SYNCTHING_USER_IDS_FILE
+            fi
+
+            # Permissions on user Sync directories
+            if [ -d /home/$USERNAME/Sync ]; then
+                chown $USERNAME:$USERNAME /home/$USERNAME /home/$USERNAME/Sync
+            fi
+            if [ -d /home/$USERNAME/SyncShared ]; then
+                chown $USERNAME:$USERNAME /home/$USERNAME /home/$USERNAME/SyncShared
             fi
         fi
     done

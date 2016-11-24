@@ -11,7 +11,7 @@
 # License
 # =======
 #
-# Copyright (C) 2015-2016 Bob Mottram <bob@robotics.uk.to>
+# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -32,8 +32,15 @@ export TEXTDOMAIN=${PROJECT_NAME}-client
 export TEXTDOMAINDIR="/usr/share/locale"
 
 CURR_USER=$USER
+CURR_GROUP=$USER
+if [ -f /usr/bin/pacman ]; then
+    CURR_GROUP='users'
+fi
 MESH_CLIENT_INSTALL=
 ENABLE_MONKEYSPHERE=
+
+# setup for a specific app
+SETUP_CLIENT_APP_NAME=
 
 # Version number of this script
 VERSION="1.01"
@@ -49,20 +56,46 @@ if [ ! -f $MAIN_PROJECT_FILE ]; then
 fi
 
 # ssh (from https://stribika.github.io/2015/01/04/secure-secure-shell.html)
-SSH_CIPHERS=$(cat $MAIN_PROJECT_FILE | grep 'SSH_CIPHERS=' | head -n 1 | awk -F '"' '{print $2}')
-SSH_MACS=$(cat $MAIN_PROJECT_FILE | grep 'SSH_MACS=' | head -n 1 | awk -F '"' '{print $2}')
-SSH_KEX=$(cat $MAIN_PROJECT_FILE | grep 'SSH_KEX=' | head -n 1 | awk -F '"' '{print $2}')
-SSH_HOST_KEY_ALGORITHMS=$(cat $MAIN_PROJECT_FILE | grep 'SSH_HOST_KEY_ALGORITHMS=' | head -n 1 | awk -F '"' '{print $2}')
+UTILS_SSH=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-ssh
+SSH_CIPHERS=$(cat $UTILS_SSH | grep 'SSH_CIPHERS=' | head -n 1 | awk -F '"' '{print $2}')
+SSH_MACS=$(cat $UTILS_SSH | grep 'SSH_MACS=' | head -n 1 | awk -F '"' '{print $2}')
+SSH_KEX=$(cat $UTILS_SSH | grep 'SSH_KEX=' | head -n 1 | awk -F '"' '{print $2}')
+SSH_HOST_KEY_ALGORITHMS=$(cat $UTILS_SSH | grep 'SSH_HOST_KEY_ALGORITHMS=' | head -n 1 | awk -F '"' '{print $2}')
 
 # refresh gpg keys every few hours
 REFRESH_GPG_KEYS_HOURS=2
 
+function global_rate_limit {
+    SYSCTL_FILE=/etc/sysctl.conf
+    if [ -f /usr/bin/pacman ]; then
+        SYSCTL_FILE=/etc/sysctl.d/99-sysctl.conf
+    fi
+    if [ ! -f $SYSCTL_FILE ]; then
+        sudo touch $SYSCTL_FILE
+    fi
+
+    sudo cp $SYSCTL_FILE ~/sysctl.conf
+    sudo chown $CURR_USER:$CURR_GROUP ~/sysctl.conf
+    if ! grep -q "tcp_challenge_ack_limit" ~/sysctl.conf; then
+        echo 'net.ipv4.tcp_challenge_ack_limit = 999999999' >> ~/sysctl.conf
+    else
+        sed -i 's|net.ipv4.tcp_challenge_ack_limit.*|net.ipv4.tcp_challenge_ack_limit = 999999999|g' ~/sysctl.conf
+    fi
+    sudo cp ~/sysctl.conf $SYSCTL_FILE
+    sudo rm ~/sysctl.conf
+    sudo sysctl -p -q $SYSCTL_FILE
+}
+
 function refresh_gpg_keys {
     if [ ! -f /usr/bin/gpg ]; then
-        sudo apt-get -y install gnupg
+        if [ ! -f /usr/bin/pacman ]; then
+            sudo apt-get -yq install gnupg
+        else
+            sudo pacman -S --noconfirm gnupg
+        fi
     fi
     sudo cp /etc/crontab ~/temp_crontab
-    sudo chown $CURR_USER:$CURR_USER ~/temp_crontab
+    sudo chown $CURR_USER:$CURR_GROUP ~/temp_crontab
     if ! grep -q "gpg --refresh-keys" ~/temp_crontab; then
         echo "0            */$REFRESH_GPG_KEYS_HOURS *   *   *   $CURR_USER /usr/bin/gpg --refresh-keys > /dev/null" >> ~/temp_crontab
         sudo cp ~/temp_crontab /etc/crontab
@@ -78,22 +111,31 @@ function ssh_remove_small_moduli {
 }
 
 function configure_ssh_client {
+    if [ -f /usr/bin/pacman ]; then
+        sudo pacman --noconfirm -S openbsd-netcat
+    else
+        sudo apt-get -yq install tor connect-proxy vim-common
+    fi
+
     #sudo sed -i 's/#   PasswordAuthentication.*/   PasswordAuthentication no/g' /etc/ssh/ssh_config
     #sudo sed -i 's/#   ChallengeResponseAuthentication.*/   ChallengeResponseAuthentication no/g' /etc/ssh/ssh_config
     sudo sed -i "s/#   HostKeyAlgorithms.*/   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS/g" /etc/ssh/ssh_config
     sudo sed -i "s/#   Ciphers.*/   Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
     sudo sed -i "s/#   MACs.*/   MACs $SSH_MACS/g" /etc/ssh/ssh_config
+    sudo sed -i "s/HostKeyAlgorithms.*/HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS/g" /etc/ssh/ssh_config
     if ! grep -q "HostKeyAlgorithms" /etc/ssh/ssh_config; then
         sudo cp /etc/ssh/ssh_config ~/ssh_config
-        sudo chown $CURR_USER:$CURR_USER ~/ssh_config
+        sudo chown $CURR_USER:$CURR_GROUP ~/ssh_config
         echo "   HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS" >> ~/ssh_config
         sudo mv ~/ssh_config /etc/ssh/ssh_config
         sudo chown root:root /etc/ssh/ssh_config
     fi
+    sudo sed -i "s/HostKeyAlgorithms.*/#HostKeyAlgorithms $SSH_HOST_KEY_ALGORITHMS/g" /etc/ssh/ssh_config
+
     sudo sed -i "s/Ciphers.*/Ciphers $SSH_CIPHERS/g" /etc/ssh/ssh_config
     if ! grep -q "Ciphers " /etc/ssh/ssh_config; then
         sudo cp /etc/ssh/ssh_config ~/ssh_config
-        sudo chown $CURR_USER:$CURR_USER ~/ssh_config
+        sudo chown $CURR_USER:$CURR_GROUP ~/ssh_config
         echo "   Ciphers $SSH_CIPHERS" >> ~/ssh_config
         sudo mv ~/ssh_config /etc/ssh/ssh_config
         sudo chown root:root /etc/ssh/ssh_config
@@ -101,7 +143,7 @@ function configure_ssh_client {
     sudo sed -i "s/MACs.*/MACs $SSH_MACS/g" /etc/ssh/ssh_config
     if ! grep -q "MACs " /etc/ssh/ssh_config; then
         sudo cp /etc/ssh/ssh_config ~/ssh_config
-        sudo chown $CURR_USER:$CURR_USER ~/ssh_config
+        sudo chown $CURR_USER:$CURR_GROUP ~/ssh_config
         echo "   MACs $SSH_MACS" >> ~/ssh_config
         sudo mv ~/ssh_config /etc/ssh/ssh_config
         sudo chown root:root /etc/ssh/ssh_config
@@ -123,10 +165,16 @@ function configure_ssh_client {
     echo 'Host *.onion' > ~/.ssh/config
     echo '  ServerAliveInterval 60' >> ~/.ssh/config
     echo '  ServerAliveCountMax 3' >> ~/.ssh/config
+
+    proxycmd="connect -R remote -5 -S 127.0.0.1:9050 %h %p"
+    if [ -f /usr/bin/pacman ]; then
+        proxycmd="/usr/bin/nc -X 5 -x 127.0.0.1:9050 %h %p"
+    fi
+
     if [[ $ENABLE_MONKEYSPHERE == $'yes' || $ENABLE_MONKEYSPHERE == $'y' ]]; then
-        echo "  ProxyCommand sh -c 'monkeysphere ssh-proxycommand --no-connect %h %p ; connect -R remote -5 -S 127.0.0.1:9050 %h %p'" >> ~/.ssh/config
+        echo "  ProxyCommand sh -c 'monkeysphere ssh-proxycommand --no-connect %h %p ; $proxycmd'" >> ~/.ssh/config
     else
-        echo "  ProxyCommand connect -R remote -5 -S 127.0.0.1:9050 %h %p" >> ~/.ssh/config
+        echo "  ProxyCommand $proxycmd" >> ~/.ssh/config
     fi
     echo 'Host *' >> ~/.ssh/config
     echo '  ServerAliveInterval 60' >> ~/.ssh/config
@@ -136,15 +184,21 @@ function configure_ssh_client {
     fi
 
     echo ''
-    echo $'Copy the following into a file called /home/username/.ssh/authorized_keys on the Freedombone server'
+    echo $'Go to the Administrator Control Panel, select "Manage Users", '
+    echo $'"Change user ssh public key" then "yes" and paste the following:'
     echo ''
     echo $(cat /home/$CURR_USER/.ssh/id_rsa.pub)
     echo $(cat /home/$CURR_USER/.ssh/id_ed25519.pub)
     echo ''
+    echo $'Then go to "Security Settings", select "Allow ssh login with passwords"'
+    echo $'and set it to "no".'
 }
 
 function configure_monkeysphere {
-    sudo apt-get -y install tor connect-proxy monkeysphere
+    if [ -f /usr/bin/pacman ]; then
+        return
+    fi
+    sudo apt-get -yq install monkeysphere
 }
 
 function show_help {
@@ -154,7 +208,86 @@ function show_help {
     exit 0
 }
 
-while [[ $# > 1 ]]
+function setup_client_app_irc {
+    echo $'Setting up hexchat'
+    if [ ! -f /usr/bin/pacman ]; then
+        sudo apt-get -yq install tor hexchat tor
+    else
+        sudo pacman -S --noconfirm hexchat tor
+    fi
+    if [ ! -d /home/$CURR_USER/.config/hexchat ]; then
+        mkdir -p /home/$CURR_USER/.config/hexchat
+    fi
+    echo 'net_proxy_host = 127.0.0.1' > /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'net_proxy_port = 9050' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'net_proxy_type = 3' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'net_proxy_use = 0' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+
+    echo 'net_proxy_auth = 1' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'net_proxy_pass = HexChat' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'net_proxy_user = HexChat' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+
+    echo 'dcc_auto_chat = 0' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'dcc_auto_resume = 0' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'dcc_auto_send = 0' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'irc_hide_version = 1' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'identd = 0' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+
+    echo 'away_reason =' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'irc_part_reason =' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo 'irc_quit_reason =' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+
+    echo "irc_real_name = ${USER}" >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo "irc_user_name = ${USER}" >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo "irc_nick1 = ${USER}" >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo "irc_nick2 = ${USER}_" >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+    echo "irc_nick3 = ${USER}__" >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+
+    echo 'completion_suffix = :' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+
+    echo 'gui_slist_skip = 1' >> /home/$CURR_USER/.config/hexchat/hexchat.conf
+
+    echo $'hexchat configured'
+}
+
+function setup_client_app {
+    if [ ! $SETUP_CLIENT_APP_NAME ]; then
+        return
+    fi
+
+    case $SETUP_CLIENT_APP_NAME in
+        hexchat|xchat|irc)
+            setup_client_app_irc
+            ;;
+    esac
+    exit 0
+}
+
+function remove_known_hosts_entries {
+    # remove any previous freedombone entries from known hosts
+    if [ -f /home/$CURR_USER/.ssh/known_hosts ]; then
+        sed -i "/${PROJECT_NAME}.local/d" /home/$CURR_USER/.ssh/known_hosts
+    fi
+}
+
+function setup_avahi_client {
+    echo $'Configuring Avahi'
+    if [ ! -f /usr/bin/pacman ]; then
+        sudo apt-get -yq install avahi-utils avahi-autoipd avahi-dnsconfd
+    else
+        sudo pacman -S --noconfirm avahi nss-mdns
+        sudo sed -i 's|hosts:.*|hosts: files mdns_minimal [NOTFOUND=return] dns myhostname|g' /etc/nsswitch.conf
+    fi
+}
+
+function verify_ssh_server_key {
+    ssh -o VisualHostKey=yes -o FingerprintHash=sha256 ${PROJECT_NAME}.local -p 2222 &
+    pid=$!
+    sleep 15
+    kill ${pid}
+}
+
+while [[ $# > 0 ]]
 do
     key="$1"
 
@@ -169,6 +302,14 @@ do
         --channel)
             shift
             WIFI_CHANNEL=${1}
+            ;;
+        -s|--setup)
+            shift
+            SETUP_CLIENT_APP_NAME=${1}
+            ;;
+        -v|--verify|--verifykeys)
+            verify_ssh_server_key
+            exit 0
             ;;
         -m|--mesh)
             shift
@@ -186,18 +327,19 @@ do
 done
 
 echo $'Configuring client'
+setup_avahi_client
+setup_client_app
 refresh_gpg_keys
 configure_ssh_client
+global_rate_limit
 configure_monkeysphere
+remove_known_hosts_entries
 if [[ $MESH_CLIENT_INSTALL == $'yes' || $MESH_CLIENT_INSTALL == $'y' || $MESH_CLIENT_INSTALL == $'on' ]]; then
     echo $'Installing mesh packages'
-    sudo apt-get -y install avahi-utils avahi-autoipd avahi-dnsconfd
     sudo ${PROJECT_NAME}-mesh-install -f tox_node
     sudo ${PROJECT_NAME}-mesh-install -f toxic
     ${PROJECT_NAME}-mesh-install -f qtox
     sudo ${PROJECT_NAME}-mesh-install -f zeronet
-
-    ${PROJECT_NAME}-mesh-install -f batman_client
 fi
 echo $'Configuration complete'
 exit 0

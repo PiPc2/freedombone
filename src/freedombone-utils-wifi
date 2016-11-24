@@ -1,0 +1,628 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Wifi functions
+
+# License
+# =======
+#
+# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+WIFI_CHANNEL=2
+WIFI_INTERFACE=wlan0
+WIFI_TYPE='wpa2-psk'
+WIFI_SSID=
+WIFI_PASSPHRASE=
+WIFI_HOTSPOT='no'
+WIFI_NETWORKS_FILE=~/${PROJECT_NAME}-wifi.cfg
+
+# repo for atheros AR9271 wifi driver
+ATHEROS_WIFI_REPO="https://github.com/qca/open-ath9k-htc-firmware.git"
+
+function wifi_is_running {
+    wifi_state=$(wpa_cli status)
+    if [[ "$wifi_state" == *"COMPLETED"* ]]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+function wifi_static_network_interface {
+    NETWORK_IS_STATIC=0
+    read_config_param "NETWORK_IS_STATIC"
+    if [ ${NETWORK_IS_STATIC} -eq 0 ]; then
+        echo '#this line must always be here' >> /etc/network/interfaces
+        echo 'iface default inet dhcp' >> /etc/network/interfaces
+    else
+        read_config_param "LOCAL_NETWORK_STATIC_IP_ADDRESS"
+        read_config_param "ROUTER_IP_ADDRESS"
+        echo '#static address' >> /etc/network/interfaces
+        echo 'iface default inet static' >> /etc/network/interfaces
+        echo "    address ${LOCAL_NETWORK_STATIC_IP_ADDRESS}" >> /etc/network/interfaces
+        echo '    netmask 255.255.255.0' >> /etc/network/interfaces
+        echo "    gateway ${ROUTER_IP_ADDRESS}" >> /etc/network/interfaces
+    fi
+}
+
+function setup_wifi_atheros {
+    if [[ $(running_as_root) == "0" ]]; then
+        return
+    fi
+
+    atheros_drivers_file=drivers/ath9k_htc_driver_bbb.tar.gz
+    if [ ! -f $atheros_drivers_file ]; then
+        if [ ! -f ~/freedombone/$atheros_drivers_file ]; then
+            return
+        else
+            atheros_drivers_file=~/freedombone/$atheros_drivers_file
+        fi
+    else
+        atheros_drivers_file=$(pwd)/$atheros_drivers_file
+    fi
+    if [ ! -d /lib/firmware ]; then
+        mkdir /lib/firmware
+        if [ ! -d /lib/firmware ]; then
+            return
+        fi
+    fi
+    if [ -f /lib/firmware/htc_9271.fw ]; then
+        return
+    fi
+    curr_dir=$(pwd)
+    cd /lib/firmware
+    tar -xzvf $atheros_drivers_file
+    reset_usb_devices
+    cd $curr_dir
+    update_wifi_adaptors
+    if [ $IFACE ]; then
+        wpa_action ${IFACE} stop
+        wpa_cli -i ${IFACE} terminate
+        ifconfig $IFACE up
+    fi
+}
+
+function setup_wifi {
+    if [[ $SYSTEM_TYPE == "mesh"* ]]; then
+        return
+    fi
+    if [ ! $WIFI_SSID ]; then
+        return
+    fi
+    if [ ${#WIFI_SSID} -lt 2 ]; then
+        return
+    fi
+
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    HOTSPOT='no'
+    if [[ $WIFI_HOTSPOT != 'no' ]]; then
+        HOTSPOT='yes'
+    fi
+
+    if [ -f $WIFI_NETWORKS_FILE ]; then
+        ${PROJECT_NAME}-wifi --networks $WIFI_NETWORKS_FILE
+        mark_completed $FUNCNAME
+        return
+    fi
+
+    if [[ $WIFI_TYPE != 'none' ]]; then
+        if [ ! $WIFI_PASSPHRASE ]; then
+            echo $'No wifi passphrase was given'
+            return
+        fi
+        if [ ${#WIFI_PASSPHRASE} -lt 2 ]; then
+            echo $'Wifi passphrase was too short'
+            return
+        fi
+        ${PROJECT_NAME}-wifi -s $WIFI_SSID -t $WIFI_TYPE -p $WIFI_PASSPHRASE --hotspot $HOTSPOT --networks $WIFI_NETWORKS_FILE
+    else
+        ${PROJECT_NAME}-wifi -s $WIFI_SSID -t $WIFI_TYPE --hotspot $HOTSPOT --networks $WIFI_NETWORKS_FILE
+    fi
+    mark_completed $FUNCNAME
+}
+
+# ath9k_htc driver
+function install_atheros_wifi {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [ $INSTALLING_ON_BBB != "yes" ]; then
+        return
+    fi
+    if [[ $ENABLE_BATMAN != "yes" ]]; then
+        return
+    fi
+    if [ -d $INSTALL_DIR/open-ath9k-htc-firmware ]; then
+        return
+    fi
+    # have drivers already been installed ?
+    if [ -f /lib/firmware/htc_9271.fw ]; then
+        return
+    fi
+    apt-get -yq install build-essential cmake git m4 texinfo
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir -p $INSTALL_DIR
+    fi
+    cd $INSTALL_DIR
+    if [ ! -d $INSTALL_DIR/open-ath9k-htc-firmware ]; then
+        function_check git_clone
+        git_clone $ATHEROS_WIFI_REPO $INSTALL_DIR/open-ath9k-htc-firmware
+        if [ ! "$?" = "0" ]; then
+            rm -rf $INSTALL_DIR/open-ath9k-htc-firmware
+            exit 74283
+        fi
+    fi
+    cd $INSTALL_DIR/open-ath9k-htc-firmware
+    git checkout 1.4.0
+    make toolchain
+    if [ ! "$?" = "0" ]; then
+        rm -rf $INSTALL_DIR/open-ath9k-htc-firmware
+        exit 24820
+    fi
+    make firmware
+    if [ ! "$?" = "0" ]; then
+        rm -rf $INSTALL_DIR/open-ath9k-htc-firmware
+        exit 63412
+    fi
+    cp target_firmware/*.fw /lib/firmware/
+    if [ ! "$?" = "0" ]; then
+        exit 74681
+    fi
+    mark_completed $FUNCNAME
+}
+
+function update_wifi_adaptors {
+    IFACE=
+    IFACE_SECONDARY=
+
+    for i in $(seq 10 -1 0); do
+        if grep -q "wlan${i}" /proc/net/dev; then
+            if [ ! $IFACE ]; then
+                IFACE="wlan${i}"
+            else
+                IFACE_SECONDARY="wlan${i}"
+                return
+            fi
+        fi
+    done
+}
+
+function wifi_get_psk {
+    ssid=$1
+    passphrase=$2
+
+    psk=$(wpa_passphrase "$ssid" "$passphrase" | grep 'psk=' | sed -n 2p | awk -F '=' '{print $2}')
+    echo $psk
+}
+
+function hotspot_off {
+    if [ ! -f /etc/hostapd/hostapd.conf ]; then
+        return
+    fi
+    systemctl stop hostapd
+
+    rm /etc/hostapd/hostapd.conf
+
+    if [ -f /etc/network/interfaces_original ]; then
+        cp /etc/network/interfaces_original /etc/network/interfaces
+    else
+        echo '# interfaces(5) file used by ifup(8) and ifdown(8)' > /etc/network/interfaces
+        echo '# Include files from /etc/network/interfaces.d:' >> /etc/network/interfaces
+        echo 'source-directory /etc/network/interfaces.d' >> /etc/network/interfaces
+    fi
+
+    wpa_action ${WIFI_INTERFACE} stop
+    wpa_cli -i ${WIFI_INTERFACE} terminate
+    systemctl restart network-manager
+}
+
+function hotspot_on {
+    if [ ! -f /etc/default/hostapd ]; then
+        echo $'/etc/default/hostapd was not found'
+        exit 67241
+    fi
+    if [ ${#WIFI_PASSPHRASE} -lt 8 ]; then
+        echo $'Wifi hotspot passphrase is too short'
+        exit 25719
+    fi
+
+    sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
+
+    echo '### Wireless network name ###' > /etc/hostapd/hostapd.conf
+    echo "interface=$WIFI_INTERFACE" >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '### Set your bridge name ###' >> /etc/hostapd/hostapd.conf
+    echo 'bridge=br0' >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+    echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+    echo "ssid=$WIFI_SSID" >> /etc/hostapd/hostapd.conf
+    echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+    echo 'channel=6' >> /etc/hostapd/hostapd.conf
+    echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+    echo "wpa_passphrase=$WIFI_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Key management algorithms ##' >> /etc/hostapd/hostapd.conf
+    echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Set cipher suites (encryption algorithms) ##' >> /etc/hostapd/hostapd.conf
+    echo '## TKIP = Temporal Key Integrity Protocol' >> /etc/hostapd/hostapd.conf
+    echo '## CCMP = AES in Counter mode with CBC-MAC' >> /etc/hostapd/hostapd.conf
+    echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+    echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Shared Key Authentication ##'
+    echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+    echo '' >> /etc/hostapd/hostapd.conf
+    echo '## Accept all MAC address ###' >> /etc/hostapd/hostapd.conf
+    echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+
+    if [ ! -f /etc/network/interfaces_original ]; then
+        if ! grep -q "# wifi enabled" /etc/network/interfaces; then
+            cp /etc/network/interfaces /etc/network/interfaces_original
+        fi
+    fi
+
+    echo '# wifi enabled' > /etc/network/interfaces
+    echo 'auto lo br0' >> /etc/network/interfaces
+    echo 'iface lo inet loopback' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo "# wireless $WIFI_INTERFACE" >> /etc/network/interfaces
+    echo "allow-hotplug $WIFI_INTERFACE" >> /etc/network/interfaces
+    echo "iface $WIFI_INTERFACE inet manual" >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo '# eth0 connected to the ISP router' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' >> /etc/network/interfaces
+    echo 'iface eth0 inet manual' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo '# Setup bridge' >> /etc/network/interfaces
+    echo 'iface br0 inet static' >> /etc/network/interfaces
+    echo "    bridge_ports $WIFI_INTERFACE eth0" >> /etc/network/interfaces
+
+    systemctl restart network-manager
+    ifconfig $WIFI_INTERFACE up
+    systemctl restart hostapd
+}
+
+function wifi_store_original_network_settings {
+    if [ ! -f /etc/network/interfaces_original ]; then
+        if ! grep -q "# wifi enabled" /etc/network/interfaces; then
+            cp /etc/network/interfaces /etc/network/interfaces_original
+        fi
+    fi
+}
+
+function wifi_original_network_settings {
+    remove_config_param "NETWORK_IS_STATIC"
+    if [ -f /etc/network/interfaces_original ]; then
+        cp /etc/network/interfaces_original /etc/network/interfaces
+    fi
+}
+
+function wifi_wpa2_psk {
+    ssid=$1
+    passphrase=$2
+
+    wifi_store_original_network_settings
+
+    echo '# wifi enabled' > /etc/network/interfaces
+    echo 'auto lo' >> /etc/network/interfaces
+    echo 'iface lo inet loopback' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' >> /etc/network/interfaces
+    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo "allow-hotplug ${WIFI_INTERFACE}" >> /etc/network/interfaces
+    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
+    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    wifi_static_network_interface
+
+    wpa_passphrase "$ssid" "$passphrase" > $WIFI_CONFIG
+
+    systemctl restart network-manager
+    ifconfig ${WIFI_INTERFACE} up
+}
+
+function wifi_none {
+    ssid=$1
+
+    wifi_store_original_network_settings
+
+    echo '# wifi enabled' > /etc/network/interfaces
+    echo 'auto lo' >> /etc/network/interfaces
+    echo 'iface lo inet loopback' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' >> /etc/network/interfaces
+    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo "allow-hotplug ${WIFI_INTERFACE}" >> /etc/network/interfaces
+    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
+    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    wifi_static_network_interface
+
+    echo 'update_config=1' > $WIFI_CONFIG
+    echo 'eapol_version=1' >> $WIFI_CONFIG
+    echo '' >> $WIFI_CONFIG
+
+    echo 'network={' >> $WIFI_CONFIG
+    if [[ "${ssid}" != $'any' && "${ssid}" != $'all' && "${ssid}" != $'open' ]]; then
+        echo "  ssid=\"${ssid}\"" >> $WIFI_CONFIG
+    fi
+    echo '  key_mgmt=NONE' >> $WIFI_CONFIG
+    echo '}' >> $WIFI_CONFIG
+
+    systemctl restart network-manager
+    ifconfig ${WIFI_INTERFACE} up
+}
+
+function networks_from_file {
+    if [ ! -f $WIFI_NETWORKS_FILE ]; then
+        exit 4
+    fi
+
+    if [[ $(config_param_exists "WIFI_INTERFACE") == "0" ]]; then
+        exit 5
+    fi
+    read_config_param "WIFI_INTERFACE"
+
+    wifi_store_original_network_settings
+
+    echo '# wifi enabled' > /etc/network/interfaces
+    echo 'auto lo' >> /etc/network/interfaces
+    echo 'iface lo inet loopback' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' >> /etc/network/interfaces
+    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    echo "allow-hotplug ${WIFI_INTERFACE}" >> /etc/network/interfaces
+    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
+    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
+    echo '' >> /etc/network/interfaces
+    wifi_static_network_interface
+
+    # remove wpa_supplicant.conf if it exists
+    if [ -f $WIFI_CONFIG ]; then
+        rm -f $WIFI_CONFIG
+    fi
+
+    echo 'update_config=1' > $WIFI_CONFIG
+    echo 'eapol_version=1' >> $WIFI_CONFIG
+    echo '' >> $WIFI_CONFIG
+
+    ctr=0
+    while read -r line
+    do
+        if [ ${#line} -gt 1 ]; then
+            if [[ "$line" != '#'* ]]; then
+                if [ $ctr -eq 0 ]; then
+                    WIFI_SSID="$line"
+                fi
+                if [ $ctr -eq 1 ]; then
+                    WIFI_TYPE="$line"
+                    if [[ $WIFI_TYPE == $'none' || $WIFI_TYPE == $'open' ]]; then
+                        echo 'network={' >> $WIFI_CONFIG
+                        if [[ "${WIFI_SSID}" != $'any' && "${WIFI_SSID}" != $'all' && "${WIFI_SSID}" != $'open' ]]; then
+                            echo "  ssid=\"${WIFI_SSID}\"" >> $WIFI_CONFIG
+                        fi
+                        echo '  key_mgmt=NONE' >> $WIFI_CONFIG
+                        echo '}' >> $WIFI_CONFIG
+                        ctr=0
+                        continue
+                    fi
+                fi
+                if [ $ctr -eq 2 ]; then
+                    WIFI_PASSPHRASE="$line"
+                    wpa_passphrase "$WIFI_SSID" "$WIFI_PASSPHRASE" >> $WIFI_CONFIG
+                    ctr=0
+                    continue
+                fi
+
+                ctr=$((ctr + 1))
+            fi
+        fi
+    done < $WIFI_NETWORKS_FILE
+
+    chattr -i /etc/resolv.conf
+    systemctl restart network-manager
+    ifconfig ${WIFI_INTERFACE} up
+}
+
+function wifi_networks_file_header {
+    echo $'# Add wifi networks as follows:' > $WIFI_NETWORKS_FILE
+    echo '#' >> $WIFI_NETWORKS_FILE
+    echo $'# MySSID' >> $WIFI_NETWORKS_FILE
+    echo $'# wpa2-psk' >> $WIFI_NETWORKS_FILE
+    echo $'# myWifiPassphrase' >> $WIFI_NETWORKS_FILE
+    echo '#' >> $WIFI_NETWORKS_FILE
+    echo $'# AnotherSSID' >> $WIFI_NETWORKS_FILE
+    echo $'# none' >> $WIFI_NETWORKS_FILE
+    echo '#' >> $WIFI_NETWORKS_FILE
+}
+
+function create_networks_interactive {
+    remove_config_param "WIFI_INTERFACE"
+    update_wifi_adaptors
+    if [ ! $IFACE ]; then
+        # Don't try to configure wifi if there are no adaptors
+        return
+    fi
+
+    if [ -f $WIFI_NETWORKS_FILE ]; then
+        rm $WIFI_NETWORKS_FILE
+    fi
+
+    # By default connect to any open wifi
+    WIFI_SSID=''
+    WIFI_TYPE=$'open'
+
+    wifi_ctr=0
+    wifi_networks_done=
+    while [ ! $wifi_networks_done ]
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Configuration" \
+               --title $"Wifi Settings ${wifi_ctr}" \
+               --form $"\nTo use this system via wifi (eg. USB dongle) enter the details below, otherwise just select Ok:" 13 65 4 \
+               $"SSID (can be 'any'):" 1 1 "$WIFI_SSID" 1 24 30 30 \
+               $"Type (open/wpa2-psk):" 2 1 "$WIFI_TYPE" 2 24 10 10 \
+               $"Passphrase:" 3 1 "$WIFI_PASSPHRASE" 3 24 50 50 \
+               2> $data
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+        WIFI_SSID=$(cat $data | sed -n 1p)
+        WIFI_TYPE=$(cat $data | sed -n 2p)
+        WIFI_PASSPHRASE=$(cat $data | sed -n 3p)
+
+        # if these fields are empty then there are no more wifi networks
+        if [ ${#WIFI_SSID} -lt 2 ]; then
+            wifi_networks_done='yes'
+            continue
+        fi
+        if [ ${#WIFI_TYPE} -lt 2 ]; then
+            wifi_networks_done='yes'
+            continue
+        fi
+
+        if [ ! -f $WIFI_NETWORKS_FILE ]; then
+            wifi_networks_file_header
+        fi
+
+        # update the wifi networks file
+        echo '' >> $WIFI_NETWORKS_FILE
+        echo "$WIFI_SSID" >> $WIFI_NETWORKS_FILE
+        echo "$WIFI_TYPE" >> $WIFI_NETWORKS_FILE
+        if [ ${#WIFI_PASSPHRASE} -gt 1 ]; then
+            echo "$WIFI_PASSPHRASE" >> $WIFI_NETWORKS_FILE
+        fi
+
+        if [ ${#WIFI_SSID} -gt 1 ]; then
+            if [ ${#WIFI_TYPE} -gt 1 ]; then
+                if [[ "${WIFI_TYPE}" == $'none' || "${WIFI_TYPE}" == $'open' ]]; then
+                    write_config_param "WIFI_INTERFACE" "$WIFI_INTERFACE"
+                    return
+                else
+                    if [ ${#WIFI_PASSPHRASE} -gt 1 ]; then
+                        write_config_param "WIFI_INTERFACE" "$WIFI_INTERFACE"
+                        return
+                    fi
+                fi
+            fi
+        fi
+
+        # clear values
+        WIFI_SSID=
+        WIFI_PASSPHRASE=
+
+        wifi_ctr=$((wifi_ctr + 1))
+    done
+}
+
+function disable_wifi {
+    if [[ ${1} == 'yes' || ${1} == 'y' ]]; then
+        hotspot_off
+        echo '# interfaces(5) file used by ifup(8) and ifdown(8)' > /etc/network/interfaces
+        echo '# Include files from /etc/network/interfaces.d:' >> /etc/network/interfaces
+        echo 'source-directory /etc/network/interfaces.d' >> /etc/network/interfaces
+        remove_config_param "WIFI_INTERFACE"
+        wpa_action ${WIFI_INTERFACE} stop
+        wpa_cli -i ${WIFI_INTERFACE} terminate
+        systemctl restart network-manager
+    else
+        networks_from_file
+    fi
+}
+
+function count_wlan {
+    # counts the number of wlan devices
+    ctr=0
+
+    for i in $(seq 0 1 10); do
+        if grep -q "wlan${i}" /proc/net/dev; then
+            ctr=$((ctr + 1))
+        fi
+    done
+    echo $ctr
+}
+
+function wifi_exists {
+    if grep -q "wlan" /proc/net/dev; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+function remove_wifi_startup_script {
+    remove_config_param "WIFI_INTERFACE"
+    systemd_file=/etc/systemd/system/wifistart.service
+    if [ -f $systemd_file ]; then
+        systemctl stop wifistart
+        systemctl disable wifistart
+        rm $systemd_file
+    fi
+    if [ -f $HOME/${PROJECT_NAME}-wifi.cfg ]; then
+        rm $HOME/${PROJECT_NAME}-wifi.cfg
+    fi
+}
+
+function create_wifi_startup_script {
+    systemd_file=/etc/systemd/system/wifistart.service
+    echo '[Unit]' > $systemd_file
+    echo 'Description=WifiStartup (Start wifi networking)' >> $systemd_file
+    echo 'After=syslog.target' >> $systemd_file
+    echo 'After=network.target' >> $systemd_file
+    echo 'After=remote-fs.target' >> $systemd_file
+    echo '' >> $systemd_file
+    echo '[Service]' >> $systemd_file
+    echo 'Type=simple' >> $systemd_file
+    echo 'User=root' >> $systemd_file
+    echo 'Group=root' >> $systemd_file
+    echo 'WorkingDirectory=/root' >> $systemd_file
+    echo "ExecStart=/usr/local/bin/${PROJECT_NAME}-wifi --wait 5 2> /dev/null" >> $systemd_file
+    echo '' >> $systemd_file
+    echo '[Install]' >> $systemd_file
+    echo 'WantedBy=multi-user.target' >> $systemd_file
+
+    systemctl enable wifistart
+    systemctl daemon-reload
+}
+
+function remove_wifi_startup_script {
+    systemd_file=/etc/systemd/system/wifistart.service
+    if [ -f $systemd_file ]; then
+        systemctl disable wifistart
+        systemctl daemon-reload
+        rm $systemd_file
+    fi
+}
+
+# NOTE: deliberately no exit 0

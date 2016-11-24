@@ -1,0 +1,1107 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# gnusocial application
+#
+# License
+# =======
+#
+# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim media'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+GNUSOCIAL_DOMAIN_NAME=
+GNUSOCIAL_CODE=
+GNUSOCIAL_ONION_PORT=8087
+GNUSOCIAL_REPO="https://git.gnu.io/gnu/gnu-social.git"
+GNUSOCIAL_COMMIT='c67b89e56bf0f90730a9e22beca7e1bd41fc26c3'
+GNUSOCIAL_ADMIN_PASSWORD=
+GNUSOCIAL_THEME_REPO="https://git.gnu.io/h2p/Qvitter.git"
+GNUSOCIAL_THEME_COMMIT='510b6c5f9ccd89e3693909198aad691492ace081'
+GNUSOCIAL_WELCOME_MESSAGE=$'<h1>Welcome to GNU Social – a federated social metwork</h1><p>Another Freedombone site</p>'
+GNUSOCIAL_BACKGROUND_IMAGE_URL=
+GNUSOCIAL_MARKDOWN_REPO="https://git.gnu.io/chimo/markdown.git"
+GNUSOCIAL_MARKDOWN_COMMIT='03c53942f94b3376f0946e6e1fe566cc21ccf232'
+
+# Sharings plugin for gnusocial
+SHARINGS_REPO="http://git.lasindias.club/bashrc/Sharings"
+SHARINGS_COMMIT='d5c6c7f855d9afff9086c09ea706f38c859bc0d4'
+SHARINGS_THEME_REPO="http://git.lasindias.club/manuel/SharingsTheme"
+SHARINGS_THEME_COMMIT='7106c7ef03'
+
+# NSFW plugin
+GNUSOCIAL_NSFW_REPO="https://gitgud.io/ShitposterClub/SensitiveContent"
+GNUSOCIAL_NSFW_COMMIT='a096bbe0cfae9a9b177682920ffb58d32a48e136'
+
+# script which causes old posts to expire
+gnusocial_expire_script=/usr/bin/gnusocial-expire
+
+gnusocial_variables=(GNUSOCIAL_COMMIT
+                     ONION_ONLY
+                     GNUSOCIAL_DOMAIN_NAME
+                     GNUSOCIAL_CODE
+                     GNUSOCIAL_WELCOME_MESSAGE
+                     GNUSOCIAL_BACKGROUND_IMAGE_URL
+                     DDNS_PROVIDER
+                     GNUSOCIAL_MARKDOWN_REPO
+                     GNUSOCIAL_MARKDOWN_COMMIT
+                     SHARINGS_REPO
+                     SHARINGS_COMMIT
+                     SHARINGS_THEME_REPO
+                     SHARINGS_THEME_COMMIT
+                     MY_USERNAME)
+
+function remove_user_gnusocial {
+    remove_username="$1"
+
+    ${PROJECT_NAME}-pass -u $remove_username --rmapp gnusocial
+
+    function_check get_completion_param
+    GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+    if [ -d /var/www/$GNUSOCIAL_DOMAIN_NAME ]; then
+        cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+        php scripts/deleteprofile.php -n $remove_username -y
+    fi
+}
+
+function add_user_gnusocial {
+    new_username="$1"
+    new_user_password="$2"
+
+    ${PROJECT_NAME}-pass -u $new_username -a gnusocial -p "$new_user_password"
+
+    GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+    if [ -d /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs ]; then
+        cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+        php scripts/registeruser.php -n $new_username -w "$new_user_password" -e "$new_username@$HOSTNAME"
+        ${PROJECT_NAME}-addemail -u $new_username -e "noreply@$GNUSOCIAL_DOMAIN_NAME" -g gnusocial --public no
+        echo '0'
+    else
+        echo '1'
+    fi
+}
+
+function install_interactive_gnusocial {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        GNUSOCIAL_DOMAIN_NAME='gnusocial.local'
+    else
+        GNUSOCIAL_DETAILS_COMPLETE=
+        while [ ! $GNUSOCIAL_DETAILS_COMPLETE ]
+        do
+            data=$(tempfile 2>/dev/null)
+            trap "rm -f $data" 0 1 2 5 15
+            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"GNU Social Configuration" \
+                       --form $"\nPlease enter your GNU Social details. Welcome message and background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 4 \
+                       $"Domain:" 1 1 "$(grep 'GNUSOCIAL_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       $"Welcome Message:" 2 1 "$(grep '$GNUSOCIAL_WELCOME_MESSAGE' temp.cfg | awk -F '=' '{print $2}')" 2 25 255 255 \
+                       $"Background image URL:" 3 1 "$(grep '$GNUSOCIAL_BACKGROUND_IMAGE_URL' temp.cfg | awk -F '=' '{print $2}')" 3 25 255 255 \
+                       $"Code:" 4 1 "$(grep 'GNUSOCIAL_CODE' temp.cfg | awk -F '=' '{print $2}')" 4 25 33 255 \
+                       2> $data
+            else
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"GNU Social Configuration" \
+                       --form $"\nPlease enter your GNU Social details. Welcome message and background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 4 \
+                       $"Domain:" 1 1 "$(grep 'GNUSOCIAL_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       $"Welcome Message:" 2 1 "$(grep '$GNUSOCIAL_WELCOME_MESSAGE' temp.cfg | awk -F '=' '{print $2}')" 2 25 255 255 \
+                       $"Background image URL:" 3 1 "$(grep '$GNUSOCIAL_BACKGROUND_IMAGE_URL' temp.cfg | awk -F '=' '{print $2}')" 3 25 255 255 \
+                       2> $data
+            fi
+            sel=$?
+            case $sel in
+                1) exit 1;;
+                255) exit 1;;
+            esac
+            GNUSOCIAL_DOMAIN_NAME=$(cat $data | sed -n 1p)
+            welcome_msg=$(cat $data | sed -n 2p)
+            if [ ${#welcome_msg} -gt 1 ]; then
+                GNUSOCIAL_WELCOME_MESSAGE=$welcome_msg
+            fi
+            img_url=$(cat $data | sed -n 3p)
+            if [ ${#img_url} -gt 1 ]; then
+                GNUSOCIAL_BACKGROUND_IMAGE_URL=$img_url
+            fi
+            if [ $GNUSOCIAL_DOMAIN_NAME ]; then
+                if [[ $GNUSOCIAL_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
+                    GNUSOCIAL_DOMAIN_NAME=""
+                fi
+                TEST_DOMAIN_NAME=$GNUSOCIAL_DOMAIN_NAME
+                validate_domain_name
+                if [[ $TEST_DOMAIN_NAME != $GNUSOCIAL_DOMAIN_NAME ]]; then
+                    GNUSOCIAL_DOMAIN_NAME=
+                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                else
+                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                        GNUSOCIAL_CODE=$(cat $data | sed -n 4p)
+                        validate_freedns_code "$GNUSOCIAL_CODE"
+                        if [ ! $VALID_CODE ]; then
+                            GNUSOCIAL_DOMAIN_NAME=
+                        fi
+                    fi
+                fi
+            fi
+            if [ $GNUSOCIAL_DOMAIN_NAME ]; then
+                GNUSOCIAL_DETAILS_COMPLETE="yes"
+            fi
+        done
+
+        # remove any invalid characters
+        if [ ${#GNUSOCIAL_WELCOME_MESSAGE} -gt 0 ]; then
+            new_welcome=$(echo "$GNUSOCIAL_WELCOME_MESSAGE" | sed "s|'||g")
+            GNUSOCIAL_WELCOME_MESSAGE="$new_welcome"
+        fi
+
+        # save the results in the config file
+        write_config_param "GNUSOCIAL_CODE" "$GNUSOCIAL_CODE"
+        write_config_param "GNUSOCIAL_WELCOME_MESSAGE" "$GNUSOCIAL_WELCOME_MESSAGE"
+        write_config_param "GNUSOCIAL_BACKGROUND_IMAGE_URL" "$GNUSOCIAL_BACKGROUND_IMAGE_URL"
+    fi
+    write_config_param "GNUSOCIAL_DOMAIN_NAME" "$GNUSOCIAL_DOMAIN_NAME"
+    APP_INSTALLED=1
+}
+
+function change_password_gnusocial {
+    curr_username="$1"
+    new_user_password="$2"
+
+    read_config_param ${GNUSOCIAL_DOMAIN_NAME}
+
+    cd /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
+    ./scripts/setpassword "$curr_username" "$new_user_password"
+
+    ${PROJECT_NAME}-pass -u "$curr_username" -a gnusocial -p "$new_user_password"
+}
+
+function gnusocial_create_database {
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        GNUSOCIAL_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        if [ ! $GNUSOCIAL_ADMIN_PASSWORD ]; then
+            GNUSOCIAL_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    if [ ! $GNUSOCIAL_ADMIN_PASSWORD ]; then
+        return
+    fi
+
+    function_check create_database
+    create_database gnusocial "$GNUSOCIAL_ADMIN_PASSWORD" $MY_USERNAME
+}
+
+function gnusocial_running_script {
+    # check that the daemon is running
+    echo '#!/bin/bash' > /etc/cron.hourly/gnusocial-daemons
+    echo 'daemon_lines=$(ps aux | grep "scripts/queuedaemon.php" | grep "/var/www")' >> /etc/cron.hourly/gnusocial-daemons
+    echo 'if [[ $daemon_lines != *"/var/www/"* ]]; then' >> /etc/cron.hourly/gnusocial-daemons
+
+    echo "    ADMIN_USER=\$(cat $COMPLETION_FILE | grep 'Admin user' | awk -F ':' '{print \$2}')" >> /etc/cron.hourly/gnusocial-daemons
+    echo '    MY_EMAIL_ADDRESS=$ADMIN_USER@$HOSTNAME' >> /etc/cron.hourly/gnusocial-daemons
+    echo '    echo "Restarting GNU Social daemons" | mail -s "GNU Social daemons not found" $MY_EMAIL_ADDRESS' >> /etc/cron.hourly/gnusocial-daemons
+    echo "    cd /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs" >> /etc/cron.hourly/gnusocial-daemons
+    echo '    scripts/startdaemons.sh' >> /etc/cron.hourly/gnusocial-daemons
+    echo 'fi' >> /etc/cron.hourly/gnusocial-daemons
+    chmod +x /etc/cron.hourly/gnusocial-daemons
+}
+
+function reconfigure_gnusocial {
+    echo -n ''
+}
+
+function gnusocial_set_background_image_from_url {
+    GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT=
+    if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL ]; then
+        if [[ $GNUSOCIAL_BACKGROUND_IMAGE_URL == *".jpeg" || $GNUSOCIAL_BACKGROUND_IMAGE_URL == *".jpg" ]]; then
+            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="jpg"
+        fi
+        if [[ $GNUSOCIAL_BACKGROUND_IMAGE_URL == *".png" ]]; then
+            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="png"
+        fi
+        if [[ $$GNUSOCIAL_BACKGROUND_IMAGE_URL == *".gif" ]]; then
+            GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="gif"
+        fi
+    fi
+
+    if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT ]; then
+        read_config_param GNUSOCIAL_DOMAIN_NAME
+        gnusocial_config_file=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+
+        cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter
+
+        wget $GNUSOCIAL_BACKGROUND_IMAGE_URL -O img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT}
+        if [ ! -f img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT} ]; then
+            echo "$GNUSOCIAL_BACKGROUND_IMAGE_URL"
+            echo $'Custom background image for gnusocial could not be downloaded'
+            echo "1"
+            return
+        fi
+
+        if grep -q "'img/custom" $gnusocial_config_file; then
+            sed -i "s|'img/custom.*|'img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT}';|g" $gnusocial_config_file
+        fi
+    fi
+    echo "0"
+}
+
+
+function gnusocial_set_background_image {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"GNU Social" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'Set a login screen background image URL' 10 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            temp_background=$(<$data)
+            if [ ${#temp_background} -gt 0 ]; then
+                GNUSOCIAL_BACKGROUND_IMAGE_URL="$temp_background"
+                write_config_param "GNUSOCIAL_BACKGROUND_IMAGE_URL" "$GNUSOCIAL_BACKGROUND_IMAGE_URL"
+                if [[ $(gnusocial_set_background_image_from_url) == "0" ]]; then
+                    dialog --title $"Set GNU Social login background" \
+                           --msgbox $"The background image has been set" 6 60
+                fi
+            fi
+           ;;
+    esac
+}
+
+function gnusocial_set_welcome_message {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"GNU Social" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'Set a welcome message, which can include html formatting' 10 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            temp_welcome=$(<$data)
+            if [ ${#temp_welcome} -gt 0 ]; then
+                GNUSOCIAL_WELCOME_MESSAGE="$temp_welcome"
+                gnusocial_config_file=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+                if grep -q "customwelcometext" $gnusocial_config_file; then
+                    write_config_param "GNUSOCIAL_WELCOME_MESSAGE" "$GNUSOCIAL_WELCOME_MESSAGE"
+                    sed -i "s|customwelcometext.*|customwelcometext']['en'] = '${GNUSOCIAL_WELCOME_MESSAGE}';|g" $gnusocial_config_file
+
+                    dialog --title $"Set GNU Social welcome message" \
+                           --msgbox $"Welcome message has been set" 6 60
+                fi
+            fi
+           ;;
+    esac
+}
+
+function configure_interactive_gnusocial {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"GNU Social" \
+               --radiolist $"Choose an operation:" 12 70 3 \
+               1 $"Set a login screen background image" off \
+               2 $"Set a welcome message" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+        case $(cat $data) in
+            1) gnusocial_set_background_image;;
+            2) gnusocial_set_welcome_message;;
+            3) break;;
+        esac
+    done
+}
+
+function upgrade_gnusocial {
+    if grep -q "gnusocial domain" $COMPLETION_FILE; then
+        GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs "gnusocial commit" "$GNUSOCIAL_COMMIT" $GNUSOCIAL_REPO
+
+    function_check gnusocial_running_script
+    gnusocial_running_script
+}
+
+
+function backup_local_gnusocial {
+    GNUSOCIAL_DOMAIN_NAME='gnusocial'
+    if grep -q "gnusocial domain" $COMPLETION_FILE; then
+        GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+    fi
+
+    source_directory=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
+    if [ -d $source_directory ]; then
+        dest_directory=gnusocial
+        function_check suspend_site
+        suspend_site ${GNUSOCIAL_DOMAIN_NAME}
+
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+
+        function_check backup_database_to_usb
+        backup_database_to_usb gnusocial
+
+        function_check restart_site
+        restart_site
+    fi
+}
+
+function restore_local_gnusocial {
+    if ! grep -q "gnusocial domain" $COMPLETION_FILE; then
+        return
+    fi
+    GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+    if [ $GNUSOCIAL_DOMAIN_NAME ]; then
+        echo $"Restoring gnusocial"
+        temp_restore_dir=/root/tempgnusocial
+        gnusocial_dir=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
+        # stop the daemons
+        cd $gnusocial_dir
+        scripts/stopdaemons.sh
+
+        function_check gnusocial_create_database
+        gnusocial_create_database
+
+        restore_database gnusocial ${GNUSOCIAL_DOMAIN_NAME}
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
+
+        # start the daemons
+        cd $gnusocial_dir
+        scripts/startdaemons.sh
+        echo $"Restore of gnusocial complete"
+    fi
+}
+
+function backup_remote_gnusocial {
+    if grep -q "gnusocial domain" $COMPLETION_FILE; then
+        GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+        temp_backup_dir=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
+        if [ -d $temp_backup_dir ]; then
+            function_check suspend_site
+            suspend_site ${GNUSOCIAL_DOMAIN_NAME}
+
+            function_check backup_database_to_friend
+            backup_database_to_friend gnusocial
+
+            echo $"Backing up GNU social installation"
+
+            function_check backup_directory_to_friend
+            backup_directory_to_friend $temp_backup_dir gnusocial
+
+            function_check restart_site
+            restart_site
+        else
+            echo $"gnusocial domain specified but not found in ${temp_backup_dir}"
+        fi
+    fi
+}
+
+function restore_remote_gnusocial {
+    if grep -q "gnusocial domain" $COMPLETION_FILE; then
+        echo $"Restoring gnusocial"
+        GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+
+        # stop the daemons
+        cd /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
+        ./scripts/stopdaemons.sh
+
+        function_check gnusocial_create_database
+        gnusocial_create_database
+
+        function_check restore_database_from_friend
+        restore_database_from_friend gnusocial ${GNUSOCIAL_DOMAIN_NAME}
+        if [ -d /root/tempgnusocial ]; then
+            rm -rf /root/tempgnusocial
+        fi
+
+        # start the daemons
+        cd /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
+        ./scripts/startdaemons.sh
+        echo $"Restore of gnusocial complete"
+    fi
+}
+
+function remove_gnusocial {
+    if [ ${#GNUSOCIAL_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+    read_config_param "GNUSOCIAL_DOMAIN_NAME"
+    read_config_param "MY_USERNAME"
+    echo "Removing $GNUSOCIAL_DOMAIN_NAME"
+    nginx_dissite $GNUSOCIAL_DOMAIN_NAME
+    remove_certs $GNUSOCIAL_DOMAIN_NAME
+    if [ -f /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/scripts/stopdaemons.sh ]; then
+        cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/scripts
+        ./scripts/stopdaemons.sh
+    fi
+    if [ -d /var/www/$GNUSOCIAL_DOMAIN_NAME ]; then
+        rm -rf /var/www/$GNUSOCIAL_DOMAIN_NAME
+    fi
+    if [ -f /etc/nginx/sites-available/$GNUSOCIAL_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$GNUSOCIAL_DOMAIN_NAME
+    fi
+    function_check drop_database
+    drop_database gnusocial
+    function_check remove_onion_service
+    remove_onion_service gnusocial ${GNUSOCIAL_ONION_PORT}
+    if grep -q "gnusocial" /etc/crontab; then
+        sed -i "/gnusocial/d" /etc/crontab
+    fi
+    remove_app gnusocial
+    remove_completion_param install_gnusocial
+    sed -i '/gnusocial/d' $COMPLETION_FILE
+    if [ -f /etc/cron.hourly/gnusocial-daemons ]; then
+        rm /etc/cron.hourly/gnusocial-daemons
+    fi
+    remove_backup_database_local gnusocial
+
+    function_check remove_ddns_domain
+    remove_ddns_domain $GNUSOCIAL_DOMAIN_NAME
+}
+
+function install_gnusocial_main {
+    if [ ! $GNUSOCIAL_DOMAIN_NAME ]; then
+        echo $'No domain name was given for gnusocial'
+        exit 7359
+    fi
+
+    if [[ $(app_is_installed gnusocial_main) == "1" ]]; then
+        return
+    fi
+
+    function_check gnusocial_running_script
+    gnusocial_running_script
+
+    function_check install_mariadb
+    install_mariadb
+
+    function_check get_mariadb_password
+    get_mariadb_password
+
+    function_check repair_databases_script
+    repair_databases_script
+
+    apt-get -yq install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
+    apt-get -yq install php5-memcached php5-intl
+
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME ]; then
+        mkdir /var/www/$GNUSOCIAL_DOMAIN_NAME
+    fi
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs ]; then
+        function_check git_clone
+        git_clone $GNUSOCIAL_REPO /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+        if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs ]; then
+            echo $'Unable to clone gnusocial repo'
+            exit 87525
+        fi
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+    git checkout $GNUSOCIAL_COMMIT -b $GNUSOCIAL_COMMIT
+    set_completion_param "gnusocial commit" "$GNUSOCIAL_COMMIT"
+
+    chmod a+w /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+    chown www-data:www-data /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+    chmod +x /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/scripts/maildaemon.php
+
+    function_check gnusocial_create_database
+    gnusocial_create_database
+
+    if [ ! -f "/etc/aliases" ]; then
+        touch /etc/aliases
+    fi
+    if ! grep -q "www-data: root" /etc/aliases; then
+        echo 'www-data: root' >> /etc/aliases
+    fi
+    if ! grep -q "/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/scripts/maildaemon.php" /etc/aliases; then
+        echo "*: /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/scripts/maildaemon.php" >> /etc/aliases
+    fi
+
+    function_check add_ddns_domain
+    add_ddns_domain $GNUSOCIAL_DOMAIN_NAME
+
+    gnusocial_nginx_site=/etc/nginx/sites-available/$GNUSOCIAL_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $GNUSOCIAL_DOMAIN_NAME
+        echo 'server {' >> $gnusocial_nginx_site
+        echo '  listen 443 ssl;' >> $gnusocial_nginx_site
+        echo '  listen [::]:443 ssl;' >> $gnusocial_nginx_site
+        echo "  server_name $GNUSOCIAL_DOMAIN_NAME;" >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # Security' >> $gnusocial_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $GNUSOCIAL_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $GNUSOCIAL_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # Logs' >> $gnusocial_nginx_site
+        echo '  access_log /dev/null;' >> $gnusocial_nginx_site
+        echo '  error_log /dev/null;' >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # Root' >> $gnusocial_nginx_site
+        echo "  root /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs;" >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # Index' >> $gnusocial_nginx_site
+        echo '  index index.php;' >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # PHP' >> $gnusocial_nginx_site
+        echo '  location ~ \.php {' >> $gnusocial_nginx_site
+        echo '    include snippets/fastcgi-php.conf;' >> $gnusocial_nginx_site
+        echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $gnusocial_nginx_site
+        echo '  }' >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # Location' >> $gnusocial_nginx_site
+        echo '  location / {' >> $gnusocial_nginx_site
+        function_check nginx_limits
+        nginx_limits $GNUSOCIAL_DOMAIN_NAME '15m'
+        echo '    try_files $uri $uri/ @gnusocial;' >> $gnusocial_nginx_site
+        echo '  }' >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # Fancy URLs' >> $gnusocial_nginx_site
+        echo '  location @gnusocial {' >> $gnusocial_nginx_site
+        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $gnusocial_nginx_site
+        echo '  }' >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        echo '  # Restrict access that is unnecessary anyway' >> $gnusocial_nginx_site
+        echo '  location ~ /\.(ht|git) {' >> $gnusocial_nginx_site
+        echo '    deny all;' >> $gnusocial_nginx_site
+        echo '  }' >> $gnusocial_nginx_site
+        echo '' >> $gnusocial_nginx_site
+        nginx_keybase $GNUSOCIAL_DOMAIN_NAME
+        echo '}' >> $gnusocial_nginx_site
+    else
+        echo -n '' > $gnusocial_nginx_site
+    fi
+    echo 'server {' >> $gnusocial_nginx_site
+    echo "    listen 127.0.0.1:$GNUSOCIAL_ONION_PORT default_server;" >> $gnusocial_nginx_site
+    echo "    server_name $GNUSOCIAL_DOMAIN_NAME;" >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $GNUSOCIAL_DOMAIN_NAME
+    echo '' >> $gnusocial_nginx_site
+    echo '  # Logs' >> $gnusocial_nginx_site
+    echo '  access_log /dev/null;' >> $gnusocial_nginx_site
+    echo '  error_log /dev/null;' >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    echo '  # Root' >> $gnusocial_nginx_site
+    echo "  root /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs;" >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    echo '  # Index' >> $gnusocial_nginx_site
+    echo '  index index.php;' >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    echo '  # PHP' >> $gnusocial_nginx_site
+    echo '  location ~ \.php {' >> $gnusocial_nginx_site
+    echo '    include snippets/fastcgi-php.conf;' >> $gnusocial_nginx_site
+    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $gnusocial_nginx_site
+    echo '  }' >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    echo '  # Location' >> $gnusocial_nginx_site
+    echo '  location / {' >> $gnusocial_nginx_site
+    function_check nginx_limits
+    nginx_limits $GNUSOCIAL_DOMAIN_NAME '15m'
+    echo '    try_files $uri $uri/ @gnusocial;' >> $gnusocial_nginx_site
+    echo '  }' >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    echo '  # Fancy URLs' >> $gnusocial_nginx_site
+    echo '  location @gnusocial {' >> $gnusocial_nginx_site
+    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $gnusocial_nginx_site
+    echo '  }' >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    echo '  # Restrict access that is unnecessary anyway' >> $gnusocial_nginx_site
+    echo '  location ~ /\.(ht|git) {' >> $gnusocial_nginx_site
+    echo '    deny all;' >> $gnusocial_nginx_site
+    echo '  }' >> $gnusocial_nginx_site
+    echo '' >> $gnusocial_nginx_site
+    nginx_keybase $GNUSOCIAL_DOMAIN_NAME
+    echo '}' >> $gnusocial_nginx_site
+
+    function_check configure_php
+    configure_php
+
+    function_check create_site_certificate
+    create_site_certificate $GNUSOCIAL_DOMAIN_NAME 'yes'
+
+    # Ensure that the database gets backed up locally, if remote
+    # backups are not being used
+    function_check backup_databases_script_header
+    backup_databases_script_header
+
+    function_check backup_database_local
+    backup_database_local gnusocial
+
+    function_check nginx_ensite
+    nginx_ensite $GNUSOCIAL_DOMAIN_NAME
+
+    # NOTE: For the typical case always enable SSL and only
+    # disable it if in onion only mode. This is due to complexities
+    # with the way URLs are generated by gnusocial
+    gnusocial_ssl='always'
+    if [[ $ONION_ONLY != 'no' ]]; then
+        gnusocial_ssl='never'
+    fi
+
+    GNUSOCIAL_ONION_HOSTNAME=$(add_onion_service gnusocial 80 ${GNUSOCIAL_ONION_PORT})
+
+    GNUSOCIAL_SERVER=${GNUSOCIAL_DOMAIN_NAME}
+    if [[ $ONION_ONLY != 'no' ]]; then
+        GNUSOCIAL_SERVER=${GNUSOCIAL_ONION_HOSTNAME}
+    fi
+
+    # Create the configuration
+    gnusocial_installer=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/scripts/install_cli.php
+    if [ ! -f $gnusocial_installer ]; then
+        echo $'No gnusocial commandline installer found'
+        exit 53026
+    fi
+    ${gnusocial_installer} --server "${GNUSOCIAL_SERVER}" \
+                           --host="localhost" --database="gnusocial" \
+                           --dbtype=mysql --username="root" -v \
+                           --password="$MARIADB_PASSWORD" \
+                           --sitename=$"GNU Social" --fancy='yes' \
+                           --admin-nick="$MY_USERNAME" \
+                           --admin-pass="$GNUSOCIAL_ADMIN_PASSWORD" \
+                           --site-profile="community" \
+                           --ssl=${gnusocial_ssl}
+    # There can be a lot of warnings here so the return value check is disabled
+    #if [ ! "$?" = "0" ]; then
+    #    # failed to install
+    #    echo $'Could not install GNU Social'
+    #    exit 72357
+    #fi
+
+    # check gnusocial has a config file
+    gnusocial_config_file=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+    if [ ! -f $gnusocial_config_file ]; then
+        echo $'Gnusocial config.php not found'
+        exit 87586
+    fi
+
+    # Some useful settings
+    if ! grep -q "Recommended GNU social settings" $gnusocial_config_file; then
+        echo "" >> $gnusocial_config_file
+        echo "// Recommended GNU social settings" >> $gnusocial_config_file
+        echo "\$config['thumbnail']['maxsize'] = 3000;" >> $gnusocial_config_file
+        echo "\$config['profile']['delete'] = true;" >> $gnusocial_config_file
+        echo "\$config['profile']['changenick'] = true;" >> $gnusocial_config_file
+        echo "\$config['public']['localonly'] = false;" >> $gnusocial_config_file
+        echo "addPlugin('StoreRemoteMedia');" >> $gnusocial_config_file
+        echo "\$config['queue']['enabled'] = true;" >> $gnusocial_config_file
+        echo "\$config['queue']['daemon'] = true;" >> $gnusocial_config_file
+        echo "\$config['ostatus']['hub_retries'] = 3;" >> $gnusocial_config_file
+    fi
+
+    # turn off logging
+    echo "\$config['site']['logfile'] = '/dev/null';" >> $gnusocial_config_file
+
+    # This improves performance
+    sed -i "s|//\$config\['db'\]\['schemacheck'\].*|\$config\['db'\]\['schemacheck'\] = 'script';|g" $gnusocial_config_file
+
+    systemctl restart php5-fpm
+    systemctl restart nginx
+
+    ${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$GNUSOCIAL_DOMAIN_NAME" -g gnusocial --public no
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a gnusocial -p "$GNUSOCIAL_ADMIN_PASSWORD"
+
+    set_completion_param "gnusocial domain" "$GNUSOCIAL_DOMAIN_NAME"
+
+    install_completed gnusocial_main
+}
+
+function install_gnusocial_plugin_sharings {
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins ]; then
+        echo $'No local/plugins directory found for the gnusocial'
+        exit 72945
+    fi
+
+    apt-get -yq install liblocale-msgfmt-perl gettext
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins "gnusocial sharings plugin commit" "$SHARINGS_COMMIT" $SHARINGS_REPO
+
+    if [[ $(app_is_installed gnusocial_plugin_sharings) == "1" ]]; then
+        return
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins
+    function_check git_clone
+    git_clone $SHARINGS_REPO Sharings
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Sharings ]; then
+        echo $'Unable to clone gnusocial sharings plugin'
+        exit 36738
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Sharings
+    git stash
+    git checkout master
+    git branch -D $SHARINGS_COMMIT
+    git checkout $SHARINGS_COMMIT -b $SHARINGS_COMMIT
+
+    # enable the plugin
+    if ! grep -q "addPlugin('Sharings');" /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php; then
+        echo "addPlugin('Sharings');" >> /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+    php scripts/checkschema.php
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Sharings
+    php scripts/seedsharings.php
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+    php scripts/checkschema.php
+
+    # Languages
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Sharings/locale/en/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $'English translations for gnusocial sharings plugin were not created'
+        exit 84352
+    fi
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Sharings/locale/en_GB/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $'English (GB) translations for gnusocial sharings plugin were not created'
+        exit 84352
+    fi
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Sharings/locale/en_US/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $'English (US) translations for gnusocial sharings plugin were not created'
+        exit 84352
+    fi
+
+    # Looks like this update function isn't supported by the current php version
+    sed -i 's|ActivityVerb::UPDATE, ||g' /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Sharings/SharingsPlugin.php
+
+    chown -R www-data:www-data /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+
+    set_completion_param gnusocial "sharings plugin commit" "$SHARINGS_COMMIT"
+    install_completed gnusocial_plugin_sharings
+}
+
+function install_gnusocial_plugin_sharings_theme {
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins ]; then
+        echo $'No local/plugins directory found for the gnusocial'
+        exit 74458
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins "gnusocial sharings theme plugin commit" "$SHARINGS_THEME_COMMIT" $SHARINGS_THEME_REPO
+
+    if [[ $(app_is_installed gnusocial_plugin_sharings_theme) == "1" ]]; then
+        return
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins
+    function_check git_clone
+    git_clone $SHARINGS_THEME_REPO SharingsTheme
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/SharingsTheme ]; then
+        echo $'Unable to clone gnusocial sharings plugin theme'
+        exit 639253
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/SharingsTheme
+    git stash
+    git checkout master
+    git branch -D $SHARINGS_THEME_COMMIT
+    git checkout $SHARINGS_THEME_COMMIT -b $SHARINGS_THEME_COMMIT
+
+    # enable the plugin
+    if ! grep -q "addPlugin('SharingsTheme');" /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php; then
+        echo "addPlugin('SharingsTheme');" >> /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+    php scripts/checkschema.php
+
+    chown -R www-data:www-data /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+
+    set_completion_param "gnusocial sharings plugin theme commit" "$SHARINGS_THEME_COMMIT"
+    install_completed gnusocial_plugin_sharings_theme
+}
+
+function expire_gnusocial_posts {
+    # To prevent the database size from growing endlessly this script expires posts
+    # after a number of months
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs ]; then
+        return
+    fi
+
+    echo '<?php' > $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo '// gnusocial post expiry script, based on StatExpire by Tony Baldwin' >> $gnusocial_expire_script
+    echo '// https://github.com/tonybaldwin/statexpire' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo '$oldate=date(("Y-m-d"), strtotime("-3 months"));' >> $gnusocial_expire_script
+    echo '$username="root";' >> $gnusocial_expire_script
+    echo "\$password=shell_exec('${PROJECT_NAME}-pass -u root -a mariadb');" >> $gnusocial_expire_script
+    echo '$database="gnusocial";' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'if (!$link = mysql_connect("localhost", $username, $password)) {' >> $gnusocial_expire_script
+    echo '    echo "Could not connect to mariadb";' >> $gnusocial_expire_script
+    echo '    exit;' >> $gnusocial_expire_script
+    echo '}' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'if (!mysql_select_db($database, $link)) {' >> $gnusocial_expire_script
+    echo '    echo "Could not select gnusocial database";' >> $gnusocial_expire_script
+    echo '    exit;' >> $gnusocial_expire_script
+    echo '}' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo "\$notice_query=\"DELETE FROM notice WHERE created <= '\$oldate 01:01:01'\";" >> $gnusocial_expire_script
+    echo "\$conversation_query=\"DELETE FROM conversation WHERE created <= '$oldate 01:01:01'\";" >> $gnusocial_expire_script
+    echo "\$reply_query=\"DELETE FROM reply WHERE modified <= '\$oldate 01:01:01'\";" >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'mysql_query($notice_query);' >> $gnusocial_expire_script
+    echo '$rowaff1=mysql_affected_rows();' >> $gnusocial_expire_script
+    echo 'mysql_query($conversation_query);' >> $gnusocial_expire_script
+    echo '$rowaff2=mysql_affected_rows();' >> $gnusocial_expire_script
+    echo 'mysql_query($reply_query);' >> $gnusocial_expire_script
+    echo '$rowaff3=mysql_affected_rows();' >> $gnusocial_expire_script
+    echo 'mysql_close();' >> $gnusocial_expire_script
+    echo '' >> $gnusocial_expire_script
+    echo 'echo "Expire gnusocial posts: $rowaff1 notices, $rowaff2 conversations, and $rowaff3 replies deleted from database.\n";' >> $gnusocial_expire_script
+    chmod +x $gnusocial_expire_script
+
+    # Add a cron job
+    if ! grep -q "$gnusocial_expire_script" /etc/crontab; then
+        echo "10 3 5   *   *   root /usr/bin/timeout 500 /usr/bin/php $gnusocial_expire_script" >> /etc/crontab
+    fi
+
+    # remove old expire script
+    if [ -f /etc/cron.weekly/clear-gnusocial-database ]; then
+        rm /etc/cron.weekly/clear-gnusocial-database
+    fi
+}
+
+function install_gnusocial_theme {
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter "gnusocial theme commit" "$GNUSOCIAL_THEME_COMMIT" $GNUSOCIAL_THEME_REPO
+
+    # customise with project logo
+    if [ -f /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter/img/sprite.png ]; then
+        if [ -f ~/freedombone/img/gnusocial_sprite.png ]; then
+            cp ~/freedombone/img/gnusocial_sprite.png /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter/img/sprite.png
+        else
+            if [ -f /home/$MY_USERNAME/freedombone/img/gnusocial_sprite.png ]; then
+                cp /home/$MY_USERNAME/freedombone/img/gnusocial_sprite.png /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter/img/sprite.png
+            fi
+        fi
+    fi
+
+    if [[ $(app_is_installed gnusocial_theme) == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq install wget
+
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins ]; then
+        mkdir -p /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins
+    function_check git_clone
+    git_clone $GNUSOCIAL_THEME_REPO Qvitter
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter
+    git checkout $GNUSOCIAL_THEME_COMMIT -b $GNUSOCIAL_THEME_COMMIT
+
+    # download a custom background image
+    if [[ $(gnusocial_set_background_image_from_url) != "0" ]]; then
+        exit 356723
+    fi
+
+    if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL ]; then
+        filename=$(basename "$GNUSOCIAL_BACKGROUND_IMAGE_URL")
+        GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT="${filename##*.}"
+    fi
+
+    gnusocial_config_file=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+    if ! grep -q "addPlugin('Qvitter')" $gnusocial_config_file; then
+        GNUSOCIAL_WELCOME_MESSAGE=$(echo $GNUSOCIAL_WELCOME_MESSAGE | sed "s|\$GNUSOCIAL_DOMAIN_NAME|$GNUSOCIAL_DOMAIN_NAME|g")
+        echo "" >> $gnusocial_config_file
+        echo "// Qvitter settings" >> $gnusocial_config_file
+        echo "addPlugin('Qvitter');" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['enabledbydefault'] = true;" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['defaultbackgroundcolor'] = '#f4f4f4';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['defaultlinkcolor'] = '#0084B4';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['timebetweenpolling'] = 30000; // 30 secs" >> $gnusocial_config_file
+        if [[ $ONION_ONLY != 'no' ]]; then
+            echo "\$config['site']['qvitter']['urlshortenerapiurl'] = 'http://qttr.at/shortener.php';" >> $gnusocial_config_file
+            echo "\$config['site']['qvitter']['urlshortenersignature'] = 'b6afeec983';" >> $gnusocial_config_file
+        fi
+        if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL ]; then
+            echo "\$config['site']['qvitter']['sitebackground'] = 'img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT}';" >> $gnusocial_config_file
+        else
+            echo "\$config['site']['qvitter']['sitebackground'] = 'img/vagnsmossen.jpg';" >> $gnusocial_config_file
+        fi
+        echo "\$config['site']['qvitter']['favicon'] = 'img/favicon.ico?v=4';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['sprite'] = Plugin::staticPath('Qvitter', '').'img/sprite.png?v=40';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['enablewelcometext'] = true;" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['customwelcometext']['en'] = '$GNUSOCIAL_WELCOME_MESSAGE';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['customwelcometext']['de'] = '$GNUSOCIAL_WELCOME_MESSAGE';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['customwelcometext']['fr'] = '$GNUSOCIAL_WELCOME_MESSAGE';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['customwelcometext']['es'] = '$GNUSOCIAL_WELCOME_MESSAGE';" >> $gnusocial_config_file
+        echo "\$config['site']['qvitter']['blocked_ips'] = array();" >> $gnusocial_config_file
+    else
+        if [ $GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT ]; then
+            if [ -f img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT} ]; then
+                sed -i "s|\$config['site']['qvitter']['sitebackground'].*|\$config['site']['qvitter']['sitebackground'] = 'img/custom.${GNUSOCIAL_BACKGROUND_IMAGE_URL_EXT}';|g" $gnusocial_config_file
+            fi
+        fi
+    fi
+
+    # customise with project logo
+    if [ -f /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter/img/sprite.png ]; then
+        if [ -f ~/freedombone/img/gnusocial_sprite.png ]; then
+            cp ~/freedombone/img/gnusocial_sprite.png /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/Qvitter/img/sprite.png
+        fi
+    fi
+
+    set_completion_param "gnusocial theme commit" "$GNUSOCIAL_THEME_COMMIT"
+
+    chown -R www-data:www-data /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+
+    install_completed gnusocial_theme
+}
+
+function install_gnusocial_markdown {
+    GNUSOCIAL_PATH=/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit $GNUSOCIAL_PATH/local/plugins/Markdown "gnusocial Markdown commit" "$GNUSOCIAL_MARKDOWN_COMMIT" $GNUSOCIAL_MARKDOWN_REPO
+
+    if [[ $(app_is_installed gnusocial_markdown) == "1" ]]; then
+        return
+    fi
+
+    if [ -d $GNUSOCIAL_PATH/local/plugins/Markdown ]; then
+        rm -rf $GNUSOCIAL_PATH/local/plugins/Markdown
+    fi
+
+    if [ ! -d $GNUSOCIAL_PATH/local/plugins ]; then
+        mkdir -p $GNUSOCIAL_PATH/local/plugins
+    fi
+
+    cd $GNUSOCIAL_PATH/local/plugins
+    function_check git_clone
+    git_clone $GNUSOCIAL_MARKDOWN_REPO Markdown
+    cd $GNUSOCIAL_PATH/local/plugins/Markdown
+    git checkout $GNUSOCIAL_MARKDOWN_COMMIT -b $GNUSOCIAL_MARKDOWN_COMMIT
+
+    gnusocial_config_file=$GNUSOCIAL_PATH/config.php
+    if ! grep -q "addPlugin('Markdown'" $gnusocial_config_file; then
+        echo "" >> $gnusocial_config_file
+        echo "// Markdown settings" >> $gnusocial_config_file
+        echo "addPlugin('Markdown');" >> $gnusocial_config_file
+    fi
+
+    set_completion_param "gnusocial markdown commit" "$GNUSOCIAL_MARKDOWN_COMMIT"
+
+    chown -R www-data:www-data $GNUSOCIAL_PATH
+
+    install_completed gnusocial_markdown
+}
+
+function install_gnusocial_plugin_nsfw {
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins ]; then
+        echo $'No local/plugins directory found for the gnusocial'
+        exit 37252
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins "gnusocial NSFW plugin commit" "$GNUSOCIAL_NSFW_COMMIT" $GNUSOCIAL_NSFW_REPO
+
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins
+    function_check git_clone
+    git_clone $GNUSOCIAL_NSFW_REPO SensitiveContent
+    if [ ! -d /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/SensitiveContent ]; then
+        echo $'Unable to clone gnusocial NSFW plugin'
+        exit 36738
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/local/plugins/SensitiveContent
+    git stash
+    git checkout master
+    git branch -D $GNUSOCIAL_NSFW_COMMIT
+    git checkout $GNUSOCIAL_NSFW_COMMIT -b $GNUSOCIAL_NSFW_COMMIT
+
+    # enable the plugin
+    if ! grep -q "addPlugin('SensitiveContent');" /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php; then
+        echo "addPlugin('SensitiveContent');" >> /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/config.php
+    fi
+
+    cd /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+    php scripts/checkschema.php
+
+    chown -R www-data:www-data /var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs
+
+    set_completion_param "gnusocial NSFW plugin commit" "$GNUSOCIAL_NSFW_COMMIT"
+    install_completed gnusocial_plugin_nsfw
+}
+
+function install_gnusocial {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    install_gnusocial_main
+    expire_gnusocial_posts
+    install_gnusocial_theme
+    install_gnusocial_markdown
+    install_gnusocial_plugin_sharings
+    install_gnusocial_plugin_sharings_theme
+    install_gnusocial_plugin_nsfw
+
+    # unleash the daemons!
+    /etc/cron.hourly/gnusocial-daemons
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately there is no "exit 0"

@@ -1,0 +1,509 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Radicale calendar system
+#
+# Configuration based upon:
+#   https://gigacog.com/blog/2016/01/radicale-and-uwsgi-on-nginx-with-systemd
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+RADICALE_DOWNLOAD_URL='http://pypi.python.org/packages/source/R/Radicale/Radicale-'
+RADICALE_VERSION='1.1.1'
+RADICALE_HASH='e2c9812913c464ab88ae1f66b29e81f87a4cc6ee1c94d167b33508c530dab4b0'
+RADICALE_PASSWORD=
+RADICALE_ONION_PORT=8106
+RADICALE_PORT=5232
+RADICALE_DIRECTORY='/etc/radicale'
+RADICALE_USERS=/var/www/radicale/users
+
+radicale_variables=(ONION_ONLY
+                    MY_USERNAME
+                    RADICALE_PASSWORD
+                    DEFAULT_DOMAIN_NAME)
+
+function remove_user_radicale {
+    remove_username="$1"
+
+    ${PROJECT_NAME}-pass -u $remove_username --rmapp radicale
+
+    if grep "${remove_username}:" ${RADICALE_USERS}; then
+        sed -i "/${remove_username}:/d" ${RADICALE_USERS}
+        if [ -d /var/www/radicale/collections/${remove_username} ]; then
+            rm -rf /var/www/radicale/collections/${remove_username}
+        fi
+        if [ -f /var/www/radicale/collections/${remove_username}.props ]; then
+            rm /var/www/radicale/collections/${remove_username}.props
+        fi
+        systemctl restart radicale
+    fi
+}
+
+function add_user_radicale {
+    new_username="$1"
+    new_user_password="$2"
+
+    ${PROJECT_NAME}-pass -u $new_username -a radicale -p "$new_user_password"
+
+    if [ ! -f ${RADICALE_USERS} ]; then
+        touch ${RADICALE_USERS}
+    fi
+
+    if ! grep "$new_username:" ${RADICALE_USERS}; then
+        htpasswd -bd ${RADICALE_USERS} "$new_username" "$new_user_password"
+
+        echo '{"ICAL:calendar-color": "#9e50df"}' > /var/www/radicale/collections/${new_username}.props
+        mkdir /var/www/radicale/collections/${new_username}
+        echo '{"ICAL:calendar-color": "#de631a", "tag": "VCALENDAR"}' > /var/www/radicale/collections/${new_username}/calendar.props
+        echo 'BEGIN:VCALENDAR' > /var/www/radicale/collections/${new_username}/calendar
+        echo 'PRODID:-//Radicale//NONSGML Radicale Server//EN' >> /var/www/radicale/collections/${new_username}/calendar
+        echo 'VERSION:2.0' >> /var/www/radicale/collections/${new_username}/calendar
+        echo 'END:VCALENDAR' >> /var/www/radicale/collections/${new_username}/calendar
+
+        chown -R www-data:www-data /var/www/radicale
+        chmod -R 755 /var/www/radicale/*
+        systemctl restart radicale
+    fi
+    echo '0'
+}
+
+function change_password_radicale {
+    existing_username="$1"
+    new_user_password="$2"
+
+    ${PROJECT_NAME}-pass -u $existing_username -a radicale -p "$new_user_password"
+
+    if grep "${existing_username}:" ${RADICALE_USERS}; then
+        sed -i "/${existing_username}:/d" ${RADICALE_USERS}
+        htpasswd -bd ${RADICALE_USERS} "$existing_username" "$new_user_password"
+        systemctl reload radicale
+    fi
+}
+
+function install_interactive_radicale {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function reconfigure_radicale {
+    rm $RADICALE_USERS
+    rm -rf /var/www/radicale/collections/*
+    rm -rf /var/log/radicale/*
+
+    # create an admin password
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        RADICALE_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        RADICALE_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+    fi
+    add_user_radicale "$MY_USERNAME" "$RADICALE_PASSWORD"
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a radicale -p "$RADICALE_PASSWORD"
+
+    touch /var/log/radicale/radicale.log
+    chown -R www-data:www-data /var/log/radicale
+}
+
+function upgrade_radicale {
+    if [ ! -f /usr/local/bin/radicale ]; then
+        return
+    fi
+
+    if ! grep -q "radicale version:" $COMPLETION_FILE; then
+        return
+    fi
+
+    CURR_RADICALE_VERSION=$(get_completion_param "radicale version")
+    if [[ "${CURR_RADICALE_VERSION}" == "${RADICALE_VERSION}" ]]; then
+        return
+    fi
+
+    # get the source
+    cd /var/www/radicale
+    wget ${RADICALE_DOWNLOAD_URL}${RADICALE_VERSION}.tar.gz
+
+    # check the hash
+    hash=$(sha256sum Radicale-${RADICALE_VERSION}.tar.gz | awk -F ' ' '{print $1}')
+    if [[ "$hash" != "$RADICALE_HASH" ]]; then
+        echo $'radicale hash does not match'
+        exit 638532
+    fi
+
+    tar -xzf Radicale-${RADICALE_VERSION}.tar.gz
+    if [ ! -d Radicale-${RADICALE_VERSION} ]; then
+        exit 73529
+    fi
+    rm Radicale-${RADICALE_VERSION}.tar.gz
+    cd Radicale-${RADICALE_VERSION}
+
+    # move the old command
+    mv /usr/local/bin/radicale /usr/local/bin/radicale_previous
+
+    # do the install
+    python setup.py install
+
+    # check for install success
+    if [ ! -f /usr/local/bin/radicale ]; then
+        mv /usr/local/bin/radicale_previous /usr/local/bin/radicale
+        echo $'Radicale did not upgrade'
+        exit 692353
+    fi
+
+    # remove the old source
+    rm -rf Radicale-${CURR_RADICALE_VERSION}
+
+    sed -i "s|radicale version.*|radicale version:$RADICALE_VERSION|g" ${COMPLETION_FILE}
+    chown -R www-data:www-data /var/www/radicale
+    systemctl restart radicale
+    systemctl restart nginx
+}
+
+function backup_local_radicale {
+    source_directory=${RADICALE_DIRECTORY}
+    if [ -d $source_directory ]; then
+        dest_directory=radicale
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+    fi
+    source_directory=/var/www/radicale
+    if [ -d $source_directory ]; then
+        dest_directory=radicalewww
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+    fi
+}
+
+function restore_local_radicale {
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        temp_restore_dir=/root/tempradicale
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir radicale
+        cp -r $temp_restore_dir${RADICALE_DIRECTORY}/* ${RADICALE_DIRECTORY}
+        if [ ! "$?" = "0" ]; then
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 46872
+        fi
+        rm -rf $temp_restore_dir
+
+        temp_restore_dir=/root/tempradicalewww
+        restore_directory_from_usb $temp_restore_dir radicalewww
+        cp -r $temp_restore_dir/var/www/radicale/* /var/www/radicale
+        if [ ! "$?" = "0" ]; then
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 367363
+        fi
+        rm -rf $temp_restore_dir
+        chown -R www-data:www-data /var/www/radicale
+
+        systemctl restart radicale
+    fi
+}
+
+function backup_remote_radicale {
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        echo $"Backing up the radicale settings"
+        backup_directory_to_friend ${RADICALE_DIRECTORY} radicale
+        backup_directory_to_friend /var/www/radicale radicalewww
+        echo $"Backup of radicale settings complete"
+    fi
+}
+
+function restore_remote_radicale {
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        temp_restore_dir=/root/tempradicale
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir radicale
+        cp -r $temp_restore_dir${RADICALE_DIRECTORY}/* ${RADICALE_DIRECTORY}
+        if [ ! "$?" = "0" ]; then
+            exit 236746
+        fi
+        rm -rf $temp_restore_dir
+
+        temp_restore_dir=/root/tempradicalewww
+        restore_directory_from_friend $temp_restore_dir radicalewww
+        cp -r $temp_restore_dir/var/www/radicale/* /var/www/radicale
+        if [ ! "$?" = "0" ]; then
+            exit 3674284
+        fi
+        rm -rf $temp_restore_dir
+        chown -R www-data:www-data /var/www/radicale
+
+        systemctl restart radicale
+    fi
+}
+
+function remove_radicale {
+    nginx_dissite radicale
+    systemctl stop radicale
+    systemctl stop uwsgi_rundir
+    systemctl disable radicale
+    systemctl disable uwsgi_rundir
+    if [ -f /etc/systemd/system/uwsgi_rundir.service ]; then
+        rm /etc/systemd/system/uwsgi_rundir.service
+    fi
+    if [ -f /etc/systemd/system/radicale.service ]; then
+        rm /etc/systemd/system/radicale.service
+    fi
+    if [ -f /etc/nginx/sites-available/radicale ]; then
+        rm /etc/nginx/sites-available/radicale
+    fi
+    if [ -f /usr/local/bin/uwsgi_rundir.sh ]; then
+        rm /usr/local/bin/uwsgi_rundir.sh
+    fi
+
+    firewall_remove ${RADICALE_PORT} tcp
+
+    function_check remove_onion_service
+    remove_onion_service radicale ${RADICALE_ONION_PORT}
+
+    apt-get -yq remove --purge radicale python-radicale
+    if [ -d ${RADICALE_DIRECTORY} ]; then
+        rm -rf ${RADICALE_DIRECTORY}
+    fi
+    if [ -d /var/www/radicale ]; then
+        rm -rf /var/www/radicale
+    fi
+    if [ -f /var/log/radicale/radicale.log ]; then
+        rm -rf /var/log/radicale
+    fi
+    if [ -d /var/log/radicale ]; then
+        rm -rf /var/log/radicale
+    fi
+
+    remove_completion_param install_radicale
+    sed -i '/radicale/d' $COMPLETION_FILE
+    sed -i '/location \/radicale/,/}/d' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+    systemctl restart nginx
+}
+
+function install_radicale {
+    if [[ $ONION_ONLY == 'no' ]]; then
+        # obtain a cert for the default domain
+        if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
+            echo $'Obtaining certificate for the main domain'
+            create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
+        fi
+    fi
+
+    apt-get -yq remove --purge radicale python-radicale
+
+    # create directories
+    if [ ! -d /var/log/radicale ]; then
+        mkdir /var/log/radicale
+    fi
+    if [ ! -f /var/log/radicale/radicale.log ]; then
+        touch /var/log/radicale/radicale.log
+    fi
+    chown -R www-data:www-data /var/log/radicale
+
+    apt-get -yq install python-setuptools apache2-utils
+
+    if [ ! -d /var/www/radicale ]; then
+        mkdir -p /var/www/radicale
+    fi
+
+    # get the source
+    cd /var/www/radicale
+    wget ${RADICALE_DOWNLOAD_URL}${RADICALE_VERSION}.tar.gz
+
+    # check the hash
+    hash=$(sha256sum Radicale-${RADICALE_VERSION}.tar.gz | awk -F ' ' '{print $1}')
+    if [[ "$hash" != "$RADICALE_HASH" ]]; then
+        echo $'radicale hash does not match'
+        exit 638532
+    fi
+
+    tar -xzf Radicale-${RADICALE_VERSION}.tar.gz
+    if [ ! -d Radicale-${RADICALE_VERSION} ]; then
+        exit 623252
+    fi
+    rm Radicale-${RADICALE_VERSION}.tar.gz
+    cd Radicale-${RADICALE_VERSION}
+    python setup.py install
+    if [ ! -f /usr/local/bin/radicale ]; then
+        echo $'Radicale did not install'
+        exit 7283554
+    fi
+
+    if [ ! -d ${RADICALE_DIRECTORY} ]; then
+        mkdir ${RADICALE_DIRECTORY}
+    fi
+    if [ ! -d /var/www/radicale/collections ]; then
+        mkdir -p /var/www/radicale/collections
+    fi
+
+    # create the configuration
+    echo '[server]' >  ${RADICALE_DIRECTORY}/config
+    echo 'hosts=localhost:52322' >> ${RADICALE_DIRECTORY}/config
+    echo 'ssl = False' >> ${RADICALE_DIRECTORY}/config
+    echo 'daemon = False' >> ${RADICALE_DIRECTORY}/config
+    echo 'base_prefix=/radicale/' >> ${RADICALE_DIRECTORY}/config
+    echo '' >> ${RADICALE_DIRECTORY}/config
+    echo '[storage]' >> ${RADICALE_DIRECTORY}/config
+    echo 'type = filesystem' >> ${RADICALE_DIRECTORY}/config
+    echo "filesystem_folder = /var/www/radicale/collections" >> ${RADICALE_DIRECTORY}/config
+    echo '' >> ${RADICALE_DIRECTORY}/config
+    echo '[well-known]' >> ${RADICALE_DIRECTORY}/config
+    echo "caldav = '/%(user)s/caldav/'" >> ${RADICALE_DIRECTORY}/config
+    echo "carddav = '/%(user)s/carddav/'" >> ${RADICALE_DIRECTORY}/config
+    echo '' >> ${RADICALE_DIRECTORY}/config
+    echo '#[auth]' >> ${RADICALE_DIRECTORY}/config
+    echo '#imap_hostname = localhost' >> ${RADICALE_DIRECTORY}/config
+    echo '#imap_port = 143' >> ${RADICALE_DIRECTORY}/config
+    echo '#imap_ssl = False' >> ${RADICALE_DIRECTORY}/config
+    echo '' >> ${RADICALE_DIRECTORY}/config
+    echo '[logging]' >> ${RADICALE_DIRECTORY}/config
+    echo 'debug = False' >> ${RADICALE_DIRECTORY}/config
+
+    # create an admin password
+    if [ ${#RADICALE_PASSWORD} -lt 8 ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            RADICALE_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            RADICALE_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    add_user_radicale "$MY_USERNAME" "$RADICALE_PASSWORD"
+
+    echo '[Unit]' > /etc/systemd/system/radicale.service
+    echo 'Description=Radicale CalDAV Server' >> /etc/systemd/system/radicale.service
+    echo 'After=network.target' >> /etc/systemd/system/radicale.service
+    echo '' >> /etc/systemd/system/radicale.service
+    echo '[Service]' >> /etc/systemd/system/radicale.service
+    echo 'Type=simple' >> /etc/systemd/system/radicale.service
+    echo 'User=www-data' >> /etc/systemd/system/radicale.service
+    echo 'Group=www-data' >> /etc/systemd/system/radicale.service
+    echo "ExecStart=/usr/local/bin/radicale --config ${RADICALE_DIRECTORY}/config" >> /etc/systemd/system/radicale.service
+    echo '' >> /etc/systemd/system/radicale.service
+    echo '[Install]' >> /etc/systemd/system/radicale.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/radicale.service
+
+    addresses_str=$"Addresses"
+    echo "{\"tag\": \"VADDRESSBOOK\", \"D:displayname\": \"${addresses_str}\"}" > /var/www/radicale/collections/addresses.props
+    touch /var/www/radicale/collections/addresses
+
+    chown -R www-data:www-data /var/www/radicale
+    chmod -R 755 /var/www/radicale
+    chown -R www-data:www-data ${RADICALE_DIRECTORY}
+
+    systemctl enable radicale
+    systemctl start radicale
+
+    if [ ! -f /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME} ]; then
+        # create a new site config
+        RADICALE_ONION_HOSTNAME=$(add_onion_service radicale 80 ${RADICALE_ONION_PORT})
+
+        if [[ $ONION_ONLY == 'no' ]]; then
+            echo 'server {' > /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "    listen 443 ssl;" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "    listen [::]:443 ssl;" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            function_check nginx_ssl
+            nginx_ssl ${DEFAULT_DOMAIN_NAME}
+            function_check nginx_disable_sniffing
+            nginx_disable_sniffing ${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "    server_name ${DEFAULT_DOMAIN_NAME};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    access_log /dev/null;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    error_log /dev/null;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    location /radicale {' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '        auth_basic "Radicale";' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo "        auth_basic_user_file ${RADICALE_USERS};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '        proxy_buffering on;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '    }' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '}' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        else
+            echo -n '' > /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        fi
+        echo 'server {' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo "    listen localhost:${RADICALE_ONION_PORT} default_server;" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo "    server_name ${RADICALE_ONION_HOSTNAME};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    access_log /dev/null;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    error_log /dev/null;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    location /radicale {' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '        auth_basic "Radicale";' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo "        auth_basic_user_file ${RADICALE_USERS};" >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '        proxy_pass http://localhost:52322;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '        proxy_buffering on;' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '    }' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        echo '}' >> /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+
+        set_completion_param "radicale onion domain" "${RADICALE_ONION_HOSTNAME}"
+    else
+        # alter the existing site config
+        if ! grep "radicale" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}; then
+            sed -i '/ 443/a    location \/radicale {\n        auth_basic "Radicale";\n        auth_basic_user_file \/var\/www\/radicale\/users;\n        proxy_pass http://localhost:52322;\n        proxy_buffering on;\n    }' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+            sed -i '/listen localhost/a    location \/radicale {\n        auth_basic "Radicale";\n        auth_basic_user_file \/var\/www\/radicale\/users;\n        proxy_pass http://localhost:52322;\n        proxy_buffering on;\n    }' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        fi
+    fi
+
+    # create a certificate
+    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt ]; then
+            ${PROJECT_NAME}-addcert -h $DEFAULT_DOMAIN_NAME --dhkey ${DH_KEYLENGTH}
+            check_certificates $DEFAULT_DOMAIN_NAME
+        fi
+    fi
+
+    if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        sed -i "s|radicale.crt|${DEFAULT_DOMAIN_NAME}.pem|g" /etc/nginx/sites-available/radicale
+        sed -i "s|radicale.pem|${DEFAULT_DOMAIN_NAME}.pem|g" /etc/nginx/sites-available/radicale
+    fi
+    sed -i "s|radicale.key|${DEFAULT_DOMAIN_NAME}.key|g" /etc/nginx/sites-available/radicale
+    sed -i "s|radicale.dhparam|${DEFAULT_DOMAIN_NAME}.dhparam|g" /etc/nginx/sites-available/radicale
+
+    update_default_domain
+
+    systemctl restart nginx
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a radicale -p "$RADICALE_PASSWORD"
+
+    # keep track of the version so we can check for upgrades
+    if ! grep -q "radicale version:" ${COMPLETION_FILE}; then
+        echo "radicale version:${RADICALE_VERSION}" >> ${COMPLETION_FILE}
+    else
+        sed -i "s|radicale version.*|radicale version:${RADICALE_VERSION}|g" ${COMPLETION_FILE}
+    fi
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
