@@ -22,4 +22,4 @@ After installation it's possible that you might want some advice on how to run y
 
 If you find bugs, or want to add a new app to this system see the [Developers Guide](https://freedombone.net/devguide.html).
 
-Ready made disk images which can be copied onto USB or microSD drives are [available here](https://freedombone.net/downloads).
+Ready made disk images which can be copied onto USB or microSD drives are [available here](https://freedombone.net/downloads) and also [mirrored here](http://www.postactiv.com/freedombone/2.00/index.html).
