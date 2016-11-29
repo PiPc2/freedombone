@@ -40,3 +40,5 @@ if [ -d "/usr/lib64" ];then
                 exit 1
         fi
 fi
+
+exit 0
