@@ -131,12 +131,12 @@ an administrator.\n\n######################\n\n' >> $LOG
               ;;
 
     V-38489)  if [ "$3" = "en" ]; then
-                  log_msg $2 'A file integrity tool must be installed.(AIDE)' ##Ported
+                  log_msg $2 'A file integrity tool must be installed.(tripwire)' ##Ported
               else
                   log_msg $2 '必须安装文件完整性的工具。'
               fi
               if [ $2 -ne 0 ];then
-                  printf '\n######################\n\nSTIG-ID:RHEL-06-000016\n\nVulnerability Discussion: The AIDE package must be installed if it is to be available for integrity checking.\n\nFix text: Install the AIDE package with the command:\n\n#apt-get install aide\n\n######################\n\n' >> $LOG
+                  printf '\n######################\n\nSTIG-ID:RHEL-06-000016\n\nVulnerability Discussion: The tripwire package must be installed if it is to be available for integrity checking.\n\nFix text: Install the tripwire package with the command:\n\n#apt-get install tripwire\n\n######################\n\n' >> $LOG
               fi
               ;;
 
