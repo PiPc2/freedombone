@@ -482,7 +482,7 @@ time, are stored in the following directories by default:\n\n/lib\n/lib64\n/usr/
               fi
               ;;
     V-38573)  if [ "$3" = "en" ]; then
-                  log_msg $2 'The system must disable accounts after three consecutive unsuccessful logon attempts.'
+                  log_msg $2 'The system must disable accounts after ten consecutive unsuccessful logon attempts.'
               else
                   log_msg $2 "系统必须在连续3次失败的登录尝试后禁用帐号。"
               fi
