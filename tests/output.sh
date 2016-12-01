@@ -5,6 +5,9 @@ LOG=/dev/null
 log_msg() {
     if [ $1 -eq 0 ]; then
         PASSES=$((PASSES+1))
+        if [ $SHOW_ALL_TESTS ]; then
+            echo "[PASS] $2"
+        fi
     else
         FAILS=$((FAILS+1))
         echo "[FAIL] $2"
