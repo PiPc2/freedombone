@@ -406,6 +406,47 @@ function xmpp_create_config {
     echo 'max_history_messages = 10;' >> /etc/prosody/prosody.cfg.lua
 }
 
+function install_xmpp_nightly {
+    prosody_latest_version='0.10'
+    prosody_nightly=319
+    prosody_nightly_hash='f1fdc8ce5b6f8bfa451d458616a0bbe5ed7c15881415e561586bab39bd705fa4'
+
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir -p $INSTALL_DIR
+    fi
+
+    prosody_filename=prosody-${prosody_latest_version}-1nightly${prosody_nightly}
+
+    cd $INSTALL_DIR
+    wget https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz
+    if [ ! -f ${prosody_filename}.tar.gz ]; then
+        echo $"Failed to download prosody nightly https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz"
+        exit 78352
+    fi
+
+    hash_value=$(sha256sum ${prosody_filename}.tar.gz | awk -F ' ' '{print $1}')
+    if [[ "$hash_value" != "$prosody_nightly_hash" ]]; then
+        echo $'Unexpected hash value for prosody nightly download'
+        exit 68224283
+    fi
+
+    tar -xzvf ${prosody_filename}.tar.gz
+    cd ${prosody_filename}
+    ./configure --ostype=debian
+    make
+    make install
+    if [ ! -f /usr/local/bin/prosody ]; then
+        echo $'Failed to build prosody nightly'
+        rm ${prosody_filename}.tar.gz
+        rm -rf ${prosody_filename}
+        exit 628732
+    fi
+    cp /usr/local/bin/prosody* /usr/bin
+    rm /usr/local/bin/prosody*
+    rm ${prosody_filename}.tar.gz
+    rm -rf ${prosody_filename}
+}
+
 function install_xmpp_main {
     update_prosody_modules
 
@@ -623,6 +664,9 @@ function install_xmpp_main {
     update_default_domain
 
     xmpp_create_config
+
+    # TODO comment this out after debian supports prosody 0.10 or later
+    install_xmpp_nightly
 
     systemctl restart prosody
 
