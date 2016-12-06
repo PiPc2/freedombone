@@ -2,7 +2,7 @@
 
 if [ -d "/lib" ];then
 
-        COUNT=$(find -L /lib  \! -user root  -exec ls -l {} \; |wc -l)
+        COUNT=$(find -L /lib  \! -user root  -exec ls -l {} \; | grep -v '> /dev/null' | wc -l)
 
         if [ $COUNT -eq 0 ];then
                 :
@@ -40,4 +40,3 @@ if [ -d "/usr/lib64" ];then
                 exit 1
         fi
 fi
-
