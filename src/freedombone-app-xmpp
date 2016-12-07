@@ -44,6 +44,7 @@ prosody_latest_version='0.10'
 prosody_nightly=319
 prosody_nightly_hash='f1fdc8ce5b6f8bfa451d458616a0bbe5ed7c15881415e561586bab39bd705fa4'
 prosody_filename=prosody-${prosody_latest_version}-1nightly${prosody_nightly}
+prosody_nightly_url="https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz"
 
 xmpp_variables=(ONION_ONLY
                 INSTALLED_WITHIN_DOCKER
@@ -153,6 +154,33 @@ function upgrade_xmpp {
         # by an operating system upgrade
         cd ${INSTALL_DIR}/${prosody_filename}
         make prefix=/usr install
+    else
+        cd $INSTALL_DIR
+        wget $prosody_nightly_url
+        if [ ! -f ${INSTALL_DIR}/${prosody_filename}.tar.gz ]; then
+            echo $"Failed to download prosody nightly $prosody_nightly_url"
+            exit 345782
+        fi
+
+        hash_value=$(sha256sum ${INSTALL_DIR}/${prosody_filename}.tar.gz | awk -F ' ' '{print $1}')
+        if [[ "$hash_value" != "$prosody_nightly_hash" ]]; then
+            rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
+            echo $'Unexpected hash value for prosody nightly download'
+            exit 6824283
+        fi
+
+        tar -xzvf ${INSTALL_DIR}/${prosody_filename}.tar.gz
+        cd ${INSTALL_DIR}/${prosody_filename}
+        ./configure --ostype=debian --prefix=/usr
+        make prefix=/usr
+        make prefix=/usr install
+        if [ -f /usr/local/bin/prosody ]; then
+            echo $'Failed to build prosody nightly to /usr/bin'
+            rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
+            rm -rf ${INSTALL_DIR}/${prosody_filename}
+            exit 3672345
+        fi
+        rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
     fi
     systemctl restart prosody
 }
@@ -425,14 +453,15 @@ function install_xmpp_nightly {
     fi
 
     cd $INSTALL_DIR
-    wget https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz
-    if [ ! -f ${prosody_filename}.tar.gz ]; then
-        echo $"Failed to download prosody nightly https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz"
+    wget $prosody_nightly_url
+    if [ ! -f ${INSTALL_DIR}/${prosody_filename}.tar.gz ]; then
+        echo $"Failed to download prosody nightly $prosody_nightly_url"
         exit 78352
     fi
 
-    hash_value=$(sha256sum ${prosody_filename}.tar.gz | awk -F ' ' '{print $1}')
+    hash_value=$(sha256sum ${INSTALL_DIR}/${prosody_filename}.tar.gz | awk -F ' ' '{print $1}')
     if [[ "$hash_value" != "$prosody_nightly_hash" ]]; then
+        rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
         echo $'Unexpected hash value for prosody nightly download'
         exit 68224283
     fi
@@ -449,7 +478,6 @@ function install_xmpp_nightly {
         exit 628732
     fi
     rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
-    rm -rf ${INSTALL_DIR}/${prosody_filename}
 }
 
 function install_xmpp_main {
