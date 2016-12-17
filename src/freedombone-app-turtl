@@ -126,6 +126,11 @@ function upgrade_turtl {
     function_check set_repo_commit
     set_repo_commit /var/www/$TURTL_DOMAIN_NAME/htdocs "turtl commit" "$TURTL_COMMIT" $TURTL_REPO
     set_repo_commit /var/www/$TURTL_DOMAIN_NAME/htdocs "turtl api commit" "$TURTL_API_COMMIT" $TURTL_API_REPO
+    nginx_dissite $TURTL_DOMAIN_NAME
+    cd /var/www/$TURTL_DOMAIN_NAME/htdocs
+    npm install
+    make minify
+    nginx_ensite $TURTL_DOMAIN_NAME
 }
 
 function backup_local_turtl {
@@ -240,17 +245,18 @@ function remove_turtl {
     remove_nodejs turtl
 
     remove_rethinkdb
+    remove_common_lisp
 
     function_check remove_ddns_domain
     remove_ddns_domain $TURTL_DOMAIN_NAME
 }
 
 function install_libuv {
-    if [ ! -d $INSTALL_DIR ]; then
-        mkdir -p $INSTALL_DIR
+    if [ ! -d /usr/local/src ]; then
+        mkdir -p /usr/local/src
     fi
 
-    cd $INSTALL_DIR
+    cd /usr/local/src
     if [ ! -f libuv-v${LIBUV_VERSION}.tar.gz ]; then
         wget http://dist.libuv.org/dist/v${LIBUV_VERSION}/libuv-v${LIBUV_VERSION}.tar.gz
     fi
@@ -264,15 +270,15 @@ function install_libuv {
         echo $"libuv hash does not match. Expected $LIBUV_HASH but found $hashstr"
         exit 27685
     fi
-    if [ ! -d $INSTALL_DIR/libuv-v${LIBUV_VERSION} ]; then
+    if [ ! -d /usr/local/src/libuv-v${LIBUV_VERSION} ]; then
         tar -xf libuv-v${LIBUV_VERSION}.tar.gz
     fi
-    if [ ! -d $INSTALL_DIR/libuv-v${LIBUV_VERSION} ]; then
+    if [ ! -d /usr/local/src/libuv-v${LIBUV_VERSION} ]; then
         rm libuv-v${LIBUV_VERSION}.tar.gz
         echo $'libuv could not be extracted'
         exit 72754
     fi
-    cd $INSTALL_DIR/libuv-v${LIBUV_VERSION}
+    cd /usr/local/src/libuv-v${LIBUV_VERSION}
     sh autogen.sh
     ./configure
     make
@@ -294,10 +300,9 @@ function install_turtl {
     fi
 
     apt-get -yq install git wget curl libtool subversion gcc make automake
-    apt-get -yq install cl-cffi cl-quicklisp libuv1-dev build-essential
 
-    if [ ! -d $INSTALL_DIR ]; then
-        mkdir -p $INSTALL_DIR
+    if [ ! -d /usr/local/src ]; then
+        mkdir -p /usr/local/src
     fi
 
     if [ -d /var/www/$TURTL_DOMAIN_NAME ]; then
@@ -366,9 +371,16 @@ function install_turtl {
     git checkout $TURTL_API_COMMIT -b $TURTL_API_COMMIT
     set_completion_param "turtl api commit" "$TURTL_API_COMMIT"
 
+    function_check install_libuv
     install_libuv
+
+    function_check install_rethinkdb
     install_rethinkdb
+
+    function_check install_common_lisp
     install_common_lisp
+
+    function_check install_quicklisp
     install_quicklisp
 
     function_check install_nodejs
@@ -377,8 +389,52 @@ function install_turtl {
     function_check add_ddns_domain
     add_ddns_domain $TURTL_DOMAIN_NAME
 
-    adduser --system --home=/var/www/$TURTL_DOMAIN_NAME/htdocs/ --group turtl
+    cp -r $INSTALL_DIR/lisp/* /var/www/$TURTL_DOMAIN_NAME/htdocs
+    sed -i 's|CCL_DEFAULT_DIRECTORY=.*|CCL_DEFAULT_DIRECTORY=$HOME/ccl|g' /var/www/$TURTL_DOMAIN_NAME/htdocs/ccl/scripts/ccl
+    sed -i 's|CCL_DEFAULT_DIRECTORY=.*|CCL_DEFAULT_DIRECTORY=$HOME/ccl|g' /var/www/$TURTL_DOMAIN_NAME/htdocs/ccl/scripts/ccl64
+
+    adduser --disabled-login --home=/var/www/$TURTL_DOMAIN_NAME/htdocs --gecos 'turtl' turtl
+    chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
+    check_architecture=$(uname -a)
+    if [[ "$check_architecture" == *"64"* && "$check_architecture" != *"arm"* ]]; then
+        su -c '$HOME/ccl/scripts/ccl --load install.lisp --eval "(quit)"' - turtl
+    else
+        su -c '$HOME/ccl/scripts/ccl64 --load install.lisp --eval "(quit)"' - turtl
+    fi
+
+    echo "(pushnew \"./\" asdf:*central-registry* :test #'equal)" > /var/www/$TURTL_DOMAIN_NAME/htdocs/api/launch.lisp
+    echo '(load "start")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/api/launch.lisp
+
+    cd /var/www/$TURTL_DOMAIN_NAME/htdocs/quicklisp/local-projects
+    git clone git://github.com/orthecreedence/cl-hash-util
+    git clone git://github.com/orthecreedence/vom
+    git clone git://github.com/orthecreedence/cl-async
+    git clone git://github.com/orthecreedence/cffi
+    git clone git://github.com/orthecreedence/wookie
+    git clone git://github.com/orthecreedence/cl-rethinkdb
+    git clone git://github.com/orthecreedence/cl-libuv
+    git clone git://github.com/orthecreedence/drakma-async
+    git clone https://github.com/Inaimathi/cl-cwd.git
+
+    echo '#-quicklisp' > /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
+    echo '(let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))))' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
+    echo '  (when (probe-file quicklisp-init)' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
+    echo '    (load quicklisp-init)))' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
+    echo '(cwd "$HOME/api")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
+    echo '(load "$HOME/api/launch")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
+
     chmod a+w /var/www/$TURTL_DOMAIN_NAME/htdocs
+    chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
+
+    # install the app
+    cd /var/www/$TURTL_DOMAIN_NAME/htdocs
+    npm install
+    make minify
+    if [ ! -f /var/www/$TURTL_DOMAIN_NAME/htdocs/index.html ]; then
+        echo $'Failed to install turtl app'
+        exit 823652
+    fi
+
     chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
 
     echo '[Unit]' > /etc/systemd/system/turtl.service
@@ -395,9 +451,9 @@ function install_turtl {
     echo "WorkingDirectory=/var/www/$TURTL_DOMAIN_NAME/htdocs/api/" >> /etc/systemd/system/turtl.service
     check_architecture=$(uname -a)
     if [[ "$check_architecture" == *"64"* && "$check_architecture" != *"arm"* ]]; then
-        echo 'ExecStart=/usr/bin/ccl64 -Q -b --load start.lisp' >> /etc/systemd/system/turtl.service
+        echo "ExecStart=/var/www/$TURTL_DOMAIN_NAME/htdocs/ccl/scripts/ccl64 -Q -b --load start.lisp" >> /etc/systemd/system/turtl.service
     else
-        echo 'ExecStart=/usr/bin/ccl -Q -b --load start.lisp' >> /etc/systemd/system/turtl.service
+        echo "ExecStart=/var/www/$TURTL_DOMAIN_NAME/htdocs/ccl/scripts/ccl -Q -b --load start.lisp" >> /etc/systemd/system/turtl.service
     fi
     echo '' >> /etc/systemd/system/turtl.service
     echo '[Install]' >> /etc/systemd/system/turtl.service
@@ -440,7 +496,6 @@ function install_turtl {
         echo '    proxy_buffering   off;' >> $turtl_nginx_site
         echo '  }' >> $turtl_nginx_site
         echo '' >> $turtl_nginx_site
-        nginx_keybase $TURTL_DOMAIN_NAME
         echo '}' >> $turtl_nginx_site
         echo '' >> $turtl_nginx_site
         echo 'server {' >> $turtl_nginx_site
@@ -471,7 +526,6 @@ function install_turtl {
         nginx_limits $TURTL_DOMAIN_NAME '15m'
         echo '  }' >> $turtl_nginx_site
         echo '' >> $turtl_nginx_site
-        nginx_keybase $TURTL_DOMAIN_NAME
         echo '}' >> $turtl_nginx_site
     else
         echo -n '' > $turtl_nginx_site
@@ -498,7 +552,6 @@ function install_turtl {
     echo '    proxy_buffering   off;' >> $turtl_nginx_site
     echo '  }' >> $turtl_nginx_site
     echo '' >> $turtl_nginx_site
-    nginx_keybase $TURTL_DOMAIN_NAME
     echo '}' >> $turtl_nginx_site
     echo '' >> $turtl_nginx_site
     echo 'server {' >> $turtl_nginx_site
@@ -522,7 +575,6 @@ function install_turtl {
     nginx_limits $TURTL_DOMAIN_NAME '15m'
     echo '  }' >> $turtl_nginx_site
     echo '' >> $turtl_nginx_site
-    nginx_keybase $TURTL_DOMAIN_NAME
     echo '}' >> $turtl_nginx_site
 
     function_check create_site_certificate
@@ -530,12 +582,6 @@ function install_turtl {
 
     if [ -f /etc/ssl/certs/${TURTL_DOMAIN_NAME}.crt ]; then
         mv /etc/ssl/certs/${TURTL_DOMAIN_NAME}.crt /etc/ssl/certs/${TURTL_DOMAIN_NAME}.pem
-    fi
-    if [ -f /etc/ssl/certs/${TURTL_DOMAIN_NAME}.pem ]; then
-        chown turtl:turtl /etc/ssl/certs/${TURTL_DOMAIN_NAME}.pem
-    fi
-    if [ -f /etc/ssl/private/${TURTL_DOMAIN_NAME}.key ]; then
-        chown turtl:turtl /etc/ssl/private/${TURTL_DOMAIN_NAME}.key
     fi
 
     function_check nginx_ensite

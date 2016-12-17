@@ -32,11 +32,16 @@ COMMON_LISP_VERSION='1.11'
 
 function install_common_lisp {
     # http://ccl.clozure.com
-    if [ ! -d $INSTALL_DIR/lisp ]; then
-        mkdir -p $INSTALL_DIR/lisp
+    lisp_base=/usr/local/src
+    if [ $1 ]; then
+        lisp_base=$1
     fi
 
-    cd $INSTALL_DIR/lisp
+    if [ ! -d $lisp_base ]; then
+        mkdir -p $lisp_base
+    fi
+
+    cd $lisp_base
 
     check_architecture=$(uname -a)
     if [[ "$check_architecture" == *"arm"* ]]; then
@@ -45,25 +50,48 @@ function install_common_lisp {
         svn co http://svn.clozure.com/publicsvn/openmcl/release/${COMMON_LISP_VERSION}/linuxx86/ccl
     fi
 
-    if [ ! -d $INSTALL_DIR/lisp/ccl/scripts ]; then
+    if [ ! -d $lisp_base/ccl/scripts ]; then
         echo $'Unable to clone ccl repo'
         exit 728245
     fi
-    if [ ! -f $INSTALL_DIR/lisp/ccl/scripts/ccl ]; then
+    if [ ! -f $lisp_base/ccl/scripts/ccl ]; then
         echo $'ccl not found'
         exit 5825422
     fi
-    cp $INSTALL_DIR/lisp/ccl/scripts/ccl /usr/bin
-    if [ -f $INSTALL_DIR/lisp/ccl/scripts/ccl64 ]; then
-        cp $INSTALL_DIR/lisp/ccl/scripts/ccl64 /usr/bin
+    cp $lisp_base/ccl/scripts/ccl /usr/bin
+    sed -i 's|CCL_DEFAULT_DIRECTORY=.*|CCL_DEFAULT_DIRECTORY=/usr/local/src/ccl|g' /usr/bin/ccl
+    if [ -f $lisp_base/ccl/scripts/ccl64 ]; then
+        cp $lisp_base/ccl/scripts/ccl64 /usr/bin
+        sed -i 's|CCL_DEFAULT_DIRECTORY=.*|CCL_DEFAULT_DIRECTORY=/usr/local/src/ccl|g' /usr/bin/ccl64
+    fi
+}
+
+function remove_common_lisp {
+    if [ -f /usr/bin/ccl ]; then
+        rm /usr/bin/ccl
+    fi
+
+    if [ -f /usr/bin/ccl64 ]; then
+        rm /usr/bin/ccl64
+    fi
+
+    if [ -d /usr/local/src/ccl ]; then
+        rm -rf /usr/local/src/ccl
+    fi
+    if [ -d $INSTALL_DIR/lisp ]; then
+        rm -rf $INSTALL_DIR/lisp
     fi
 }
 
 function install_quicklisp {
-    if [ ! -d $INSTALL_DIR/lisp ]; then
-        mkdir -p $INSTALL_DIR/lisp
+    quicklisp_base=/usr/local/src
+    if [ $1 ]; then
+        quicklisp_base=$1
     fi
-    cd $INSTALL_DIR/lisp
+    if [ ! -d $quicklisp_base ]; then
+        mkdir -p $quicklisp_base
+    fi
+    cd $quicklisp_base
     if [ ! -f asdf.lisp ]; then
         wget https://common-lisp.net/project/asdf/asdf.lisp
     fi
@@ -79,17 +107,24 @@ function install_quicklisp {
         exit 80253
     fi
 
-    echo '(quicklisp-quickstart:install)' > install.lisp
+    echo '(load (compile-file "asdf.lisp"))' > install.lisp
+    echo '(load (compile-file "quicklisp.lisp"))' >> install.lisp
+    echo '(quicklisp-quickstart:install)' >> install.lisp
     echo '(ql:add-to-init-file)' >> install.lisp
-    echo '(load (compile-file "asdf.lisp"))' >> install.lisp
 
     check_architecture=$(uname -a)
     if [[ "$check_architecture" == *"64"* && "$check_architecture" != *"arm"* ]]; then
-        ccl64 --load quicklisp.lisp
-        ccl64 --load install.lisp
+        if [ ! $2 ]; then
+            ccl64 --load install.lisp
+        else
+            su -c 'ccl64 --load install.lisp' - $2
+        fi
     else
-        ccl --load quicklisp.lisp
-        ccl --load install.lisp
+        if [ ! $2 ]; then
+            ccl --load install.lisp
+        else
+            su -c 'ccl --load install.lisp' - $2
+        fi
     fi
 }
 
