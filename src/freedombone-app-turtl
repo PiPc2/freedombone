@@ -47,6 +47,7 @@ TURTL_REPO="https://github.com/turtl/js.git"
 TURTL_COMMIT='61923ffb47d95d172f80d14c76aa032a4d5f5d6d'
 TURTL_ADMIN_PASSWORD=
 TURTL_STORAGE_LIMIT_MB=100
+TURTL_BASE_DIR=/etc/turtl
 
 LIBUV_VERSION='1.9.1'
 LIBUV_HASH='e83953782c916d7822ef0b94e8115ce5756fab5300cca173f0de5f5b0e0ae928'
@@ -252,7 +253,7 @@ function remove_turtl_old {
 }
 
 function remove_turtl {
-    if [ ! -d /opt/api ]; then
+    if [ ! -d $TURTL_BASE_DIR ]; then
         return
     fi
     systemctl stop turtl
@@ -262,13 +263,10 @@ function remove_turtl {
     remove_app turtl
     remove_completion_param install_turtl
     sed -i '/turtl/d' $COMPLETION_FILE
-    rm $INSTALL_DIR/quicklisp.lisp
-    rm $INSTALL_DIR/asdf.lisp
+    deluser turtl
     rm -rf /etc/rethinkdb
     rm -rf /var/lib/rethinkdb
-    rm -rf /root/quicklisp
-    rm -rf /opt/ccl
-    rm -rf /opt/api
+    rm -rf $TURTL_BASE_DIR
 }
 
 function install_libuv {
@@ -484,9 +482,9 @@ function install_turtl_old {
 
     check_architecture=$(uname -a)
     if [[ "$check_architecture" == *"64"* && "$check_architecture" != *"arm"* ]]; then
-        su -c '/usr/bin/ccl64 --load install.lisp --eval "(quit)"' - turtl
+        su -c '/usr/bin/ccl64 --load install.lisp --eval "(ccl::quit)"' - turtl
     else
-        su -c '/usr/bin/ccl --load install.lisp --eval "(quit)"' - turtl
+        su -c '/usr/bin/ccl --load install.lisp --eval "(ccl::quit)"' - turtl
     fi
 
     echo "(pushnew \"./\" asdf:*central-registry* :test #'equal)" > /var/www/$TURTL_DOMAIN_NAME/htdocs/api/launch.lisp
@@ -712,14 +710,14 @@ function turtl_setup {
     DEFAULT_STORAGE_LIMIT=${DEFAULT_STORAGE_LIMIT:-100}
     STORAGE_INVITE_CREDIT=${STORAGE_INVITE_CREDIT:-25}
     LOCAL_UPLOAD_URL=${LOCAL_UPLOAD_URL:-http://turtl.local}
-    LOCAL_UPLOAD_PATH=${LOCAL_UPLOAD_PATH:-"/opt/api/uploads"}
+    LOCAL_UPLOAD_PATH=${LOCAL_UPLOAD_PATH:-"$TURTL_BASE_DIR/api/uploads"}
     AWS_S3_TOKEN=${AWS_S3_TOKEN:-(:token ''
                                   :secret ''
                                   :bucket ''
                                   :endpoint 'https://s3.amazonaws.com')}
 
     # generates the config-file
-    cat  << __ENDCONFIG__ > /opt/api/config/config.lisp
+    cat  << __ENDCONFIG__ > $TURTL_BASE_DIR/api/config/config.lisp
 (in-package :turtl)
 (defparameter *root* (asdf:system-relative-pathname :turtl #P""))
 (defparameter *pid-file* "${PIDFILE}")
@@ -745,7 +743,7 @@ function turtl_setup {
 (defvar *amazon-s3* "${AWS_S3_TOKEN}")
 __ENDCONFIG__
 
-    cat /opt/api/config/config.footer >> /opt/api/config/config.lisp
+    cat $TURTL_BASE_DIR/api/config/config.footer >> $TURTL_BASE_DIR/api/config/config.lisp
 
     # start the turtl server
     systemctl restart rethinkdb
@@ -760,16 +758,16 @@ __ENDCONFIG__
     echo '' >> /etc/systemd/system/turtl.service
     echo '[Service]' >> /etc/systemd/system/turtl.service
     echo 'Type=simple' >> /etc/systemd/system/turtl.service
-    echo 'User=root' >> /etc/systemd/system/turtl.service
-    echo 'WorkingDirectory=/opt/api/' >> /etc/systemd/system/turtl.service
+    echo 'User=turtl' >> /etc/systemd/system/turtl.service
+    echo "WorkingDirectory=$TURTL_BASE_DIR/api/" >> /etc/systemd/system/turtl.service
 
     if [[ "$check_architecture" == *"64"* && "$check_architecture" != *"arm"* ]]; then
-        echo "ExecStart=/opt/ccl/lx86cl64 -l /root/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
+        echo "ExecStart=$TURTL_BASE_DIR/ccl/lx86cl64 -l $TURTL_BASE_DIR/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
     else
         if [[ "$check_architecture" != *"arm"* ]]; then
-            echo "ExecStart=/opt/ccl/lx86cl -l /root/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
+            echo "ExecStart=$TURTL_BASE_DIR/ccl/lx86cl -l $TURTL_BASE_DIR/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
         else
-            echo "ExecStart=/opt/ccl/larmcl -l /root/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
+            echo "ExecStart=$TURTL_BASE_DIR/ccl/larmcl -l $TURTL_BASE_DIR/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
         fi
     fi
     echo '' >> /etc/systemd/system/turtl.service
@@ -777,6 +775,7 @@ __ENDCONFIG__
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/turtl.service
     chmod +x /etc/systemd/system/turtl.service
 
+    chown -R turtl:turtl $TURTL_BASE_DIR
     systemctl enable turtl
     systemctl daemon-reload
     systemctl start turtl
@@ -786,25 +785,25 @@ function install_turtl_api {
     # https://github.com/ArthurGarnier/turtl-docker
     apt-get -yq install wget libterm-readline-perl-perl gcc libuv1-dev
 
-    if [ ! -d $INSTALL_DIR ]; then
-        mkdir -p $INSTALL_DIR
+    if [ ! -d $TURTL_BASE_DIR ]; then
+        mkdir -p $TURTL_BASE_DIR
     fi
-    cd $INSTALL_DIR
+    cd $TURTL_BASE_DIR
     check_architecture=$(uname -a)
 
     # Install ccl
     if [[ "$check_architecture" != *"arm"* ]]; then
-        wget -P /opt/ ftp://ftp.clozure.com/pub/release/1.11/ccl-1.11-linuxx86.tar.gz
-        mkdir -p /opt/ccl
-        tar xvzf /opt/ccl-1.11-linuxx86.tar.gz -C /opt/ccl --strip-components=1
+        wget -P $TURTL_BASE_DIR/ ftp://ftp.clozure.com/pub/release/1.11/ccl-1.11-linuxx86.tar.gz
+        mkdir -p $TURTL_BASE_DIR/ccl
+        tar xvzf $TURTL_BASE_DIR/ccl-1.11-linuxx86.tar.gz -C $TURTL_BASE_DIR/ccl --strip-components=1
     else
-        wget -P /opt/ ftp://ftp.clozure.com/pub/release/1.11/ccl-1.11-linuxarm.tar.gz
-        mkdir -p /opt/ccl
-        tar xvzf /opt/ccl-1.11-linuxarm.tar.gz -C /opt/ccl --strip-components=1
+        wget -P $TURTL_BASE_DIR/ ftp://ftp.clozure.com/pub/release/1.11/ccl-1.11-linuxarm.tar.gz
+        mkdir -p $TURTL_BASE_DIR/ccl
+        tar xvzf $TURTL_BASE_DIR/ccl-1.11-linuxarm.tar.gz -C $TURTL_BASE_DIR/ccl --strip-components=1
     fi
 
     # install quicklisp
-    cat  << __ENDCONFIG__ > $INSTALL_DIR/quicklisp_install
+    cat  << __ENDCONFIG__ > $TURTL_BASE_DIR/quicklisp_install
 (load (compile-file "asdf.lisp"))
 (load (compile-file "quicklisp.lisp"))
 (quicklisp-quickstart:install)
@@ -875,56 +874,60 @@ __ENDCONFIG__
     if [ ! -f quicklisp.lisp ]; then
         wget https://beta.quicklisp.org/quicklisp.lisp
     fi
+
+    adduser --disabled-login --home=$TURTL_BASE_DIR --gecos 'turtl' turtl
+    chown -R turtl:turtl $TURTL_BASE_DIR
+
     if [[ "$check_architecture" != *"arm"* ]]; then
         if [[ "$check_architecture" == *"64"* ]]; then
-            cat $INSTALL_DIR/quicklisp_install | /opt/ccl/lx86cl64
+            su -c "cat $TURTL_BASE_DIR/quicklisp_install | $TURTL_BASE_DIR/ccl/lx86cl64" - turtl
         else
-            cat $INSTALL_DIR/quicklisp_install | /opt/ccl/lx86cl
+            su -c "cat $TURTL_BASE_DIR/quicklisp_install | $TURTL_BASE_DIR/ccl/lx86cl" - turtl
         fi
     else
-        cat $INSTALL_DIR/quicklisp_install | /opt/ccl/larmcl
+        su -c "cat $TURTL_BASE_DIR/quicklisp_install | $TURTL_BASE_DIR/ccl/larmcl" - turtl
     fi
-    rm $INSTALL_DIR/quicklisp_install
+    rm $TURTL_BASE_DIR/quicklisp_install
 
     install_rethinkdb
 
     # install turtl API
-    cd /opt/
-    git clone $TURTL_API_REPO /opt/api
-    cd /opt/api
+    cd $TURTL_BASE_DIR/
+    git clone $TURTL_API_REPO $TURTL_BASE_DIR/api
+    cd $TURTL_BASE_DIR/api
     git checkout $TURTL_API_COMMIT -b $TURTL_API_COMMIT
     cd /root/quicklisp/local-projects
     git clone git://github.com/orthecreedence/cl-hash-util
     if [[ "$check_architecture" != *"arm"* ]]; then
         if [[ "$check_architecture" == *"64"* ]]; then
-            /opt/ccl/lx86cl64 -l /root/quicklisp/setup.lisp
+            su -c "cat '(ccl:quit)' | $TURTL_BASE_DIR/ccl/lx86cl64 -l /root/quicklisp/setup.lisp" - turtl
         else
-            /opt/ccl/lx86cl -l /root/quicklisp/setup.lisp
+            su -c "cat '(ccl:quit)' | $TURTL_BASE_DIR/ccl/lx86cl -l /root/quicklisp/setup.lisp" - turtl
         fi
     else
-        /opt/ccl/larmcl -l /root/quicklisp/setup.lisp
+        su -c "cat '(ccl:quit)' | $TURTL_BASE_DIR/ccl/larmcl -l /root/quicklisp/setup.lisp" - turtl
     fi
 
     # config
-    echo '(defvar *enabled-cors-resources* "resource://turtl-at-lyonbros-dot-com"' > /opt/api/config/config.footer
-    echo '  "When set, will enable CORS for resource:// origins if they match the given' >> /opt/api/config/config.footer
-    echo '   string. Entries should be comma separated (this string is passed verbatim in' >> /opt/api/config/config.footer
-    echo '   the Access-Control-Allow-Origin header).")' >> /opt/api/config/config.footer
-    echo '(defparameter *public-actions*' >> /opt/api/config/config.footer
-    echo "  \`((:post . ,(concatenate 'string *api-path* \"/users\"))" >> /opt/api/config/config.footer
-    echo "    (:post . ,(concatenate 'string *api-path* \"/log/error\"))" >> /opt/api/config/config.footer
-    echo '    (:post . "/cla/sign")' >> /opt/api/config/config.footer
-    echo '    (:get  . "/ping")' >> /opt/api/config/config.footer
-    echo '    (:get  . "/admin")' >> /opt/api/config/config.footer
-    echo "    (:get . ,(cl-ppcre:create-scanner (concatenate 'string *api-path* \"/invites/codes/([0-9a-f-]+)\"))))" >> /opt/api/config/config.footer
-    echo "  \"A list of public resources/actions that do not require authentication.\")" >> /opt/api/config/config.footer
-    echo "(defvar *analytics* '(:enabled t" >> /opt/api/config/config.footer
-    echo '                      :db "analytics"))' >> /opt/api/config/config.footer
+    echo '(defvar *enabled-cors-resources* "resource://turtl-at-lyonbros-dot-com"' > $TURTL_BASE_DIR/api/config/config.footer
+    echo '  "When set, will enable CORS for resource:// origins if they match the given' >> $TURTL_BASE_DIR/api/config/config.footer
+    echo '   string. Entries should be comma separated (this string is passed verbatim in' >> $TURTL_BASE_DIR/api/config/config.footer
+    echo '   the Access-Control-Allow-Origin header).")' >> $TURTL_BASE_DIR/api/config/config.footer
+    echo '(defparameter *public-actions*' >> $TURTL_BASE_DIR/api/config/config.footer
+    echo "  \`((:post . ,(concatenate 'string *api-path* \"/users\"))" >> $TURTL_BASE_DIR/api/config/config.footer
+    echo "    (:post . ,(concatenate 'string *api-path* \"/log/error\"))" >> $TURTL_BASE_DIR/api/config/config.footer
+    echo '    (:post . "/cla/sign")' >> $TURTL_BASE_DIR/api/config/config.footer
+    echo '    (:get  . "/ping")' >> $TURTL_BASE_DIR/api/config/config.footer
+    echo '    (:get  . "/admin")' >> $TURTL_BASE_DIR/api/config/config.footer
+    echo "    (:get . ,(cl-ppcre:create-scanner (concatenate 'string *api-path* \"/invites/codes/([0-9a-f-]+)\"))))" >> $TURTL_BASE_DIR/api/config/config.footer
+    echo "  \"A list of public resources/actions that do not require authentication.\")" >> $TURTL_BASE_DIR/api/config/config.footer
+    echo "(defvar *analytics* '(:enabled t" >> $TURTL_BASE_DIR/api/config/config.footer
+    echo '                      :db "analytics"))' >> $TURTL_BASE_DIR/api/config/config.footer
 
-    cp $INSTALL_DIR/asdf.lisp /opt/api
-    echo '(load (compile-file "asdf.lisp"))' > /opt/api/launch.lisp
-    echo "(pushnew \"./\" asdf:*central-registry* :test #'equal)" >> /opt/api/launch.lisp
-    echo '(load "start")' >> /opt/api/launch.lisp
+    cp $TURTL_BASE_DIR/asdf.lisp $TURTL_BASE_DIR/api
+    echo '(load (compile-file "asdf.lisp"))' > $TURTL_BASE_DIR/api/launch.lisp
+    echo "(pushnew \"./\" asdf:*central-registry* :test #'equal)" >> $TURTL_BASE_DIR/api/launch.lisp
+    echo '(load "start")' >> $TURTL_BASE_DIR/api/launch.lisp
 
     turtl_setup
 }
