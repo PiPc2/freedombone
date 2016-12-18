@@ -122,15 +122,15 @@ function reconfigure_turtl {
 function upgrade_turtl {
     read_config_param "TURTL_DOMAIN_NAME"
 
-    install_libuv
-
     function_check set_repo_commit
     set_repo_commit /var/www/$TURTL_DOMAIN_NAME/htdocs "turtl commit" "$TURTL_COMMIT" $TURTL_REPO
-    set_repo_commit /var/www/$TURTL_DOMAIN_NAME/htdocs "turtl api commit" "$TURTL_API_COMMIT" $TURTL_API_REPO
+    set_repo_commit $TURTL_BASE_DIR/api "turtl api commit" "$TURTL_API_COMMIT" $TURTL_API_REPO
     nginx_dissite $TURTL_DOMAIN_NAME
     cd /var/www/$TURTL_DOMAIN_NAME/htdocs
     npm install
     make minify
+    chown -R turtl:turtl $TURTL_BASE_DIR
+    chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
     nginx_ensite $TURTL_DOMAIN_NAME
 }
 
@@ -139,6 +139,18 @@ function backup_local_turtl {
     source_directory=/var/www/${TURTL_DOMAIN_NAME}/htdocs
     if [ -d $source_directory ]; then
         dest_directory=turtl
+        function_check suspend_site
+        suspend_site ${TURTL_DOMAIN_NAME}
+
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+
+        function_check restart_site
+        restart_site
+    fi
+    source_directory=/var/lib/rethinkdb
+    if [ -d $source_directory ]; then
+        dest_directory=rethinkdb
         function_check suspend_site
         suspend_site ${TURTL_DOMAIN_NAME}
 
@@ -173,6 +185,26 @@ function restore_local_turtl {
         fi
         rm -rf ${temp_restore_dir}
         chown -R turtl:turtl /var/www/${TURTL_DOMAIN_NAME}/htdocs
+
+        temp_restore_dir=/root/temprethinkdb
+        restore_directory_from_usb $temp_restore_dir rethinkdb
+        if [ -d /var/lib/rethinkdb ]; then
+            if [ -d /var/lib/previous_rethinkdb ]; then
+                rm -rf /var/lib/previous_rethinkdb
+            fi
+            mv /var/lib/rethinkdb /var/lib/previous_rethinkdb
+        fi
+        temp_source_dir=$(find ${temp_restore_dir} -name rethinkdb)
+        cp -r ${temp_source_dir} /var/lib/
+        if [ ! "$?" = "0" ]; then
+            if [ -d /var/lib/previous_rethinkdb ]; then
+                mv /var/lib/previous_rethinkdb /var/lib/rethinkdb
+            fi
+            set_user_permissions
+            backup_unmount_drive
+            exit 378324
+        fi
+        rm -rf ${temp_restore_dir}
     fi
 }
 
@@ -187,6 +219,13 @@ function backup_remote_turtl {
         else
             echo $"turtl domain specified but not found in $temp_backup_dir"
             exit 68725
+        fi
+
+        temp_backup_dir=/var/lib/rethinkdb
+        if [ -d $temp_backup_dir ]; then
+            echo $"Backing up rethinkdb"
+            backup_directory_to_friend $temp_backup_dir rethinkdb
+            echo $"Backup of rethinkdb complete"
         fi
     fi
 }
@@ -213,43 +252,28 @@ function restore_remote_turtl {
             exit 37823
         fi
         rm -rf ${temp_restore_dir}
-    fi
-}
 
-function remove_turtl_old {
-    if [ ${#TURTL_DOMAIN_NAME} -eq 0 ]; then
-        return
-    fi
-    read_config_param "TURTL_DOMAIN_NAME"
-    read_config_param "MY_USERNAME"
-    echo "Removing $TURTL_DOMAIN_NAME"
-    if [ -f /etc/systemd/system/turtl.service ]; then
-        systemctl stop turtl
-        systemctl disable turtl
-        rm /etc/systemd/system/turtl.service
-    fi
-    nginx_dissite $TURTL_DOMAIN_NAME
-    remove_certs $TURTL_DOMAIN_NAME
-    if [ -d /var/www/$TURTL_DOMAIN_NAME ]; then
-        rm -rf /var/www/$TURTL_DOMAIN_NAME
-    fi
-    if [ -f /etc/nginx/sites-available/$TURTL_DOMAIN_NAME ]; then
-        rm /etc/nginx/sites-available/$TURTL_DOMAIN_NAME
-    fi
-    function_check remove_onion_service
-    remove_onion_service turtl ${TURTL_ONION_PORT}
-    remove_onion_service turtlapi ${TURTL_API_ONION_PORT}
-    remove_app turtl
-    remove_completion_param install_turtl
-    sed -i '/turtl/d' $COMPLETION_FILE
-    deluser --remove-all-files turtl
-    remove_nodejs turtl
 
-    remove_rethinkdb
-    remove_common_lisp
-
-    function_check remove_ddns_domain
-    remove_ddns_domain $TURTL_DOMAIN_NAME
+        temp_restore_dir=/root/temprethinkdb
+        mkdir $temp_restore_dir
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir rethinkdb
+        if [ -d /var/lib/rethinkdb ]; then
+            if [ -d /var/lib/previous_rethinkdb ]; then
+                rm -rf /var/lib/previous_rethinkdb
+            fi
+            mv /var/lib/rethinkdb /var/lib/previous_rethinkdb
+        fi
+        temp_source_dir=$(find ${temp_restore_dir} -name rethinkdb)
+        cp -r ${temp_source_dir} /var/lib/
+        if [ ! "$?" = "0" ]; then
+            if [ -d /var/lib/previous_rethinkdb ]; then
+                mv /var/lib/previous_rethinkdb /var/lib/rethinkdb
+            fi
+            exit 26783
+        fi
+        rm -rf ${temp_restore_dir}
+    fi
 }
 
 function remove_turtl {
@@ -259,441 +283,29 @@ function remove_turtl {
     systemctl stop turtl
     systemctl disable turtl
     rm /etc/systemd/system/turtl.service
-    apt-get -y remove rethinkdb
+    remove_rethinkdb
     remove_app turtl
     remove_completion_param install_turtl
     sed -i '/turtl/d' $COMPLETION_FILE
     deluser turtl
+    nginx_dissite $TURTL_DOMAIN_NAME
+    if [ -f /etc/nginx/sites-available/$TURTL_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$TURTL_DOMAIN_NAME
+    fi
+    remove_certs $TURTL_DOMAIN_NAME
+    if [ -d /var/www/$TURTL_DOMAIN_NAME ]; then
+        rm -rf /var/www/$TURTL_DOMAIN_NAME
+    fi
+    function_check remove_onion_service
+    remove_onion_service turtl ${TURTL_ONION_PORT}
+    remove_onion_service turtlapi ${TURTL_API_ONION_PORT}
+    function_check remove_ddns_domain
+    remove_ddns_domain $TURTL_DOMAIN_NAME
     rm -rf /etc/rethinkdb
     rm -rf /var/lib/rethinkdb
     rm -rf $TURTL_BASE_DIR
 }
 
-function install_libuv {
-    if [ ! -d /usr/local/src ]; then
-        mkdir -p /usr/local/src
-    fi
-
-    cd /usr/local/src
-    if [ ! -f libuv-v${LIBUV_VERSION}.tar.gz ]; then
-        wget http://dist.libuv.org/dist/v${LIBUV_VERSION}/libuv-v${LIBUV_VERSION}.tar.gz
-    fi
-    if [ ! -f libuv-v${LIBUV_VERSION}.tar.gz ]; then
-        echo $"Couldn't download libuv ${LIBUV_VERSION}"
-        exit 728235
-    fi
-    hashstr=$(sha256sum libuv-v${LIBUV_VERSION}.tar.gz | awk -F ' ' '{print $1}')
-    if [[ "$hashstr" != "$LIBUV_HASH" ]]; then
-        rm libuv-v${LIBUV_VERSION}.tar.gz
-        echo $"libuv hash does not match. Expected $LIBUV_HASH but found $hashstr"
-        exit 27685
-    fi
-    if [ ! -d /usr/local/src/libuv-v${LIBUV_VERSION} ]; then
-        tar -xf libuv-v${LIBUV_VERSION}.tar.gz
-    fi
-    if [ ! -d /usr/local/src/libuv-v${LIBUV_VERSION} ]; then
-        rm libuv-v${LIBUV_VERSION}.tar.gz
-        echo $'libuv could not be extracted'
-        exit 72754
-    fi
-    cd /usr/local/src/libuv-v${LIBUV_VERSION}
-    sh autogen.sh
-    ./configure
-    make
-    make install
-}
-
-function install_turtl_old {
-    if [ ! $TURTL_DOMAIN_NAME ]; then
-        echo $'No domain name was given for turtl'
-        exit 47823
-    fi
-
-    if [ -f $IMAGE_PASSWORD_FILE ]; then
-        TURTL_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-    else
-        if [ ! $TURTL_ADMIN_PASSWORD ]; then
-            TURTL_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-        fi
-    fi
-
-    apt-get -yq install git wget curl libtool subversion gcc make automake
-
-    if [ ! -d /usr/local/src ]; then
-        mkdir -p /usr/local/src
-    fi
-
-    if [ -d /var/www/$TURTL_DOMAIN_NAME ]; then
-        rm -rf /var/www/$TURTL_DOMAIN_NAME
-    fi
-    mkdir /var/www/$TURTL_DOMAIN_NAME
-
-    # get the app
-    if [ ! -d /var/www/$TURTL_DOMAIN_NAME/htdocs ]; then
-        function_check git_clone
-        git_clone $TURTL_REPO /var/www/$TURTL_DOMAIN_NAME/htdocs
-        if [ ! -d /var/www/$TURTL_DOMAIN_NAME/htdocs ]; then
-            echo $'Unable to clone turtl repo'
-            exit 367292
-        fi
-    fi
-
-    # get the api
-    if [ ! -d /var/www/$TURTL_DOMAIN_NAME/htdocs/api ]; then
-        git_clone $TURTL_API_REPO /var/www/$TURTL_DOMAIN_NAME/htdocs/api
-        if [ ! -d /var/www/$TURTL_DOMAIN_NAME/htdocs/api ]; then
-            echo $'Unable to clone turtl api repo'
-            exit 473843
-        fi
-    fi
-
-    # check that default config files exist
-    if [ ! -f /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.default.lisp ]; then
-        echo $'No default turtl api config found'
-        exit 825328
-    fi
-    if [ ! -f /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js.default ]; then
-        echo $'No default turtl config found'
-        exit 783524
-    fi
-
-    # directory where uploads are stored
-    if [ ! -d /var/www/$TURTL_DOMAIN_NAME/htdocs/data ]; then
-        mkdir -p /var/www/$TURTL_DOMAIN_NAME/htdocs/data
-    fi
-
-    # create config files
-    cp /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.default.lisp /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    cp /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js.default /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
-
-    # app config file settings
-    sed -i "s|api_url.*|api_url: 'https://api.${TURTL_DOMAIN_NAME}'|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
-    sed -i "s|site_url.*|api_url: 'https://${TURTL_DOMAIN_NAME}'|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
-
-    # api config file settings
-    sed -i "s|defvar *admin-email* \".*|defvar *admin-email* \"$MY_EMAIL_ADDRESS\"|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i "s|defvar *email-from* \".*|defvar *email-from* \"noreply@$DEFAULT_DOMAIN_NAME\"|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i "s|defvar *site-url* \".*|defvar *site-url* \"https://$TURTL_DOMAIN_NAME\"|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i "s|defvar *analytics* '(:enabled.*|defvar *analytics* '(:enabled f|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i 's|http://turtl.dev:8181|https://$TURTL_DOMAIN_NAME|g' /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i "s|defvar *local-upload*.*|defvar *local-upload* \"/var/www/$TURTL_DOMAIN_NAME/htdocs/data\"|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i "s|defvar *local-upload-url*.*|defvar *local-upload-url* \"https://api.${TURTL_DOMAIN_NAME}\"|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i 's|defparameter *storage-invite-credit*.*|defparameter *storage-invite-credit* 0|g' /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-    sed -i "s|defparameter *default-storage-limit*.*|defparameter *default-storage-limit* $TURTL_STORAGE_LIMIT_MB|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-
-    cd /var/www/$TURTL_DOMAIN_NAME/htdocs
-    git checkout $TURTL_COMMIT -b $TURTL_COMMIT
-    set_completion_param "turtl commit" "$TURTL_COMMIT"
-
-    cd /var/www/$TURTL_DOMAIN_NAME/htdocs/api
-    git checkout $TURTL_API_COMMIT -b $TURTL_API_COMMIT
-    set_completion_param "turtl api commit" "$TURTL_API_COMMIT"
-
-    function_check install_libuv
-    install_libuv
-
-    function_check install_rethinkdb
-    install_rethinkdb
-
-    function_check install_common_lisp
-    install_common_lisp
-
-    function_check install_quicklisp
-    install_quicklisp
-
-    function_check install_nodejs
-    install_nodejs turtl
-
-    function_check add_ddns_domain
-    add_ddns_domain $TURTL_DOMAIN_NAME
-
-    sed -i 's|CCL_DEFAULT_DIRECTORY=.*|CCL_DEFAULT_DIRECTORY=/usr/local/src/ccl|g' /usr/bin/ccl
-    sed -i 's|CCL_DEFAULT_DIRECTORY=.*|CCL_DEFAULT_DIRECTORY=/usr/local/src/ccl|g' /usr/bin/ccl64
-
-    adduser --disabled-login --home=/var/www/$TURTL_DOMAIN_NAME/htdocs --gecos 'turtl' turtl
-
-    cp /usr/local/src/asdf.lisp /var/www/$TURTL_DOMAIN_NAME/htdocs
-    cp /usr/local/src/quicklisp.lisp /var/www/$TURTL_DOMAIN_NAME/htdocs
-    echo '(load (compile-file "asdf.lisp"))' > /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(load (compile-file "quicklisp.lisp"))' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(quicklisp-quickstart:install)' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-
-
-    echo '(ql:system-apropos "vecto")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "alexandria")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "babel")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "blackbird")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "bordeaux-threads")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cffi")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "chipz")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "chunga")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-annot")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-async")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-async-future")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-base64")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-fad")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-libuv")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-mongo-id")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-ppcre")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-rethinkdb")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-smtp")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl+ssl")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-syntax")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-utilities")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "cl-vectors")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "do-urlencode")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "drakma")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "drakma-async")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "event-glue")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "fast-http")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "fast-io")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "flexi-streams")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "ironclad")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "jonathan")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "local-time")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "md5")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "named-readtables")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "nibbles")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "proc-parse")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "puri")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "quri")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "salza2")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "secure-random")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "smart-buffer")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "split-sequence")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "static-vectors")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "trivial-backtrace")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "trivial-features")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "trivial-garbage")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "trivial-gray-streams")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "trivial-types")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "usocket")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "vecto")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "vom")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "wookie")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "xmls")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "xsubseq")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "yason")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "zpb-ttf")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:quickload "zpng")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-    echo '(ql:add-to-init-file)' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/install.lisp
-
-    chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
-
-    check_architecture=$(uname -a)
-    if [[ "$check_architecture" == *"64"* && "$check_architecture" != *"arm"* ]]; then
-        su -c '/usr/bin/ccl64 --load install.lisp --eval "(ccl::quit)"' - turtl
-    else
-        su -c '/usr/bin/ccl --load install.lisp --eval "(ccl::quit)"' - turtl
-    fi
-
-    echo "(pushnew \"./\" asdf:*central-registry* :test #'equal)" > /var/www/$TURTL_DOMAIN_NAME/htdocs/api/launch.lisp
-    echo '(load "start")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/api/launch.lisp
-
-    cd /var/www/$TURTL_DOMAIN_NAME/htdocs/quicklisp/local-projects
-    git clone git://github.com/orthecreedence/cl-hash-util
-    git clone git://github.com/orthecreedence/vom
-    git clone git://github.com/orthecreedence/cl-async
-    git clone git://github.com/orthecreedence/cffi
-    git clone git://github.com/orthecreedence/wookie
-    git clone git://github.com/orthecreedence/cl-rethinkdb
-    git clone git://github.com/orthecreedence/cl-libuv
-    git clone git://github.com/orthecreedence/drakma-async
-    git clone https://github.com/Inaimathi/cl-cwd.git
-
-    echo '#-quicklisp' > /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
-    echo '(let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))))' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
-    echo '  (when (probe-file quicklisp-init)' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
-    echo '    (load quicklisp-init)))' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
-    echo '(cwd "~/api")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
-    echo '(load "~/api/launch")' >> /var/www/$TURTL_DOMAIN_NAME/htdocs/.ccl-init.lisp
-
-    chmod a+w /var/www/$TURTL_DOMAIN_NAME/htdocs
-    chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
-
-    # install the app
-    cd /var/www/$TURTL_DOMAIN_NAME/htdocs
-    npm install
-    make minify
-    if [ ! -f /var/www/$TURTL_DOMAIN_NAME/htdocs/index.html ]; then
-        echo $'Failed to install turtl app'
-        exit 823652
-    fi
-
-    chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
-
-    echo '[Unit]' > /etc/systemd/system/turtl.service
-    echo 'Description=Note taking service' >> /etc/systemd/system/turtl.service
-    echo 'Documentation=http://turtl.it' >> /etc/systemd/system/turtl.service
-    echo 'Requires=network.target' >> /etc/systemd/system/turtl.service
-    echo 'Requires=rethinkdb.service' >> /etc/systemd/system/turtl.service
-    echo 'After=network.target' >> /etc/systemd/system/turtl.service
-    echo 'After=rethinkdb.service' >> /etc/systemd/system/turtl.service
-    echo '' >> /etc/systemd/system/turtl.service
-    echo '[Service]' >> /etc/systemd/system/turtl.service
-    echo 'Type=simple' >> /etc/systemd/system/turtl.service
-    echo 'User=turtl' >> /etc/systemd/system/turtl.service
-    echo 'Group=turtl' >> /etc/systemd/system/turtl.service
-    echo "WorkingDirectory=/var/www/$TURTL_DOMAIN_NAME/htdocs/api/" >> /etc/systemd/system/turtl.service
-    check_architecture=$(uname -a)
-    if [[ "$check_architecture" == *"64"* && "$check_architecture" != *"arm"* ]]; then
-        echo "ExecStart=/usr/bin/ccl64 -Q -b --load start.lisp" >> /etc/systemd/system/turtl.service
-    else
-        echo "ExecStart=/usr/bin/ccl -Q -b --load start.lisp" >> /etc/systemd/system/turtl.service
-    fi
-    echo '' >> /etc/systemd/system/turtl.service
-    echo '[Install]' >> /etc/systemd/system/turtl.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/turtl.service
-    chmod +x /etc/systemd/system/turtl.service
-
-    TURTL_ONION_HOSTNAME=$(add_onion_service turtl 80 ${TURTL_ONION_PORT})
-    TURTL_API_ONION_HOSTNAME=$(add_onion_service turtlapi 80 ${TURTL_API_ONION_PORT})
-
-    turtl_nginx_site=/etc/nginx/sites-available/$TURTL_DOMAIN_NAME
-    if [[ $ONION_ONLY == "no" ]]; then
-        function_check nginx_http_redirect
-        nginx_http_redirect $TURTL_DOMAIN_NAME
-        echo 'server {' >> $turtl_nginx_site
-        echo '  listen 443 ssl;' >> $turtl_nginx_site
-        echo '  listen [::]:443 ssl;' >> $turtl_nginx_site
-        echo "  server_name api.${TURTL_DOMAIN_NAME};" >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  # Security' >> $turtl_nginx_site
-        function_check nginx_ssl
-        nginx_ssl $TURTL_DOMAIN_NAME
-
-        function_check nginx_disable_sniffing
-        nginx_disable_sniffing $TURTL_DOMAIN_NAME
-
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  # Logs' >> $turtl_nginx_site
-        echo '  access_log /dev/null;' >> $turtl_nginx_site
-        echo '  error_log /dev/null;' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  # Root' >> $turtl_nginx_site
-        echo "  root /var/www/$TURTL_DOMAIN_NAME/htdocs/api;" >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  location / {' >> $turtl_nginx_site
-        function_check nginx_limits
-        nginx_limits $TURTL_DOMAIN_NAME '15m'
-        echo "    proxy_pass        http://localhost:${TURTL_PORT}/;" >> $turtl_nginx_site
-        echo '    proxy_set_header  Host $host;' >> $turtl_nginx_site
-        echo '    proxy_buffering   off;' >> $turtl_nginx_site
-        echo '  }' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '}' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo 'server {' >> $turtl_nginx_site
-        echo '  listen 443 ssl;' >> $turtl_nginx_site
-        echo '  listen [::]:443 ssl;' >> $turtl_nginx_site
-        echo "  server_name ${TURTL_DOMAIN_NAME};" >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  index index.html;' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  # Security' >> $turtl_nginx_site
-        function_check nginx_ssl
-        nginx_ssl $TURTL_DOMAIN_NAME
-
-        function_check nginx_disable_sniffing
-        nginx_disable_sniffing $TURTL_DOMAIN_NAME
-
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  # Logs' >> $turtl_nginx_site
-        echo '  access_log /dev/null;' >> $turtl_nginx_site
-        echo '  error_log /dev/null;' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  # Root' >> $turtl_nginx_site
-        echo "  root /var/www/$TURTL_DOMAIN_NAME/htdocs;" >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '  location / {' >> $turtl_nginx_site
-        function_check nginx_limits
-        nginx_limits $TURTL_DOMAIN_NAME '15m'
-        echo '  }' >> $turtl_nginx_site
-        echo '' >> $turtl_nginx_site
-        echo '}' >> $turtl_nginx_site
-    else
-        echo -n '' > $turtl_nginx_site
-    fi
-    echo 'server {' >> $turtl_nginx_site
-    echo "  listen 127.0.0.1:${TURTL_API_ONION_PORT};" >> $turtl_nginx_site
-    echo "  server_name ${TURTL_API_ONION_HOSTNAME};" >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    function_check nginx_disable_sniffing
-    nginx_disable_sniffing $TURTL_DOMAIN_NAME
-    echo '' >> $turtl_nginx_site
-    echo '  # Logs' >> $turtl_nginx_site
-    echo '  access_log /dev/null;' >> $turtl_nginx_site
-    echo '  error_log /dev/null;' >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo '  # Root' >> $turtl_nginx_site
-    echo "  root /var/www/$TURTL_DOMAIN_NAME/htdocs/api;" >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo '  location / {' >> $turtl_nginx_site
-    function_check nginx_limits
-    nginx_limits $TURTL_DOMAIN_NAME '15m'
-    echo "    proxy_pass        http://localhost:${TURTL_PORT}/;" >> $turtl_nginx_site
-    echo '    proxy_set_header  Host $host;' >> $turtl_nginx_site
-    echo '    proxy_buffering   off;' >> $turtl_nginx_site
-    echo '  }' >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo '}' >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo 'server {' >> $turtl_nginx_site
-    echo "  listen 127.0.0.1:$TURTL_ONION_PORT default_server;" >> $turtl_nginx_site
-    echo "  server_name $TURTL_ONION_HOSTNAME;" >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo '  index index.html;' >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    function_check nginx_disable_sniffing
-    nginx_disable_sniffing $TURTL_DOMAIN_NAME
-    echo '' >> $turtl_nginx_site
-    echo '  # Logs' >> $turtl_nginx_site
-    echo '  access_log /dev/null;' >> $turtl_nginx_site
-    echo '  error_log /dev/null;' >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo '  # Root' >> $turtl_nginx_site
-    echo "  root /var/www/$TURTL_DOMAIN_NAME/htdocs;" >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo '  location / {' >> $turtl_nginx_site
-    function_check nginx_limits
-    nginx_limits $TURTL_DOMAIN_NAME '15m'
-    echo '  }' >> $turtl_nginx_site
-    echo '' >> $turtl_nginx_site
-    echo '}' >> $turtl_nginx_site
-
-    function_check create_site_certificate
-    create_site_certificate $TURTL_DOMAIN_NAME 'yes'
-
-    if [ -f /etc/ssl/certs/${TURTL_DOMAIN_NAME}.crt ]; then
-        mv /etc/ssl/certs/${TURTL_DOMAIN_NAME}.crt /etc/ssl/certs/${TURTL_DOMAIN_NAME}.pem
-    fi
-
-    function_check nginx_ensite
-    nginx_ensite $TURTL_DOMAIN_NAME
-
-    if [[ $ONION_ONLY != 'no' ]]; then
-        sed -i "s|https://${TURTL_DOMAIN_NAME}|http://${TURTL_ONION_HOSTNAME}|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-        sed -i "s|https://api.${TURTL_DOMAIN_NAME}|http://${TURTL_API_ONION_HOSTNAME}|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/api/config/config.lisp
-        sed -i "s|https://${TURTL_DOMAIN_NAME}|http://${TURTL_ONION_HOSTNAME}|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
-        sed -i "s|https://api.${TURTL_DOMAIN_NAME}|http://${TURTL_API_ONION_HOSTNAME}|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
-    fi
-
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a turtl -p "$TURTL_ADMIN_PASSWORD"
-
-    function_check add_ddns_domain
-    add_ddns_domain $TURTL_DOMAIN_NAME
-
-    set_completion_param "turtl domain" "$TURTL_DOMAIN_NAME"
-
-    systemctl enable turtl
-    systemctl daemon-reload
-    systemctl start turtl
-    systemctl restart nginx
-
-    APP_INSTALLED=1
-}
 
 function turtl_setup {
     PIDFILE=${PIDFILE:-nil}
@@ -896,7 +508,8 @@ __ENDCONFIG__
     git clone $TURTL_API_REPO $TURTL_BASE_DIR/api
     cd $TURTL_BASE_DIR/api
     git checkout $TURTL_API_COMMIT -b $TURTL_API_COMMIT
-    cd /root/quicklisp/local-projects
+    set_completion_param "turtl api commit" "$TURTL_API_COMMIT"
+    cd $TURTL_BASE_DIR/quicklisp/local-projects
     git clone git://github.com/orthecreedence/cl-hash-util
     if [[ "$check_architecture" != *"arm"* ]]; then
         if [[ "$check_architecture" == *"64"* ]]; then
@@ -933,14 +546,167 @@ __ENDCONFIG__
 }
 
 function install_turtl_app {
-    echo -n ''
+    function_check install_nodejs
+    install_nodejs turtl
+
+    if [ -d /var/www/$TURTL_DOMAIN_NAME ]; then
+        rm -rf /var/www/$TURTL_DOMAIN_NAME
+    fi
+    mkdir -p /var/www/$TURTL_DOMAIN_NAME
+
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        TURTL_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        if [ ! $TURTL_ADMIN_PASSWORD ]; then
+            TURTL_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+
+    cd /var/www/$TURTL_DOMAIN_NAME
+    git_clone $TURTL_REPO /var/www/$TURTL_DOMAIN_NAME/htdocs
+    git checkout $TURTL_COMMIT -b $TURTL_COMMIT
+    set_completion_param "turtl commit" "$TURTL_COMMIT"
+
+    if [ ! -f /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js.default ]; then
+        echo $'turtl app config file not found'
+        exit 737223
+    fi
+    cp /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js.default /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
+
+    # change settings
+    sed -i "s|api_url.*|api_url: 'https://api.${TURTL_DOMAIN_NAME}'|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
+    sed -i "s|site_url.*|api_url: 'https://${TURTL_DOMAIN_NAME}'|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
+
+    chown -R turtl:turtl /var/www/$TURTL_DOMAIN_NAME/htdocs
+
+    TURTL_ONION_HOSTNAME=$(add_onion_service turtl 80 ${TURTL_ONION_PORT})
+    TURTL_API_ONION_HOSTNAME=$(add_onion_service turtlapi 80 ${TURTL_API_ONION_PORT})
+
+    turtl_nginx_site=/etc/nginx/sites-available/$TURTL_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $TURTL_DOMAIN_NAME
+        echo 'server {' >> $turtl_nginx_site
+        echo '  listen 443 ssl;' >> $turtl_nginx_site
+        echo '  listen [::]:443 ssl;' >> $turtl_nginx_site
+        echo "  server_name api.${TURTL_DOMAIN_NAME};" >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '  # Security' >> $turtl_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $TURTL_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $TURTL_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '  # Logs' >> $turtl_nginx_site
+        echo '  access_log /dev/null;' >> $turtl_nginx_site
+        echo '  error_log /dev/null;' >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '  location / {' >> $turtl_nginx_site
+        function_check nginx_limits
+        nginx_limits $TURTL_DOMAIN_NAME '15m'
+        echo "    proxy_pass        http://localhost:${TURTL_PORT}/;" >> $turtl_nginx_site
+        echo '    proxy_set_header  Host $host;' >> $turtl_nginx_site
+        echo '    proxy_buffering   off;' >> $turtl_nginx_site
+        echo '  }' >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '}' >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo 'server {' >> $turtl_nginx_site
+        echo '  listen 443 ssl;' >> $turtl_nginx_site
+        echo '  listen [::]:443 ssl;' >> $turtl_nginx_site
+        echo "  server_name ${TURTL_DOMAIN_NAME};" >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '  index index.html;' >> $turtl_nginx_site
+        echo "  root /var/www/$TURTL_DOMAIN_NAME/htdocs;" >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '  # Security' >> $turtl_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $TURTL_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $TURTL_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '  # Logs' >> $turtl_nginx_site
+        echo '  access_log /dev/null;' >> $turtl_nginx_site
+        echo '  error_log /dev/null;' >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '  location / {' >> $turtl_nginx_site
+        function_check nginx_limits
+        nginx_limits $TURTL_DOMAIN_NAME '15m'
+        echo '  }' >> $turtl_nginx_site
+        echo '' >> $turtl_nginx_site
+        echo '}' >> $turtl_nginx_site
+    else
+        sed -i "s|api_url.*|api_url: 'http://${TURTL_API_ONION_HOSTNAME}'|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
+        sed -i "s|site_url.*|api_url: 'http://${TURTL_ONION_HOSTNAME}'|g" /var/www/$TURTL_DOMAIN_NAME/htdocs/config/config.js
+        echo -n '' > $turtl_nginx_site
+    fi
+    echo 'server {' >> $turtl_nginx_site
+    echo "  listen 127.0.0.1:${TURTL_API_ONION_PORT};" >> $turtl_nginx_site
+    echo "  server_name ${TURTL_API_ONION_HOSTNAME};" >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $TURTL_DOMAIN_NAME
+    echo '' >> $turtl_nginx_site
+    echo '  # Logs' >> $turtl_nginx_site
+    echo '  access_log /dev/null;' >> $turtl_nginx_site
+    echo '  error_log /dev/null;' >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    echo '  location / {' >> $turtl_nginx_site
+    function_check nginx_limits
+    nginx_limits $TURTL_DOMAIN_NAME '15m'
+    echo "    proxy_pass        http://localhost:${TURTL_PORT}/;" >> $turtl_nginx_site
+    echo '    proxy_set_header  Host $host;' >> $turtl_nginx_site
+    echo '    proxy_buffering   off;' >> $turtl_nginx_site
+    echo '  }' >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    echo '}' >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    echo 'server {' >> $turtl_nginx_site
+    echo "  listen 127.0.0.1:$TURTL_ONION_PORT default_server;" >> $turtl_nginx_site
+    echo "  server_name $TURTL_ONION_HOSTNAME;" >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    echo '  index index.html;' >> $turtl_nginx_site
+    echo "  root /var/www/$TURTL_DOMAIN_NAME/htdocs;" >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $TURTL_DOMAIN_NAME
+    echo '' >> $turtl_nginx_site
+    echo '  # Logs' >> $turtl_nginx_site
+    echo '  access_log /dev/null;' >> $turtl_nginx_site
+    echo '  error_log /dev/null;' >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    echo '  location / {' >> $turtl_nginx_site
+    function_check nginx_limits
+    nginx_limits $TURTL_DOMAIN_NAME '15m'
+    echo '  }' >> $turtl_nginx_site
+    echo '' >> $turtl_nginx_site
+    echo '}' >> $turtl_nginx_site
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a turtl -p "$TURTL_ADMIN_PASSWORD"
+
+    function_check add_ddns_domain
+    add_ddns_domain $TURTL_DOMAIN_NAME
+
+    set_completion_param "turtl domain" "$TURTL_DOMAIN_NAME"
+
+    function_check create_site_certificate
+    create_site_certificate $TURTL_DOMAIN_NAME 'yes'
+
+    function_check nginx_ensite
+    nginx_ensite $TURTL_DOMAIN_NAME
+
+    systemctl restart nginx
 }
 
 function install_turtl {
     install_turtl_api
     install_turtl_app
-
-    #systemctl restart nginx
 
     APP_INSTALLED=1
 }
