@@ -46,6 +46,10 @@ TURTL_ADMIN_PASSWORD=
 TURTL_STORAGE_LIMIT_MB=100
 TURTL_BASE_DIR=/etc/turtl
 
+# part of a hack to enable/disable signups
+TURTL_SIGNUP_STRING='Signup a new user'
+turtl_users_file=$TURTL_BASE_DIR/api/controllers/users.lisp
+
 turtl_variables=(ONION_ONLY
                  DEFAULT_DOMAIN_NAME
                  TURTL_DOMAIN_NAME
@@ -85,7 +89,55 @@ function install_interactive_turtl {
     APP_INSTALLED=1
 }
 
-function configure_interactive_turtl {
+function turtl_disable_registrations {
+    if grep "$TURTL_SIGNUP_STRING" $turtl_users_file; then
+        if [ -f $turtl_users_file ]; then
+            cp $turtl_users_file $TURTL_BASE_DIR/.users.lisp
+            sed -i '/(route (:post "\/users") (req res)/,/(send-json res user))))/{//!d}' $turtl_users_file
+            sed -i 's|(send-json res user))))|())|g' $turtl_users_file
+            chown -R turtl:turtl $TURTL_BASE_DIR
+            systemctl restart turtl
+        fi
+    fi
+}
+
+function turtl_enable_registrations {
+    if ! grep "$TURTL_SIGNUP_STRING" $turtl_users_file; then
+        if [ -f $TURTL_BASE_DIR/.users.lisp ]; then
+            cp $TURTL_BASE_DIR/.users.lisp $turtl_users_file
+            rm $TURTL_BASE_DIR/.users.lisp
+            chown -R turtl:turtl $TURTL_BASE_DIR
+            systemctl restart turtl
+        fi
+    fi
+}
+
+function configure_interactive_turtl_signups {
+    # This implements a hack which removes or adds the function needed
+    # to sign up new users. It should eventually be removed once that
+    # capability exists within the api
+
+    dialog --title $"Allow new turtl signups" \
+           --backtitle $"Freedombone Control Panel" \
+           --defaultno \
+           --yesno $"\nAllow registration of new users?" 10 60
+    sel=$?
+    case $sel in
+        0)
+            turtl_enable_registrations
+            dialog --title $"Allow new turtl signups" \
+                   --msgbox $"New turtl user registrations are now allowed" 6 40
+            return;;
+        1)
+            turtl_disable_registrations
+            dialog --title $"Disable new turtl signups" \
+                   --msgbox $"New turtl user registrations are now disabled" 6 40
+            return;;
+        255) return;;
+    esac
+}
+
+function configure_interactive_turtl_storage {
     data=$(tempfile 2>/dev/null)
     trap "rm -f $data" 0 1 2 5 15
     dialog --title $"Change storage limit" \
@@ -106,6 +158,26 @@ function configure_interactive_turtl {
     esac
 }
 
+function configure_interactive_turtl {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"turtl app settings" \
+           --radiolist $"Choose an operation:" 4 70 3 \
+           1 $"Enable/disable new user registrations" off \
+           2 $"Change storage limit" off \
+           3 $"Exit" on 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    case $(cat $data) in
+        1) configure_interactive_turtl_signups;;
+        2) configure_interactive_turtl_storage;;
+        3) break;;
+    esac
+}
 
 function reconfigure_turtl {
     if [ -d $TURTL_BASE_DIR/data ]; then
@@ -118,6 +190,14 @@ function upgrade_turtl {
 
     function_check set_repo_commit
     set_repo_commit $TURTL_BASE_DIR/api "turtl commit" "$TURTL_COMMIT" $TURTL_REPO
+
+    # this is used as a crude way of disabling signups and so
+    # should be superceded in future
+    if [ -f $TURTL_BASE_DIR/.users.lisp ]; then
+        turtl_disable_registrations
+    fi
+    systemctl restart turtl
+
     nginx_dissite $TURTL_DOMAIN_NAME
     chown -R turtl:turtl $TURTL_BASE_DIR
     nginx_ensite $TURTL_DOMAIN_NAME
