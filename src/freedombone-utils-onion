@@ -402,4 +402,65 @@ function get_app_onion_address {
     echo ""
 }
 
+function tor_add_bridge {
+    bridge_ip_address="$1"
+    bridge_port="$2"
+    bridge_key="$3"
+    bridge_type='obfs4'
+
+    if [[ "$bridge_ip_address" != *"."* ]]; then
+        return
+    fi
+    if [ ${#bridge_port} -eq 0 ]; then
+        return
+    fi
+    if [ ${#bridge_key} -eq 0 ]; then
+        return
+    fi
+
+    apt-get install obfs4proxy
+
+    if grep "ClientTransportPlugin" /etc/tor/torrc; then
+        sed -i 's|#ClientTransportPlugin|ClientTransportPlugin|g' /etc/tor/torrc
+        sed -i 's|# ClientTransportPlugin|ClientTransportPlugin|g' /etc/tor/torrc
+        sed -i 's|ClientTransportPlugin.*|ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed|g' /etc/tor/torrc
+    else
+        echo 'ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed' >> /etc/tor/torrc
+    fi
+    if grep "UseBridges" /etc/tor/torrc; then
+        sed -i 's|#UseBridges|UseBridges|g' /etc/tor/torrc
+        sed -i 's|# UseBridges|UseBridges|g' /etc/tor/torrc
+        sed -i 's|UseBridges.*|UseBridges 1|g' /etc/tor/torrc
+    else
+        echo 'UseBridges 1' >> /etc/tor/torrc
+    fi
+
+    bridge_str="bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}"
+    if ! grep "${bridge_str}" /etc/tor/torrc; then
+        sed -i "/UseBridges/a ${bridge_str}" >> /etc/tor/torrc
+    fi
+
+    systemctl restart tor
+}
+
+function tor_remove_bridge {
+    bridge_ip_address="$1"
+    bridge_type='obfs4'
+
+    bridge_str="bridge $bridge_type ${bridge_ip_address}"
+    if grep "${bridge_str}" /etc/tor/torrc; then
+        sed -i "/${bridge_str}/d" /etc/tor/torrc
+    fi
+    if ! grep "bridge " /etc/tor/torrc; then
+        if ! grep "#UseBridges" /etc/tor/torrc; then
+            sed -i 's|UseBridges|#UseBridges|g' /etc/tor/torrc
+        fi
+        if ! grep "#ClientTransportPlugin" /etc/tor/torrc; then
+            sed -i 's|ClientTransportPlugin|#ClientTransportPlugin|g' /etc/tor/torrc
+        fi
+    fi
+
+    systemctl restart tor
+}
+
 # NOTE: deliberately no exit 0
