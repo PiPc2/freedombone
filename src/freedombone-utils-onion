@@ -466,26 +466,40 @@ function tor_remove_bridge {
 }
 
 function tor_create_bridge_relay {
+    read_config_param 'TOR_BRIDGE_PORT'
+    read_config_param 'TOR_BRIDGE_NICKNAME'
+    if [ ! $TOR_BRIDGE_PORT ]; then
+        return
+    fi
+    if [ ${#TOR_BRIDGE_PORT} -eq 0 ]; then
+        return
+    fi
+    if [ ${#TOR_BRIDGE_NICKNAME} -eq 0 ]; then
+        return
+    fi
+
     apt-get -yq install obfs4proxy
 
     sed -i 's|#BridgeRelay.*|BridgeRelay 1|g' /etc/tor/torrc
     sed -i 's|BridgeRelay.*|BridgeRelay 1|g' /etc/tor/torrc
     sed -i 's|#ServerTransportPlugin.*|ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy|g' /etc/tor/torrc
     sed -i 's|ServerTransportPlugin.*|ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy|g' /etc/tor/torrc
+
     if ! grep 'ExtORPort ' /etc/tor/torrc; then
-        echo 'ExtORPort auto' >> /etc/tor/torrc
+        echo "ExtORPort $TOR_BRIDGE_PORT" >> /etc/tor/torrc
     else
-        sed -i 's|#ExtORPort auto|ExtORPort auto|g' /etc/tor/torrc
-        sed -i 's|ExtORPort .*|ExtORPort auto|g' /etc/tor/torrc
+        sed -i "s|#ExtORPort .*|ExtORPort $TOR_BRIDGE_PORT|g" /etc/tor/torrc
+        sed -i "s|ExtORPort .*|ExtORPort $TOR_BRIDGE_PORT|g" /etc/tor/torrc
     fi
 
-    read_config_param MY_'EMAIL_ADDRESS'
-    read_config_param 'TOR_BRIDGE_NICKNAME'
+    read_config_param 'MY_EMAIL_ADDRESS'
 
-    sed -i "s|#ContactInfo|ContactInfo $MY_EMAIL_ADDRESS|g" /etc/tor/torrc
+    sed -i "s|#ContactInfo.*|ContactInfo $MY_EMAIL_ADDRESS|g" /etc/tor/torrc
     if [ $TOR_BRIDGE_NICKNAME ]; then
-        sed -i "s|#Nickname|Nickname $TOR_BRIDGE_NICKNAME|g" /etc/tor/torrc
+        sed -i "s|#Nickname.*|Nickname $TOR_BRIDGE_NICKNAME|g" /etc/tor/torrc
+        sed -i "s|Nickname.*|Nickname $TOR_BRIDGE_NICKNAME|g" /etc/tor/torrc
     fi
+    firewall_add tor_bridge $TOR_BRIDGE_PORT tcp
     systemctl restart tor
 }
 
@@ -505,6 +519,8 @@ function tor_remove_bridge_relay {
     if ! grep '#Nickname ' /etc/tor/torrc; then
         sed -i "s|Nickname |#Nickname |g" /etc/tor/torrc
     fi
+    read_config_param 'TOR_BRIDGE_PORT'
+    firewall_remove $TOR_BRIDGE_PORT tcp
     systemctl restart tor
 }
 

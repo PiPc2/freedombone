@@ -767,9 +767,9 @@ function add_tor_bridge {
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Add obfs4 Tor bridge" \
            --form "\n" 9 60 4 \
-           $"IP address:" 1 1 "   .   .   .   " 1 15 16 16 \
-           $"Port:      " 2 1 "" 2 15 5 5 \
-           $"Key:       " 3 1 "" 3 15 250 250 \
+           $"IP address:   " 1 1 "   .   .   .   " 1 17 16 16 \
+           $"Port:         " 2 1 "" 2 17 5 5 \
+           $"Key/Nickname: " 3 1 "" 3 17 250 250 \
            2> $data
     sel=$?
     case $sel in
@@ -821,16 +821,61 @@ function remove_tor_bridge {
            --msgbox $"Bridge removed" 6 40
 }
 
+function add_tor_bridge_relay {
+    read_config_param 'TOR_BRIDGE_NICKNAME'
+    read_config_param 'TOR_BRIDGE_PORT'
+
+    # remove any previous bridge port from the firewall
+    if [ ${#TOR_BRIDGE_PORT} -gt 0 ]; then
+        firewall_remove $TOR_BRIDGE_PORT tcp
+    fi
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Become an obfs4 Tor bridge relay" \
+           --form "\n" 8 60 2 \
+           $"Bridge Nickname: " 1 1 "$TOR_BRIDGE_NICKNAME" 1 20 250 250 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    bridge_nickname=$(cat $data | sed -n 1p)
+    if [[ "${bridge_nickname}" == *" "* ]]; then
+        return
+    fi
+    if [ ${#bridge_nickname} -eq 0 ]; then
+        return
+    fi
+    TOR_BRIDGE_NICKNAME="$bridge_nickname"
+    TOR_BRIDGE_PORT=$((20000 + RANDOM % 40000))
+    write_config_param 'TOR_BRIDGE_NICKNAME' "$TOR_BRIDGE_NICKNAME"
+    write_config_param 'TOR_BRIDGE_PORT' "$TOR_BRIDGE_PORT"
+    tor_create_bridge_relay
+    dialog --title $"You are now an obfs4 Tor bridge relay" \
+           --msgbox $"\nIP address: $(get_ipv4_address)\n\nPort: ${TOR_BRIDGE_PORT}\n\nNickname: ${TOR_BRIDGE_NICKNAME}" 10 65
+}
+
+function remove_tor_bridge_relay {
+    tor_remove_bridge_relay
+    dialog --title $"Remove Tor bridge relay" \
+           --msgbox $"Bridge relay removed" 10 60
+}
+
 function menu_tor_bridges {
     data=$(tempfile 2>/dev/null)
     trap "rm -f $data" 0 1 2 5 15
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Tor Bridges" \
-           --radiolist $"Choose an operation:" 12 50 4 \
+           --radiolist $"Choose an operation:" 14 50 6 \
            1 $"Show bridges" off \
            2 $"Add a bridge" off \
            3 $"Remove a bridge" off \
-           4 $"Go Back/Exit" on 2> $data
+           4 $"Make this system into a bridge" off \
+           5 $"Stop being a bridge" off \
+           6 $"Go Back/Exit" on 2> $data
     sel=$?
     case $sel in
         1) exit 1;;
@@ -851,6 +896,14 @@ function menu_tor_bridges {
             exit 0
             ;;
         4)
+            add_tor_bridge_relay
+            exit 0
+            ;;
+        5)
+            remove_tor_bridge_relay
+            exit 0
+            ;;
+        6)
             exit 0
             ;;
     esac
