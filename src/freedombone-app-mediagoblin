@@ -39,6 +39,7 @@ MEDIAGOBLIN_CODE=
 MEDIAGOBLIN_ONION_PORT=8108
 MEDIAGOBLIN_REPO="http://git.savannah.gnu.org/r/mediagoblin.git"
 MEDIAGOBLIN_BASE_DIR=/var/www/mediagoblin.local/htdocs
+MEDIAGOBLIN_PORT=26543
 
 mediagoblin_variables=(ONION_ONLY
                        MY_USERNAME
@@ -160,6 +161,10 @@ function remove_mediagoblin {
         return
     fi
     MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    systemctl stop mediagoblin
+    systemctl disable mediagoblin
+    rm /etc/systemd/system/mediagoblin.service
+
     function_check remove_onion_service
     remove_onion_service mediagoblin ${MEDIAGOBLIN_ONION_PORT}
     nginx_dissite $MEDIAGOBLIN_DOMAIN_NAME
@@ -193,7 +198,7 @@ function install_mediagoblin {
     install_nodejs mediagoblin
 
     apt-get install -yq python python-dev python-lxml python-imaging python-virtualenv
-    apt-get install -yq automake perl
+    apt-get install -yq automake perl sqlite
     useradd -c "GNU MediaGoblin system account" -d /var/lib/mediagoblin -m -r -g www-data mediagoblin
     groupadd mediagoblin
     usermod --append -G mediagoblin mediagoblin
@@ -287,7 +292,7 @@ function install_mediagoblin {
         echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '    location / {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
-        echo '        fastcgi_pass 127.0.0.1:26543;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo "        fastcgi_pass 127.0.0.1:$MEDIAGOBLIN_PORT;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '        include /etc/nginx/fastcgi_params;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '        fastcgi_param PATH_INFO $fastcgi_script_name;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '        fastcgi_param SCRIPT_NAME "";' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
@@ -343,6 +348,30 @@ function install_mediagoblin {
     echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
     echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
 
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg dbupdate" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg adduser --username $MY_USERNAME --password admin $MEDIAGOBLIN_ADMIN_PASSWORD" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg makeadmin admin" - mediagoblin
+
+    echo '[Unit]' > /etc/systemd/system/mediagoblin.service
+    echo 'Description=Media service' >> /etc/systemd/system/mediagoblin.service
+    echo 'Requires=network.target' >> /etc/systemd/system/mediagoblin.service
+    echo 'After=network.target' >> /etc/systemd/system/mediagoblin.service
+    echo '' >> /etc/systemd/system/mediagoblin.service
+    echo '[Service]' >> /etc/systemd/system/mediagoblin.service
+    echo 'Type=simple' >> /etc/systemd/system/mediagoblin.service
+    echo 'User=mediagoblin' >> /etc/systemd/system/mediagoblin.service
+    echo "WorkingDirectory=$MEDIAGOBLIN_BASE_DIR/mediagoblin/" >> /etc/systemd/system/mediagoblin.service
+    echo "ExecStart=$MEDIAGOBLIN_BASE_DIR/mediagoblin/lazyserver.sh --server-name=fcgi fcgi_host=127.0.0.1 fcgi_port=$MEDIAGOBLIN_PORT" >> /etc/systemd/system/mediagoblin.service
+    echo 'Restart=always' >> /etc/systemd/system/mediagoblin.service
+    echo 'RestartSec=10' >> /etc/systemd/system/mediagoblin.service
+    echo '' >> /etc/systemd/system/mediagoblin.service
+    echo '[Install]' >> /etc/systemd/system/mediagoblin.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/mediagoblin.service
+    chmod +x /etc/systemd/system/mediagoblin.service
+
+    systemctl enable mediagoblin
+    systemctl daemon-reload
+    systemctl start mediagoblin
 
     function_check create_site_certificate
     create_site_certificate $MEDIAGOBLIN_DOMAIN_NAME
