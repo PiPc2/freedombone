@@ -1,0 +1,366 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Mediagoblin application
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim media'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+MEDIAGOBLIN_DOMAIN_NAME=
+MEDIAGOBLIN_ADMIN_PASSWORD=
+MEDIAGOBLIN_CODE=
+MEDIAGOBLIN_ONION_PORT=8108
+MEDIAGOBLIN_REPO="http://git.savannah.gnu.org/r/mediagoblin.git"
+MEDIAGOBLIN_BASE_DIR=/var/www/mediagoblin.local/htdocs
+
+mediagoblin_variables=(ONION_ONLY
+                       MY_USERNAME
+                       MEDIAGOBLIN_DOMAIN_NAME
+                       MEDIAGOBLIN_CODE
+                       DDNS_PROVIDER)
+
+function install_interactive_mediagoblin {
+    if [[ $ONION_ONLY != "no" ]]; then
+        MEDIAGOBLIN_DOMAIN_NAME='mediagoblin.local'
+        write_config_param "MEDIAGOBLIN_DOMAIN_NAME" "$MEDIAGOBLIN_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "mediagoblin" "MEDIAGOBLIN_DOMAIN_NAME" "MEDIAGOBLIN_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function change_password_mediagoblin {
+    curr_username="$1"
+    new_user_password="$2"
+}
+
+function add_user_mediagoblin {
+    new_username="$1"
+    new_user_password="$2"
+}
+
+function remove_user_mediagoblin {
+    remove_username="$1"
+}
+
+function reconfigure_mediagoblin {
+    echo -n ''
+}
+
+function upgrade_mediagoblin {
+    echo -n ''
+}
+
+function backup_local_mediagoblin {
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    source_directory=/var/lib/mediagoblin
+    if [ -d $source_directory ]; then
+        dest_directory=mediagoblin
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $MEDIAGOBLIN_BASE_DIR $dest_directory
+        backup_directory_to_usb /var/lib/mediagoblin mediagoblindata
+    fi
+}
+
+function restore_local_mediagoblin {
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    if [ -d /var/lib/mediagoblin ]; then
+        echo $"Restoring Mediagoblin installation"
+        function_check get_completion_param
+        MEDIAGOBLIN_DOMAIN_NAME=$(get_completion_param "mediagoblin domain")
+        temp_restore_dir=/root/tempmediagoblin
+        function_check restore_directory_from_usb
+        restore_directory_from_usb ${temp_restore_dir} mediagoblin
+        cp -r ${temp_restore_dir}$MEDIAGOBLIN_BASE_DIR/* $MEDIAGOBLIN_BASE_DIR/
+        if [ ! "$?" = "0" ]; then
+            function_check restore_directory_from_usb
+            set_user_permissions
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 45327
+        fi
+        restore_directory_from_usb ${temp_restore_dir}2 mediagoblindata
+        cp -r ${temp_restore_dir}2/var/lib/mediagoblin/* /var/lib/mediagoblin/
+        if [ ! "$?" = "0" ]; then
+            function_check set_user_permissions
+            set_user_permissions
+            function_check backup_unmount_drive
+            backup_unmount_drive
+            exit 24529
+        fi
+        rm -rf ${temp_restore_dir}
+        rm -rf ${temp_restore_dir}2
+        chown -hR mediagoblin:mediagoblin /var/log/mediagoblin
+        chown -hR mediagoblin:www-data $MEDIAGOBLIN_BASE_DIR
+    fi
+}
+
+function backup_remote_mediagoblin {
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    if [ -d /etc/mediagoblin ]; then
+        echo $"Backing up mediagoblin"
+        backup_directory_to_friend $MEDIAGOBLIN_BASE_DIR mediagoblin
+        backup_directory_to_friend /var/lib/mediagoblin mediagoblindata
+    fi
+}
+
+function restore_remote_mediagoblin {
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    if [ -d $SERVER_DIRECTORY/backup/mediagoblin ]; then
+        function_check get_completion_param
+        MEDIAGOBLIN_DOMAIN_NAME=$(get_completion_param "mediagoblin domain")
+        function_check restore_directory_from_friend
+        restore_directory_from_friend /root/tempmediagoblin mediagoblin
+        cp -r /root/tempmediagoblin/var/lib/mediagoblin/* /var/lib/mediagoblin/
+        if [ ! "$?" = "0" ]; then
+            exit 264824
+        fi
+        restore_directory_from_friend /root/tempmediagoblin2 mediagoblindata
+        cp -r /root/tempmediagoblin/var/lib/mediagoblin/* /var/lib/mediagoblin/
+        if [ ! "$?" = "0" ]; then
+            exit 268492
+        fi
+        rm -rf /root/tempmediagoblin
+        rm -rf /root/tempmediagoblin2
+        chown -hR mediagoblin:mediagoblin /var/log/mediagoblin
+        chown -hR mediagoblin:www-data $MEDIAGOBLIN_BASE_DIR
+    fi
+}
+
+function remove_mediagoblin {
+    if [ ${#MEDIAGOBLIN_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    function_check remove_onion_service
+    remove_onion_service mediagoblin ${MEDIAGOBLIN_ONION_PORT}
+    nginx_dissite $MEDIAGOBLIN_DOMAIN_NAME
+    remove_certs $MEDIAGOBLIN_DOMAIN_NAME
+    if [ -d /var/lib/mediagoblin ]; then
+        rm -rf /var/lib/mediagoblin
+    fi
+    if [ -d $MEDIAGOBLIN_BASE_DIR ]; then
+        rm -rf $MEDIAGOBLIN_BASE_DIR
+    fi
+    remove_completion_param "install_mediagoblin"
+    remove_completion_param "mediagoblin domain"
+    sed -i '/mediagoblin/d' $COMPLETION_FILE
+
+    remove_nodejs mediagoblin
+    deluser mediagoblin
+    delgroup mediagoblin
+
+    function_check remove_ddns_domain
+    remove_ddns_domain $MEDIAGOBLIN_DOMAIN_NAME
+}
+
+function install_mediagoblin {
+    if [ ! $MEDIAGOBLIN_DOMAIN_NAME ]; then
+        return
+    fi
+
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+
+    function_check install_nodejs
+    install_nodejs mediagoblin
+
+    apt-get install -yq python python-dev python-lxml python-imaging python-virtualenv
+    apt-get install -yq automake perl
+    useradd -c "GNU MediaGoblin system account" -d /var/lib/mediagoblin -m -r -g www-data mediagoblin
+    groupadd mediagoblin
+    usermod --append -G mediagoblin mediagoblin
+    mkdir -p /var/log/mediagoblin
+    chown -hR mediagoblin:mediagoblin /var/log/mediagoblin
+    mkdir -p $MEDIAGOBLIN_BASE_DIR
+    chown -hR mediagoblin:www-data $MEDIAGOBLIN_BASE_DIR
+    su -c "cd $MEDIAGOBLIN_BASE_DIR && git clone $MEDIAGOBLIN_REPO $MEDIAGOBLIN_BASE_DIR/mediagoblin" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && mediagoblin git checkout stable" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git submodule sync" - mediaGoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git submodule update --force --init --recursive" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && ./bootstrap.sh" -mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && ./configure" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && make" - mediagoblin
+    su -c "$MEDIAGOBLIN_BASE_DIR/mediagoblin && bin/easy_install flup==1.0.3.dev-20110405" - mediaGoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && ln -s /var/lib/mediagoblin user_dev" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && bash -c 'cp -av mediagoblin.ini mediagoblin_local.ini && cp -av paste.ini paste_local.ini'" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && perl -pi -e 's|.*sql_engine = .*|sql_engine = sqlite:////var/lib/mediagoblin/mediagoblin.db|' mediagoblin_local.ini" - mediagoblin
+
+    # Video plugin
+    apt-get install -yq python-gi python3-gi \
+            gstreamer1.0-tools \
+            gir1.2-gstreamer-1.0 \
+            gir1.2-gst-plugins-base-1.0 \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-libav \
+            python-gst-1.0
+    cd $MEDIAGOBLIN_BASE_DIR/mediagoblin
+    su -c "echo '[[mediagoblin.media_types.video]]' | tee -a mediagoblin_local.ini" - mediagoblin
+
+    # Audio plugin
+    apt-get install -yq python-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-libav libsndfile1-dev libasound2-dev libgstreamer-plugins-base1.0-dev python-numpy python-scipy
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && echo '[[mediagoblin.media_types.audio]]' | tee -a mediagoblin_local.ini" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && bin/pip install scikits.audiolab" - mediagoblin
+
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        MEDIAGOBLIN_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        if [ ! $MEDIAGOBLIN_ADMIN_PASSWORD ]; then
+            MEDIAGOBLIN_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+
+    MEDIAGOBLIN_ONION_HOSTNAME=$(add_onion_service mediagoblin 80 ${MEDIAGOBLIN_ONION_PORT})
+    set_completion_param "mediagoblin domain" "${MEDIAGOBLIN_DOMAIN_NAME}"
+
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $MEDIAGOBLIN_DOMAIN_NAME
+        echo 'server {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    listen [::]:443 ssl;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    include /etc/nginx/mime.types;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    autoindex off;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    default_type  application/octet-stream;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    sendfile on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        function_check nginx_ssl
+        nginx_ssl $MEDIAGOBLIN_DOMAIN_NAME
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $MEDIAGOBLIN_DOMAIN_NAME
+        function_check nginx_limits
+        nginx_limits $MEDIAGOBLIN_DOMAIN_NAME
+        nginx_keybase $MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    gzip on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    gzip_min_length 1024;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    gzip_buffers 4 32k;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    gzip_types text/plain application/x-javascript text/javascript text/xml text/css;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo "    server_name $MEDIAGOBLIN_DOMAIN_NAME;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    access_log /dev/null;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    error_log /dev/null;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+
+        echo '    location /mgoblin_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin/static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    location /mgoblin_media/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/user_dev/media/public/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    location /theme_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/user_dev/theme_static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    location /plugin_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/user_dev/plugin_static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    location / {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '        fastcgi_pass 127.0.0.1:26543;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '        include /etc/nginx/fastcgi_params;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '        fastcgi_param PATH_INFO $fastcgi_script_name;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '        fastcgi_param SCRIPT_NAME "";' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    else
+        echo -n '' > /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    fi
+    echo 'server {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo "    listen 127.0.0.1:${MEDIAGOBLIN_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    include /etc/nginx/mime.types;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    autoindex off;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    default_type  application/octet-stream;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    sendfile on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $MEDIAGOBLIN_DOMAIN_NAME
+    function_check nginx_limits
+    nginx_limits $MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    gzip on;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    gzip_min_length 1024;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    gzip_buffers 4 32k;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    gzip_types text/plain application/x-javascript text/javascript text/xml text/css;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo "    server_name $MEDIAGOBLIN_ONION_HOSTNAME;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    access_log /dev/null;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    error_log /dev/null;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+
+    echo '    location /mgoblin_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin/static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    location /mgoblin_media/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/user_dev/media/public/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    location /theme_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/user_dev/theme_static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    location /plugin_static/ {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo "        alias $MEDIAGOBLIN_BASE_DIR/mediagoblin/user_dev/plugin_static/;" >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    location / {' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '        fastcgi_pass 127.0.0.1:26543;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '        include /etc/nginx/fastcgi_params;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '        fastcgi_param PATH_INFO $fastcgi_script_name;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '        fastcgi_param SCRIPT_NAME "";' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+
+
+    function_check create_site_certificate
+    create_site_certificate $MEDIAGOBLIN_DOMAIN_NAME
+
+    function_check configure_php
+    configure_php
+
+    nginx_ensite $MEDIAGOBLIN_DOMAIN_NAME
+
+    systemctl restart php5-fpm
+    systemctl restart nginx
+
+    function_check add_ddns_domain
+    add_ddns_domain $MEDIAGOBLIN_DOMAIN_NAME
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a mediagoblin -p "$MEDIAGOBLIN_ADMIN_PASSWORD"
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
