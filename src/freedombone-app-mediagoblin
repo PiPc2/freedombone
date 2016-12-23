@@ -39,7 +39,7 @@ MEDIAGOBLIN_CODE=
 MEDIAGOBLIN_ONION_PORT=8108
 MEDIAGOBLIN_REPO="http://git.savannah.gnu.org/r/mediagoblin.git"
 MEDIAGOBLIN_BASE_DIR=/var/www/mediagoblin.local/htdocs
-MEDIAGOBLIN_PORT=26543
+MEDIAGOBLIN_PORT=6543
 
 mediagoblin_variables=(ONION_ONLY
                        MY_USERNAME
@@ -75,16 +75,21 @@ function add_user_mediagoblin {
 function remove_user_mediagoblin {
     remove_username="$1"
     MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
-    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg deluser --username $new_username" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg deleteuser --username $new_username" - mediagoblin
     echo "0"
 }
 
 function reconfigure_mediagoblin {
-    echo -n ''
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    rm -f /var/lib/mediagoblin/*.db
+    rm -rf $MEDIAGOBLIN_BASE_DIR/user_dev
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && ./bin/gmg dbupdate" - mediagoblin
 }
 
 function upgrade_mediagoblin {
-    echo -n ''
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && ./bin/python setup.py develop --upgrade && ./bin/gmg dbupdate" - mediagoblin
+    echo "0"
 }
 
 function backup_local_mediagoblin {
@@ -214,13 +219,13 @@ function install_mediagoblin {
     mkdir -p $MEDIAGOBLIN_BASE_DIR
     chown -hR mediagoblin:www-data $MEDIAGOBLIN_BASE_DIR
     su -c "cd $MEDIAGOBLIN_BASE_DIR && git clone $MEDIAGOBLIN_REPO $MEDIAGOBLIN_BASE_DIR/mediagoblin" - mediagoblin
-    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && mediagoblin git checkout stable" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git checkout stable" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git submodule sync" - mediaGoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git submodule update --force --init --recursive" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && ./bootstrap.sh" -mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && ./configure" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && make" - mediagoblin
-    su -c "$MEDIAGOBLIN_BASE_DIR/mediagoblin && bin/easy_install flup==1.0.3.dev-20110405" - mediaGoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && bin/easy_install flup==1.0.3.dev-20110405" - mediaGoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && ln -s /var/lib/mediagoblin user_dev" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && bash -c 'cp -av mediagoblin.ini mediagoblin_local.ini && cp -av paste.ini paste_local.ini'" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && perl -pi -e 's|.*sql_engine = .*|sql_engine = sqlite:////var/lib/mediagoblin/mediagoblin.db|' mediagoblin_local.ini" - mediagoblin
@@ -234,7 +239,7 @@ function install_mediagoblin {
             gstreamer1.0-libav \
             python-gst-1.0
     cd $MEDIAGOBLIN_BASE_DIR/mediagoblin
-    su -c "echo '[[mediagoblin.media_types.video]]' | tee -a mediagoblin_local.ini" - mediagoblin
+    su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && echo '[[mediagoblin.media_types.video]]' | tee -a mediagoblin_local.ini" - mediagoblin
 
     # Audio plugin
     apt-get install -yq python-gst-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-libav libsndfile1-dev libasound2-dev libgstreamer-plugins-base1.0-dev python-numpy python-scipy
@@ -372,13 +377,13 @@ function install_mediagoblin {
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/mediagoblin.service
     chmod +x /etc/systemd/system/mediagoblin.service
 
-    systemctl enable mediagoblin
-    systemctl daemon-reload
-    systemctl start mediagoblin
-
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg dbupdate" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg adduser --username $MY_USERNAME --password $MY_USERNAME $MEDIAGOBLIN_ADMIN_PASSWORD" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && bin/gmg makeadmin $MY_USERNAME" - mediagoblin
+
+    systemctl enable mediagoblin
+    systemctl daemon-reload
+    systemctl start mediagoblin
 
     function_check create_site_certificate
     create_site_certificate $MEDIAGOBLIN_DOMAIN_NAME
