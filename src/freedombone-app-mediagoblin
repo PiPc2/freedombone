@@ -48,6 +48,21 @@ mediagoblin_variables=(ONION_ONLY
                        DEFAULT_DOMAIN_NAME
                        DDNS_PROVIDER)
 
+function mediagoblin_fix_email {
+    # This is a crude hack and there may be a better solution
+    # The cause of verification problems might be that the mediagoblin user
+    # does not have mail access
+    read_config_param 'MEDIAGOBLIN_DOMAIN_NAME'
+    MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
+    mgfile=$MEDIAGOBLIN_BASE_DIR/mediagoblin/tools/mail.py
+    if ! grep 'import os' $mgfile; then
+        sed -i '/import sys/a import os' $mgfile
+    fi
+    replacestr='return mhost.sendmail(from_addr, to_addrs, message.as_string())'
+    newstr="return os.system(\"echo '\" + message_body + \"' | mail -s '\" + message['Subject'] + \"' \" + message['To'])"
+    sed -i "s|${replacestr}|${newstr}|g" $mgfile
+}
+
 function install_interactive_mediagoblin {
     if [[ $ONION_ONLY != "no" ]]; then
         MEDIAGOBLIN_DOMAIN_NAME='mediagoblin.local'
@@ -113,6 +128,7 @@ function reconfigure_mediagoblin {
 function upgrade_mediagoblin {
     MEDIAGOBLIN_BASE_DIR=/var/www/$MEDIAGOBLIN_DOMAIN_NAME/htdocs
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin/ && ./bin/python setup.py develop --upgrade && ./bin/gmg dbupdate" - mediagoblin
+    mediagoblin_fix_email
     echo "0"
 }
 
@@ -411,6 +427,9 @@ function install_mediagoblin {
     sed -i "s|email_sender_address.*|email_sender_address = \"noreply@${DEFAULT_DOMAIN_NAME}\"|g" $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin.ini
     sed -i "s|email_sender_address.*|email_sender_address = \"noreply@${DEFAULT_DOMAIN_NAME}\"|g" $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
 
+    sed -i 's|allow_reporting.*|allow_reporting = false|g' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin.ini
+    sed -i 's|allow_reporting.*|allow_reporting = false|g' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
+
     if ! grep 'email_smtp_host' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin.ini; then
         sed -i '/email_sender_address/a email_smtp_host = localhost' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin.ini
     else
@@ -418,7 +437,7 @@ function install_mediagoblin {
     fi
 
     if ! grep 'email_smtp_host' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini; then
-        sed -i '/email_sender_address/a email_smtp_host = localhost' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
+        sed -i '/email_sender_address/a email_smtp_host = localhost' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin.ini
     else
         sed -i 's|email_smtp_host.*|email_smtp_host = localhost|g' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
     fi
@@ -426,6 +445,8 @@ function install_mediagoblin {
     systemctl enable mediagoblin
     systemctl daemon-reload
     systemctl start mediagoblin
+
+    mediagoblin_fix_email
 
     function_check create_site_certificate
     create_site_certificate $MEDIAGOBLIN_DOMAIN_NAME
