@@ -73,6 +73,48 @@ GPGIT_COMMIT='583dc76119f19420f8a33f606744faa7c8922738'
 # refresh gpg keys every few hours
 REFRESH_GPG_KEYS_HOURS=2
 
+function add_email_hostname {
+    extra_email_hostname="$1"
+    email_hostnames=$(cat /etc/exim4/update-exim4.conf.conf | grep "dc_other_hostnames" | awk -F "'" '{print $2}')
+    if [[ "$email_hostnames" != *"$extra_email_hostname"* ]]; then
+        sed -i "s|dc_other_hostnames=.*|dc_other_hostnames='$emailhostnames;extra_email_hostname'|g" /etc/exim4/update-exim4.conf.conf
+        update-exim4.conf
+        dpkg-reconfigure --frontend noninteractive exim4-config
+        systemctl restart saslauthd
+    fi
+}
+
+function configure_email_onion {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+    if [[ $SYSTEM_TYPE == "mesh"* ]]; then
+        return
+    fi
+
+    echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/' >> /etc/tor/torrc
+    echo 'HiddenServicePort 25 127.0.0.1:25' >> /etc/tor/torrc
+    echo 'HiddenServicePort 587 127.0.0.1:587' >> /etc/tor/torrc
+    echo 'HiddenServicePort 465 127.0.0.1:465' >> /etc/tor/torrc
+
+    function_check onion_update
+    onion_update
+
+    function_check wait_for_onion_service
+    wait_for_onion_service email
+
+    if [[ $(onion_service_exists email) == "0" ]]; then
+        echo $"email onion site hostname not found"
+        exit 782352
+    fi
+
+    onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
+    set_completion_param "email onion domain" "${onion_address}"
+    add_email_hostname "$onion_address"
+
+    mark_completed $FUNCNAME
+}
+
 function check_email_address_exists {
     read_config_param ONION_ONLY
     read_config_param MY_USERNAME
@@ -1706,6 +1748,7 @@ function install_email {
 
     check_email_address_exists
     install_email_basic
+    configure_email_onion
     #install_email_with_tor
 
     mark_completed $FUNCNAME
