@@ -48,11 +48,16 @@ matrix_variables=(ONION_ONLY
                   DEFAULT_DOMAIN_NAME)
 
 function matrix_nginx {
-    matrix_proxy_str=' \
+    matrix_proxy_str=" \
     location /matrix { \
-        proxy_pass https://localhost:8448; \
+        proxy_pass https://localhost:${MATRIX_PORT}; \
         proxy_buffering on; \
-    }'
+    }"
+    turn_proxy_str=" \
+    location /turn { \
+        proxy_pass https://localhost:${TURN_PORT}; \
+        proxy_buffering on; \
+    }"
 
     if [ ! -f /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME} ]; then
         matrix_nginx_site=/etc/nginx/sites-available/$DEFAULT_DOMAIN_NAME
@@ -131,9 +136,13 @@ function matrix_nginx {
         nginx_ensite $DEFAULT_DOMAIN_NAME
     fi
 
-    if ! grep 'localhost:8448' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}; then
+    if ! grep "localhost:${MATRIX_PORT}" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}; then
         sed -i "s|:443 ssl;|:443 ssl;${matrix_proxy_str}|g" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
         sed -i "s| default_server;| default_server;${matrix_proxy_str}|g" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+    fi
+    if ! grep 'localhost:${TURN_PORT}' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}; then
+        sed -i "s|:443 ssl;|:443 ssl;${turn_proxy_str}|g" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        sed -i "s| default_server;| default_server;${turn_proxy_str}|g" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
     fi
 
     systemctl restart nginx
@@ -156,7 +165,7 @@ function matrix_configure_homeserver_yaml {
 
     local ymltemp="$(mktemp)"
 
-    awk -v TURNURIES="turn_uris: [\"turn:${DEFAULT_DOMAIN_NAME}:${TURN_PORT}?transport=udp\", \"turn:${DEFAULT_DOMAIN_NAME}:${TURN_PORT}?transport=tcp\"]" \
+    awk -v TURNURIES="turn_uris: [\"turn:${DEFAULT_DOMAIN_NAME}/turn?transport=udp\", \"turn:${DEFAULT_DOMAIN_NAME}/turn?transport=tcp\"]" \
         -v TURNSHAREDSECRET="turn_shared_secret: \"${turnkey}\"" \
         -v PIDFILE="pid_file: ${MATRIX_DATA_DIR}/homeserver.pid" \
         -v DATABASE="database: \"${MATRIX_DATA_DIR}/homeserver.db\"" \
