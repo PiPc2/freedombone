@@ -1,0 +1,111 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# TURN server functions
+#
+# License
+# =======
+#
+# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+TURN_PORT=3478
+
+function generate_turn_key {
+    local turnkey="${1}"
+    local filepath="${2}"
+
+    echo "lt-cred-mech" > "${filepath}"
+    echo "use-auth-secret" >> "${filepath}"
+    echo "static-auth-secret=${turnkey}" >> "${filepath}"
+    echo "realm=turn.${DEFAULT_DOMAIN_NAME}" >> "${filepath}"
+    if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        echo "cert=/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem" >> "${filepath}"
+    else
+        echo "cert=/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt" >> "${filepath}"
+    fi
+    echo "pkey=/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key" >> "${filepath}"
+}
+
+function remove_turn {
+    firewall_remove ${TURN_PORT}
+}
+
+function remove_turn {
+    firewall_remove ${TURN_PORT}
+    systemctl stop turn
+    systemctl disable turn
+    if [ -f /etc/systemd/system/turn.service ]; then
+        rm /etc/systemd/system/turn.service
+    fi
+    apt-get -y remove coturn
+    rm -rf /var/lib/turn
+}
+
+function install_turn {
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get -yq install coreutils coturn \
+            curl file gcc git libevent-2.0-5 \
+            libevent-dev libffi-dev libffi6 \
+            libgnutls28-dev libjpeg62-turbo \
+            libjpeg62-turbo-dev libldap-2.4-2 \
+            libldap2-dev libsasl2-dev \
+            libsqlite3-dev libssl-dev \
+            libssl1.0.0 libtool libxml2 \
+            libxml2-dev libxslt1-dev libxslt1.1 \
+            make python python-dev \
+            python-pip python-psycopg2 \
+            python-virtualenv sqlite unzip \
+            zlib1g zlib1g-dev
+
+    pip install --upgrade pip
+    pip install --upgrade python-ldap
+    pip install --upgrade lxml
+
+    if [ ! -d /var/lib/turn ]; then
+        mkdir /var/lib/turn
+    fi
+
+    turnkey="$(create_password 30)"
+    generate_turn_key $turnkey /var/lib/turn/turnserver.conf
+
+    chown -R matrix:matrix /var/lib/turn
+
+    echo '' >> /etc/systemd/system/turn.service
+    echo '[Service]' >> /etc/systemd/system/turn.service
+    echo 'Type=simple' >> /etc/systemd/system/turn.service
+    echo 'User=matrix' >> /etc/systemd/system/turn.service
+    echo "WorkingDirectory=/var/lib/turn" >> /etc/systemd/system/turn.service
+    echo "ExecStart=/usr/bin/turnserver -c /var/lib/turn/turnserver.conf" >> /etc/systemd/system/turn.service
+    echo 'Restart=always' >> /etc/systemd/system/turn.service
+    echo 'RestartSec=10' >> /etc/systemd/system/turn.service
+    echo '' >> /etc/systemd/system/turn.service
+    echo '[Install]' >> /etc/systemd/system/turn.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/turn.service
+    systemctl enable turn
+    systemctl daemon-reload
+    systemctl start turn
+
+    firewall_add turn ${TURN_PORT}
+}
+
+# NOTE: deliberately no exit 0
