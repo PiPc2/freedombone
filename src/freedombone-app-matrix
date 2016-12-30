@@ -47,6 +47,103 @@ matrix_variables=(ONION_ONLY
                   MATRIX_SECRET
                   DEFAULT_DOMAIN_NAME)
 
+function matrix_nginx {
+    matrix_proxy_str='
+    location /matrix {
+        proxy_pass https://localhost:8448;
+        proxy_buffering on;
+    }'
+
+    if [ ! -f /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME} ]; then
+        matrix_nginx_site=/etc/nginx/sites-available/$DEFAULT_DOMAIN_NAME
+        if [[ $ONION_ONLY == "no" ]]; then
+            function_check nginx_http_redirect
+            nginx_http_redirect $DEFAULT_DOMAIN_NAME
+            echo 'server {' >> $matrix_nginx_site
+            echo '  listen 443 ssl;' >> $matrix_nginx_site
+            echo '  listen [::]:443 ssl;' >> $matrix_nginx_site
+            echo "  server_name $DEFAULT_DOMAIN_NAME;" >> $matrix_nginx_site
+            echo '' >> $matrix_nginx_site
+            echo '  # Security' >> $matrix_nginx_site
+            function_check nginx_ssl
+            nginx_ssl $DEFAULT_DOMAIN_NAME
+
+            function_check nginx_disable_sniffing
+            nginx_disable_sniffing $DEFAULT_DOMAIN_NAME
+
+            echo '  add_header Strict-Transport-Security max-age=15768000;' >> $matrix_nginx_site
+            echo '' >> $matrix_nginx_site
+            echo '  # Logs' >> $matrix_nginx_site
+            echo '  access_log /dev/null;' >> $matrix_nginx_site
+            echo '  error_log /dev/null;' >> $matrix_nginx_site
+            echo '' >> $matrix_nginx_site
+            echo '  # Root' >> $matrix_nginx_site
+            echo "  root /var/www/$DEFAULT_DOMAIN_NAME/htdocs;" >> $matrix_nginx_site
+            echo '' >> $matrix_nginx_site
+            echo '  # Index' >> $matrix_nginx_site
+            echo '  index index.html;' >> $matrix_nginx_site
+            echo '' >> $matrix_nginx_site
+            echo '  # Location' >> $matrix_nginx_site
+            echo '  location / {' >> $matrix_nginx_site
+            function_check nginx_limits
+            nginx_limits $DEFAULT_DOMAIN_NAME '15m'
+            echo '  }' >> $matrix_nginx_site
+            echo '' >> $matrix_nginx_site
+            echo '  # Restrict access that is unnecessary anyway' >> $matrix_nginx_site
+            echo '  location ~ /\.(ht|git) {' >> $matrix_nginx_site
+            echo '    deny all;' >> $matrix_nginx_site
+            echo '  }' >> $matrix_nginx_site
+            echo '}' >> $matrix_nginx_site
+        else
+            echo -n '' > $matrix_nginx_site
+        fi
+        echo 'server {' >> $matrix_nginx_site
+        echo "    listen 127.0.0.1:$MATRIX_PORT default_server;" >> $matrix_nginx_site
+        echo "    server_name $DEFAULT_DOMAIN_NAME;" >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $DEFAULT_DOMAIN_NAME
+        echo '' >> $matrix_nginx_site
+        echo '  # Logs' >> $matrix_nginx_site
+        echo '  access_log /dev/null;' >> $matrix_nginx_site
+        echo '  error_log /dev/null;' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
+        echo '  # Root' >> $matrix_nginx_site
+        echo "  root /var/www/$DEFAULT_DOMAIN_NAME/htdocs;" >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
+        echo '  # Location' >> $matrix_nginx_site
+        echo '  location / {' >> $matrix_nginx_site
+        function_check nginx_limits
+        nginx_limits $DEFAULT_DOMAIN_NAME '15m'
+        echo '  }' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
+        echo '  # Fancy URLs' >> $matrix_nginx_site
+        echo '  location @matrix {' >> $matrix_nginx_site
+        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $matrix_nginx_site
+        echo '  }' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
+        echo '  # Restrict access that is unnecessary anyway' >> $matrix_nginx_site
+        echo '  location ~ /\.(ht|git) {' >> $matrix_nginx_site
+        echo '    deny all;' >> $matrix_nginx_site
+        echo '  }' >> $matrix_nginx_site
+        echo '}' >> $matrix_nginx_site
+
+        if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+            function_check create_site_certificate
+            create_site_certificate $DEFAULT_DOMAIN_NAME 'yes'
+        fi
+
+        nginx_ensite $DEFAULT_DOMAIN_NAME
+    fi
+
+    if ! grep 'localhost:8448' /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}; then
+        sed "s|:443 ssl;|:443 ssl;${matrix_proxy_str}|g" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+        sed "s| default_server;| default_server;${matrix_proxy_str}|g" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+    fi
+
+    systemctl restart nginx
+}
+
 function matrix_generate_synapse_file {
     local filepath="${1}"
 
@@ -130,10 +227,11 @@ function add_user_matrix {
     ${PROJECT_NAME}-pass -u $new_username -a matrix -p "$new_user_password"
 
     read_config_param 'MATRIX_SECRET'
+    matrix_nginx
     if [ -f /var/lib/matrix/.synapse/bin/activate ]; then
         source /var/lib/matrix/.synapse/bin/activate
     fi
-    register_new_matrix_user -c ${MATRIX_DATA_DIR}/homeserver.yaml https://localhost:${MATRIX_PORT} -u "${new_username}" -p "${new_user_password}" -a
+    register_new_matrix_user -c ${MATRIX_DATA_DIR}/homeserver.yaml https://${DEFAULT_DOMAIN_NAME}/matrix -u "${new_username}" -p "${new_user_password}" -a
     if [ ! "$?" = "0" ]; then
         echo '1'
     else
@@ -381,6 +479,8 @@ function install_matrix {
     rm -f ${MATRIX_DATA_DIR}/.mutt-alias
     rm -f ${MATRIX_DATA_DIR}/.procmailrc
     rm -f ${MATRIX_DATA_DIR}/.emacs-mutt
+
+    matrix_nginx
 
     if [[ $(add_user_matrix "${MY_USERNAME}" "${MATRIX_PASSWORD}") != "0" ]]; then
         echo $'Failed to add matrix admin user';
