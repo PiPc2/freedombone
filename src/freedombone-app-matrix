@@ -62,7 +62,7 @@ function matrix_nginx {
         proxy_set_header X-Forwarded-For $remote_addr; \
     }'
     turn_proxy_str=' \
-    location /turn { \
+    location /_turn { \
         proxy_pass https://localhost:3478; \
         proxy_set_header X-Forwarded-For $remote_addr; \
     }'
@@ -74,7 +74,7 @@ function matrix_nginx {
         proxy_set_header X-Forwarded-For $remote_addr; \
     }'
         turn_proxy_str=' \
-    location /turn { \
+    location /_turn { \
         proxy_pass http://localhost:3478; \
         proxy_set_header X-Forwarded-For $remote_addr; \
     }'
@@ -207,7 +207,7 @@ function matrix_configure_homeserver_yaml {
 
     local ymltemp="$(mktemp)"
 
-    awk -v TURNURIES="turn_uris: [\"turn:${DEFAULT_DOMAIN_NAME}/turn?transport=udp\", \"turn:${DEFAULT_DOMAIN_NAME}/turn?transport=tcp\"]" \
+    awk -v TURNURIES="turn_uris: [\"turn:${DEFAULT_DOMAIN_NAME}/_turn?transport=udp\", \"turn:${DEFAULT_DOMAIN_NAME}/_turn?transport=tcp\"]" \
         -v TURNSHAREDSECRET="turn_shared_secret: \"${turnkey}\"" \
         -v PIDFILE="pid_file: ${MATRIX_DATA_DIR}/homeserver.pid" \
         -v DATABASE="database: \"${MATRIX_DATA_DIR}/homeserver.db\"" \
@@ -235,9 +235,9 @@ function matrix_configure_homeserver_yaml {
     sed -i "s|log_file:.*|log_file: \"/dev/null\"|g" "${filepath}"
     sed -i '0,/bind_address:.*/s//bind_address: 127.0.0.1/' "${filepath}"
     sed -i '0,/x_forwarded:.*/s//x_forwarded: true/' "${filepath}"
-    sed -i "s|server_name:.*|server_name: \"${DEFAULT_DOMAIN_NAME}/_matrix\"|g" "${filepath}"
-    sed -i "/trusted_third_party_id_servers:/a     - ${DEFAULT_DOMAIN_NAME}/_matrixid" "${filepath}"
-    sed -i "s|- ${DEFAULT_DOMAIN_NAME}/_matrixid|    - ${DEFAULT_DOMAIN_NAME}/_matrixid|g" "${filepath}"
+    sed -i "s|server_name:.*|server_name: \"${DEFAULT_DOMAIN_NAME}\"|g" "${filepath}"
+    sed -i "/trusted_third_party_id_servers:/a     - ${DEFAULT_DOMAIN_NAME}" "${filepath}"
+    sed -i "s|- ${DEFAULT_DOMAIN_NAME}|    - ${DEFAULT_DOMAIN_NAME}|g" "${filepath}"
 }
 
 function matrix_configure_identityserver {
@@ -248,7 +248,7 @@ function matrix_configure_identityserver {
     sed -i "s|Sydent Validation|Freedombone Matrix Account Validation|g" ${filepath}
     sed -i "s|pidfile.path.*|pidfile.path = /etc/sydent/sydent.pid|g" ${filepath}
     sed -i "s|log.path.*|log.path = /dev/null|g" ${filepath}
-    sed -i "s|server.name.*|server.name = ${DEFAULT_DOMAIN_NAME}/_matrixid|g" ${filepath}
+    sed -i "s|server.name.*|server.name = ${DEFAULT_DOMAIN_NAME}|g" ${filepath}
 }
 
 function matrix_diff {
@@ -472,7 +472,6 @@ function restore_remote_matrix {
 }
 
 function remove_matrix {
-    firewall_remove ${MATRIX_PORT}
     systemctl stop matrix
     systemctl stop sydent
 
@@ -643,8 +642,6 @@ function install_home_server {
         echo $'No matrix home server database was created'
     fi
     chmod -R 700 $MATRIX_DATA_DIR/homeserver.db
-
-    firewall_add matrix ${MATRIX_PORT}
 
     MATRIX_ONION_HOSTNAME=$(add_onion_service matrix ${MATRIX_PORT} ${MATRIX_PORT})
     if [ ! ${MATRIX_PASSWORD} ]; then
