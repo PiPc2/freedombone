@@ -37,7 +37,7 @@ SHOW_ON_ABOUT=1
 
 MATRIX_DATA_DIR='/var/lib/matrix'
 MATRIX_PORT=8448
-MATRID_ID_PORT=8090
+MATRID_ID_PORT=8081
 MATRIX_REPO="https://github.com/matrix-org/synapse"
 MATRIX_COMMIT='f5a4001bb116c468cc5e8e0ae04a1c570e2cb171'
 SYDENT_REPO="https://github.com/matrix-org/sydent"
@@ -187,17 +187,6 @@ function matrix_generate_homeserver_file {
            --server-name ${DEFAULT_DOMAIN_NAME}
 }
 
-function matrix_generate_identityserver_file {
-    local filepath="${1}"
-
-    cd /etc/sydent
-    python -m sydent.sydent \
-           --config-path "${filepath}" \
-           --generate-config \
-           --report-stats ${REPORT_STATS} \
-           --server-name ${DEFAULT_DOMAIN_NAME}
-}
-
 function matrix_configure_homeserver_yaml {
     local turnkey="${1}"
     local filepath="${2}"
@@ -232,14 +221,15 @@ function matrix_configure_homeserver_yaml {
     sed -i "s|log_file:.*|log_file: \"/dev/null\"|g" "${filepath}"
 }
 
-function matrix_configure_identityserver_yaml {
-    local filepath="${1}"
+function matrix_configure_identityserver {
+    local filepath=/etc/sydent/sydent.conf
 
-    sed -i "s|http.port:.*|http.port: $MATRIX_ID_PORT|g" "${filepath}"
-    sed -i "s|db.file:.*|db.file: \"${MATRIX_DATA_DIR}/identityserver.db\"|g" "${filepath}"
-    sed -i "s|Sydent Validation|Freedombone Matrix Account Validation|g" "${filepath}"
-    sed -i "s|pidfile.path:.*|pidfile.path: \"${MATRIX_DATA_DIR}/identityserver.pid\"|g" "${filepath}"
-    sed -i "s|log.path:.*|log.path: \"/dev/null\"|g" "${filepath}"
+    sed -i "s|http.port.*|http.port = $MATRIX_ID_PORT|g" ${filepath}
+    sed -i "s|db.file.*|db.file = /etc/sydent/sydent.db|g" ${filepath}
+    sed -i "s|Sydent Validation|Freedombone Matrix Account Validation|g" ${filepath}
+    sed -i "s|pidfile.path.*|pidfile.path = /etc/sydent/sydent.pid|g" ${filepath}
+    sed -i "s|log.path.*|log.path = /dev/null|g" ${filepath}
+    sed -i "s|server.name.*|server.name = ${DEFAULT_DOMAIN_NAME}|g" ${filepath}
 }
 
 function matrix_diff {
@@ -268,23 +258,6 @@ function matrix_generate {
     fi
     matrix_generate_homeserver_file $homeserver_config
     matrix_configure_homeserver_yaml "${turnkey}" $homeserver_config
-}
-
-function identity_server_generate {
-    breakup="0"
-    [[ -z "${DEFAULT_DOMAIN_NAME}" ]] && echo "STOP! environment variable DEFAULT_DOMAIN_NAME must be set" && breakup="1"
-    [[ -z "${REPORT_STATS}" ]] && echo "STOP! environment variable REPORT_STATS must be set to 'no' or 'yes'" && breakup="1"
-    [[ "${breakup}" == "1" ]] && exit 1
-
-    [[ "${REPORT_STATS}" != "yes" ]] && [[ "${REPORT_STATS}" != "no" ]] && \
-        echo "STOP! REPORT_STATS needs to be 'no' or 'yes'" && breakup="1"
-
-    identityserver_config=${MATRIX_DATA_DIR}/identityserver.yaml
-    if [ -f $identityserver_config ]; then
-        rm $identityserver_config
-    fi
-    matrix_generate_identityserver_file $identityserver_config
-    matrix_configure_identityserver_yaml $identityserver_config
 }
 
 function remove_user_matrix {
@@ -473,15 +446,20 @@ function install_identity_server {
         exit 798362
     fi
 
-    function_check identity_server_generate
-    identity_server_generate
+    if [ ! -f /etc/sydent/sydent.conf ]; then
+        echo $'Matrix identity server configuration not generated'
+        exit 72528
+    fi
 
-    if [ ! -f $MATRIX_DATA_DIR/identityserver.yaml ]; then
+    function_check matrix_configure_identityserver
+    matrix_configure_identityserver
+
+    if [ ! -f /etc/sydent/sydent.conf ]; then
         echo $'Matrix identity server config was not generated'
         exit 82352
     fi
 
-    chmod -R 700 $MATRIX_DATA_DIR/identityserver.yaml
+    chmod -R 700 /etc/sydent/sydent.conf
     chown -R matrix:matrix /etc/sydent
 
     echo '[Unit]' > /etc/systemd/system/sydent.service
@@ -492,7 +470,7 @@ function install_identity_server {
     echo 'Type=simple' >> /etc/systemd/system/sydent.service
     echo 'User=matrix' >> /etc/systemd/system/sydent.service
     echo "WorkingDirectory=/etc/sydent" >> /etc/systemd/system/sydent.service
-    echo "ExecStart=/usr/bin/python -m sydent.sydent --config-path ${MATRIX_DATA_DIR}/identityserver.yaml" >> /etc/systemd/system/sydent.service
+    echo "ExecStart=/usr/bin/python -m sydent.sydent --config-path /etc/sydent/sydent.conf" >> /etc/systemd/system/sydent.service
     echo 'Restart=always' >> /etc/systemd/system/sydent.service
     echo 'RestartSec=10' >> /etc/systemd/system/sydent.service
     echo '' >> /etc/systemd/system/sydent.service
@@ -504,11 +482,11 @@ function install_identity_server {
 
     sleep 4
 
-    if [ ! -f $MATRIX_DATA_DIR/identityserver.db ]; then
+    if [ ! -f /etc/sydent/sydent.db ]; then
         echo $'No matrix identity server database was created'
         exit 7354383
     fi
-    chmod -R 700 $MATRIX_DATA_DIR/identityserver.db
+    chmod -R 700 /etc/sydent/sydent.db
 }
 
 function install_home_server {
@@ -533,6 +511,13 @@ function install_home_server {
         exit 782542
     fi
 
+    if [ ! -d $MATRIX_DATA_DIR ]; then
+        mkdir $MATRIX_DATA_DIR
+    fi
+
+    groupadd matrix
+    useradd -c "Matrix system account" -d $MATRIX_DATA_DIR -m -r -g matrix matrix
+
     function_check install_turn
     install_turn
     MATRIX_SECRET="${turnkey}"
@@ -544,9 +529,6 @@ function install_home_server {
         echo $'homeserver.yaml is zero size'
         exit 783724
     fi
-
-    groupadd matrix
-    useradd -c "Matrix system account" -d $MATRIX_DATA_DIR -m -r -g matrix matrix
 
     chmod -R 700 $MATRIX_DATA_DIR/homeserver.yaml
     chown -R matrix:matrix /etc/matrix
