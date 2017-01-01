@@ -31,6 +31,9 @@
 # default search engine for command line browser
 DEFAULT_SEARCH='https://searx.laquadrature.net'
 
+# onion port for the default domain
+DEFAULT_DOMAIN_ONION_PORT=8099
+
 # Whether Let's Encrypt is enabled for all sites
 LETSENCRYPT_ENABLED="no"
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
@@ -799,6 +802,100 @@ function update_default_domain {
             chmod -R 700 /etc/matrix-synapse/homeserver.tls.crt
             systemctl restart matrix-synapse
         fi
+    fi
+}
+
+function create_default_web_site {
+    if [ ! -f /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME} ]; then
+        # create a web site for the default domain
+        if [ ! -d /var/www/${DEFAULT_DOMAIN_NAME}/htdocs ]; then
+            mkdir -p /var/www/${DEFAULT_DOMAIN_NAME}/htdocs
+            if [ -d /root/${PROJECT_NAME} ]; then
+                cd /root/${PROJECT_NAME}/website
+                ./deploy.sh EN /var/www/${DEFAULT_DOMAIN_NAME}/htdocs
+            else
+                if [ -d /home/${MY_USERNAME}/${PROJECT_NAME} ]; then
+                    cd /home/${MY_USERNAME}/${PROJECT_NAME}
+                    ./deploy.sh EN /var/www/${DEFAULT_DOMAIN_NAME}/htdocs
+                fi
+            fi
+        fi
+
+        # add a config for the default domain
+        nginx_site=/etc/nginx/sites-available/$DEFAULT_DOMAIN_NAME
+        if [[ $ONION_ONLY == "no" ]]; then
+            function_check nginx_http_redirect
+            nginx_http_redirect $DEFAULT_DOMAIN_NAME
+            echo 'server {' >> $nginx_site
+            echo '  listen 443 ssl;' >> $nginx_site
+            echo '  listen [::]:443 ssl;' >> $nginx_site
+            echo "  server_name $DEFAULT_DOMAIN_NAME;" >> $nginx_site
+            echo '' >> $nginx_site
+            echo '  # Security' >> $nginx_site
+            function_check nginx_ssl
+            nginx_ssl $DEFAULT_DOMAIN_NAME
+
+            function_check nginx_disable_sniffing
+            nginx_disable_sniffing $DEFAULT_DOMAIN_NAME
+
+            echo '  add_header Strict-Transport-Security max-age=15768000;' >> $nginx_site
+            echo '' >> $nginx_site
+            echo '  # Logs' >> $nginx_site
+            echo '  access_log /dev/null;' >> $nginx_site
+            echo '  error_log /dev/null;' >> $nginx_site
+            echo '' >> $nginx_site
+            echo '  # Root' >> $nginx_site
+            echo "  root /var/www/$DEFAULT_DOMAIN_NAME/htdocs;" >> $nginx_site
+            echo '' >> $nginx_site
+            echo '  # Index' >> $nginx_site
+            echo '  index index.html;' >> $nginx_site
+            echo '' >> $nginx_site
+            echo '  # Location' >> $nginx_site
+            echo '  location / {' >> $nginx_site
+            function_check nginx_limits
+            nginx_limits $DEFAULT_DOMAIN_NAME '15m'
+            echo '  }' >> $nginx_site
+            echo '' >> $nginx_site
+            echo '  # Restrict access that is unnecessary anyway' >> $nginx_site
+            echo '  location ~ /\.(ht|git) {' >> $nginx_site
+            echo '    deny all;' >> $nginx_site
+            echo '  }' >> $nginx_site
+            echo '}' >> $nginx_site
+        else
+            echo -n '' > $nginx_site
+        fi
+        echo 'server {' >> $nginx_site
+        echo "    listen 127.0.0.1:$DEFAULT_DOMAIN_ONION_PORT default_server;" >> $nginx_site
+        echo "    server_name $DEFAULT_DOMAIN_NAME;" >> $nginx_site
+        echo '' >> $nginx_site
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $DEFAULT_DOMAIN_NAME
+        echo '' >> $nginx_site
+        echo '  # Logs' >> $nginx_site
+        echo '  access_log /dev/null;' >> $nginx_site
+        echo '  error_log /dev/null;' >> $nginx_site
+        echo '' >> $nginx_site
+        echo '  # Root' >> $nginx_site
+        echo "  root /var/www/$DEFAULT_DOMAIN_NAME/htdocs;" >> $nginx_site
+        echo '' >> $nginx_site
+        echo '  # Location' >> $nginx_site
+        echo '  location / {' >> $nginx_site
+        function_check nginx_limits
+        nginx_limits $DEFAULT_DOMAIN_NAME '15m'
+        echo '  }' >> $nginx_site
+        echo '' >> $nginx_site
+        echo '  # Restrict access that is unnecessary anyway' >> $nginx_site
+        echo '  location ~ /\.(ht|git) {' >> $nginx_site
+        echo '    deny all;' >> $nginx_site
+        echo '  }' >> $nginx_site
+        echo '}' >> $nginx_site
+
+        if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+            function_check create_site_certificate
+            create_site_certificate $DEFAULT_DOMAIN_NAME 'yes'
+        fi
+
+        nginx_ensite $DEFAULT_DOMAIN_NAME
     fi
 }
 
