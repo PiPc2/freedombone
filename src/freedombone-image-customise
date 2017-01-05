@@ -174,6 +174,20 @@ EOF
 }
 
 configure_networking() {
+    if [[ "$MACHINE" == "beaglebonewifi" ]]; then
+        # Allow networking over USB in order to configure the
+        # wifi login settings
+        echo 'auto lo' > $rootdir/etc/network/interfaces
+        echo 'iface lo inet loopback' >> $rootdir/etc/network/interfaces
+        echo '' >> $rootdir/etc/network/interfaces
+        echo 'iface usb0 inet static' >> $rootdir/etc/network/interfaces
+        echo '    address 192.168.7.2' >> $rootdir/etc/network/interfaces
+        echo '    netmask 255.255.255.252' >> $rootdir/etc/network/interfaces
+        echo '    network 192.168.7.0' >> $rootdir/etc/network/interfaces
+        echo '    gateway 192.168.7.1' >> $rootdir/etc/network/interfaces
+        return
+    fi
+
     if [[ $DEBIAN_INSTALL_ONLY != "no" ]]; then
         return
     fi
@@ -459,6 +473,10 @@ continue_installation() {
 }
 
 atheros_wifi() {
+    if [[ "$MACHINE" == "beaglebonewifi" ]]; then
+        return
+    fi
+
     firmware_filename="open-ath9k-htc-firmware_1.3-1_all.deb"
     firmware_hash='5fea58ffefdf0ef15b504db7fbe3bc078c03e0d927bba64085e4b6f2546102f5'
 
@@ -1036,16 +1054,24 @@ rm $rootdir/usr/sbin/policy-rc.d
 
 # Set up HRNG for systems known to have one
 # Otherwise install haveged
-if [[ "$MACHINE" != "beaglebone" ]]; then
+if [[ "$MACHINE" != "beaglebone"* ]]; then
     chroot $rootdir apt-get -yq install haveged
 else
     chroot $rootdir apt-get -yq install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' $rootdir/etc/default/rng-tools
+
 fi
 
 # copy u-boot to beginning of image
 case "$MACHINE" in
     beaglebone)
+        dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/MLO of="$image" \
+           count=1 seek=1 conv=notrunc bs=128k
+        dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/u-boot.img of="$image" \
+           count=2 seek=1 conv=notrunc bs=384k
+        ;;
+    beaglebonewifi)
+        touch $rootdir/root/.wifi-only
         dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/MLO of="$image" \
            count=1 seek=1 conv=notrunc bs=128k
         dd if=$rootdir/usr/lib/u-boot/am335x_boneblack/u-boot.img of="$image" \
