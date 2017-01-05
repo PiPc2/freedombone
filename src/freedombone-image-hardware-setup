@@ -83,6 +83,49 @@ EOF
     cp /usr/lib/linux-image-*-armmp/* /boot/dtbs
 }
 
+beaglebone_wireless_setup_boot() {
+    # Setup uEnv.txt
+    if grep -q btrfs /etc/fstab ; then
+        fstype=btrfs
+    else
+        fstype=ext4
+    fi
+    kernelVersion=$(ls /usr/lib/*/am335x-boneblack-wireless.dtb | head -1 | cut -d/ -f4)
+    version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
+    initRd=initrd.img-$version
+    vmlinuz=vmlinuz-$version
+
+    cat >> /boot/uEnv.txt <<EOF
+mmcroot=/dev/mmcblk0p2 ro
+mmcrootfstype=$fstype rootwait fixrtc
+mmcrootflags=subvol=@
+
+console=ttyO0,115200n8
+
+kernel_file=$vmlinuz
+initrd_file=$initRd
+
+loadaddr=0x82000000
+initrd_addr=0x88080000
+fdtaddr=0x88000000
+
+initrd_high=0xffffffff
+fdt_high=0xffffffff
+
+loadkernel=load mmc \${mmcdev}:\${mmcpart} \${loadaddr} \${kernel_file}
+loadinitrd=load mmc \${mmcdev}:\${mmcpart} \${initrd_addr} \${initrd_file}; setenv initrd_size \${filesize}
+loadfdt=load mmc \${mmcdev}:\${mmcpart} \${fdtaddr} /dtbs/\${fdtfile}
+
+loadfiles=run loadkernel; run loadinitrd; run loadfdt
+mmcargs=setenv bootargs console=tty0 console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags}
+
+uenvcmd=run loadfiles; run mmcargs; bootz \${loadaddr} \${initrd_addr}:\${initrd_size} \${fdtaddr}
+EOF
+
+    mkdir -p /boot/dtbs
+    cp /usr/lib/linux-image-*-armmp/* /boot/dtbs
+}
+
 beaglebone_flash() {
     # allow flash-kernel to work without valid /proc contents
     # ** this doesn't *really* work, since there are too many checks
@@ -191,7 +234,6 @@ EOF
 }
 
 function generic_beaglebone_steup {
-    beaglebone_setup_boot
     beaglebone_flash
     beaglebone_repack_kernel
     enable_serial_console ttyO0
@@ -199,9 +241,11 @@ function generic_beaglebone_steup {
 
 case "$MACHINE" in
     beaglebone)
+        beaglebone_setup_boot
         generic_beaglebone_steup
         ;;
     beaglebonewifi)
+        beaglebone_wireless_setup_boot
         generic_beaglebone_steup
         ;;
     cubietruck)
