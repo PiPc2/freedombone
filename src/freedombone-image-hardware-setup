@@ -176,6 +176,35 @@ beaglebone_repack_kernel() {
              -d $initRd uInitrd )
 }
 
+beaglebone_wireless_repack_kernel() {
+    echo "info: repacking beaglebone wireless kernel and initrd"
+
+    kernelVersion=$(ls /usr/lib/*/am335x-boneblack-wireless.dtb | head -1 | cut -d/ -f4)
+    version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
+    initRd=initrd.img-$version
+    vmlinuz=vmlinuz-$version
+
+    mkdir /tmp/initrd-repack
+
+    (cd /tmp/initrd-repack ; \
+     zcat /boot/$initRd | cpio -i ; \
+     rm -f conf/param.conf ; \
+     find . | cpio --quiet -o -H newc | \
+         gzip -9 > /boot/$initRd )
+
+    rm -rf /tmp/initrd-repack
+
+    (cd /boot ; \
+     cp /usr/lib/$kernelVersion/am335x-boneblack-wireless.dtb dtb ; \
+     cat $vmlinuz dtb >> temp-kernel ; \
+     mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
+             -C none -a 0x82000000 -e 0x82000000 -d temp-kernel uImage ; \
+     rm -f temp-kernel ; \
+     mkimage -A arm -O linux -T ramdisk -C gzip -a 0x88080000 -e 0x88080000 \
+             -n "Debian ramdisk ${version}" \
+             -d $initRd uInitrd )
+}
+
 a20_setup_boot() {
     dtb="$1"
 
@@ -233,20 +262,18 @@ EOF
     echo "rtc_sunxi" >> /etc/initramfs-tools/modules
 }
 
-function generic_beaglebone_steup {
-    beaglebone_flash
-    beaglebone_repack_kernel
-    enable_serial_console ttyO0
-}
-
 case "$MACHINE" in
     beaglebone)
         beaglebone_setup_boot
-        generic_beaglebone_steup
+        beaglebone_flash
+        beaglebone_repack_kernel
+        enable_serial_console ttyO0
         ;;
     beaglebonewifi)
         beaglebone_wireless_setup_boot
-        generic_beaglebone_steup
+        beaglebone_flash
+        beaglebone_wireless_repack_kernel
+        enable_serial_console ttyO0
         ;;
     cubietruck)
         a20_setup_boot sun7i-a20-cubietruck.dtb
