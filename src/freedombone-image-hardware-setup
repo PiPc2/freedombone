@@ -39,16 +39,31 @@ enable_serial_console() {
 }
 
 beaglebone_setup_boot() {
+    bbb_version=$1
+
     # Setup uEnv.txt
     if grep -q btrfs /etc/fstab ; then
         fstype=btrfs
     else
         fstype=ext4
     fi
-    kernelVersion=$(ls /usr/lib/*/am335x-boneblack.dtb | head -1 | cut -d/ -f4)
+    if [ ! $bbb_version ]; then
+        kernelVersion=$(ls /usr/lib/*/am335x-boneblack.dtb | head -1 | cut -d/ -f4)
+    else
+        kernelVersion=$(ls /usr/lib/*/am335x-boneblack-${1}.dtb | head -1 | cut -d/ -f4)
+    fi
     version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
     initRd=initrd.img-$version
     vmlinuz=vmlinuz-$version
+
+    bbb_loadaddr='0x80200000'
+    bbb_initrd_addr='0x81000000'
+    bbb_fdtaddr='0x80F80000'
+    if [[ "$bbb_version" == "wireless" ]]; then
+        bbb_loadaddr='0x82000000'
+        bbb_initrd_addr='0x88080000'
+        bbb_fdtaddr='0x88000000'
+    fi
 
     # uEnv.txt for Beaglebone
     # based on https://github.com/beagleboard/image-builder/blob/master/target/boot/beagleboard.org.txt
@@ -62,52 +77,9 @@ console=ttyO0,115200n8
 kernel_file=$vmlinuz
 initrd_file=$initRd
 
-loadaddr=0x80200000
-initrd_addr=0x81000000
-fdtaddr=0x80F80000
-
-initrd_high=0xffffffff
-fdt_high=0xffffffff
-
-loadkernel=load mmc \${mmcdev}:\${mmcpart} \${loadaddr} \${kernel_file}
-loadinitrd=load mmc \${mmcdev}:\${mmcpart} \${initrd_addr} \${initrd_file}; setenv initrd_size \${filesize}
-loadfdt=load mmc \${mmcdev}:\${mmcpart} \${fdtaddr} /dtbs/\${fdtfile}
-
-loadfiles=run loadkernel; run loadinitrd; run loadfdt
-mmcargs=setenv bootargs console=tty0 console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags}
-
-uenvcmd=run loadfiles; run mmcargs; bootz \${loadaddr} \${initrd_addr}:\${initrd_size} \${fdtaddr}
-EOF
-
-    mkdir -p /boot/dtbs
-    cp /usr/lib/linux-image-*-armmp/* /boot/dtbs
-}
-
-beaglebone_wireless_setup_boot() {
-    # Setup uEnv.txt
-    if grep -q btrfs /etc/fstab ; then
-        fstype=btrfs
-    else
-        fstype=ext4
-    fi
-    kernelVersion=$(ls /usr/lib/*/am335x-boneblack-wireless.dtb | head -1 | cut -d/ -f4)
-    version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
-    initRd=initrd.img-$version
-    vmlinuz=vmlinuz-$version
-
-    cat >> /boot/uEnv.txt <<EOF
-mmcroot=/dev/mmcblk0p2 ro
-mmcrootfstype=$fstype rootwait fixrtc
-mmcrootflags=subvol=@
-
-console=ttyO0,115200n8
-
-kernel_file=$vmlinuz
-initrd_file=$initRd
-
-loadaddr=0x82000000
-initrd_addr=0x88080000
-fdtaddr=0x88000000
+loadaddr=$bbb_loadaddr
+initrd_addr=$bbb_initrd_addr
+fdtaddr=$bbb_fdtaddr
 
 initrd_high=0xffffffff
 fdt_high=0xffffffff
@@ -136,6 +108,7 @@ beaglebone_flash() {
 }
 
 beaglebone_repack_kernel() {
+    bbb_version=$1
     # process installed kernel to create uImage, uInitrd, dtb
     # using flash-kernel would be a good approach, except it fails in the
     # cross build environment due to too many environment checks...
@@ -150,7 +123,11 @@ beaglebone_repack_kernel() {
 
     echo "info: repacking beaglebone kernel and initrd"
 
-    kernelVersion=$(ls /usr/lib/*/am335x-boneblack.dtb | head -1 | cut -d/ -f4)
+    if [ ! $bbb_version ]; then
+        kernelVersion=$(ls /usr/lib/*/am335x-boneblack.dtb | head -1 | cut -d/ -f4)
+    else
+        kernelVersion=$(ls /usr/lib/*/am335x-boneblack-${1}.dtb | head -1 | cut -d/ -f4)
+    fi
     version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
     initRd=initrd.img-$version
     vmlinuz=vmlinuz-$version
@@ -165,44 +142,27 @@ beaglebone_repack_kernel() {
 
     rm -rf /tmp/initrd-repack
 
-    (cd /boot ; \
-     cp /usr/lib/$kernelVersion/am335x-boneblack.dtb dtb ; \
-     cat $vmlinuz dtb >> temp-kernel ; \
-     mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
-             -C none -a 0x80200000 -e 0x80200000 -d temp-kernel uImage ; \
-     rm -f temp-kernel ; \
-     mkimage -A arm -O linux -T ramdisk -C gzip -a 0x81000000 -e 0x81000000 \
-             -n "Debian ramdisk ${version}" \
-             -d $initRd uInitrd )
-}
-
-beaglebone_wireless_repack_kernel() {
-    echo "info: repacking beaglebone wireless kernel and initrd"
-
-    kernelVersion=$(ls /usr/lib/*/am335x-boneblack-wireless.dtb | head -1 | cut -d/ -f4)
-    version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
-    initRd=initrd.img-$version
-    vmlinuz=vmlinuz-$version
-
-    mkdir /tmp/initrd-repack
-
-    (cd /tmp/initrd-repack ; \
-     zcat /boot/$initRd | cpio -i ; \
-     rm -f conf/param.conf ; \
-     find . | cpio --quiet -o -H newc | \
-         gzip -9 > /boot/$initRd )
-
-    rm -rf /tmp/initrd-repack
-
-    (cd /boot ; \
-     cp /usr/lib/$kernelVersion/am335x-boneblack-wireless.dtb dtb ; \
-     cat $vmlinuz dtb >> temp-kernel ; \
-     mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
-             -C none -a 0x82000000 -e 0x82000000 -d temp-kernel uImage ; \
-     rm -f temp-kernel ; \
-     mkimage -A arm -O linux -T ramdisk -C gzip -a 0x88080000 -e 0x88080000 \
-             -n "Debian ramdisk ${version}" \
-             -d $initRd uInitrd )
+    if [ ! $bbb_version ]; then
+        (cd /boot ; \
+         cp /usr/lib/$kernelVersion/am335x-boneblack.dtb dtb ; \
+         cat $vmlinuz dtb >> temp-kernel ; \
+         mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
+                 -C none -a 0x80200000 -e 0x80200000 -d temp-kernel uImage ; \
+         rm -f temp-kernel ; \
+         mkimage -A arm -O linux -T ramdisk -C gzip -a 0x81000000 -e 0x81000000 \
+                 -n "Debian ramdisk ${version}" \
+                 -d $initRd uInitrd )
+    else
+        (cd /boot ; \
+         cp /usr/lib/$kernelVersion/am335x-boneblack-${bbb_version}.dtb dtb ; \
+         cat $vmlinuz dtb >> temp-kernel ; \
+         mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
+                 -C none -a 0x82000000 -e 0x82000000 -d temp-kernel uImage ; \
+         rm -f temp-kernel ; \
+         mkimage -A arm -O linux -T ramdisk -C gzip -a 0x88080000 -e 0x88080000 \
+                 -n "Debian ramdisk ${version}" \
+                 -d $initRd uInitrd )
+    fi
 }
 
 a20_setup_boot() {
@@ -270,9 +230,9 @@ case "$MACHINE" in
         enable_serial_console ttyO0
         ;;
     beaglebonewifi)
-        beaglebone_wireless_setup_boot
+        beaglebone_setup_boot wireless
         beaglebone_flash
-        beaglebone_wireless_repack_kernel
+        beaglebone_repack_kernel wireless
         enable_serial_console ttyO0
         ;;
     cubietruck)
