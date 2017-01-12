@@ -47,6 +47,36 @@ ghost_variables=(GHOST_VERSION
                  DDNS_PROVIDER
                  MY_USERNAME)
 
+function ghost_replace_jquery {
+    sed -i "s|code.jquery.com/jquery-${previous_jquery_version}.min.js|$GHOST_DOMAIN_NAME/jquery-${jquery_version}.js|g" content/themes/casper/default.hbs
+    sed -i "s|code.jquery.com/jquery-${previous_jquery_version}.min.js|$GHOST_DOMAIN_NAME/jquery-${jquery_version}.js|g" core/server/data/migration/fixtures/004/01-move-jquery-with-alert.js
+    sed -i "s|code.jquery.com/jquery-${previous_jquery_version}.min.js|$GHOST_DOMAIN_NAME/jquery-${jquery_version}.js|g" node_modules/gscan/app/tpl/layouts/default.hbs
+}
+
+function ghost_remove_offsite_links {
+    cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+
+    # remove google font links
+    # Note that the privacy options in config.js aren't sufficient to remove Google's tentacles
+    sed -i "s/fonts.googleapis.com/$GHOST_DOMAIN_NAME/g" content/themes/casper/default.hbs
+    sed -i "s/fonts.googleapis.com/$GHOST_DOMAIN_NAME/g" core/server/apps/amp/lib/views/amp.hbs
+
+    # copy jquery locally
+    previous_jquery_version='1.12.0'
+    jquery_version='1.12.4'
+    if [ ! -f /var/www/$GHOST_DOMAIN_NAME/htdocs/jquery-${jquery_version}.js ]; then
+        wget https://code.jquery.com/jquery-${jquery_version}.js
+        jquery_hash=$(sha256sum jquery-${jquery_version}.js | awk -F ' ' '{print $1}')
+        if [[ "$jquery_hash" != '430f36f9b5f21aae8cc9dca6a81c4d3d84da5175eaedcf2fdc2c226302cb3575' ]]; then
+            echo $'Unexpected jquery hash value'
+            exit 258442
+        fi
+    fi
+    ghost_replace_jquery
+    previous_jquery_version='1.11.3'
+    ghost_replace_jquery
+}
+
 function ghost_replace_proprietary_services {
     replace_file=$1
 
@@ -130,6 +160,7 @@ function upgrade_ghost {
     ghost_replace_services
     chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
 
+    ghost_remove_offsite_links
     systemctl restart ghost
 }
 
@@ -360,6 +391,8 @@ function install_ghost {
     echo '' >> /etc/systemd/system/ghost.service
     echo '[Install]' >> /etc/systemd/system/ghost.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ghost.service
+
+    ghost_remove_offsite_links
 
     systemctl enable ghost
     systemctl daemon-reload
