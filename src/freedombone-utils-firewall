@@ -31,6 +31,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 FIREWALL_CONFIG=$HOME/${PROJECT_NAME}-firewall.cfg
+FIREWALL_DOMAINS=$HOME/${PROJECT_NAME}-firewall-domains.cfg
 
 function save_firewall_settings {
     iptables-save > /etc/firewall.conf
@@ -335,6 +336,45 @@ function firewall_remove {
             fi
         fi
         sed -i "/=${firewall_port}/d" $FIREWALL_CONFIG
+        save_firewall_settings
+    fi
+}
+
+function domain_to_hex_string {
+    domain="$1"
+    ctr = 1
+    segment=$(echo "$domain" | awk -F '.' "{print \$$ctr}")
+    while [ ${#segment} -gt 0 ]
+    do
+        if [ ${#segment} -lt 10 ]; then
+            echo -n "|0${#segment}|$segment"
+        else
+            echo -n "|${#segment}|$segment"
+        fi
+        ctr=$((ctr + 1))
+        segment=$(echo "$domain" | awk -F '.' "{print \$$ctr}")
+    done
+    echo ""
+}
+
+function firewall_block_domain {
+    blocked_domain="$1"
+    if ! grep "$blocked_domain" $FIREWALL_DOMAINS; then
+        hexstr=$(domain_to_hex_string $blocked_domain)
+        iptables -I FORWARD -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+        iptables -I FORWARD -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+        echo "${blocked_domain}" >> $FIREWALL_DOMAINS
+        save_firewall_settings
+    fi
+}
+
+function firewall_unblock_domain {
+    unblocked_domain="$1"
+    if grep "${unblocked_domain}" $FIREWALL_DOMAINS; then
+        hexstr=$(domain_to_hex_string $unblocked_domain)
+        iptables -D FORWARD -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+        iptables -D FORWARD -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+        sed -i "/${unblocked_domain}/d" $FIREWALL_DOMAINS
         save_firewall_settings
     fi
 }
