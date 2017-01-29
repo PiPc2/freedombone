@@ -64,6 +64,110 @@ xmpp_variables=(ONION_ONLY
                 DEFAULT_DOMAIN_NAME
                 XMPP_DOMAIN_CODE)
 
+function xmpp_add_onion_address {
+    domain_name="$1"
+    onion_address="$2"
+    if [ ${#domain_name} -eq 0 ]; then
+        return
+    fi
+    if [ ${#onion_address} -eq 0 ]; then
+        return
+    fi
+    if grep -q "[\"${domain_name}\"]" /etc/prosody/prosody.cfg.lua; then
+        sed -i "s|[\"${domain_name}\"].*|[\"${domain_name}\"] = \"${onion_address}\";|g" /etc/prosody/prosody.cfg.lua
+    else
+        sed -i "/onions_map = {/a  [\"${domain_name}\"] = \"${onion_address}\";" /etc/prosody/prosody.cfg.lua
+    fi
+    systemctl restart prosody
+}
+
+function xmpp_add_onion_address_interactive {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Add an ICANN to Onion domain mapping" \
+           --form $"Sepecify an ICANN domain name and its equivalent onion address\n" 9 50 2 \
+           $"Domain:" 1 1 "" 1 18 26 25 \
+           $"Onion address:" 2 1 "" 2 18 26 25 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    domain_name=$(cat $data | sed -n 1p)
+    onion_address=$(cat $data | sed -n 2p)
+    if [[ "$onion_address" != *".onion" ]]; then
+        return
+    fi
+    if [[ "$domain_name" != *"."* ]]; then
+        return
+    fi
+
+    xmpp_add_onion_address "$domain_name" "$onion_address"
+
+    dialog --title $"Add an ICANN to Onion domain mapping" \
+           --msgbox $"${domain_name} -> ${onion_address} added" 6 70
+}
+
+function xmpp_remove_onion_address {
+    domain_name="$1"
+    if [ ${#domain_name} -eq 0 ]; then
+        return
+    fi
+    if grep -q "[\"${domain_name}\"]" /etc/prosody/prosody.cfg.lua; then
+        sed -i "/[\"${domain_name}\"]/d" /etc/prosody/prosody.cfg.lua
+    fi
+
+    if grep -q "= \"${domain_name}\";" /etc/prosody/prosody.cfg.lua; then
+        sed -i "/= \"${domain_name}\";/d" /etc/prosody/prosody.cfg.lua
+    fi
+    systemctl restart prosody
+}
+
+function xmpp_remove_onion_address_interactive {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Remove ICANN to Onion domain mapping" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'Enter the domain name or onion address to be removed' 8 60 2>$data
+    sel=$?
+    case $sel in
+        0) domain_name=$(<$data)
+           if [[ "$domain_name" != *"."* ]]; then
+               return
+           fi
+           xmpp_remove_onion_address "$domain_name"
+           dialog --title $"Remove an ICANN to Onion domain mapping" \
+                  --msgbox $"${domain_name} removed" 6 70
+           ;;
+    esac
+}
+
+function configure_interactive_xmpp {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"XMPP" \
+               --radiolist $"Choose an operation:" 12 70 3 \
+               1 $"Add an ICANN to onion domain mapping" off \
+               2 $"Remove an ICANN to onion domain mapping" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+        case $(cat $data) in
+            1) xmpp_add_onion_address_interactive;;
+            2) xmpp_remove_onion_address_interactive;;
+            3) break;;
+        esac
+    done
+}
+
 function remove_user_xmpp {
     remove_username="$1"
     ${PROJECT_NAME}-pass -u $remove_username --rmapp xmpp
@@ -214,6 +318,13 @@ function upgrade_xmpp_server {
         fi
         rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
     fi
+
+    # add onion addresses for known servers
+    if ! grep -q "onions_map =" /etc/prosody/prosody.cfg.lua; then
+        echo '' >> /etc/prosody/prosody.cfg.lua
+        xmpp_onion_addresses /etc/prosody/prosody.cfg.lua
+    fi
+
     systemctl restart prosody
 }
 
@@ -432,11 +543,51 @@ function xmpp_modules {
     echo '};' >> $filename
 }
 
+function xmpp_onion_addresses {
+    filename=$1
+    echo 'onions_map = {' >> $filename
+    echo '  ["anonymitaet-im-inter.net"] = "rwf5skuv5vqzcdit.onion";' >> $filename
+    echo '  ["autistici.org"] = "wi7qkxyrdpu5cmvr.onion";' >> $filename
+    echo '  ["jabber.calyxinstitute.org"] = "ijeeynrc6x2uy5ob.onion";' >> $filename
+    echo '  ["jabber.ccc.de"] = "okj7xc6j2szr2y75.onion";' >> $filename
+    echo '  ["cloak.dk"] = "m2dsl4banuimpm6c.onion";' >> $filename
+    echo '  ["jabber.cryptoparty.is"] = "cryjabkbdljzohnp.onion";' >> $filename
+    echo '  ["daemons.cf"] = "daemon4jidu2oig6.onion";' >> $filename
+    echo '  ["dukgo.com"] = "wlcpmruglhxp6quz.onion";' >> $filename
+    echo '  ["evil.im"] = "evilxro6nvjuvxqo.onion";' >> $filename
+    echo '  ["xmpp.evil.im"] = "evilxro6nvjuvxqo.onion";' >> $filename
+    echo '  ["inventati.org"] = "wi7qkxyrdpu5cmvr.onion";' >> $filename
+    echo '  ["jabber.ipredator.se"] = "3iffdebkzzkpgipa.onion";' >> $filename
+    echo '  ["jabber-germany.de"] = "dbbrphko5tqcpar3.onion";' >> $filename
+    echo '  ["kode.im"] = "ihkw7qy3tok45dun.onion";' >> $filename
+    echo '  ["im.koderoot.net"] = "ihkw7qy3tok45dun.onion";' >> $filename
+    echo '  ["jabber.lqdn.fr"] = "jabber63t4r2qi57.onion";' >> $filename
+    echo '  ["jabber.otr.im"] = "5rgdtlawqkcplz75.onion";' >> $filename
+    echo '  ["otromundo.cf"] = "arauemwe2utqqzye.onion";' >> $filename
+    echo '  ["patchcord.be"] = "xsydhi3dnbjuatpz.onion";' >> $filename
+    echo '  ["riseup.net"] = "4cjw6cwpeaeppfqz.onion";' >> $filename
+    echo '  ["xmpp.riseup.net"] = "4cjw6cwpeaeppfqz.onion";' >> $filename
+    echo '  ["rows.io"] = "yz6yiv2hxyagvwy6.onion";' >> $filename
+    echo '  ["xmpp.rows.io"] = "yz6yiv2hxyagvwy6.onion";' >> $filename
+    echo '  ["securejabber.me"] = "giyvshdnojeivkom.onion";' >> $filename
+    echo '  ["so36.net"] = "s4fgy24e2b5weqdb.onion";' >> $filename
+    echo '  ["jabber.so36.net"] = "s4fgy24e2b5weqdb.onion";' >> $filename
+    echo '  ["jabber.systemli.org"] = "x5tno6mwkncu5m3h.onion";' >> $filename
+    echo '  ["taolo.ga"] = "l3ybpw4vs6ie5rv2.onion";' >> $filename
+    echo '  ["tchncs.de"] = "duvfmyqmdlyvc3mi.onion";' >> $filename
+    echo '  ["wtfismyip.com"] = "ofkztxcohimx34la.onion";' >> $filename
+    echo '  ["prosody.xmpp.is"] = "y2qmqomqpszzryei.onion";' >> $filename
+    echo '  ["xndr.de"] = "trcubpttd6zkc3tf.onion";' >> $filename
+    echo '};' >> $filename
+}
+
 function xmpp_create_config {
     echo "admins = { \"$MY_USERNAME@$DEFAULT_DOMAIN_NAME\" }" > /etc/prosody/prosody.cfg.lua
     echo 'plugin_paths = { "/var/lib/prosody/prosody-modules" }' >> /etc/prosody/prosody.cfg.lua
     echo '' >> /etc/prosody/prosody.cfg.lua
     xmpp_modules /etc/prosody/prosody.cfg.lua
+    echo '' >> /etc/prosody/prosody.cfg.lua
+    xmpp_onion_addresses /etc/prosody/prosody.cfg.lua
     echo '' >> /etc/prosody/prosody.cfg.lua
     echo 'allow_registration = false;' >> /etc/prosody/prosody.cfg.lua
     echo '' >> /etc/prosody/prosody.cfg.lua
