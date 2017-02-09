@@ -15,7 +15,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2016-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -37,8 +37,11 @@ VARIANTS='full full-vim chat'
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
 
+MATRIX_DOMAIN_NAME=
+MATRIX_CODE=
+
 MATRIX_DATA_DIR='/var/lib/matrix'
-MATRIX_HTTP_PORT=8558
+MATRIX_HTTP_PORT=8448
 MATRIX_ID_HTTP_PORT=8557
 MATRIX_PORT=8008
 MATRIX_ID_PORT=8081
@@ -54,120 +57,125 @@ MATRIX_SECRET=
 matrix_variables=(ONION_ONLY
                   MY_USERNAME
                   MATRIX_SECRET
-                  DEFAULT_DOMAIN_NAME)
+                  DEFAULT_DOMAIN_NAME
+                  MATRIX_DOMAIN_NAME
+                  MATRIX_CODE)
 
 function matrix_nginx {
-    create_default_web_site
-
-    # append the matrix server to the web site config
-    matrix_nginx_site=/etc/nginx/sites-available/$DEFAULT_DOMAIN_NAME
-    if ! grep -q '# End of Matrix Server' $matrix_nginx_site; then
-        if [[ $ONION_ONLY == "no" ]]; then
-            echo '# Matrix Server' >> $matrix_nginx_site
-            echo 'server {' >> $matrix_nginx_site
-            echo "  listen ${MATRIX_HTTP_PORT} ssl;" >> $matrix_nginx_site
-            echo "  listen [::]:${MATRIX_HTTP_PORT} ssl;" >> $matrix_nginx_site
-            echo "  server_name ${DEFAULT_DOMAIN_NAME};" >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Security' >> $matrix_nginx_site
-            function_check nginx_ssl
-            nginx_ssl ${DEFAULT_DOMAIN_NAME}
-
-            function_check nginx_disable_sniffing
-            nginx_disable_sniffing ${DEFAULT_DOMAIN_NAME}
-
-            echo '  add_header Strict-Transport-Security max-age=15768000;' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Logs' >> $matrix_nginx_site
-            echo '  access_log /dev/null;' >> $matrix_nginx_site
-            echo '  error_log /dev/null;' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Index' >> $matrix_nginx_site
-            echo '  index index.html;' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Location' >> $matrix_nginx_site
-            echo '  location / {' >> $matrix_nginx_site
-            function_check nginx_limits
-            nginx_limits ${DEFAULT_DOMAIN_NAME} '15m'
-            echo "      proxy_pass http://localhost:${MATRIX_PORT}/_matrix;" >> $matrix_nginx_site
-            echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
-            echo '  }' >> $matrix_nginx_site
-            echo '}' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo 'server {' >> $matrix_nginx_site
-            echo "  listen ${MATRIX_ID_HTTP_PORT} ssl;" >> $matrix_nginx_site
-            echo "  listen [::]:${MATRIX_ID_HTTP_PORT} ssl;" >> $matrix_nginx_site
-            echo "  server_name ${DEFAULT_DOMAIN_NAME};" >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Security' >> $matrix_nginx_site
-            function_check nginx_ssl
-            nginx_ssl ${DEFAULT_DOMAIN_NAME}
-
-            function_check nginx_disable_sniffing
-            nginx_disable_sniffing ${DEFAULT_DOMAIN_NAME}
-
-            echo '  add_header Strict-Transport-Security max-age=15768000;' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Logs' >> $matrix_nginx_site
-            echo '  access_log /dev/null;' >> $matrix_nginx_site
-            echo '  error_log /dev/null;' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Index' >> $matrix_nginx_site
-            echo '  index index.html;' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-            echo '  # Location' >> $matrix_nginx_site
-            echo '  location / {' >> $matrix_nginx_site
-            function_check nginx_limits
-            nginx_limits ${DEFAULT_DOMAIN_NAME} '15m'
-            echo "      proxy_pass http://localhost:${MATRIX_ID_PORT};" >> $matrix_nginx_site
-            echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
-            echo '  }' >> $matrix_nginx_site
-            echo '}' >> $matrix_nginx_site
-            echo '' >> $matrix_nginx_site
-        else
-            echo '# Matrix Server' >> $matrix_nginx_site
-        fi
-        echo 'server {' >> $matrix_nginx_site
-        echo "    listen 127.0.0.1:$MATRIX_ONION_PORT default_server;" >> $matrix_nginx_site
-        echo "    server_name $DEFAULT_DOMAIN_NAME;" >> $matrix_nginx_site
+    matrix_nginx_site=/etc/nginx/sites-available/$MATRIX_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        echo 'server {' > $matrix_nginx_site
+        echo "  listen 443 ssl;" >> $matrix_nginx_site
+        echo "  listen [::]:443 ssl;" >> $matrix_nginx_site
+        echo "  server_name ${MATRIX_DOMAIN_NAME};" >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
+        echo '  # Security' >> $matrix_nginx_site
+        function_check nginx_ssl
+        nginx_ssl ${MATRIX_DOMAIN_NAME}
+
         function_check nginx_disable_sniffing
-        nginx_disable_sniffing $DEFAULT_DOMAIN_NAME
+        nginx_disable_sniffing ${MATRIX_DOMAIN_NAME}
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
         echo '  # Logs' >> $matrix_nginx_site
         echo '  access_log /dev/null;' >> $matrix_nginx_site
         echo '  error_log /dev/null;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
+        echo '  # Index' >> $matrix_nginx_site
+        echo '  index index.html;' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
         echo '  # Location' >> $matrix_nginx_site
         echo '  location / {' >> $matrix_nginx_site
         function_check nginx_limits
-        nginx_limits $DEFAULT_DOMAIN_NAME '15m'
+        nginx_limits ${MATRIX_DOMAIN_NAME} '15m'
         echo "      proxy_pass http://localhost:${MATRIX_PORT}/_matrix;" >> $matrix_nginx_site
         echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
         echo '  }' >> $matrix_nginx_site
         echo '}' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
         echo 'server {' >> $matrix_nginx_site
-        echo "    listen 127.0.0.1:$MATRIX_ID_ONION_PORT default_server;" >> $matrix_nginx_site
-        echo "    server_name $DEFAULT_DOMAIN_NAME;" >> $matrix_nginx_site
+        echo "  listen ${MATRIX_ID_HTTP_PORT} ssl;" >> $matrix_nginx_site
+        echo "  listen [::]:${MATRIX_ID_HTTP_PORT} ssl;" >> $matrix_nginx_site
+        echo "  server_name ${MATRIX_DOMAIN_NAME};" >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
+        echo '  # Security' >> $matrix_nginx_site
+        function_check nginx_ssl
+        nginx_ssl ${MATRIX_DOMAIN_NAME}
+
         function_check nginx_disable_sniffing
-        nginx_disable_sniffing $DEFAULT_DOMAIN_NAME
+        nginx_disable_sniffing ${MATRIX_DOMAIN_NAME}
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
         echo '  # Logs' >> $matrix_nginx_site
         echo '  access_log /dev/null;' >> $matrix_nginx_site
         echo '  error_log /dev/null;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
+        echo '  # Index' >> $matrix_nginx_site
+        echo '  index index.html;' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
         echo '  # Location' >> $matrix_nginx_site
         echo '  location / {' >> $matrix_nginx_site
         function_check nginx_limits
-        nginx_limits $DEFAULT_DOMAIN_NAME '15m'
+        nginx_limits ${MATRIX_DOMAIN_NAME} '15m'
         echo "      proxy_pass http://localhost:${MATRIX_ID_PORT};" >> $matrix_nginx_site
         echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
         echo '  }' >> $matrix_nginx_site
         echo '}' >> $matrix_nginx_site
-        echo '# End of Matrix Server' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
+    else
+        echo -n '' > $matrix_nginx_site
     fi
+    echo 'server {' >> $matrix_nginx_site
+    echo "    listen 127.0.0.1:$MATRIX_ONION_PORT default_server;" >> $matrix_nginx_site
+    echo "    server_name $MATRIX_DOMAIN_NAME;" >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $MATRIX_DOMAIN_NAME
+    echo '' >> $matrix_nginx_site
+    echo '  # Logs' >> $matrix_nginx_site
+    echo '  access_log /dev/null;' >> $matrix_nginx_site
+    echo '  error_log /dev/null;' >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    echo '  # Location' >> $matrix_nginx_site
+    echo '  location / {' >> $matrix_nginx_site
+    function_check nginx_limits
+    nginx_limits $MATRIX_DOMAIN_NAME '15m'
+    echo "      proxy_pass http://localhost:${MATRIX_PORT}/_matrix;" >> $matrix_nginx_site
+    echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
+    echo '  }' >> $matrix_nginx_site
+    echo '}' >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    echo 'server {' >> $matrix_nginx_site
+    echo "    listen 127.0.0.1:$MATRIX_ID_ONION_PORT default_server;" >> $matrix_nginx_site
+    echo "    server_name $MATRIX_DOMAIN_NAME;" >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $MATRIX_DOMAIN_NAME
+    echo '' >> $matrix_nginx_site
+    echo '  # Logs' >> $matrix_nginx_site
+    echo '  access_log /dev/null;' >> $matrix_nginx_site
+    echo '  error_log /dev/null;' >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    echo '  # Location' >> $matrix_nginx_site
+    echo '  location / {' >> $matrix_nginx_site
+    function_check nginx_limits
+    nginx_limits $MATRIX_DOMAIN_NAME '15m'
+    echo "      proxy_pass http://localhost:${MATRIX_ID_PORT};" >> $matrix_nginx_site
+    echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
+    echo '  }' >> $matrix_nginx_site
+    echo '}' >> $matrix_nginx_site
+
+    if [ ! -d /var/www/$MATRIX_DOMAIN_NAME ]; then
+        mkdir -p /var/www/$MATRIX_DOMAIN_NAME/htdocs
+    fi
+
+    function_check add_ddns_domain
+    add_ddns_domain $MATRIX_DOMAIN_NAME
+
+    function_check create_site_certificate
+    create_site_certificate $MATRIX_DOMAIN_NAME
 
     systemctl restart nginx
     systemctl restart turn
@@ -188,7 +196,7 @@ function matrix_generate_homeserver_file {
            --config-path "${filepath}" \
            --generate-config \
            --report-stats ${REPORT_STATS} \
-           --server-name ${DEFAULT_DOMAIN_NAME}
+           --server-name ${MATRIX_DOMAIN_NAME}
 }
 
 function matrix_generate_identityserver_file {
@@ -199,7 +207,7 @@ function matrix_generate_identityserver_file {
            --config-path "${filepath}" \
            --generate-config \
            --report-stats ${REPORT_STATS} \
-           --server-name ${DEFAULT_DOMAIN_NAME}
+           --server-name ${MATRIX_DOMAIN_NAME}
 }
 
 function matrix_configure_homeserver_yaml {
@@ -208,7 +216,7 @@ function matrix_configure_homeserver_yaml {
 
     local ymltemp="$(mktemp)"
 
-    awk -v TURNURIES="turn_uris: [\"turn:${DEFAULT_DOMAIN_NAME}:${TURN_HTTP_PORT}?transport=udp\", \"turn:${DEFAULT_DOMAIN_NAME}:${TURN_HTTP_PORT}?transport=tcp\"]" \
+    awk -v TURNURIES="turn_uris: [\"turn:${MATRIX_DOMAIN_NAME}:${TURN_HTTP_PORT}?transport=udp\", \"turn:${DEFAULT_DOMAIN_NAME}:${TURN_HTTP_PORT}?transport=tcp\"]" \
         -v TURNSHAREDSECRET="turn_shared_secret: \"${turnkey}\"" \
         -v PIDFILE="pid_file: ${MATRIX_DATA_DIR}/homeserver.pid" \
         -v DATABASE="database: \"${MATRIX_DATA_DIR}/homeserver.db\"" \
@@ -235,10 +243,10 @@ function matrix_configure_homeserver_yaml {
     sed -i "s|log_file:.*|log_file: \"/dev/null\"|g" "${filepath}"
     sed -i 's|bind_address:.*|bind_address: 127.0.0.1|g' "${filepath}"
     sed -i '0,/x_forwarded:.*/s//x_forwarded: true/' "${filepath}"
-    sed -i "s|server_name:.*|server_name: \"${DEFAULT_DOMAIN_NAME}\"|g" "${filepath}"
-    sed -i "/trusted_third_party_id_servers:/a     - ${DEFAULT_DOMAIN_NAME}" "${filepath}"
-    sed -i "s|- ${DEFAULT_DOMAIN_NAME}|    - ${DEFAULT_DOMAIN_NAME}|g" "${filepath}"
-    sed -i "s|enable_registration:.*|enable_registration: False|g" "${filepath}"
+    sed -i "s|server_name:.*|server_name: \"${MATRIX_DOMAIN_NAME}\"|g" "${filepath}"
+    sed -i "/trusted_third_party_id_servers:/a     - ${MATRIX_DOMAIN_NAME}" "${filepath}"
+    sed -i "s|- ${MATRIX_DOMAIN_NAME}|    - ${MATRIX_DOMAIN_NAME}|g" "${filepath}"
+    sed -i "s|enable_registration:.*|enable_registration: True|g" "${filepath}"
 }
 
 function matrix_configure_identityserver {
@@ -249,14 +257,14 @@ function matrix_configure_identityserver {
     sed -i "s|Sydent Validation|Freedombone Matrix Account Validation|g" ${filepath}
     sed -i "s|pidfile.path.*|pidfile.path = /etc/sydent/sydent.pid|g" ${filepath}
     sed -i "s|log.path.*|log.path = /dev/null|g" ${filepath}
-    sed -i "s|server.name.*|server.name = ${DEFAULT_DOMAIN_NAME}|g" ${filepath}
+    sed -i "s|server.name.*|server.name = ${MATRIX_DOMAIN_NAME}|g" ${filepath}
 }
 
 function matrix_diff {
     DIFFPARAMS="${DIFFPARAMS:-Naur}"
-    DEFAULT_DOMAIN_NAME="${DEFAULT_DOMAIN_NAME:-demo_server_name}"
+    MATRIX_DOMAIN_NAME="${MATRIX_DOMAIN_NAME:-demo_server_name}"
     REPORT_STATS="${REPORT_STATS:-no_or_yes}"
-    export DEFAULT_DOMAIN_NAME REPORT_STATS
+    export MATRIX_DOMAIN_NAME REPORT_STATS
 
     matrix_generate_synapse_file $INSTALL_DIR/homeserver.synapse.yaml
     diff -${DIFFPARAMS} $INSTALL_DIR/homeserver.synapse.yaml ${MATRIX_DATA_DIR}/homeserver.yaml
@@ -265,7 +273,7 @@ function matrix_diff {
 
 function matrix_generate {
     breakup="0"
-    [[ -z "${DEFAULT_DOMAIN_NAME}" ]] && echo "STOP! environment variable DEFAULT_DOMAIN_NAME must be set" && breakup="1"
+    [[ -z "${MATRIX_DOMAIN_NAME}" ]] && echo "STOP! environment variable MATRIX_DOMAIN_NAME must be set" && breakup="1"
     [[ -z "${REPORT_STATS}" ]] && echo "STOP! environment variable REPORT_STATS must be set to 'no' or 'yes'" && breakup="1"
     [[ "${breakup}" == "1" ]] && exit 1
 
@@ -295,14 +303,25 @@ function add_user_matrix {
     ${PROJECT_NAME}-pass -u $new_username -a matrix -p "$new_user_password"
 
     if [[ $ONION_ONLY == 'no' ]]; then
-        retval=$(register_new_matrix_user -c ${MATRIX_DATA_DIR}/homeserver.yaml -u "${new_username}" -p "${new_user_password}" -a https://${DEFAULT_DOMAIN_NAME}:${MATRIX_HTTP_PORT})
+        retval=$(register_new_matrix_user -c ${MATRIX_DATA_DIR}/homeserver.yaml -u "${new_username}" -p "${new_user_password}" -a https://${MATRIX_DOMAIN_NAME})
     else
-        retval=$(register_new_matrix_user -c ${MATRIX_DATA_DIR}/homeserver.yaml -u "${new_username}" -p "${new_user_password}" -a http://${DEFAULT_DOMAIN_NAME}:${MATRIX_HTTP_PORT})
+        retval=$(register_new_matrix_user -c ${MATRIX_DATA_DIR}/homeserver.yaml -u "${new_username}" -p "${new_user_password}" -a http://${MATRIX_DOMAIN_NAME})
     fi
     echo "0"
 }
 
 function install_interactive_matrix {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        MATRIX_DOMAIN_NAME='matrix.local'
+        write_config_param "MATRIX_DOMAIN_NAME" "$MATRIX_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "matrix" "MATRIX_DOMAIN_NAME" "MATRIX_CODE"
+    fi
     APP_INSTALLED=1
 }
 
@@ -487,6 +506,17 @@ function restore_remote_matrix {
 function remove_matrix {
     #firewall_remove ${MATRIX_HTTP_PORT}
 
+    nginx_dissite $MATRIX_DOMAIN_NAME
+    remove_certs $MATRIX_DOMAIN_NAME
+    if [ -f /etc/nginx/sites-available/$MATRIX_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$MATRIX_DOMAIN_NAME
+    fi
+    if [ ! -d /var/www/$MATRIX_DOMAIN_NAME ]; then
+        rm -rf /var/www/$MATRIX_DOMAIN_NAME
+    fi
+    function_check remove_ddns_domain
+    remove_ddns_domain $MATRIX_DOMAIN_NAME
+
     systemctl stop matrix
     if [ -f /etc/systemd/system/sydent.service ]; then
         systemctl stop sydent
@@ -518,7 +548,7 @@ function remove_matrix {
     remove_onion_service matrix ${MATRIX_ONION_PORT}
     remove_onion_service matrix ${MATRIX_ID_ONION_PORT}
 
-    sed -i "/# Matrix Server/,/# End of Matrix Server/d" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
+    #sed -i "/# Matrix Server/,/# End of Matrix Server/d" /etc/nginx/sites-available/${MATRIX_DOMAIN_NAME}
     systemctl restart nginx
 
     remove_completion_param install_matrix
@@ -574,7 +604,7 @@ function install_identity_server {
     echo 'Type=simple' >> /etc/systemd/system/sydent.service
     echo 'User=matrix' >> /etc/systemd/system/sydent.service
     echo "WorkingDirectory=/etc/sydent" >> /etc/systemd/system/sydent.service
-    echo "ExecStart=/usr/bin/python -m sydent.sydent --config-path /etc/sydent/sydent.conf --report-stats ${REPORT_STATS} --server-name ${DEFAULT_DOMAIN_NAME}" >> /etc/systemd/system/sydent.service
+    echo "ExecStart=/usr/bin/python -m sydent.sydent --config-path /etc/sydent/sydent.conf --report-stats ${REPORT_STATS} --server-name ${MATRIX_DOMAIN_NAME}" >> /etc/systemd/system/sydent.service
     echo 'Restart=always' >> /etc/systemd/system/sydent.service
     echo 'RestartSec=10' >> /etc/systemd/system/sydent.service
     echo '' >> /etc/systemd/system/sydent.service
@@ -709,9 +739,9 @@ function install_matrix {
     fi
 
     if [[ ${ONION_ONLY} == 'no' ]]; then
-        if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        if [ ! -f /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.pem ]; then
             echo $'Obtaining certificate for the main domain'
-            create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
+            create_site_certificate ${MATRIX_DOMAIN_NAME} 'yes'
         fi
     fi
 
@@ -737,8 +767,8 @@ function install_matrix {
     function_check install_home_server
     install_home_server
 
-    function_check install_identity_server
-    install_identity_server
+    #function_check install_identity_server
+    #install_identity_server
 
     function_check update_default_domain
     update_default_domain
@@ -748,10 +778,10 @@ function install_matrix {
     function_check matrix_nginx
     matrix_nginx
 
-    if [[ $(add_user_matrix "${MY_USERNAME}" "${MATRIX_PASSWORD}" | tail -n 1) != "0" ]]; then
-        echo $'Failed to add matrix admin user';
-        exit 879352
-    fi
+    #if [[ $(add_user_matrix "${MY_USERNAME}" "${MATRIX_PASSWORD}" | tail -n 1) != "0" ]]; then
+    #    echo $'Failed to add matrix admin user';
+    #    exit 879352
+    #fi
 
     APP_INSTALLED=1
 }
