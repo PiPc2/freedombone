@@ -1,0 +1,215 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# functions common to GNU Social server varieties
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+QVITTER_THEME_REPO="https://git.gnu.io/h2p/Qvitter.git"
+QVITTER_THEME_COMMIT='a7f82628402db3a7579bb9b2877da3c5737da77b'
+
+PLEROMA_REPO="https://gitgud.io/lambadalambda/pleroma-fe.git"
+PLEROMA_COMMIT='935c0e09'
+
+function pleroma_set_background_image_from_url {
+    domain_name="$1"
+    url="$2"
+    title="$3"
+
+    ext=
+    if [ ${#url} -gt 0 ]; then
+        if [[ $url == *".jpeg" || $url == *".jpg" ]]; then
+            ext="jpg"
+        fi
+        if [[ $url == *".png" ]]; then
+            ext="png"
+        fi
+        if [[ $url == *".gif" ]]; then
+            ext="gif"
+        fi
+    fi
+
+    if [ ${#ext} -gt 0 ]; then
+        if [ -d /var/www/${domain_name}/htdocs/static ]; then
+            cd /var/www/${domain_name}/htdocs/static
+
+            wget $url -O bg_custom.${ext}
+            if [ ! -f bg_custom.${ext} ]; then
+                echo "$url"
+                echo $'Custom background image for pleroma could not be downloaded'
+                echo "1"
+                return
+            fi
+
+            sed -i "s|\"background\":.*|\"background\": \"bg_custom.${ext}\",|g" config.json
+        fi
+    fi
+
+    # customise the logo
+    if [ -f /var/www/${domain_name}/htdocs/static/logo.png ]; then
+        if [ -f ~/freedombone/img/logo_white.png ]; then
+            cp ~/freedombone/img/logo_white.png /var/www/${domain_name}/htdocs/static/logo.png
+        else
+            if [ -f /home/$MY_USERNAME/freedombone/img/logo_white.png ]; then
+                cp /home/$MY_USERNAME/freedombone/img/logo_white.png /var/www/${domain_name}/htdocs/static/logo.png
+            fi
+        fi
+    fi
+
+    # customise the title
+    if [ -f /var/www/${domain_name}/htdocs/static/config.json ]; then
+        sed -i "s|\"name\":.*|\"name\": \"${title}\",|g" config.json
+    fi
+
+    echo "0"
+}
+
+function install_qvitter {
+    domain_name=$1
+    app_name=$2
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/${domain_name}/htdocs/local/plugins/Qvitter "${app_name} theme commit" "$QVITTER_THEME_COMMIT" $QVITTER_THEME_REPO
+
+    # customise with project logo
+    if [ -f /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png ]; then
+        if [ -f ~/freedombone/img/gnusocial_sprite.png ]; then
+            cp ~/freedombone/img/gnusocial_sprite.png /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png
+        else
+            if [ -f /home/$MY_USERNAME/freedombone/img/gnusocial_sprite.png ]; then
+                cp /home/$MY_USERNAME/freedombone/img/gnusocial_sprite.png /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png
+            fi
+        fi
+    fi
+
+    if [[ $(app_is_installed "${app_name}_theme") == "1" ]]; then
+        return
+    fi
+
+    apt-get -yq install wget
+
+    if [ ! -d /var/www/${domain_name}/htdocs/local/plugins ]; then
+        mkdir -p /var/www/${domain_name}/htdocs/local/plugins
+    fi
+
+    cd /var/www/${domain_name}/htdocs/local/plugins
+    function_check git_clone
+    git_clone $QVITTER_THEME_REPO Qvitter
+    cd /var/www/${domain_name}/htdocs/local/plugins/Qvitter
+    git checkout $QVITTER_THEME_COMMIT -b $QVITTER_THEME_COMMIT
+
+    config_file=/var/www/${domain_name}/htdocs/config.php
+    if ! grep -q "addPlugin('Qvitter')" $config_file; then
+        echo "" >> $config_file
+        echo "// Qvitter settings" >> $config_file
+        echo "addPlugin('Qvitter');" >> $config_file
+        echo "\$config['site']['qvitter']['enabledbydefault'] = true;" >> $config_file
+        echo "\$config['site']['qvitter']['defaultbackgroundcolor'] = '#f4f4f4';" >> $config_file
+        echo "\$config['site']['qvitter']['defaultlinkcolor'] = '#0084B4';" >> $config_file
+        echo "\$config['site']['qvitter']['timebetweenpolling'] = 30000; // 30 secs" >> $config_file
+        if [[ $ONION_ONLY != 'no' ]]; then
+            echo "\$config['site']['qvitter']['urlshortenerapiurl'] = 'http://qttr.at/shortener.php';" >> $config_file
+            echo "\$config['site']['qvitter']['urlshortenersignature'] = 'b6afeec983';" >> $config_file
+        fi
+        echo "\$config['site']['qvitter']['favicon'] = 'img/favicon.ico?v=4';" >> $config_file
+        echo "\$config['site']['qvitter']['sprite'] = Plugin::staticPath('Qvitter', '').'img/sprite.png?v=40';" >> $config_file
+        echo "\$config['site']['qvitter']['enablewelcometext'] = false;" >> $config_file
+        echo "\$config['site']['qvitter']['blocked_ips'] = array();" >> $config_file
+    fi
+
+    # customise with project logo
+    if [ -f /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png ]; then
+        if [ -f ~/freedombone/img/gnusocial_sprite.png ]; then
+            cp ~/freedombone/img/gnusocial_sprite.png /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png
+        fi
+    fi
+
+    chown -R www-data:www-data /var/www/${domain_name}/htdocs
+
+    set_completion_param "${app_name} theme commit" "$QVITTER_THEME_COMMIT"
+
+    install_completed ${app_name}_theme
+}
+
+function install_pleroma {
+    app_name="$1"
+    pleroma_domain="$1"
+    background_url="$2"
+    title="$3"
+
+    if [ ! -d ~/build/pleroma ]; then
+        function_check git_clone
+        git_clone $PLEROMA_REPO ~/build/pleroma
+        if [ ! -d ~/build/pleroma ]; then
+            echo $'Unable to clone pleroma repo'
+            exit 682252
+        fi
+    fi
+
+    cd ~/build/pleroma
+    git checkout $PLEROMA_COMMIT -b $PLEROMA_COMMIT
+    set_completion_param "${app_name} pleroma commit" "$PLEROMA_COMMIT"
+
+    npm install -g yarn
+    yarn
+    npm run build
+    if [ ! -d ~/build/pleroma/dist ]; then
+        echo 'Unable to build pleroma'
+        exit 7629352
+    fi
+    mv ~/build/pleroma/dist/index.html ~/build/pleroma/dist/pleroma.html
+    cp -r ~/build/pleroma/dist/* /var/www/$pleroma_domain/htdocs/
+
+    gnusocial_set_background_image_from_url "$pleroma_domain" "$background_url" "$title"
+
+    nginx_site=/etc/nginx/sites-available/$pleroma_domain
+    sed -i 's|index index.php;|index pleroma.html;|g' $nginx_site
+}
+
+function upgrade_pleroma {
+    domain_name="$1"
+    app_name="$2"
+    background_url="$3"
+    title="$4"
+
+    if [ -d ~/build/pleroma ]; then
+        set_repo_commit ~/build/pleroma "${app_name} pleroma commit" "$PLEROMA_COMMIT" $PLEROMA_REPO
+        cd ~/build/pleroma
+        npm run build
+        if [ ! -d ~/build/pleroma/dist ]; then
+            echo 'Unable to build pleroma'
+            exit 268362
+        fi
+        mv ~/build/pleroma/dist/index.html ~/build/pleroma/dist/pleroma.html
+        cp -r ~/build/pleroma/dist/* /var/www/${domain_name}/htdocs/
+        pleroma_set_background_image_from_url "$domain_name" "$background_url" "$title"
+    else
+        install_pleroma "${app_name}" "${domain_name}" "${background_url}" "${title}"
+    fi
+}
+
+# NOTE: deliberately there is no "exit 0"
