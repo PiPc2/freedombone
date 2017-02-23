@@ -958,6 +958,273 @@ EOF
 }
 
 ##############################################################################
+# setup_utils
+##############################################################################
+
+function image_install_inadyn {
+    if [ $INSTALLING_MESH ]; then
+        return
+    fi
+    if [ ! -d $rootdir/root/build ]; then
+        mkdir -p $rootdir/root/build
+    fi
+    chroot "$rootdir" apt-get -yq install build-essential curl libgnutls28-dev automake1.11
+    git clone $INADYN_REPO $rootdir/root/build/inadyn
+    if [ ! -d $rootdir/root/build/inadyn ]; then
+        echo 'Failed to clone inadyn'
+        exit 728252
+    fi
+    cd $rootdir/root/build/inadyn
+    git checkout $INADYN_COMMIT -b $INADYN_COMMIT
+
+    chroot "$rootdir" cd /root/build/inadyn && ./configure
+    chroot "$rootdir" cd /root/build/inadyn && USE_OPENSSL=1 make
+    chroot "$rootdir" cd /root/build/inadyn && make install
+    if [ ! -f $rootdir/usr/local/sbin/inadyn ]; then
+        echo 'Failed to build inadyn'
+        exit 6209356
+    fi
+
+    # create a configuration file
+    echo 'background' > $rootdir/etc/inadyn.conf
+    echo 'verbose        1' >> $rootdir/etc/inadyn.conf
+    echo 'period         300' >> $rootdir/etc/inadyn.conf
+    echo 'startup-delay  60' >> $rootdir/etc/inadyn.conf
+    echo 'cache-dir      /run/inadyn' >> $rootdir/etc/inadyn.conf
+    echo 'logfile        /dev/null' >> $rootdir/etc/inadyn.conf
+    chmod 600 $rootdir/etc/inadyn.conf
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/inadyn.service
+    echo 'Description=inadyn (DynDNS updater)' >> $rootdir/etc/systemd/system/inadyn.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/inadyn.service
+    echo '' >> $rootdir/etc/systemd/system/inadyn.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/inadyn.service
+    echo 'ExecStart=/usr/local/sbin/inadyn --config /etc/inadyn.conf' >> $rootdir/etc/systemd/system/inadyn.service
+    echo 'Restart=always' >> $rootdir/etc/systemd/system/inadyn.service
+    echo 'Type=forking' >> $rootdir/etc/systemd/system/inadyn.service
+    echo '' >> $rootdir/etc/systemd/system/inadyn.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/inadyn.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/inadyn.service
+    chroot "$rootdir" systemctl enable inadyn
+    echo "inadyn commit:$INADYN_COMMIT" >> $rootdir/root/freedombone-completed.txt
+}
+
+function image_setup_utils {
+    if [ $INSTALLING_MESH ]; then
+        return
+    fi
+    chroot "$rootdir" apt-get -yq install nfs-kernel-server
+
+    if [[ $ARCHITECTURE == 'amd64' ]]; then
+        chroot "$rootdir" apt-get -yq install linux-image-amd64 -t jessie-backports
+    fi
+
+    chroot "$rootdir" apt-get -yq install locales locales-all debconf
+
+    # basic firewall
+    chroot "$rootdir" iptables -P INPUT ACCEPT
+    chroot "$rootdir" ip6tables -P INPUT ACCEPT
+    chroot "$rootdir" iptables -F
+    chroot "$rootdir" ip6tables -F
+    chroot "$rootdir" iptables -t nat -F
+    chroot "$rootdir" ip6tables -t nat -F
+    chroot "$rootdir" iptables -X
+    chroot "$rootdir" ip6tables -X
+    chroot "$rootdir" iptables -P INPUT DROP
+    chroot "$rootdir" ip6tables -P INPUT DROP
+    chroot "$rootdir" iptables -P FORWARD DROP
+    chroot "$rootdir" ip6tables -P FORWARD DROP
+    chroot "$rootdir" iptables -A INPUT -i lo -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -m conntrack --ctstate ESTABLISHED -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp ! --syn -m state --state NEW -j DROP
+    chroot "$rootdir" iptables -A INPUT -f -j DROP
+    chroot "$rootdir" iptables -A INPUT -p tcp --tcp-flags ALL ALL -j DROP
+    chroot "$rootdir" iptables -A INPUT -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
+    chroot "$rootdir" iptables -A INPUT -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
+    chroot "$rootdir" iptables -A INPUT -p tcp --tcp-flags ALL NONE -j DROP
+    chroot "$rootdir" iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+    chroot "$rootdir" iptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport 548 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p udp --dport 548 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport 5353 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p udp --dport 5353 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport 5354 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p udp --dport 5354 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport $SSH_PORT -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p udp -m udp --dport 1024:65535 --sport 53 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+
+    # save the firewall
+    chroot "$rootdir" iptables-save > /etc/firewall.conf
+    chroot "$rootdir" ip6tables-save > /etc/firewall6.conf
+    printf '#!/bin/sh\n' > $rootdir/etc/network/if-up.d/iptables
+    printf 'iptables-restore < /etc/firewall.conf\n' >> $rootdir/etc/network/if-up.d/iptables
+    printf 'ip6tables-restore < /etc/firewall6.conf\n' >> $rootdir/etc/network/if-up.d/iptables
+    if [ -f $rootdir/etc/network/if-up.d/iptables ]; then
+        chmod +x $rootdir/etc/network/if-up.d/iptables
+    fi
+
+    SYSCTL_FILE=$rootdir/etc/sysctl.conf
+    if [ ! -f $SYSCTL_FILE ]; then
+        touch $SYSCTL_FILE
+    fi
+    cp $SYSCTL_FILE $rootdir/root/sysctl.conf
+    chown $CURR_USER:$CURR_GROUP $rootdir/root/sysctl.conf
+    if ! grep -q "tcp_challenge_ack_limit" $rootdir/root/sysctl.conf; then
+        echo 'net.ipv4.tcp_challenge_ack_limit = 999999999' >> $rootdir/root/sysctl.conf
+    else
+        sed -i 's|net.ipv4.tcp_challenge_ack_limit.*|net.ipv4.tcp_challenge_ack_limit = 999999999|g' $rootdir/root/sysctl.conf
+    fi
+    cp $rootdir/root/sysctl.conf $SYSCTL_FILE
+    rm $rootdir/root/sysctl.conf
+
+    # all the packages
+    chroot "$rootdir" apt-get -yq install apt-transport-https
+    chroot "$rootdir" apt-get -yq remove --purge apache*
+    chroot "$rootdir" apt-get -yq dist-upgrade
+    chroot "$rootdir" apt-get -yq install ca-certificates
+    chroot "$rootdir" apt-get -yq install apt-utils
+    chroot "$rootdir" apt-get -yq install cryptsetup libgfshare-bin obnam sshpass wget avahi-daemon
+    chroot "$rootdir" apt-get -yq install avahi-utils avahi-discover connect-proxy openssh-server
+    chroot "$rootdir" apt-get -yq install sudo git dialog build-essential avahi-daemon avahi-utils
+    chroot "$rootdir" apt-get -yq install avahi-discover avahi-autoipd iptables dnsutils net-tools
+    chroot "$rootdir" apt-get -yq install network-manager iputils-ping libnss-mdns libnss-myhostname
+    chroot "$rootdir" apt-get -yq install libnss-gw-name nano man ntp locales locales-all debconf
+    chroot "$rootdir" apt-get -yq install wireless-tools wpasupplicant usbutils cryptsetup zsh
+    chroot "$rootdir" apt-get -yq install pinentry-curses eatmydata iotop bc grub2 hostapd haveged
+    chroot "$rootdir" apt-get -yq install cpulimit screen elinks
+    chroot "$rootdir" apt-get -yq install libpam-cracklib
+
+    # Tor and ssh over tor
+    chroot "$rootdir" apt-get -yq install tor connect-proxy
+    sed -i 's|#Log notice file.*|Log notice file /dev/null|g' $rootdir/etc/tor/torrc
+    sed -i 's|Log notice file.*|Log notice file /dev/null|g' $rootdir/etc/tor/torrc
+    if ! grep -q 'Host *.onion' $rootdir/root/.ssh/config; then
+        if [ ! -d $rootdir/root/.ssh ]; then
+            mkdir $rootdir/root/.ssh
+        fi
+        echo 'Host *.onion' >> $rootdir/root/.ssh/config
+        echo 'ProxyCommand connect -R remote -5 -S 127.0.0.1:9050 %h %p' >> $rootdir/root/.ssh/config
+    fi
+    if ! grep -q 'Host *.onion' $rootdir/etc/skel/.ssh/config; then
+        if [ ! -d $rootdir/etc/skel/.ssh ]; then
+            mkdir $rootdir/etc/skel/.ssh
+        fi
+        echo 'Host *.onion' >> $rootdir/etc/skel/.ssh/config
+        echo 'ProxyCommand connect -R remote -5 -S 127.0.0.1:9050 %h %p' >> $rootdir/etc/skel/.ssh/config
+    fi
+
+    # Install golang
+    chroot "$rootdir" adduser --disabled-login --gecos 'go' go
+    GOARCH=
+    if [[ $ARCHITECTURE == *"386" || $ARCHITECTURE == *"686" ]]; then
+        GOARCH=386
+    fi
+    if [[ $ARCHITECTURE == *"amd64" || $ARCHITECTURE == "x86_64" ]]; then
+        GOARCH=amd64
+    fi
+    if [[ $ARCHITECTURE == *"arm"* ]]; then
+        GOARCH=armv6l
+    fi
+    GO_SOURCE=https://storage.googleapis.com/golang/go${GO_VERSION}.linux-${GOARCH}.tar.gz
+
+    if [ ! -d ${rootdir}/root/build ]; then
+        mkdir -p $rootdir/root/build
+    fi
+    cd $rootdir/root/build
+    wget ${GO_SOURCE}
+    if [ ! -f ${rootdir}/root/build/go${GO_VERSION}.linux-${GOARCH}.tar.gz ]; then
+        exit 26524
+    fi
+    chroot "$rootdir" tar -C /home/go -xzf ${INSTALL_DIR}/go${GO_VERSION}.linux-${GOARCH}.tar.gz
+    if [ ! -d ${rootdir}/home/go/go/bin ]; then
+        echo 'Go binary not installed'
+        exit 763562
+    fi
+    mv ${rootdir}/home/go/go ${rootdir}/home/go/go${GO_VERSION}
+    echo "export GOROOT=/home/go" >> ${rootdir}/root/.bashrc
+    echo "export GOROOT=/home/go" >> ${rootdir}/etc/skel/.bashrc
+    echo "export GOROOT=/home/go" >> ${rootdir}/home/go/.bashrc
+    echo "export GOPATH=\$GOROOT/go${GO_VERSION}/bin" >> ${rootdir}/root/.bashrc
+    echo "export GOPATH=\$GOROOT/go${GO_VERSION}/bin" >> ${rootdir}/etc/skel/.bashrc
+    echo "export GOPATH=\$GOROOT/go${GO_VERSION}/bin" >> ${rootdir}/home/go/.bashrc
+    echo 'export PATH=$PATH:$GOPATH' >> ${rootdir}/root/.bashrc
+    echo 'export PATH=$PATH:$GOPATH' >> ${rootdir}/etc/skel/.bashrc
+    echo 'export PATH=$PATH:$GOPATH' >> ${rootdir}/home/go/.bashrc
+    chroot "$rootdir" chown -R go:go /home/go
+    cp ${rootdir}/home/go/go${GO_VERSION}/bin/* ${rootdir}/usr/bin
+
+    # Tomb
+    chroot "$rootdir" apt-get -yq install zsh pinentry-curses
+    git clone $TOMB_REPO $rootdir/root/build/tomb
+    cd $rootdir/root/build/tomb
+    git checkout $TOMB_COMMIT -b $TOMB_COMMIT
+    chroot "$rootdir" make install
+    echo "tomb commit:$TOMB_COMMIT" >> $rootdir/root/freedombone-completed.txt
+
+    if ! grep '* hard maxsyslogins' $rootdir/etc/security/limits.conf; then
+        echo '* hard maxsyslogins 10' >> $rootdir/etc/security/limits.conf
+    else
+        sed -i 's|hard maxsyslogins.*|hard maxsyslogins 10|g' $rootdir/etc/security/limits.conf
+    fi
+
+    # Max logins for each user
+    if ! grep '* hard maxlogins' $rootdir/etc/security/limits.conf; then
+        echo '* hard maxlogins 2' >> $rootdir/etc/security/limits.conf
+    else
+        sed -i 's|hard maxlogins.*|hard maxlogins 2|g' $rootdir/etc/security/limits.conf
+    fi
+
+    # Email
+    chroot "$rootdir" apt-get -yq remove postfix
+    chroot "$rootdir" apt-get -yq install exim4-daemon-heavy sasl2-bin swaks libnet-ssleay-perl procmail
+    chroot "$rootdir" apt-get -yq install spamassassin
+    chroot "$rootdir" apt-get -yq install dovecot-imapd
+
+    #backup
+    chroot "$rootdir" apt-get -yq install obnam gnupg
+
+    # monkeysphere
+    chroot "$rootdir" apt-get -yq install monkeysphere msva-perl
+
+    # encrypting email
+    chroot "$rootdir" apt-get -yq install libmail-gnupg-perl
+    git clone $GPGIT_REPO $rootdir/root/build/gpgit
+    cd $rootdir/root/build/gpgit
+    git checkout $GPGIT_COMMIT -b $GPGIT_COMMIT
+    cp gpgit.pl $rootdir/usr/bin
+    echo "gpgit commit:$GPGIT_COMMIT" >> $rootdir/root/freedombone-completed.txt
+
+    # email client
+    chroot "$rootdir" apt-get -yq install mutt-patched lynx abook urlview
+
+    git clone $CLEANUP_MAILDIR_REPO $rootdir/root/build/cleanup-maildir
+    cd $rootdir/root/build/cleanup-maildir
+    git checkout $CLEANUP_MAILDIR_COMMIT -b $CLEANUP_MAILDIR_COMMIT
+    cp $rootdir/root/build/cleanup-maildir/cleanup-maildir $rootdir/usr/bin
+    echo "cleanup-maildir commit:$CLEANUP_MAILDIR_COMMIT" >> $rootdir/root/freedombone-completed.txt
+
+    # web server
+    chroot "$rootdir" apt-get -yq remove --purge apache2
+    chroot "$rootdir" apt-get -yq install nginx php5-fpm
+    git clone $$NGINX_ENSITE_REPO $rootdir/root/build/nginx_ensite
+    cd $rootdir/root/build/nginx_ensite
+    git checkout $NGINX_ENSITE_COMMIT -b $NGINX_ENSITE_COMMIT
+    echo "nginx-ensite commit:$NGINX_ENSITE_COMMIT" >> $rootdir/root/freedombone-completed.txt
+    chroot "$rootdir" make install
+    chroot "$rootdir" nginx_dissite default
+    if [ ! -f $rootdir/etc/pam.d/nginx ]; then
+        echo '#%PAM-1.0' > $rootdir/etc/pam.d/nginx
+        echo '@include common-auth' >> $rootdir/etc/pam.d/nginx
+        echo '@include common-account' >> $rootdir/etc/pam.d/nginx
+        echo '@include common-session' >> $rootdir/etc/pam.d/nginx
+    fi
+    chroot "$rootdir" apt-get -yq install tripwire
+}
+
+
+##############################################################################
 
 
 # Set to true/false to control if eatmydata is used during build
@@ -1100,8 +1367,11 @@ continue_installation
 initialise_mesh
 configure_wifi
 configure_user_interface
+image_setup_utils
+image_install_inadyn
 
 # remove downloaded packages
+chroot $rootdir apt-get -y autoremove
 chroot $rootdir apt-get clean
 
 cd /
