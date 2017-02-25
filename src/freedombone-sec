@@ -479,6 +479,47 @@ function renew_letsencrypt {
     exit 0
 }
 
+function delete_letsencrypt {
+    delete_domain=
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Delete a Let's Encrypt certificate" \
+           --backtitle $"Freedombone Security Settings" \
+           --inputbox $"Enter the domain name" 8 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            delete_domain=$(<$data)
+            ;;
+    esac
+
+    if [ ! $delete_domain ]; then
+        return
+    fi
+
+    if [[ $delete_domain == "http"* ]]; then
+        dialog --title $"Delete a Let's Encrypt certificate" \
+               --msgbox $"Don't include the https://" 6 40
+        return
+    fi
+
+    if [ ! -f /etc/ssl/certs/${delete_domain}.dhparam ]; then
+        dialog --title $"Delete a Let's Encrypt certificate" \
+               --msgbox $"An existing certificate for $renew_domain was not found" 6 40
+        return
+    fi
+
+    if [[ $delete_domain != *"."* ]]; then
+        dialog --title $"Delete a Let's Encrypt certificate" \
+               --msgbox $"Invalid domain name: $delete_domain" 6 40
+        return
+    fi
+
+    ${PROJECT_NAME}-addcert -r $delete_domain
+
+    exit 0
+}
+
 function create_letsencrypt {
     new_domain=
     data=$(tempfile 2>/dev/null)
@@ -923,7 +964,7 @@ function menu_security_settings {
     trap "rm -f $data" 0 1 2 5 15
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Security Settings" \
-           --radiolist $"Choose an operation:" 21 76 21 \
+           --radiolist $"Choose an operation:" 22 76 22 \
            1 $"Run STIG tests" off \
            2 $"Show ssh host public key" off \
            3 $"Tor bridges" off \
@@ -934,10 +975,11 @@ function menu_security_settings {
            8 $"Update cipersuite" off \
            9 $"Create a new Let's Encrypt certificate" off \
            10 $"Renew Let's Encrypt certificate" off \
-           11 $"Enable GPG based authentication (monkeysphere)" off \
-           12 $"Register a website with monkeysphere" off \
-           13 $"Allow ssh login with passwords" off \
-           14 $"Go Back/Exit" on 2> $data
+           11 $"Delete a Let's Encrypt certificate" off \
+           12 $"Enable GPG based authentication (monkeysphere)" off \
+           13 $"Register a website with monkeysphere" off \
+           14 $"Allow ssh login with passwords" off \
+           15 $"Go Back/Exit" on 2> $data
     sel=$?
     case $sel in
         1) exit 1;;
@@ -1000,17 +1042,20 @@ function menu_security_settings {
             renew_letsencrypt
             ;;
         11)
-            enable_monkeysphere
+            delete_letsencrypt
             ;;
         12)
-            register_website
+            enable_monkeysphere
             ;;
         13)
+            register_website
+            ;;
+        14)
             allow_ssh_passwords
             change_ssh_settings
             exit 0
             ;;
-        14)
+        15)
             exit 0
             ;;
     esac

@@ -46,6 +46,7 @@ done
 PIN_CERTS=
 
 HOSTNAME=
+remove_cert=
 LETSENCRYPT_HOSTNAME=
 COUNTRY_CODE="US"
 AREA="Free Speech Zone"
@@ -70,19 +71,20 @@ function show_help {
     echo ''
     echo $'Creates a self-signed certificate for the given hostname'
     echo ''
-    echo $'     --help                   Show help'
-    echo $'  -h --hostname [name]        Hostname'
-    echo $'  -e --letsencrypt [hostname] Hostname to use with Lets Encrypt'
-    echo $'  -s --server [url]           Lets Encrypt server URL'
-    echo $'  -c --country [code]         Optional country code (eg. US, GB, etc)'
-    echo $'  -a --area [description]     Optional area description'
-    echo $'  -l --location [locn]        Optional location name'
-    echo $'  -o --organisation [name]    Optional organisation name'
-    echo $'  -u --unit [name]            Optional unit name'
-    echo $'     --email [address]        Email address for letsencrypt'
-    echo $'     --dhkey [bits]           DH key length in bits'
-    echo $'     --nodh ""                Do not calculate DH params'
-    echo $'     --ca ""                  Certificate authority cert'
+    echo $'     --help                     Show help'
+    echo $'  -h --hostname [name]          Hostname'
+    echo $'  -e --letsencrypt [hostname]   Hostname to use with Lets Encrypt'
+    echo $'  -r --rmletsencrypt [hostname] Remove a Lets Encrypt certificate'
+    echo $'  -s --server [url]             Lets Encrypt server URL'
+    echo $'  -c --country [code]           Optional country code (eg. US, GB, etc)'
+    echo $'  -a --area [description]       Optional area description'
+    echo $'  -l --location [locn]          Optional location name'
+    echo $'  -o --organisation [name]      Optional organisation name'
+    echo $'  -u --unit [name]              Optional unit name'
+    echo $'     --email [address]          Email address for letsencrypt'
+    echo $'     --dhkey [bits]             DH key length in bits'
+    echo $'     --nodh ""                  Do not calculate DH params'
+    echo $'     --ca ""                    Certificate authority cert'
     echo ''
     exit 0
 }
@@ -102,6 +104,11 @@ do
         -e|--letsencrypt)
             shift
             LETSENCRYPT_HOSTNAME="$1"
+            ;;
+        -r|--rmletsencrypt)
+            shift
+            LETSENCRYPT_HOSTNAME="$1"
+            remove_cert=1
             ;;
         --email)
             shift
@@ -172,6 +179,25 @@ if [ ! -d /etc/ssl/mycerts ]; then
 fi
 
 CERTFILE=$HOSTNAME
+
+function remove_cert_letsencrypt {
+    CERTFILE=$LETSENCRYPT_HOSTNAME
+
+    # disable the site if needed
+    if [ -f /etc/nginx/sites-available/${LETSENCRYPT_HOSTNAME} ]; then
+        if grep -q "443" /etc/nginx/sites-available/${LETSENCRYPT_HOSTNAME}; then
+            nginx_dissite ${LETSENCRYPT_HOSTNAME}
+        fi
+    fi
+
+    # remove the cert
+    rm -rf /etc/letsencrypt/live/${LETSENCRYPT_HOSTNAME}*
+    rm -rf /etc/letsencrypt/archive/${LETSENCRYPT_HOSTNAME}*
+    rm /etc/letsencrypt/renewal/${LETSENCRYPT_HOSTNAME}.conf
+
+    # restart the web server
+    systemctl restart nginx
+}
 
 function add_cert_letsencrypt {
     CERTFILE=$LETSENCRYPT_HOSTNAME
@@ -307,6 +333,11 @@ function make_cert_bundle {
 }
 
 function create_cert {
+    if [ $remove_cert ]; then
+        remove_cert_letsencrypt
+        return
+    fi
+
     if [ $LETSENCRYPT_HOSTNAME ]; then
         add_cert_letsencrypt
     else
