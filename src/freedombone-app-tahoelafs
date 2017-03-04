@@ -221,14 +221,19 @@ function install_tahoelafs {
     cd /home/tahoelafs/tahoelafs
     git checkout $TAHOELAFS_COMMIT -b $TAHOELAFS_COMMIT
     git submodule update --init --recursive
-    virtualenv venv
+    virtualenv venv --distribute
+    venv/bin/pip uninstall setuptools
     venv/bin/pip install setuptools==11.3
     venv/bin/pip install six==1.10.0 packaging==16.8 attrs==16.3.0 appdirs==1.4.2 pycrypto==2.1.0 cffi==1.9.1
-    venv/bin/pip install cryptography==1.7.2
+    venv/bin/pip install cryptography==1.7.2 markerlib==0.6.0 distribute==0.7.3
     venv/bin/pip install --editable .
     configure_firewall_for_tahoelafs
 
-    su -c "$TAHOE_COMMAND create-introducer /home/tahoelafs/.tahoe-introducer" - tahoelafs
+    if [ ! -d /home/tahoelafs/data ]; then
+        mkdir /home/tahoelafs/data
+    fi
+    chown -R tahoelafs:tahoelafs /home/tahoelafs
+    su -c "$TAHOE_COMMAND create-introducer -C /home/tahoelafs/data --hide-ip --hostname=127.0.0.1" - tahoelafs
     TAHOELAFS_CONFIG=/home/tahoelafs/.tahoe-introducer/tahoe.cfg
     if [ ! -f $TAHOELAFS_CONFIG ]; then
         exit 62831
@@ -236,8 +241,6 @@ function install_tahoelafs {
 
     TAHOELAFS_ONION_HOSTNAME=$(add_onion_service tahoelafs ${TAHOELAFS_PORT} ${TAHOELAFS_ONION_PORT})
     tahoelafs_setup_config $TAHOELAFS_CONFIG
-
-    chown -R tahoelafs:tahoelafs /home/tahoelafs
 
     TAHOELAFS_DAEMON_FILE=/etc/systemd/system/tahoelafs.service
     echo '[Unit]' > $TAHOELAFS_DAEMON_FILE
@@ -250,8 +253,8 @@ function install_tahoelafs {
     echo "User=tahoelafs" >> $TAHOELAFS_DAEMON_FILE
     echo "Group=tahoelafs" >> $TAHOELAFS_DAEMON_FILE
     echo "WorkingDirectory=/home/tahoelafs/tahoelafs" >> $TAHOELAFS_DAEMON_FILE
-    echo "ExecStart=venv/bin/tahoe start /home/tahoelafs/.tahoe-introducer" >> $TAHOELAFS_DAEMON_FILE
-    echo "ExecStop=venv/bin/tahoe stop /home/tahoelafs/.tahoe-introducer" >> $TAHOELAFS_DAEMON_FILE
+    echo "ExecStart=/home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/data/.tahoe-introducer" >> $TAHOELAFS_DAEMON_FILE
+    echo "ExecStop=/home/tahoelafs/tahoelafs/venv/bin/tahoe stop /home/tahoelafs/data/.tahoe-introducer" >> $TAHOELAFS_DAEMON_FILE
     echo 'Restart=on-failure' >> $TAHOELAFS_DAEMON_FILE
     echo "Environment=\"USER=tahoelafs\" \"HOME=/home/tahoelafs\"" >> $TAHOELAFS_DAEMON_FILE
     echo '' >> $TAHOELAFS_DAEMON_FILE
