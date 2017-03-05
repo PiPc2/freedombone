@@ -38,6 +38,7 @@ TAHOELAFS_REPO="https://github.com/tahoe-lafs/tahoe-lafs"
 TAHOELAFS_COMMIT='bb782b0331a60de438136a593bba18338d8d866b'
 
 TAHOELAFS_PORT=50213
+TAHOELAFS_WEB_PORT=50214
 TAHOELAFS_ONION_PORT=8096
 
 TAHOELAFS_SHARED_DIR='Shared'
@@ -82,6 +83,7 @@ function tahoelafs_setup_config {
     sed -i "s|tub.location.*|tub.location = tor:${TAHOELAFS_ONION_HOSTNAME}:${TAHOELAFS_PORT}|g" $config_file
 
     sed -i "s|nickname =.*|nickname = $HOSTNAME|g" $config_file
+    sed -i "s|web.port =.*|web.port = tcp:$TAHOELAFS_WEB_PORT:interface=127.0.0.1|g" $config_file
 
     if ! grep -q "[storage]" $config_file; then
         echo '' >> $config_file
@@ -170,6 +172,15 @@ function reconfigure_tahoelafs {
 }
 
 function remove_tahoelafs {
+    if [ -f /etc/nginx/sites-available/tahoelafs ]; then
+        nginx_dissite tahoelafs
+        rm /etc/nginx/sites-available/tahoelafs
+        if [ -d /var/www/tahoelafs ]; then
+            rm -rf /var/www/tahoelafs
+        fi
+        systemctl reload nginx
+    fi
+
     systemctl stop tahoelafs
     systemctl disable tahoelafs
     rm /etc/systemd/system/tahoelafs.service
@@ -276,6 +287,41 @@ function install_tahoelafs {
     systemctl start tahoelafs
 
     set_completion_param "tahoelafs commit" "$TAHOELAFS_COMMIT"
+
+    if [ ! -d /var/www/tahoelafs ]; then
+        mkdir -p /var/www/tahoelafs/htdocs
+    fi
+
+    tahoelafs_nginx_site=/etc/nginx/sites-available/tahoelafs
+    echo 'server {' > $tahoelafs_nginx_site
+    echo "    listen 127.0.0.1:$TAHOELAFS_ONION_PORT default_server;" >> $tahoelafs_nginx_site
+    echo "    server_name $TAHOELAFS_ONION_HOSTNAME;" >> $tahoelafs_nginx_site
+    echo '' >> $tahoelafs_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing tahoelafs
+    echo '' >> $tahoelafs_nginx_site
+    echo '  # Logs' >> $tahoelafs_nginx_site
+    echo '  access_log /dev/null;' >> $tahoelafs_nginx_site
+    echo '  error_log /dev/null;' >> $tahoelafs_nginx_site
+    echo '' >> $tahoelafs_nginx_site
+    echo '  # Root' >> $tahoelafs_nginx_site
+    echo "  root /var/www/tahoelafs/htdocs;" >> $tahoelafs_nginx_site
+    echo '' >> $tahoelafs_nginx_site
+    echo '  location / {' >> $tahoelafs_nginx_site
+    function_check nginx_limits
+    nginx_limits tahoelafs '15m'
+    echo '    rewrite /(.*) /$1 break;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header Host $http_host;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header X-NginX-Proxy true;' >> $tahoelafs_nginx_site
+    echo "    proxy_pass http://localhost:${TAHOELAFS_WEB_PORT};" >> $tahoelafs_nginx_site
+    echo '    proxy_redirect off;' >> $tahoelafs_nginx_site
+    echo '  }' >> $tahoelafs_nginx_site
+    echo '}' >> $tahoelafs_nginx_site
+
+    function_check nginx_ensite
+    nginx_ensite tahoelafs
 
     APP_INSTALLED=1
 }
