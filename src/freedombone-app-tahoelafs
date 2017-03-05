@@ -38,7 +38,6 @@ TAHOELAFS_REPO="https://github.com/tahoe-lafs/tahoe-lafs"
 TAHOELAFS_COMMIT='bb782b0331a60de438136a593bba18338d8d866b'
 
 TAHOELAFS_PORT=50213
-#TAHOELAFS_WEB_PORT=50214
 TAHOELAFS_ONION_PORT=8096
 
 TAHOELAFS_SHARED_DIR='Shared'
@@ -50,6 +49,7 @@ tahoelafs_variables=(ONION_ONLY
 
 function tahoelafs_setup_config {
     config_file=$1
+    nick="$2"
 
     if ! grep -q "[node]" $config_file; then
         echo '' >> $config_file
@@ -82,13 +82,9 @@ function tahoelafs_setup_config {
     sed -i "s|tub.port.*|tub.port = tcp:${TAHOELAFS_ONION_PORT}:interface=127.0.0.1|g" $config_file
     sed -i "s|tub.location.*|tub.location = tor:${TAHOELAFS_ONION_HOSTNAME}:${TAHOELAFS_PORT}|g" $config_file
 
-    sed -i "s|nickname =.*|nickname = $HOSTNAME|g" $config_file
+    sed -i "s|nickname =.*|nickname = ${NICK}|g" $config_file
 
-    if ! grep -q "[storage]" $config_file; then
-        echo '' >> $config_file
-        echo '[storage]' >> $config_file
-        echo 'enabled = false' >> $config_file
-    fi
+    chown -R tahoelafs:debian-tor /home/tahoelafs
 }
 
 function install_interactive_tahoelafs {
@@ -109,7 +105,7 @@ function upgrade_tahoelafs {
 }
 
 function backup_local_tahoelafs {
-    source_directory=/home/tahoelafs/data
+    source_directory=/home/tahoelafs
     if [ ! -d $source_directory ]; then
         return
     fi
@@ -122,47 +118,53 @@ function backup_local_tahoelafs {
 
 function restore_local_tahoelafs {
     echo $"Restoring Tahoe-LAFS introducer"
-    systemctl stop tahoelafs
+    systemctl stop tahoelafs-storage
+    systemctl stop tahoelafs-introducer
     temp_restore_dir=/root/temptahoelafs
     restore_directory_from_usb $temp_restore_dir tahoelafs
-    mv /home/tahoelafs/data /home/tahoelafs/data-old
-    cp -r $temp_restore_dir/home/tahoelafs/data /home/tahoelafs/data
+    mv /home/tahoelafs /home/tahoelafs-old
+    cp -r $temp_restore_dir/home/tahoelafs /home/tahoelafs
     if [ ! "$?" = "0" ]; then
-        mv /home/tahoelafs/data-old /home/tahoelafs/data
+        mv /home/tahoelafs-old /home/tahoelafs
         exit 246833
     fi
-    rm -rf /home/tahoelafs/data
+    rm -rf /home/tahoelafs-old
     chown -R tahoelafs:debian-tor /home/tahoelafs
-    systemctl start tahoelafs
+    systemctl start tahoelafs-introducer
+    systemctl start tahoelafs-storage
     echo $"Restore complete"
 }
 
 function backup_remote_tahoelafs {
-    source_directory=/home/tahoelafs/data
+    source_directory=/home/tahoelafs
     if [ ! -d $source_directory ]; then
         return
     fi
-    systemctl stop tahoelafs
+    systemctl stop tahoelafs-storage
+    systemctl stop tahoelafs-introducer
     dest_directory=tahoelafs
     function_check backup_directory_to_usb
     backup_directory_to_friend $source_directory $dest_directory
-    systemctl start tahoelafs
+    systemctl start tahoelafs-introducer
+    systemctl start tahoelafs-storage
 }
 
 function restore_remote_tahoelafs {
     echo $"Restoring Tahoe-LAFS introducer"
-    systemctl stop tahoelafs
+    systemctl stop tahoelafs-storage
+    systemctl stop tahoelafs-introducer
     temp_restore_dir=/root/temptahoelafs
     restore_directory_from_friend $temp_restore_dir tahoelafs
-    mv /home/tahoelafs/data /home/tahoelafs/data-old
-    cp -r $temp_restore_dir/home/tahoelafs/data /home/tahoelafs/data
+    mv /home/tahoelafs /home/tahoelafs-old
+    cp -r $temp_restore_dir/home/tahoelafs /home/tahoelafs
     if [ ! "$?" = "0" ]; then
-        mv /home/tahoelafs/data-old /home/tahoelafs/data
+        mv /home/tahoelafs-old /home/tahoelafs
         exit 623925
     fi
-    rm -rf /home/tahoelafs/data-old
+    rm -rf /home/tahoelafs-old
     chown -R tahoelafs:debian-tor /home/tahoelafs
-    systemctl start tahoelafs
+    systemctl start tahoelafs-introducer
+    systemctl start tahoelafs-storage
     echo $"Restore complete"
 }
 
@@ -180,14 +182,18 @@ function remove_tahoelafs {
         systemctl reload nginx
     fi
 
-    systemctl stop tahoelafs
-    systemctl disable tahoelafs
-    rm /etc/systemd/system/tahoelafs.service
+    systemctl stop tahoelafs-storage
+    systemctl disable tahoelafs-storage
+    rm /etc/systemd/system/tahoelafs-storage.service
 
-    firewall_remove ${TAHOELAFS_PORT}
+    systemctl stop tahoelafs-introducer
+    systemctl disable tahoelafs-introducer
+    rm /etc/systemd/system/tahoelafs-introducer.service
+
+    #firewall_remove ${TAHOELAFS_PORT}
     rm -rf /var/lib/tahoelafs
     remove_completion_param install_tahoelafs
-    remove_completion_param configure_firewall_for_tahoelafs
+    #remove_completion_param configure_firewall_for_tahoelafs
     function_check remove_onion_service
     remove_onion_service tahoelafs ${TAHOELAFS_ONION_PORT}
     deluser tahoelafs
@@ -205,44 +211,100 @@ function configure_firewall_for_tahoelafs {
     mark_completed $FUNCNAME
 }
 
-function install_tahoelafs_web {
-    config_file=$1
+function install_tahoelafs_to_directory {
+    tahoe_dir=$1
 
-    if [ ! -d /var/www/tahoelafs ]; then
-        mkdir -p /var/www/tahoelafs/htdocs
+    git_clone $TAHOELAFS_REPO $tahoe_dir
+    cd $tahoe_dir
+    git checkout $TAHOELAFS_COMMIT -b $TAHOELAFS_COMMIT
+    git submodule update --init --recursive
+    virtualenv venv --distribute
+    venv/bin/pip uninstall --yes setuptools
+    venv/bin/pip install setuptools==11.3
+    venv/bin/pip install six==1.10.0 packaging==16.8 attrs==16.3.0 appdirs==1.4.2 pycrypto==2.1.0 cffi==1.9.1
+    venv/bin/pip install cryptography==1.7.2 markerlib==0.6.0 distribute==0.7.3
+    venv/bin/pip install txtorcon==0.18.0
+    venv/bin/pip install --editable .
+}
+
+function create_tahoelafs_introducer {
+    introducer_dir="$1"
+
+    if [ -d ${introducer_dir} ]; then
+        return
     fi
-    tahoelafs_nginx_site=/etc/nginx/sites-available/tahoelafs
-    echo 'server {' > $tahoelafs_nginx_site
-    echo "    listen 127.0.0.1:$TAHOELAFS_ONION_PORT default_server;" >> $tahoelafs_nginx_site
-    echo "    server_name $TAHOELAFS_ONION_HOSTNAME;" >> $tahoelafs_nginx_site
-    echo '' >> $tahoelafs_nginx_site
-    function_check nginx_disable_sniffing
-    nginx_disable_sniffing tahoelafs
-    echo '' >> $tahoelafs_nginx_site
-    echo '  # Logs' >> $tahoelafs_nginx_site
-    echo '  access_log /dev/null;' >> $tahoelafs_nginx_site
-    echo '  error_log /dev/null;' >> $tahoelafs_nginx_site
-    echo '' >> $tahoelafs_nginx_site
-    echo '  # Root' >> $tahoelafs_nginx_site
-    echo "  root /var/www/tahoelafs/htdocs;" >> $tahoelafs_nginx_site
-    echo '' >> $tahoelafs_nginx_site
-    echo '  location / {' >> $tahoelafs_nginx_site
-    function_check nginx_limits
-    nginx_limits tahoelafs '15m'
-    echo '    rewrite /(.*) /$1 break;' >> $tahoelafs_nginx_site
-    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $tahoelafs_nginx_site
-    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $tahoelafs_nginx_site
-    echo '    proxy_set_header Host $http_host;' >> $tahoelafs_nginx_site
-    echo '    proxy_set_header X-NginX-Proxy true;' >> $tahoelafs_nginx_site
-    echo "    proxy_pass http://localhost:${TAHOELAFS_WEB_PORT};" >> $tahoelafs_nginx_site
-    echo '    proxy_redirect off;' >> $tahoelafs_nginx_site
-    echo '  }' >> $tahoelafs_nginx_site
-    echo '}' >> $tahoelafs_nginx_site
 
-    function_check nginx_ensite
-    nginx_ensite tahoelafs
+    mkdir ${introducer_dir}
+    su -c "$TAHOE_COMMAND create-introducer -C ${introducer_dir} --hide-ip --hostname=127.0.0.1" - tahoelafs
+}
 
-    sed -i "s|web.port =.*|web.port = tcp:$TAHOELAFS_WEB_PORT:interface=127.0.0.1|g" $config_file
+function create_tahoelafs_storage_node {
+    # Nodes can store introducer
+    node_dir="$1"
+    furl="$2"
+
+    if [ ${#furl} -eq 0 ]; then
+        return
+    fi
+
+    if [ -d ${node_dir} ]; then
+        return
+    fi
+
+    mkdir ${node_dir}
+    su -c "$TAHOE_COMMAND create-node -C ${node_dir} --introducer=\"$furl\" --listen=tor --hide-ip --hostname=127.0.0.1" - tahoelafs
+}
+
+function create_tahoelafs_client {
+    # Clients have no storage
+    client_dir="$1"
+    furl="$2"
+
+    if [ ${#furl} -eq 0 ]; then
+        return
+    fi
+
+    if [ -d ${client_dir} ]; then
+        return
+    fi
+
+    mkdir ${client_dir}
+    su -c "$TAHOE_COMMAND create-client -C ${client_dir} --introducer=\"$furl\" --listen=tor --hide-ip --hostname=127.0.0.1" - tahoelafs
+    sed -i 's|reveal-IP-address =.*|reveal-IP-address = False|g' $client_dir/tahoe.cfg
+    sed -i 's|tub.port =.*|tub.port = disabled|g' $client_dir/tahoe.cfg
+    sed -i 's|tub.location =.*|tub.location = disabled|g' $client_dir/tahoe.cfg
+}
+
+function get_tahoelafs_introducer {
+    echo "$(cat /home/tahoelafs/.tahoe-introducer/private/introducer.furl)"
+}
+
+function create_tahoelafs_daemon {
+    daemon_name=$1
+
+
+    TAHOELAFS_DAEMON_FILE=/etc/systemd/system/tahoelafs-${daemon_name}.service
+    echo '[Unit]' > $TAHOELAFS_DAEMON_FILE
+    echo "Description=Tahoe-LAFS ${daemon_name}" >> $TAHOELAFS_DAEMON_FILE
+    echo 'After=syslog.target' >> $TAHOELAFS_DAEMON_FILE
+    echo 'After=network.target' >> $TAHOELAFS_DAEMON_FILE
+    echo '' >> $TAHOELAFS_DAEMON_FILE
+    echo '[Service]' >> $TAHOELAFS_DAEMON_FILE
+    echo 'Type=simple' >> $TAHOELAFS_DAEMON_FILE
+    echo "User=tahoelafs" >> $TAHOELAFS_DAEMON_FILE
+    echo "Group=tahoelafs" >> $TAHOELAFS_DAEMON_FILE
+    echo "WorkingDirectory=/home/tahoelafs/tahoelafs" >> $TAHOELAFS_DAEMON_FILE
+    echo "ExecStart=/home/tahoelafs/tahoelafs/venv/bin/tahoe run /home/tahoelafs/${daemon_name}" >> $TAHOELAFS_DAEMON_FILE
+    echo "ExecStop=/home/tahoelafs/tahoelafs/venv/bin/tahoe stop /home/tahoelafs/${daemon_name}" >> $TAHOELAFS_DAEMON_FILE
+    echo 'Restart=on-failure' >> $TAHOELAFS_DAEMON_FILE
+    echo 'RestartSec=10' >> $TAHOELAFS_DAEMON_FILE
+    echo "Environment=\"USER=tahoelafs\" \"HOME=/home/tahoelafs\"" >> $TAHOELAFS_DAEMON_FILE
+    echo '' >> $TAHOELAFS_DAEMON_FILE
+    echo '[Install]' >> $TAHOELAFS_DAEMON_FILE
+    echo 'WantedBy=multi-user.target' >> $TAHOELAFS_DAEMON_FILE
+    systemctl enable tahoelafs-${daemon_name}
+    systemctl daemon-reload
+    systemctl start tahoelafs-${daemon_name}
 }
 
 function install_tahoelafs {
@@ -264,23 +326,8 @@ function install_tahoelafs {
         rm -rf /home/tahoelafs/Maildir
     fi
 
-    git_clone $TAHOELAFS_REPO /home/tahoelafs/tahoelafs
-    cd /home/tahoelafs/tahoelafs
-    git checkout $TAHOELAFS_COMMIT -b $TAHOELAFS_COMMIT
-    git submodule update --init --recursive
-    virtualenv venv --distribute
-    venv/bin/pip uninstall --yes setuptools
-    venv/bin/pip install setuptools==11.3
-    venv/bin/pip install six==1.10.0 packaging==16.8 attrs==16.3.0 appdirs==1.4.2 pycrypto==2.1.0 cffi==1.9.1
-    venv/bin/pip install cryptography==1.7.2 markerlib==0.6.0 distribute==0.7.3
-    venv/bin/pip install txtorcon==0.18.0
-    venv/bin/pip install --editable .
-    configure_firewall_for_tahoelafs
-
-    if [ -d /home/tahoelafs/data ]; then
-        rm -rf /home/tahoelafs/data
-    fi
-    mkdir /home/tahoelafs/data
+    install_tahoelafs_to_directory /home/tahoelafs/tahoelafs
+    #configure_firewall_for_tahoelafs
 
     # remove files we don't need
     rm -rf /home/tahoelafs/.mutt
@@ -293,50 +340,41 @@ function install_tahoelafs {
     chown -R tahoelafs:debian-tor /home/tahoelafs
 
     # create the introducer config
-    su -c "$TAHOE_COMMAND create-introducer -C /home/tahoelafs/data --hide-ip --hostname=127.0.0.1" - tahoelafs
-    TAHOELAFS_CONFIG=/home/tahoelafs/data/tahoe.cfg
-    if [ ! -f $TAHOELAFS_CONFIG ]; then
+    create_tahoelafs_introducer /home/tahoelafs/introducer
+    TAHOELAFS_INTRODUCER_CONFIG=/home/tahoelafs/introducer/tahoe.cfg
+    if [ ! -f $TAHOELAFS_INTRODUCER_CONFIG ]; then
         exit 62831
+    fi
+
+    if [ ! -d /home/tahoelafs/storage ]; then
+        mkdir /home/tahoelafs/storage
+    fi
+    create_tahoelafs_storage_node /home/tahoelafs/storage "$(get_tahoelafs_introducer)"
+    TAHOELAFS_STORAGE_CONFIG=/home/tahoelafs/storage/tahoe.cfg
+    if [ ! -f $TAHOELAFS_STORAGE_CONFIG ]; then
+        exit 782523
     fi
 
     # create an onion address
     TAHOELAFS_ONION_HOSTNAME=$(add_onion_service tahoelafs ${TAHOELAFS_PORT} ${TAHOELAFS_ONION_PORT})
-    tahoelafs_setup_config $TAHOELAFS_CONFIG
 
-    su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/data' - tahoelafs
-    TAHOELAFS_INTRODUCER=/home/tahoelafs/data/tahoe-introducer.tac
+    # start the introducer
+    tahoelafs_setup_config $TAHOELAFS_INTRODUCER_CONFIG ${PROJECT_NAME}-introducer
+    su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/introducer' - tahoelafs
+    TAHOELAFS_INTRODUCER=/home/tahoelafs/introducer/tahoe-introducer.tac
     if [ ! -f $TAHOELAFS_INTRODUCER ]; then
         echo $'Introducer file not found'
         exit 782253
     fi
 
-    # create a daemon
-    TAHOELAFS_DAEMON_FILE=/etc/systemd/system/tahoelafs.service
-    echo '[Unit]' > $TAHOELAFS_DAEMON_FILE
-    echo 'Description=Tahoe-LAFS introducer' >> $TAHOELAFS_DAEMON_FILE
-    echo 'After=syslog.target' >> $TAHOELAFS_DAEMON_FILE
-    echo 'After=network.target' >> $TAHOELAFS_DAEMON_FILE
-    echo '' >> $TAHOELAFS_DAEMON_FILE
-    echo '[Service]' >> $TAHOELAFS_DAEMON_FILE
-    echo 'Type=simple' >> $TAHOELAFS_DAEMON_FILE
-    echo "User=tahoelafs" >> $TAHOELAFS_DAEMON_FILE
-    echo "Group=tahoelafs" >> $TAHOELAFS_DAEMON_FILE
-    echo "WorkingDirectory=/home/tahoelafs/tahoelafs" >> $TAHOELAFS_DAEMON_FILE
-    echo "ExecStart=/home/tahoelafs/tahoelafs/venv/bin/tahoe run /home/tahoelafs/data" >> $TAHOELAFS_DAEMON_FILE
-    echo "ExecStop=/home/tahoelafs/tahoelafs/venv/bin/tahoe stop /home/tahoelafs/data" >> $TAHOELAFS_DAEMON_FILE
-    echo 'Restart=on-failure' >> $TAHOELAFS_DAEMON_FILE
-    echo 'RestartSec=10' >> $TAHOELAFS_DAEMON_FILE
-    echo "Environment=\"USER=tahoelafs\" \"HOME=/home/tahoelafs\"" >> $TAHOELAFS_DAEMON_FILE
-    echo '' >> $TAHOELAFS_DAEMON_FILE
-    echo '[Install]' >> $TAHOELAFS_DAEMON_FILE
-    echo 'WantedBy=multi-user.target' >> $TAHOELAFS_DAEMON_FILE
-    systemctl enable tahoelafs
-    systemctl daemon-reload
-    systemctl start tahoelafs
+    # start the storage node
+    su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/storage' - tahoelafs
+
+    # create daemons
+    create_tahoelafs_daemon introducer
+    create_tahoelafs_daemon storage
 
     set_completion_param "tahoelafs commit" "$TAHOELAFS_COMMIT"
-
-    #install_tahoelafs_web $TAHOELAFS_CONFIG
 
     APP_INSTALLED=1
 }
