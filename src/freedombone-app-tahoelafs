@@ -8,13 +8,14 @@
 #
 #                    Freedom in the Cloud
 #
-# Distributed storage system introducer
+# Tahow-LAFS data storage grid implemented via Tor
+# https://k0rx.com/blog/2017/01/lafs.html
 # http://tahoe-lafs.readthedocs.io/en/latest/anonymity-configuration.html
 #
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -38,51 +39,138 @@ TAHOELAFS_REPO="https://github.com/tahoe-lafs/tahoe-lafs"
 TAHOELAFS_COMMIT='bb782b0331a60de438136a593bba18338d8d866b'
 
 TAHOELAFS_PORT=50213
+TAHOELAFS_STORAGE_PORT=50214
 TAHOELAFS_ONION_PORT=8096
+TAHOELAFS_STORAGE_ONION_PORT=8097
 
-TAHOELAFS_SHARED_DIR='Shared'
 TAHOE_COMMAND="cd /home/tahoelafs/tahoelafs && venv/bin/tahoe"
+tahoelafs_storage_file=/home/tahoelafs/client/private/servers.yaml
 
 tahoelafs_variables=(ONION_ONLY
+                     MY_USERNAME
                      TAHOELAFS_REPO
                      TAHOELAFS_PORT)
 
-function tahoelafs_setup_config {
+function add_tahoelafs_storage_node_interactive {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Configuration" \
+           --title $"Add Tahoe-LAFS storage node" \
+           --form $"\nEnter the storage node details which can be found on the About screen of another server" 13 75 5 \
+           $"Hostname:" 1 1 "" 1 14 53 40 \
+           $"Public Key:" 2 1 "" 2 14 53 255 \
+           $"Nickname:" 3 1 "" 3 14 53 255 \
+           $"FURL:" 4 1 "" 4 14 53 255 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    storage_hostname=$(cat $data | sed -n 1p)
+    public_key="$(cat $data | sed -n 2p)"
+    nick=$(cat $data | sed -n 3p)
+    furl=$(cat $data | sed -n 4p)
+
+    if [ ${#public_key} -eq 0 ]; then
+        return
+    fi
+
+    add_tahoelafs_server "${storage_hostname}" "${public_key}" "${nick}" "${furl}"
+
+    if grep -q "$public_key" $tahoelafs_storage_file; then
+        dialog --title $"Add Tahoe-LAFS storage node" \
+               --msgbox $"Storage node added" 6 40
+    fi
+}
+
+function edit_tahoelafs_nodes {
+    editor $tahoelafs_storage_file
+    chown tahoelafs:debian-tor $tahoelafs_storage_file
+    systemctl restart tahoelafs-client
+}
+
+function configure_interactive_tahoelafs {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Configuration" \
+           --title $"Tahoe-LAFS" \
+           --radiolist $"The least authority is always the best" 10 50 3 \
+           1 "Add a storage node" off \
+           2 "Manually edit storage nodes" off \
+           3 "Back to main menu" on 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    case $(cat $data) in
+        1) add_tahoelafs_storage_node_interactive;;
+        2) edit_tahoelafs_nodes;;
+    esac
+}
+
+function tahoelafs_setup_client_config {
     config_file=$1
     nick="$2"
 
-    if ! grep -q "[node]" $config_file; then
-        echo '' >> $config_file
-        echo '[node]' >> $config_file
-    fi
+    echo '[node]' > $config_file
+    echo "nickname = $nick" >> $config_file
+    echo 'reveal-IP-address = false' >> $config_file
+    echo "web.port = tcp:$TAHOELAFS_ONION_PORT:interface=127.0.0.1" >> $config_file
+    echo 'web.static = public_html' >> $config_file
+    echo 'tub.port = disabled' >> $config_file
+    echo 'tub.location = disabled' >> $config_file
+    echo '' >> $config_file
+    echo '[client]' >> $config_file
+    echo 'introducer.furl =' >> $config_file
+    echo 'shares.needed = 3' >> $config_file
+    echo 'shares.happy = 7' >> $config_file
+    echo 'shares.total = 10' >> $config_file
+    echo '' >> $config_file
+    echo '[storage]' >> $config_file
+    echo 'enabled = false' >> $config_file
+    echo 'reserved_space = 3G' >> $config_file
+    echo '' >> $config_file
+    echo '[helper]' >> $config_file
+    echo 'enabled = false' >> $config_file
+    echo '' >> $config_file
+    echo '[connections]' >> $config_file
+    echo 'tcp = tor' >> $config_file
+}
 
-    if ! grep -q "[connections]" $config_file; then
-        echo '' >> $config_file
-        echo '[connections]' >> $config_file
-    fi
+function tahoelafs_setup_storage_config {
+    config_file=$1
+    nick="$2"
 
-    if ! grep -q "reveal-IP-address" $config_file; then
-        sed -i '/[node]/a reveal-IP-address = False' $config_file
-    else
-        sed -i 's|reveal-IP-address.*|reveal-IP-address = False|g' $config_file
-    fi
-
-    if ! grep -q "tcp =" $config_file; then
-        sed -i '/[connections]/a tcp = tor' $config_file
-    else
-        sed -i 's|tcp =.*|tcp = tor|g' $config_file
-    fi
-
-    if ! grep -q "tub.location =" $config_file; then
-        sed -i '/[node]/a tub.location = disabled' $config_file
-    fi
-    if ! grep -q "tub.port =" $config_file; then
-        sed -i "/[node]/a tub.port = tcp:${TAHOELAFS_ONION_PORT}:interface=127.0.0.1" $config_file
-    fi
-    sed -i "s|tub.port.*|tub.port = tcp:${TAHOELAFS_ONION_PORT}:interface=127.0.0.1|g" $config_file
-    sed -i "s|tub.location.*|tub.location = tor:${TAHOELAFS_ONION_HOSTNAME}:${TAHOELAFS_PORT}|g" $config_file
-
-    sed -i "s|nickname =.*|nickname = ${NICK}|g" $config_file
+    echo '[node]' > $config_file
+    echo "nickname = $nick" >> $config_file
+    echo 'reveal-IP-address = false' >> $config_file
+    echo 'web.port =' >> $config_file
+    echo 'web.static = public_html' >> $config_file
+    echo "tub.port = tcp:${TAHOELAFS_STORAGE_ONION_PORT}:interface=127.0.0.1" >> $config_file
+    echo "tub.location = tor:${TAHOELAFS_STORAGE_ONION_HOSTNAME}:${TAHOELAFS_STORAGE_PORT}" >> $config_file
+    echo '' >> $config_file
+    echo '[client]' >> $config_file
+    echo 'introducer.furl =' >> $config_file
+    echo 'helper.furl =' >> $config_file
+    echo '' >> $config_file
+    echo 'shares.needed = 3' >> $config_file
+    echo 'shares.happy = 7' >> $config_file
+    echo 'shares.total = 10' >> $config_file
+    echo '' >> $config_file
+    echo '[storage]' >> $config_file
+    echo 'enabled = true' >> $config_file
+    echo 'reserved_space = 3G' >> $config_file
+    echo 'expire.enabled = true' >> $config_file
+    echo 'expire.mode = age' >> $config_file
+    echo 'expire.override_lease_duration = 3 months' >> $config_file
+    echo '' >> $config_file
+    echo '[helper]' >> $config_file
+    echo 'enabled = false' >> $config_file
+    echo '' >> $config_file
+    echo '[connections]' >> $config_file
+    echo 'tcp = tor' >> $config_file
 
     chown -R tahoelafs:debian-tor /home/tahoelafs
 }
@@ -169,7 +257,10 @@ function restore_remote_tahoelafs {
 }
 
 function reconfigure_tahoelafs {
-    echo -n ''
+    if [ -f $tahoelafs_storage_file ]; then
+        shred -zu $tahoelafs_storage_file
+    fi
+    sed -i '/HidServAuth /d' /etc/tor/torrc
 }
 
 function remove_tahoelafs {
@@ -184,31 +275,26 @@ function remove_tahoelafs {
 
     systemctl stop tahoelafs-storage
     systemctl disable tahoelafs-storage
-    rm /etc/systemd/system/tahoelafs-storage.service
+    rm /etc/systemd/system/tahoelafs-storage.serice
 
-    systemctl stop tahoelafs-introducer
-    systemctl disable tahoelafs-introducer
-    rm /etc/systemd/system/tahoelafs-introducer.service
+    systemctl stop tahoelafs-client
+    systemctl disable tahoelafs-client
+    rm /etc/systemd/system/tahoelafs-client.serice
 
-    #firewall_remove ${TAHOELAFS_PORT}
-    rm -rf /var/lib/tahoelafs
+    if [ -d /var/lib/tahoelafs ]; then
+        rm -rf /var/lib/tahoelafs
+    fi
     remove_completion_param install_tahoelafs
-    #remove_completion_param configure_firewall_for_tahoelafs
     function_check remove_onion_service
     remove_onion_service tahoelafs ${TAHOELAFS_ONION_PORT}
+    remove_onion_service tahoelafs-storage ${TAHOELAFS_STORAGE_ONION_PORT}
+    sed -i '/HidServAuth /d' /etc/tor/torrc
     deluser tahoelafs
     if [ -d /home/tahoelafs ]; then
         rm -rf /home/tahoelafs
     fi
     remove_app tahoelafs
-}
-
-function configure_firewall_for_tahoelafs {
-    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
-        return
-    fi
-    firewall_add Tahoe-LAFS ${TAHOELAFS_PORT}
-    mark_completed $FUNCNAME
+    systemctl reload tor
 }
 
 function install_tahoelafs_to_directory {
@@ -225,6 +311,42 @@ function install_tahoelafs_to_directory {
     venv/bin/pip install cryptography==1.7.2 markerlib==0.6.0 distribute==0.7.3
     venv/bin/pip install txtorcon==0.18.0
     venv/bin/pip install --editable .
+}
+
+function create_tahoelafs_stealth_node {
+    node_dir="$1"
+    client_dir="$2"
+    node_nick="$3"
+    client_nick="$4"
+
+    if [ ${#node_dir} -eq 0 ]; then
+        echo $'No tahoe-LAFS storage node directory given'
+        exit 783522
+    fi
+    if [ ${#client_dir} -eq 0 ]; then
+        echo $'No tahoe-LAFS client directory given'
+        exit 368935
+    fi
+    if [ ${#node_nick} -eq 0 ]; then
+        echo $'No tahoe-LAFS node nick given'
+        exit 672351
+    fi
+    if [ ${#client_nick} -eq 0 ]; then
+        echo $'No tahoe-LAFS client nick given'
+        exit 682362
+    fi
+
+    if [ ! -f ${node_dir}/tahoe.cfg ]; then
+        su -c "mkdir ${node_dir}" - tahoelafs
+        su -c "$TAHOE_COMMAND create-node -C ${node_dir} --hostname=fixme" - tahoelafs
+        tahoelafs_setup_storage_config ${node_dir}/tahoe.cfg ${node_nick}
+    fi
+
+    if [ ! -f ${client_dir}/tahoe.cfg ]; then
+        su -c "mkdir ${client_dir}" - tahoelafs
+        su -c "$TAHOE_COMMAND create-client -C ${client_dir}" - tahoelafs
+        tahoelafs_setup_client_config ${client_dir}/tahoe.cfg ${client_nick}
+    fi
 }
 
 function create_tahoelafs_introducer {
@@ -275,8 +397,58 @@ function create_tahoelafs_client {
     sed -i 's|tub.location =.*|tub.location = disabled|g' $client_dir/tahoe.cfg
 }
 
-function get_tahoelafs_introducer {
-    echo "$(cat /home/tahoelafs/introducer/private/introducer.furl)"
+function get_tahoelafs_furl {
+    echo "$(cat /home/tahoelafs/storage/private/storage.furl)"
+}
+
+function get_tahoelafs_nick {
+    echo "${MY_USERNAME}-node"
+}
+
+function get_tahoelafs_storage_hostname {
+    echo "$(cat /var/lib/tor/hidden_service_tahoelafs-storage/hostname)"
+}
+
+function get_tahoelafs_public_key {
+    echo "$(cat /home/tahoelafs/storage/node.pubkey | grep 'v0-')"
+}
+
+function add_tahoelafs_server {
+    storage_hostname="$1"
+    public_key="$2"
+    nick="$3"
+    furl="$4"
+
+    if [ ${#storage_hostname} -eq 0 ]; then
+        return
+    fi
+    if [ ${#public_key} -eq 0 ]; then
+        return
+    fi
+    if [ ${#nick} -eq 0 ]; then
+        return
+    fi
+    if [ ${#furl} -eq 0 ]; then
+        return
+    fi
+
+    if grep -q "$public_key" $tahoelafs_storage_file; then
+        return
+    fi
+    if [ ! -f $tahoelafs_storage_file ]; then
+        echo 'storage:' > $tahoelafs_storage_file
+    else
+        echo '# storage' >> $tahoelafs_storage_file
+    fi
+    echo "  $public_key" >> $tahoelafs_storage_file
+    echo "    ann:" >> $tahoelafs_storage_file
+    echo "      nickname: $nick" >> $tahoelafs_storage_file
+    echo "      anonymous-storage-FURL: $furl" >> $tahoelafs_storage_file
+    chown tahoelafs:debian-tor $tahoelafs_storage_file
+
+    if ! grep -q "HidServAuth ${storage_hostname}" /etc/tor/torrc; then
+        echo "HidServAuth ${storage_hostname}" >> /etc/tor/torrc
+    fi
 }
 
 function create_tahoelafs_daemon {
@@ -308,6 +480,45 @@ function create_tahoelafs_daemon {
     systemctl start tahoelafs-${daemon_name}
 }
 
+function create_tahoelafs_web {
+    if [ ! -d /var/www/tahoelafs/htdocs ]; then
+        mkdir -p /var/www/tahoelafs/htdocs
+    fi
+
+    tahoelafs_nginx_site=/etc/nginx/sites-available/tahoelafs
+    echo 'server {' > $tahoelafs_nginx_site
+    echo "    listen 127.0.0.1:$TAHOELAFS_ONION_PORT default_server;" >> $tahoelafs_nginx_site
+    echo "    server_name $TAHOELAFS_ONION_HOSTNAME;" >> $tahoelafs_nginx_site
+    echo '' >> $tahoelafs_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing tahoelafs
+    echo '' >> $tahoelafs_nginx_site
+    echo '  # Logs' >> $tahoelafs_nginx_site
+    echo '  access_log /dev/null;' >> $tahoelafs_nginx_site
+    echo '  error_log /dev/null;' >> $tahoelafs_nginx_site
+    echo '' >> $tahoelafs_nginx_site
+    echo '  # Root' >> $tahoelafs_nginx_site
+    echo "  root /var/www/tahoelafs/htdocs;" >> $tahoelafs_nginx_site
+    echo '' >> $tahoelafs_nginx_site
+    echo '  location / {' >> $tahoelafs_nginx_site
+    function_check nginx_limits
+    nginx_limits tahoelafs '15m'
+    echo '    rewrite /(.*) /$1 break;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header Host $http_host;' >> $tahoelafs_nginx_site
+    echo '    proxy_set_header X-NginX-Proxy true;' >> $tahoelafs_nginx_site
+    echo "    proxy_pass http://localhost:${TAHOELAFS_PORT};" >> $tahoelafs_nginx_site
+    echo '    proxy_redirect off;' >> $tahoelafs_nginx_site
+    echo '  }' >> $tahoelafs_nginx_site
+    echo '}' >> $tahoelafs_nginx_site
+
+    function_check nginx_ensite
+    nginx_ensite tahoelafs
+
+    systemctl reload nginx
+}
+
 function install_tahoelafs {
     if [ $INSTALLING_MESH ]; then
         return
@@ -328,7 +539,6 @@ function install_tahoelafs {
     fi
 
     install_tahoelafs_to_directory /home/tahoelafs/tahoelafs
-    #configure_firewall_for_tahoelafs
 
     # remove files we don't need
     rm -rf /home/tahoelafs/.mutt
@@ -340,51 +550,31 @@ function install_tahoelafs {
     # set permissions
     chown -R tahoelafs:debian-tor /home/tahoelafs
 
-    # create the introducer config
-    create_tahoelafs_introducer /home/tahoelafs/introducer
-    TAHOELAFS_INTRODUCER_CONFIG=/home/tahoelafs/introducer/tahoe.cfg
-    if [ ! -f $TAHOELAFS_INTRODUCER_CONFIG ]; then
-        echo $'Unable to create introducer'
-        exit 62831
-    fi
+    node_nick=$(get_tahoelafs_nick)
+    client_nick=${MY_USERNAME}-client
 
-    # create an onion address
+    # create an onion address for storage node
+    TAHOELAFS_STORAGE_ONION_HOSTNAME=$(add_onion_service tahoelafs-storage ${TAHOELAFS_STORAGE_PORT} ${TAHOELAFS_STORAGE_ONION_PORT} ${node_nick})
+
+    # create an onion address for client node
     TAHOELAFS_ONION_HOSTNAME=$(add_onion_service tahoelafs ${TAHOELAFS_PORT} ${TAHOELAFS_ONION_PORT})
 
-    # start the introducer
-    tahoelafs_setup_config $TAHOELAFS_INTRODUCER_CONFIG ${PROJECT_NAME}-introducer
-    su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/introducer' - tahoelafs
-    TAHOELAFS_INTRODUCER=/home/tahoelafs/introducer/tahoe-introducer.tac
-    if [ ! -f $TAHOELAFS_INTRODUCER ]; then
-        echo $'Introducer file not found'
-        exit 9654845
-    fi
-    create_tahoelafs_daemon "introducer"
+    create_tahoelafs_stealth_node /home/tahoelafs/storage /home/tahoelafs/client ${node_nick} ${client_nick}
+
+    add_tahoelafs_server "$(get_tahoelafs_storage_hostname)" "$(get_tahoelafs_public_key)" "${node_nick}" "$(get_tahoelafs_furl)"
 
     # start the storage node
-    create_tahoelafs_storage_node /home/tahoelafs/storage "$(get_tahoelafs_introducer)"
-    TAHOELAFS_STORAGE_CONFIG=/home/tahoelafs/storage/tahoe.cfg
-    if [ ! -f $TAHOELAFS_STORAGE_CONFIG ]; then
-        echo $'Unable to create storage node'
-        exit 782523
-    fi
-    if grep -q 'tub.location' $TAHOELAFS_STORAGE_CONFIG; then
-        sed -i "s|tub.location.*|tub.location = disabled|g" $TAHOELAFS_STORAGE_CONFIG
-    else
-        echo 'tub.location = disabled' >> $TAHOELAFS_STORAGE_CONFIG
-    fi
-    if grep -q 'tub.port' $TAHOELAFS_STORAGE_CONFIG; then
-        sed -i "s|tub.port.*|tub.port = disabled|g" $TAHOELAFS_STORAGE_CONFIG
-    else
-        echo 'tub.port = disabled' >> $TAHOELAFS_STORAGE_CONFIG
-    fi
-    sed -i "s|web.port.*|web.port =|g" $TAHOELAFS_STORAGE_CONFIG
-
     su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/storage' - tahoelafs
     create_tahoelafs_daemon "storage"
 
+    # start the client
+    su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/client' - tahoelafs
+    create_tahoelafs_daemon "client"
+
     set_completion_param "tahoelafs commit" "$TAHOELAFS_COMMIT"
 
+    create_tahoelafs_web
+    systemctl reload tor
     APP_INSTALLED=1
 }
 
