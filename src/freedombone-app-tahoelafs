@@ -46,10 +46,17 @@ TAHOELAFS_STORAGE_ONION_PORT=8097
 TAHOE_COMMAND="cd /home/tahoelafs/tahoelafs && venv/bin/tahoe"
 tahoelafs_storage_file=/home/tahoelafs/client/private/servers.yaml
 
+TAHOELAFS_SHARES_NEEDED=3
+TAHOELAFS_SHARES_HAPPY=7
+TAHOELAFS_SHARES_TOTAL=10
+
 tahoelafs_variables=(ONION_ONLY
                      MY_USERNAME
                      TAHOELAFS_REPO
-                     TAHOELAFS_PORT)
+                     TAHOELAFS_PORT
+                     TAHOELAFS_SHARES_NEEDED
+                     TAHOELAFS_SHARES_HAPPY
+                     TAHOELAFS_SHARES_TOTAL)
 
 function add_tahoelafs_storage_node_interactive {
     data=$(tempfile 2>/dev/null)
@@ -78,7 +85,7 @@ function add_tahoelafs_storage_node_interactive {
 
     add_tahoelafs_server "${storage_hostname}" "${public_key}" "${nick}" "${furl}"
 
-    if grep -q "$public_key" $tahoelafs_storage_file; then
+    if grep -q "$public_key" ${tahoelafs_storage_file}; then
         dialog --title $"Add Tahoe-LAFS storage node" \
                --msgbox $"Storage node added" 6 40
     fi
@@ -90,15 +97,63 @@ function edit_tahoelafs_nodes {
     systemctl restart tahoelafs-client
 }
 
+function edit_tahoelafs_shares {
+    read_config_param TAHOELAFS_SHARES_NEEDED
+    read_config_param TAHOELAFS_SHARES_HAPPY
+    read_config_param TAHOELAFS_SHARES_TOTAL
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Configuration" \
+           --title $"Tahoe-LAFS shares" \
+           --form $"\nEnter the storage node details which can be found on the About screen of another server" 13 40 3 \
+           $"Needed:" 1 1 "${TAHOELAFS_SHARES_NEEDED}" 1 14 4 4 \
+           $"Happy:" 2 1 "${TAHOELAFS_SHARES_HAPPY}" 2 14 4 4 \
+           $"Total:" 3 1 "${TAHOELAFS_SHARES_TOTAL}" 3 14 4 4 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    tl_needed="$(cat $data | sed -n 1p)"
+    tl_happy="$(cat $data | sed -n 2p)"
+    tl_total="$(cat $data | sed -n 3p)"
+    if [ ${#tl_needed} -gt 0 ]; then
+        TAHOELAFS_SHARES_NEEDED=${tl_needed}
+    fi
+    if [ ${#tl_happy} -gt 0 ]; then
+        TAHOELAFS_SHARES_HAPPY=${tl_happy}
+    fi
+    if [ ${#tl_total} -gt 0 ]; then
+        TAHOELAFS_SHARES_TOTAL=${tl_total}
+    fi
+
+    sed -i "s|shares.needed.*|shares.needed = ${TAHOELAFS_SHARES_NEEDED}|g" /home/tahoelafs/tahoelafs/client/tahoe.cfg
+    sed -i "s|shares.happy.*|shares.happy = ${TAHOELAFS_SHARES_HAPPY}|g" /home/tahoelafs/tahoelafs/client/tahoe.cfg
+    sed -i "s|shares.total.*|shares.total = ${TAHOELAFS_SHARES_TOTAL}|g" /home/tahoelafs/tahoelafs/client/tahoe.cfg
+
+    sed -i "s|shares.needed.*|shares.needed = ${TAHOELAFS_SHARES_NEEDED}|g" /home/tahoelafs/tahoelafs/storage/tahoe.cfg
+    sed -i "s|shares.happy.*|shares.happy = ${TAHOELAFS_SHARES_HAPPY}|g" /home/tahoelafs/tahoelafs/storage/tahoe.cfg
+    sed -i "s|shares.total.*|shares.total = ${TAHOELAFS_SHARES_TOTAL}|g" /home/tahoelafs/tahoelafs/storage/tahoe.cfg
+
+    systemctl restart tahoelafs-storage
+    systemctl restart tahoelafs-client
+
+    dialog --title $"Tahoe-LAFS shares" \
+           --msgbox $"Shares settings changed" 6 40
+}
+
 function configure_interactive_tahoelafs {
     data=$(tempfile 2>/dev/null)
     trap "rm -f $data" 0 1 2 5 15
     dialog --backtitle $"Freedombone Configuration" \
            --title $"Tahoe-LAFS" \
-           --radiolist $"The least authority is always the best" 10 50 3 \
+           --radiolist $"The least authority is always the best" 10 50 4 \
            1 "Add a storage node" off \
            2 "Manually edit storage nodes" off \
-           3 "Back to main menu" on 2> $data
+           3 "Shares settings" off \
+           4 "Back to main menu" on 2> $data
     sel=$?
     case $sel in
         1) exit 1;;
@@ -107,6 +162,7 @@ function configure_interactive_tahoelafs {
     case $(cat $data) in
         1) add_tahoelafs_storage_node_interactive;;
         2) edit_tahoelafs_nodes;;
+        3) edit_tahoelafs_shares;;
     esac
 }
 
@@ -117,16 +173,16 @@ function tahoelafs_setup_client_config {
     echo '[node]' > $config_file
     echo "nickname = $nick" >> $config_file
     echo 'reveal-IP-address = false' >> $config_file
-    echo "web.port = tcp:$TAHOELAFS_ONION_PORT:interface=127.0.0.1" >> $config_file
+    echo "web.port = tcp:${TAHOELAFS_ONION_PORT}:interface=127.0.0.1" >> $config_file
     echo 'web.static = public_html' >> $config_file
     echo 'tub.port = disabled' >> $config_file
     echo 'tub.location = disabled' >> $config_file
     echo '' >> $config_file
     echo '[client]' >> $config_file
     echo 'introducer.furl =' >> $config_file
-    echo 'shares.needed = 3' >> $config_file
-    echo 'shares.happy = 7' >> $config_file
-    echo 'shares.total = 10' >> $config_file
+    echo "shares.needed = ${TAHOELAFS_SHARES_NEEDED}" >> $config_file
+    echo "shares.happy = ${TAHOELAFS_SHARES_HAPPY}" >> $config_file
+    echo "shares.total = ${TAHOELAFS_SHARES_TOTAL}" >> $config_file
     echo '' >> $config_file
     echo '[storage]' >> $config_file
     echo 'enabled = false' >> $config_file
@@ -155,9 +211,9 @@ function tahoelafs_setup_storage_config {
     echo 'introducer.furl =' >> $config_file
     echo 'helper.furl =' >> $config_file
     echo '' >> $config_file
-    echo 'shares.needed = 3' >> $config_file
-    echo 'shares.happy = 7' >> $config_file
-    echo 'shares.total = 10' >> $config_file
+    echo "shares.needed = ${TAHOELAFS_SHARES_NEEDED}" >> $config_file
+    echo "shares.happy = ${TAHOELAFS_SHARES_HAPPY}" >> $config_file
+    echo "shares.total = ${TAHOELAFS_SHARES_TOTAL}" >> $config_file
     echo '' >> $config_file
     echo '[storage]' >> $config_file
     echo 'enabled = true' >> $config_file
