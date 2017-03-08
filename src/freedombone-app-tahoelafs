@@ -58,6 +58,40 @@ tahoelafs_variables=(ONION_ONLY
                      TAHOELAFS_SHARES_HAPPY
                      TAHOELAFS_SHARES_TOTAL)
 
+function add_user_tahoelafs {
+    if [[ $(app_is_installed tahoelafs) == "0" ]]; then
+        echo '0'
+        return
+    fi
+
+    new_username="$1"
+    new_user_password="$2"
+    ${PROJECT_NAME}-pass -u $new_username -a tahoelafs -p "$new_user_password"
+    if grep "${new_username}:" /etc/nginx/.htpasswd-tahoelafs; then
+        sed -i '/${new_username}:/d' /etc/nginx/.htpasswd-tahoelafs
+    fi
+    echo "${new_user_password}" | htpasswd -i -s /etc/nginx/.htpasswd-tahoelafs ${new_username}
+    echo '0'
+}
+
+function remove_user_tahoelafs {
+    remove_username="$1"
+    ${PROJECT_NAME}-pass -u $remove_username --rmapp tahoelafs
+    if grep "${remove_username}:" /etc/nginx/.htpasswd-tahoelafs; then
+        sed -i '/${remove_username}:/d' /etc/nginx/.htpasswd-tahoelafs
+    fi
+}
+
+function change_password_tahoelafs {
+    change_username="$1"
+    change_password="$2"
+    ${PROJECT_NAME}-pass -u $change_username -a tahoelafs -p "$change_password"
+    if grep "${change_username}:" /etc/nginx/.htpasswd-tahoelafs; then
+        sed -i '/tahoe-${change_username}:/d' /etc/nginx/.htpasswd-tahoelafs
+    fi
+    echo "${change_password}" | htpasswd -i -s /etc/nginx/.htpasswd-tahoelafs ${change_username}
+}
+
 function add_tahoelafs_storage_node_interactive {
     data=$(tempfile 2>/dev/null)
     trap "rm -f $data" 0 1 2 5 15
@@ -562,6 +596,8 @@ function create_tahoelafs_web {
     echo "  root /var/www/tahoelafs/htdocs;" >> $tahoelafs_nginx_site
     echo '' >> $tahoelafs_nginx_site
     echo '  location / {' >> $tahoelafs_nginx_site
+    echo '    auth_basic $"Tahoe-LAFS login";' >> $tahoelafs_nginx_site
+    echo '    auth_basic_user_file /etc/nginx/.htpasswd-tahoelafs;' >> $tahoelafs_nginx_site
     function_check nginx_limits
     nginx_limits tahoelafs '15m'
     echo '    rewrite /(.*) /$1 break;' >> $tahoelafs_nginx_site
@@ -574,9 +610,18 @@ function create_tahoelafs_web {
     echo '  }' >> $tahoelafs_nginx_site
     echo '}' >> $tahoelafs_nginx_site
 
+    TAHOELAFS_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a tahoelafs -p "$TAHOELAFS_ADMIN_PASSWORD"
+    if [ ! -f /etc/nginx/.htpasswd-tahoelafs ]; then
+        touch /etc/nginx/.htpasswd-tahoelafs
+    fi
+    if grep "${MY_USERNAME}:" /etc/nginx/.htpasswd-tahoelafs; then
+        sed -i '/${MY_USERNAME}:/d' /etc/nginx/.htpasswd-tahoelafs
+    fi
+    echo "${TAHOELAFS_ADMIN_PASSWORD}" | htpasswd -i -s /etc/nginx/.htpasswd-tahoelafs ${MY_USERNAME}
+
     function_check nginx_ensite
     nginx_ensite tahoelafs
-
     systemctl reload nginx
 }
 
