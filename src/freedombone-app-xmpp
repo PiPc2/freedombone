@@ -293,53 +293,58 @@ function upgrade_xmpp_server {
     function_check update_prosody_modules
     update_prosody_modules
 
-    if [ -d ${INSTALL_DIR}/${prosody_filename} ]; then
-        # ensure that the binaries have not been overwritten
-        # by an operating system upgrade
-        cd ${INSTALL_DIR}/${prosody_filename}
-        make prefix=/usr install
-    else
-        cd $INSTALL_DIR
-        # Try to get the source from the project repo
-        if [ -f /root/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz ]; then
-            cp /root/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz .
+    curr_prosody_filename=$(cat $COMPLETION_FILE | grep "prosody_filename" | awk -F ':' '{print $2}')
+    if [[ "$curr_prosody_filename" != "$prosody_filename" ]]; then
+        if [ -d ${INSTALL_DIR}/${prosody_filename} ]; then
+            # ensure that the binaries have not been overwritten
+            # by an operating system upgrade
+            cd ${INSTALL_DIR}/${prosody_filename}
+            make prefix=/usr install
         else
-            if [ -f /home/${MY_USERNAME}/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz ]; then
-                cp /home/${MY_USERNAME}/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz .
+            cd $INSTALL_DIR
+            # Try to get the source from the project repo
+            if [ -f /root/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz ]; then
+                cp /root/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz .
             else
-                wget $prosody_nightly_url
+                if [ -f /home/${MY_USERNAME}/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz ]; then
+                    cp /home/${MY_USERNAME}/${PROJECT_NAME}/image_build/${prosody_filename}.tar.gz .
+                else
+                    wget $prosody_nightly_url
+                fi
             fi
-        fi
-        if [ ! -f ${INSTALL_DIR}/${prosody_filename}.tar.gz ]; then
-            echo $"Failed to download prosody nightly $prosody_nightly_url"
-            return
-        fi
+            if [ ! -f ${INSTALL_DIR}/${prosody_filename}.tar.gz ]; then
+                echo $"Failed to download prosody nightly $prosody_nightly_url"
+                return
+            fi
 
-        hash_value=$(sha256sum ${INSTALL_DIR}/${prosody_filename}.tar.gz | awk -F ' ' '{print $1}')
-        if [[ "$hash_value" != "$prosody_nightly_hash" ]]; then
+            hash_value=$(sha256sum ${INSTALL_DIR}/${prosody_filename}.tar.gz | awk -F ' ' '{print $1}')
+            if [[ "$hash_value" != "$prosody_nightly_hash" ]]; then
+                rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
+                echo $'Unexpected hash value for prosody nightly download'
+                return
+            fi
+
+            tar -xzvf ${INSTALL_DIR}/${prosody_filename}.tar.gz
+            cd ${INSTALL_DIR}/${prosody_filename}
+            ./configure --ostype=debian --prefix=/usr
+            make prefix=/usr
+            make prefix=/usr install
+            if [ -f /usr/local/bin/prosody ]; then
+                echo $'Failed to build prosody nightly to /usr/bin'
+                rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
+                rm -rf ${INSTALL_DIR}/${prosody_filename}
+                return
+            fi
             rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
-            echo $'Unexpected hash value for prosody nightly download'
-            return
         fi
 
-        tar -xzvf ${INSTALL_DIR}/${prosody_filename}.tar.gz
-        cd ${INSTALL_DIR}/${prosody_filename}
-        ./configure --ostype=debian --prefix=/usr
-        make prefix=/usr
-        make prefix=/usr install
-        if [ -f /usr/local/bin/prosody ]; then
-            echo $'Failed to build prosody nightly to /usr/bin'
-            rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
-            rm -rf ${INSTALL_DIR}/${prosody_filename}
-            return
+        # add onion addresses for known servers
+        if ! grep -q "onions_map =" /etc/prosody/prosody.cfg.lua; then
+            echo '' >> /etc/prosody/prosody.cfg.lua
+            xmpp_onion_addresses /etc/prosody/prosody.cfg.lua
         fi
-        rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
-    fi
 
-    # add onion addresses for known servers
-    if ! grep -q "onions_map =" /etc/prosody/prosody.cfg.lua; then
-        echo '' >> /etc/prosody/prosody.cfg.lua
-        xmpp_onion_addresses /etc/prosody/prosody.cfg.lua
+        set_completion_param "prosody_filename" "${prosody_filename}"
     fi
 
     systemctl restart prosody
@@ -353,48 +358,57 @@ function upgrade_xmpp_client {
 
     rm -rf /tmp/*
 
-    function_check set_repo_commit
-    set_repo_commit $INSTALL_DIR/libmesode "libmesode commit" "$LIBMESODE_COMMIT" $LIBMESODE_REPO
-    cd $INSTALL_DIR/libmesode
-    ./bootstrap.sh
-    ./configure
-    make
-    make install
-    cp /usr/local/lib/libmesode* /usr/lib
+    CURR_LIBMESODE_COMMIT=$(cat $COMPLETION_FILE | grep "libmesode commit" | awk -F ':' '{print $2}')
+    if [[ "$CURR_LIBMESODE_COMMIT" != "$LIBMESODE_COMMIT" ]]; then
+        function_check set_repo_commit
+        set_repo_commit $INSTALL_DIR/libmesode "libmesode commit" "$LIBMESODE_COMMIT" $LIBMESODE_REPO
+        cd $INSTALL_DIR/libmesode
+        ./bootstrap.sh
+        ./configure
+        make
+        make install
+        cp /usr/local/lib/libmesode* /usr/lib
+    fi
 
     rm -rf /tmp/*
 
-    function_check set_repo_commit
-    set_repo_commit $INSTALL_DIR/profanity "profanity commit" "$PROFANITY_COMMIT" $PROFANITY_REPO
-    cd $INSTALL_DIR/profanity
-    ./bootstrap.sh
-    ./configure --disable-notifications --disable-icons --enable-otr --enable-pgp --enable-plugins --enable-c-plugins --enable-python-plugins --without-xscreensaver
-    make
-    make install
-
-    # upgrade omemo plugins for all users
-    set_repo_commit $INSTALL_DIR/profanity-omemo-plugin "profanity omemo plugin commit" "$PROFANITY_OMEMO_PLUGIN_COMMIT" $PROFANITY_OMEMO_PLUGIN_REPO
-    cd $INSTALL_DIR/profanity-omemo-plugin
-    sed -i 's|python setup.py|python2.7 setup.py|g' $INSTALL_DIR/profanity-omemo-plugin/install.sh
-    pip uninstall -y profanity-omemo-plugin
-    ./install.sh
-    for d in /home/*/ ; do
-        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
-        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ ! -d /home/$USERNAME/.local/share/profanity/plugins ]; then
-                mkdir -p /home/$USERNAME/.local/share/profanity/plugins
-            fi
-            if [ -f $INSTALL_DIR/profanity-omemo-plugin/omemo.py ]; then
-                rm $INSTALL_DIR/profanity-omemo-plugin/omemo.*
-            fi
-            cp $INSTALL_DIR/profanity-omemo-plugin/deploy/prof_omemo_plugin.py /home/$USERNAME/.local/share/profanity/plugins
-            chown -R $USERNAME:$USERNAME /home/$USERNAME/.local
-        fi
-    done
-    if [ -f /etc/skel/.local/share/profanity/plugins/omemo.py ]; then
-        rm /etc/skel/.local/share/profanity/plugins/omemo.*
+    CURR_PROFANITY_COMMIT=$(cat $COMPLETION_FILE | grep "profanity commit" | awk -F ':' '{print $2}')
+    if [[ "$CURR_PROFANITY_COMMIT" != "$PROFANITY_COMMIT" ]]; then
+        function_check set_repo_commit
+        set_repo_commit $INSTALL_DIR/profanity "profanity commit" "$PROFANITY_COMMIT" $PROFANITY_REPO
+        cd $INSTALL_DIR/profanity
+        ./bootstrap.sh
+        ./configure --disable-notifications --disable-icons --enable-otr --enable-pgp --enable-plugins --enable-c-plugins --enable-python-plugins --without-xscreensaver
+        make
+        make install
     fi
-    cp $INSTALL_DIR/profanity-omemo-plugin/deploy/prof_omemo_plugin.py /etc/skel/.local/share/profanity/plugins
+
+    CURR_PROFANITY_OMEMO_PLUGIN_COMMIT=$(cat $COMPLETION_FILE | grep "profanity omemo plugin commit" | awk -F ':' '{print $2}')
+    if [[ "$CURR_PROFANITY_OMEMO_PLUGIN_COMMIT" != "$PROFANITY_OMEMO_PLUGIN_COMMIT" ]]; then
+        # upgrade omemo plugins for all users
+        set_repo_commit $INSTALL_DIR/profanity-omemo-plugin "profanity omemo plugin commit" "$PROFANITY_OMEMO_PLUGIN_COMMIT" $PROFANITY_OMEMO_PLUGIN_REPO
+        cd $INSTALL_DIR/profanity-omemo-plugin
+        sed -i 's|python setup.py|python2.7 setup.py|g' $INSTALL_DIR/profanity-omemo-plugin/install.sh
+        pip uninstall -y profanity-omemo-plugin
+        ./install.sh
+        for d in /home/*/ ; do
+            USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+            if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+                if [ ! -d /home/$USERNAME/.local/share/profanity/plugins ]; then
+                    mkdir -p /home/$USERNAME/.local/share/profanity/plugins
+                fi
+                if [ -f $INSTALL_DIR/profanity-omemo-plugin/omemo.py ]; then
+                    rm $INSTALL_DIR/profanity-omemo-plugin/omemo.*
+                fi
+                cp $INSTALL_DIR/profanity-omemo-plugin/deploy/prof_omemo_plugin.py /home/$USERNAME/.local/share/profanity/plugins
+                chown -R $USERNAME:$USERNAME /home/$USERNAME/.local
+            fi
+        done
+        if [ -f /etc/skel/.local/share/profanity/plugins/omemo.py ]; then
+            rm /etc/skel/.local/share/profanity/plugins/omemo.*
+        fi
+        cp $INSTALL_DIR/profanity-omemo-plugin/deploy/prof_omemo_plugin.py /etc/skel/.local/share/profanity/plugins
+    fi
 }
 
 function upgrade_xmpp {
@@ -516,6 +530,7 @@ function remove_xmpp {
 
     remove_completion_param install_xmpp
     sed -i '/xmpp/d' $COMPLETION_FILE
+    sed -i '/prosody/d' $COMPLETION_FILE
 }
 
 function xmpp_email_headers {
@@ -750,6 +765,8 @@ function install_xmpp_nightly {
         exit 628732
     fi
     rm ${INSTALL_DIR}/${prosody_filename}.tar.gz
+
+    set_completion_param "prosody_filename" "${prosody_filename}"
 }
 
 function install_xmpp_main {
