@@ -36,18 +36,191 @@ SHOW_ON_ABOUT=0
 PELICAN_BLOG_DOMAIN=
 PELICAN_BLOG_CODE=
 
-STATIC_BLOG_INSTALL_DIR=/etc/staticblog
 PELICAN_THEMES_REPO="https://github.com/getpelican/pelican-themes"
 PELICAN_PLUGINS_REPO="https://github.com/getpelican/pelican-plugins"
 DEFAULT_BLOG_TITLE=$"Freedombone Blog"
+
+PELICAN_BLOG_INSTALL_DIR=/etc/blog
+CURRENT_BLOG_INDEX=$PELICAN_BLOG_INSTALL_DIR/.blog-index
+PELICAN_PELICAN_BLOG_INSTALL_DIR=/var/www/$PELICAN_BLOG_DOMAIN/htdocs
 
 pelican_variables=(MY_USERNAME
                    ONION_ONLY
                    PELICAN_BLOG_DOMAIN
                    PELICAN_BLOG_CODE)
 
+function pelican_regenerate_blog {
+    clear
+    echo ''
+    echo $'Regenerating blog...'
+
+    cd $PELICAN_BLOG_INSTALL_DIR
+    make html
+}
+
+function pelican_new_blog {
+    DATESTR=$(date "+%Y-%m-%d %H:%M:%S")
+
+    echo $'Title: Blog Post Title' > $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo $"Date: ${DATESTR}" >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo $"Author: $(toxid --showuser)" >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo $'Category: default' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo $'Tags: blog, tag' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo  '' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo $'Add your text here' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo  '' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo -n $'To include an image copy it into the /etc/blog/content/images directory, ' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo $'then link to it with:' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo  '' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo $'![My image]({filename}images/myimage.jpg)' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+    echo  '' >> $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+
+    editor $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry
+
+    if grep -q $"Add your text here" $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry; then
+        return
+    fi
+    if grep -q $"Blog Post Title" $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry; then
+        return
+    fi
+    if [ ! -f $CURRENT_BLOG_INDEX ]; then
+        echo '0' > $CURRENT_BLOG_INDEX
+    fi
+
+    # move to the content directory
+    CURRENT_INDEX=$(cat $CURRENT_BLOG_INDEX)
+    mv $PELICAN_BLOG_INSTALL_DIR/.new-blog-entry $BLOG_CONTENT_PATH/${CURRENT_INDEX}_post.md
+
+    # increment the index
+    CURRENT_INDEX=$((CURRENT_INDEX + 1))
+    echo "$CURRENT_INDEX" > $CURRENT_BLOG_INDEX
+
+    pelican_regenerate_blog
+}
+
+function pelican_edit_blog {
+    if [ ! -f $CURRENT_BLOG_INDEX ]; then
+        return
+    fi
+    CURRENT_INDEX=$(cat $CURRENT_BLOG_INDEX)
+    PREVIOUS_INDEX=$((CURRENT_INDEX - 1))
+    LAST_BLOG_ENTRY=$BLOG_CONTENT_PATH/${PREVIOUS_INDEX}_post.md
+    if [ ! -f $LAST_BLOG_ENTRY ]; then
+        return
+    fi
+    editor $LAST_BLOG_ENTRY
+    regenerate_blog
+}
+
+function pelican_delete_blog {
+    if [ ! -f $CURRENT_BLOG_INDEX ]; then
+        return
+    fi
+    CURRENT_INDEX=$(cat $CURRENT_BLOG_INDEX)
+    PREVIOUS_INDEX=$((CURRENT_INDEX - 1))
+    LAST_BLOG_ENTRY=$BLOG_CONTENT_PATH/${PREVIOUS_INDEX}_post.md
+    if [ ! -f $LAST_BLOG_ENTRY ]; then
+        return
+    fi
+
+    dialog --title $"Delete the previous blog entry" \
+           --backtitle $"Freedombone Mesh" \
+           --defaultno \
+           --yesno $"\nAre you sure that you wish to delete the previous blog entry?" 8 60
+    sel=$?
+    case $sel in
+        0) rm $LAST_BLOG_ENTRY
+           if [ $CURRENT_INDEX -gt 0 ]; then
+               CURRENT_INDEX=$PREVIOUS_INDEX
+               echo "$CURRENT_INDEX" > $CURRENT_BLOG_INDEX
+           else
+               rm -f $CURRENT_BLOG_INDEX
+           fi
+           pelican_regenerate_blog
+           ;;
+    esac
+}
+
+function pelican_change_theme {
+    THEMES=()
+    for d in $PELICAN_BLOG_INSTALL_DIR/themes/*/ ; do
+        THEME_NAME=$(echo "$d" | awk -F '/' '{print $6}')
+        THEMES+=("$THEME_NAME")
+    done
+
+    themelist=""
+    n=1
+    theme_index=0
+    curr_theme_index=
+    if [ -f $PELICAN_BLOG_INSTALL_DIR/.blog-theme-index ]; then
+        curr_theme_index=$(cat $PELICAN_BLOG_INSTALL_DIR/.blog-theme-index)
+    fi
+    for a in "${THEMES[@]}"
+    do
+        is_selected='off'
+        if [ $curr_theme_index ]; then
+            if [ $n -eq $curr_theme_index ]; then
+                is_selected='on'
+            fi
+        else
+            if [[ "$a" == 'nice-blog' ]]; then
+                is_selected='on'
+            fi
+        fi
+
+        themelist="$themelist $n $a $is_selected"
+        n=$[n+1]
+        theme_index=$[theme_index+1]
+    done
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Mesh" \
+           --title $"Select Blog Theme" \
+           --radiolist $'Choose:' \
+           80 40 20 $themelist 2> $data
+
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    CHOSEN_THEME_INDEX=$(cat $data)
+    echo "$CHOSEN_THEME_INDEX" > $PELICAN_BLOG_INSTALL_DIR/.blog-theme-index
+    CHOSEN_THEME_INDEX=$((CHOSEN_THEME_INDEX - 1))
+
+    CHOSEN_THEME=${THEMES[$CHOSEN_THEME_INDEX]}
+    if grep -q "THEME=" $PELICAN_BLOG_INSTALL_DIR/pelicanconf.py; then
+        sed -i "s|THEME=.*|THEME='themes/${CHOSEN_THEME}'|g" $PELICAN_BLOG_INSTALL_DIR/pelicanconf.py
+    else
+        echo "THEME='themes/${CHOSEN_THEME}'" >> $PELICAN_BLOG_INSTALL_DIR/pelicanconf.py
+    fi
+    pelican_regenerate_blog
+}
+
 function configure_interactive_pelican {
-    echo -n ''
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Configuration" \
+           --title $"Pelican Blogging" \
+           --radiolist $"Choose an operation:" 18 50 11 \
+           1 $"New blog entry" off \
+           2 $"Edit the previous blog entry" off \
+           3 $"Delete the previous blog entry" off \
+           4 $"Change theme" off \
+           5 $"Exit" off 2> $data
+    sel=$?
+    case $sel in
+        1) exit 1;;
+        255) exit 1;;
+    esac
+    case $(cat $data) in
+        1) pelican_new_blog;;
+        2) pelican_edit_blog;;
+        3) pelican_delete_blog;;
+        4) pelican_change_theme;;
+        5) break;;
+    esac
 }
 
 function install_interactive_pelican {
@@ -252,7 +425,7 @@ function create_pelican_makefile {
     echo '' >> $STATIC_BLOG_FILE
     echo 'BASEDIR=$(CURDIR)' >> $STATIC_BLOG_FILE
     echo 'INPUTDIR=$(BASEDIR)/content' >> $STATIC_BLOG_FILE
-    echo "OUTPUTDIR=$STATIC_BLOG_PATH" >> $STATIC_BLOG_FILE
+    echo "OUTPUTDIR=$PELICAN_BLOG_PATH" >> $STATIC_BLOG_FILE
     echo 'CONFFILE=$(BASEDIR)/pelicanconf.py' >> $STATIC_BLOG_FILE
     echo 'PUBLISHCONF=$(BASEDIR)/publishconf.py' >> $STATIC_BLOG_FILE
     echo '' >> $STATIC_BLOG_FILE
@@ -413,32 +586,32 @@ function mesh_install_pelican {
     chroot "$rootdir" pip install typogrify
     chroot "$rootdir" pip install pelican
 
-    STATIC_BLOG_INSTALL_DIR=/home/$MY_USERNAME/CreateBlog
-    STATIC_BLOG_PATH=/home/$MY_USERNAME/Public/Blog
+    PELICAN_BLOG_INSTALL_DIR=/home/$MY_USERNAME/CreateBlog
+    PELICAN_BLOG_PATH=/home/$MY_USERNAME/Public/Blog
 
-    if [ ! -d $rootdir$STATIC_BLOG_INSTALL_DIR ]; then
-        mkdir -p $rootdir$STATIC_BLOG_INSTALL_DIR
+    if [ ! -d $rootdir$PELICAN_BLOG_INSTALL_DIR ]; then
+        mkdir -p $rootdir$PELICAN_BLOG_INSTALL_DIR
     fi
 
-    if [ ! -d $rootdir$STATIC_BLOG_PATH ]; then
-        mkdir -p $rootdir$STATIC_BLOG_PATH
+    if [ ! -d $rootdir$PELICAN_BLOG_PATH ]; then
+        mkdir -p $rootdir$PELICAN_BLOG_PATH
     fi
 
-    if [ ! -d $rootdir$STATIC_BLOG_INSTALL_DIR/content/images ]; then
-        mkdir -p $rootdir$STATIC_BLOG_INSTALL_DIR/content/images
+    if [ ! -d $rootdir$PELICAN_BLOG_INSTALL_DIR/content/images ]; then
+        mkdir -p $rootdir$PELICAN_BLOG_INSTALL_DIR/content/images
     fi
 
-    create_pelican_conf $rootdir$STATIC_BLOG_INSTALL_DIR/pelicanconf.py
-    create_pelican_makefile $rootdir$STATIC_BLOG_INSTALL_DIR/Makefile
-    create_pelican_publish_conf $rootdir$STATIC_BLOG_INSTALL_DIR/publishconf.py
+    create_pelican_conf $rootdir$PELICAN_BLOG_INSTALL_DIR/pelicanconf.py
+    create_pelican_makefile $rootdir$PELICAN_BLOG_INSTALL_DIR/Makefile
+    create_pelican_publish_conf $rootdir$PELICAN_BLOG_INSTALL_DIR/publishconf.py
 
-    mkdir -p $rootdir$STATIC_BLOG_INSTALL_DIR/themes
-    cd $rootdir$STATIC_BLOG_INSTALL_DIR/themes
+    mkdir -p $rootdir$PELICAN_BLOG_INSTALL_DIR/themes
+    cd $rootdir$PELICAN_BLOG_INSTALL_DIR/themes
     pelican_themes
 
-    #git clone --recursive $PELICAN_PLUGINS_REPO $rootdir$STATIC_BLOG_INSTALL_DIR/plugins
+    #git clone --recursive $PELICAN_PLUGINS_REPO $rootdir$PELICAN_BLOG_INSTALL_DIR/plugins
 
-    chroot "$rootdir" chown -R $MY_USERNAME:$MY_USERNAME $STATIC_BLOG_INSTALL_DIR
+    chroot "$rootdir" chown -R $MY_USERNAME:$MY_USERNAME $PELICAN_BLOG_INSTALL_DIR
     chroot "$rootdir" chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Public
 }
 
@@ -454,33 +627,32 @@ function install_pelican {
     pip install typogrify
     pip install pelican
 
-    STATIC_BLOG_INSTALL_DIR=/etc/blog
-    STATIC_BLOG_PATH=/var/www/$PELICAN_BLOG_DOMAIN/htdocs
+    PELICAN_BLOG_PATH=/var/www/$PELICAN_BLOG_DOMAIN/htdocs
 
-    if [ ! -d $STATIC_BLOG_INSTALL_DIR ]; then
-        mkdir -p $STATIC_BLOG_INSTALL_DIR
+    if [ ! -d $PELICAN_BLOG_INSTALL_DIR ]; then
+        mkdir -p $PELICAN_BLOG_INSTALL_DIR
     fi
 
-    if [ ! -d $STATIC_BLOG_PATH ]; then
-        mkdir -p $STATIC_BLOG_PATH
+    if [ ! -d $PELICAN_BLOG_PATH ]; then
+        mkdir -p $PELICAN_BLOG_PATH
     fi
 
-    if [ ! -d $STATIC_BLOG_INSTALL_DIR/content ]; then
-        mkdir -p $STATIC_BLOG_INSTALL_DIR/content
+    if [ ! -d $PELICAN_BLOG_INSTALL_DIR/content ]; then
+        mkdir -p $PELICAN_BLOG_INSTALL_DIR/content
     fi
 
-    create_pelican_conf $STATIC_BLOG_INSTALL_DIR/pelicanconf.py
-    create_pelican_makefile $STATIC_BLOG_INSTALL_DIR/Makefile
-    create_pelican_publish_conf $STATIC_BLOG_INSTALL_DIR/publishconf.py
+    create_pelican_conf $PELICAN_BLOG_INSTALL_DIR/pelicanconf.py
+    create_pelican_makefile $PELICAN_BLOG_INSTALL_DIR/Makefile
+    create_pelican_publish_conf $PELICAN_BLOG_INSTALL_DIR/publishconf.py
 
-    mkdir -p $PELICAN_THEMES_REPO $STATIC_BLOG_INSTALL_DIR/themes
-    cd $PELICAN_THEMES_REPO $STATIC_BLOG_INSTALL_DIR/themes
+    mkdir -p $PELICAN_THEMES_REPO $PELICAN_BLOG_INSTALL_DIR/themes
+    cd $PELICAN_THEMES_REPO $PELICAN_BLOG_INSTALL_DIR/themes
     pelican_themes
 
-    #git clone --recursive $PELICAN_PLUGINS_REPO $STATIC_BLOG_INSTALL_DIR/plugins
+    #git clone --recursive $PELICAN_PLUGINS_REPO $PELICAN_BLOG_INSTALL_DIR/plugins
 
-    chown -R $MY_USERNAME:$MY_USERNAME $STATIC_BLOG_INSTALL_DIR
-    chown -R www-data:www-data $STATIC_BLOG_PATH
+    chown -R $MY_USERNAME:$MY_USERNAME $PELICAN_BLOG_INSTALL_DIR
+    chown -R www-data:www-data $PELICAN_BLOG_PATH
     APP_INSTALLED=1
 }
 
