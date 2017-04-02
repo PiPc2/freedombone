@@ -35,8 +35,8 @@ VARIANTS='mesh'
 
 # change these versions at your peril. Things will often crash if you don't
 # have specifically the correct versions
-NODEJS_VERSION='6.9.0'
-NODEJS_N_VERSION='2.1.4'
+NODEJS_VERSION='6.10.1'
+NODEJS_N_VERSION='2.1.7'
 NPM_VERSION='4.0.5'
 
 # This file keeps track of the apps needing nodejs
@@ -96,6 +96,9 @@ function remove_nodejs {
         if [ -d /usr/lib/node_modules ]; then
             rm -rf /usr/lib/node_modules
         fi
+        if [ -f /usr/bin/n ]; then
+            rm /usr/bin/n
+        fi
 
         remove_app nodejs
 
@@ -105,12 +108,32 @@ function remove_nodejs {
     fi
 }
 
+function upgrade_nodejs {
+    CURR_NODE_VERSION=$(node --version)
+    CURR_NPM_VERSION=$(npm --version)
+    CURR_N_VERSION=$(n --version)
+    if [[ "$CURR_NPM_VERSION" != "$NPM_VERSION" ]]; then
+        npm install -g npm@${NPM_VERSION} --save
+    fi
+    if [[ "$CURR_N_VERSION" != "$NODEJS_N_VERSION" ]]; then
+        npm upgrade -g n@${NODEJS_N_VERSION} --save
+    fi
+    if [[ "$CURR_NODE_VERSION" != "$NODEJS_VERSION" ]]; then
+        n {NODEJS_VERSION}
+    fi
+    cp /usr/local/bin/n /usr/bin/n
+    cp /usr/local/bin/npm /usr/bin/npm
+    cp /usr/local/bin/node /usr/bin/nodejs
+    cp /usr/local/bin/node /usr/bin/node
+}
+
 function install_nodejs {
     if [ $INSTALLING_MESH ]; then
         mesh_install_nodejs
         return
     fi
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        upgrade_nodejs
         return
     fi
 
@@ -130,8 +153,21 @@ cp /usr/bin/nodejs /usr/local/bin/node
 cp /usr/bin/nodejs /usr/bin/node
 /usr/bin/curl -0 -L https://npmjs.org/install.sh | sh
 npm install -g n@${NODEJS_N_VERSION} --save
+if [ -f /usr/local/bin/n ]; then
+    exit 1
+fi
+cp /usr/local/bin/n /usr/bin/n
 n ${NODEJS_VERSION}
+if [ ! -f /usr/local/bin/node ]; then
+    exit 2
+fi
+cp /usr/local/bin/node /usr/bin/nodejs
+cp /usr/local/bin/node /usr/bin/node
 npm install -g npm@${NPM_VERSION} --save
+if [ ! -f /usr/local/bin/npm ]; then
+    exit 3
+fi
+cp /usr/local/bin/npm /usr/bin/npm
 npm install -g pug@2.0.0-beta6 --save
 npm install -g graceful-fs@4.1.10 --save
 npm install -g minimatch@3.0.3 --save
@@ -144,6 +180,24 @@ EOF
         exit 7632572
     fi
     rm -f /root/install-nodejs.sh
+
+    # node seems tricky so here we're going to double check
+    # that the versions we expect did get installed
+    CURR_NODE_VERSION=$(node --version)
+    CURR_NPM_VERSION=$(npm --version)
+    CURR_N_VERSION=$(n --version)
+    if [[ "$CURR_NPM_VERSION" != "$NPM_VERSION" ]]; then
+        echo $"Expected npm version $NPM_VERSION but actually have $CURR_NPM_VERSION"
+        exit 6728252
+    fi
+    if [[ "$CURR_N_VERSION" != "$NODEJS_N_VERSION" ]]; then
+        echo $"Expected n version $NODEJS_N_VERSION but actually have $CURR_N_VERSION"
+        exit 5267452
+    fi
+    if [[ "$CURR_NODE_VERSION" != "$NODEJS_VERSION" ]]; then
+        echo $"Expected node version $NODEJS_VERSION but actually have $CURR_NODE_VERSION"
+        exit 5274527
+    fi
 
     if [ $1 ]; then
         if ! grep "install_${1}" $NODEJS_INSTALLED_APPS_FILE; then
