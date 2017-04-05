@@ -274,6 +274,40 @@ function gnusocial_set_title {
     esac
 }
 
+function gnusocial_set_expire_months {
+    GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+    read_config_param "GNUSOCIAL_EXPIRE_MONTHS"
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"GNU Social" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'Set an expiry period for posts in months. Anything older will be deleted. Lower values help to keep the database size small and as fast as possible.' 12 60 "$GNUSOCIAL_EXPIRE_MONTHS" 2>$data
+    sel=$?
+    case $sel in
+        0)
+            new_expiry_months=$(<$data)
+            if [ ${#new_expiry_months} -gt 0 ]; then
+                # should contain no spaces
+                if [[ "$new_expiry_months" == *" "* ]]; then
+                    return
+                fi
+                # should be a number
+                re='^[0-9]+$'
+                if ! [[ $new_expiry_months =~ $re ]] ; then
+                    return
+                fi
+                # set the new value
+                GNUSOCIAL_EXPIRE_MONTHS=$new_expiry_months
+                write_config_param "GNUSOCIAL_EXPIRE_MONTHS" "$GNUSOCIAL_EXPIRE_MONTHS"
+                expire_gnusocial_posts "$GNUSOCIAL_DOMAIN_NAME" "gnusocial" "$GNUSOCIAL_EXPIRE_MONTHS"
+                dialog --title $"Set GNU Social post expiry period" \
+                       --msgbox $"Expiry period set to $GNUSOCIAL_EXPIRE_MONTHS months" 6 60
+            fi
+           ;;
+    esac
+}
+
 function configure_interactive_gnusocial {
     while true
     do
@@ -281,10 +315,11 @@ function configure_interactive_gnusocial {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"GNU Social" \
-               --radiolist $"Choose an operation:" 12 70 3 \
+               --radiolist $"Choose an operation:" 13 70 4 \
                1 $"Set a background image" off \
                2 $"Set the title" off \
-               3 $"Exit" on 2> $data
+               3 $"Set post expiry period (currently $GNUSOCIAL_EXPIRE_MONTHS months)" off \
+               4 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
@@ -293,7 +328,8 @@ function configure_interactive_gnusocial {
         case $(cat $data) in
             1) gnusocial_set_background_image;;
             2) gnusocial_set_title;;
-            3) break;;
+            3) gnusocial_set_expire_months;;
+            4) break;;
         esac
     done
 }
