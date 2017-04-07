@@ -1,0 +1,583 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Friendica application
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim social'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+FRIENDICA_DOMAIN_NAME=
+FRIENDICA_CODE=
+FRIENDICA_ONION_PORT=8114
+FRIENDICA_REPO="https://github.com/friendica/friendica"
+FRIENDICA_ADDONS_REPO="https://github.com/friendica/friendica-addons"
+FRIENDICA_ADMIN_PASSWORD=
+FRIENDICA_COMMIT='b5a42c5b31fae5315bacd37769eba20ab2345aaa'
+FRIENDICA_ADDONS_COMMIT='7cb9dbdda7f227462895c07be3c968405561d40e'
+
+friendica_variables=(ONION_ONLY
+                     FRIENDICA_DOMAIN_NAME
+                     FRIENDICA_CODE
+                     DDNS_PROVIDER
+                     MY_USERNAME
+                     FRIENDICA_REPO
+                     FRIENDICA_ADDONS_REPO)
+
+function remove_user_friendica {
+    remove_username="$1"
+    ${PROJECT_NAME}-pass -u $remove_username --rmapp friendica
+}
+
+function add_user_friendica {
+    if [[ $(app_is_installed friendica) == "0" ]]; then
+        echo '0'
+        return
+    fi
+
+    new_username="$1"
+    new_user_password="$2"
+    ${PROJECT_NAME}-pass -u $new_username -a friendica -p "$new_user_password"
+    echo '0'
+}
+
+function friendica_renew_cert {
+    dialog --title $"Renew SSL certificate" \
+           --backtitle $"Freedombone Control Panel" \
+           --yesno $"\nThis will renew a letsencrypt certificate. Select 'yes' to continue" 16 60
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    FRIENDICA_DOMAIN_NAME=$(get_completion_param "friendica domain")
+    if [ ! -d /var/www/$FRIENDICA_DOMAIN_NAME/htdocs ]; then
+        dialog --title $"Renew SSL certificate" \
+               --msgbox $"Friendica install directory not found" 6 40
+        return
+    fi
+    ${PROJECT_NAME}-renew-cert -h $FRIENDICA_DOMAIN_NAME -p 'letsencrypt'
+    if [ ! "$?" = "0" ]; then
+        any_key
+    else
+        dialog --title $"Renew SSL certificate" \
+               --msgbox $"Friendica certificate has been renewed" 6 40
+    fi
+}
+
+function friendica_channel_directory_server {
+    if ! grep -q "friendica domain" $COMPLETION_FILE; then
+        dialog --title $"Friendica channel directory server" \
+               --msgbox $"Friendica is not installed on this system" 6 40
+        return
+    fi
+    FRIENDICA_DOMAIN_NAME=$(get_completion_param "friendica domain")
+    if [ ! -d /var/www/$FRIENDICA_DOMAIN_NAME/htdocs ]; then
+        dialog --title $"Friendica channel directory server" \
+               --msgbox $"Friendica install directory not found" 6 40
+        return
+    fi
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Friendica channel directory server" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"When you click on 'channel directory' this is where Friendica will obtain its list from" 8 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            friendica_domain_server=$(<$data)
+            if [[ $friendica_domain_server != *"."* ]]; then
+                return
+            fi
+            if [[ $friendica_domain_server != "https"* ]]; then
+                dialog --title $"Friendica channel directory server" \
+                       --msgbox $"Invalid domain - include the https://" 6 40
+                return
+            fi
+            ./var/www/$FRIENDICA_DOMAIN_NAME/htdocs/util/config system directory_server $friendica_domain_server
+            dialog --title $"Friendica channel directory server" \
+                   --msgbox $"Domain channel directory server changed to $friendica_domain_server" 6 40
+            ;;
+    esac
+}
+
+function configure_interactive_friendica {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"Friendica" \
+               --radiolist $"Choose an operation:" 13 70 4 \
+               1 $"Set channel directory server" off \
+               2 $"Renew SSL certificate" off \
+               3 $"Back to main menu" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) friendica_channel_directory_server;;
+            2) friendica_renew_cert;;
+            3) break;;
+        esac
+    done
+}
+
+function install_interactive_friendica {
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+
+    function_check interactive_site_details
+    interactive_site_details friendica
+
+    APP_INSTALLED=1
+}
+
+function change_password_friendica {
+    FRIENDICA_USERNAME="$1"
+    FRIENDICA_PASSWORD="$2"
+    if [ ${#FRIENDICA_PASSWORD} -lt 8 ]; then
+        echo $'Friendica password is too short'
+        return
+    fi
+    # TODO: This doesn't actually change the password
+    #${PROJECT_NAME}-pass -u $FRIENDICA_USERNAME -a friendica -p "$FRIENDICA_PASSWORD"
+}
+
+function friendica_create_database {
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        FRIENDICA_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    fi
+    if [ ! $FRIENDICA_ADMIN_PASSWORD ]; then
+        FRIENDICA_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+    fi
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a friendica -p "$FRIENDICA_ADMIN_PASSWORD"
+    if [ ! $FRIENDICA_ADMIN_PASSWORD ]; then
+        return
+    fi
+
+    function_check create_database
+    create_database friendica "$FRIENDICA_ADMIN_PASSWORD"
+}
+
+function reconfigure_friendica {
+    echo -n ''
+}
+
+function upgrade_friendica {
+    FRIENDICA_PATH=/var/www/$FRIENDICA_DOMAIN_NAME/htdocs
+
+    function_check set_repo_commit
+    set_repo_commit $FRIENDICA_PATH "friendica commit" "$FRIENDICA_COMMIT" $FRIENDICA_REPO
+    set_repo_commit $FRIENDICA_PATH/addon "friendica addons commit" "$FRIENDICA_ADDONS_COMMIT" $FRIENDICA_ADDONS_REPO
+}
+
+function backup_local_friendica {
+    friendica_path=/var/www/${FRIENDICA_DOMAIN_NAME}/htdocs
+    if [ -d $friendica_path ]; then
+        function_check backup_database_to_usb
+        backup_database_to_usb friendica
+
+        backup_directory_to_usb $friendica_path friendica
+    fi
+}
+
+function restore_local_friendica {
+    temp_restore_dir=/root/tempfriendica
+    friendica_dir=/var/www/${FRIENDICA_DOMAIN_NAME}/htdocs
+
+    function_check friendica_create_database
+    friendica_create_database
+
+    restore_database friendica ${FRIENDICA_DOMAIN_NAME}
+    if [ -d $USB_MOUNT/backup/friendica ]; then
+        if [ ! -d $friendica_dir/store/[data]/smarty3 ]; then
+            mkdir -p $friendica_dir/store/[data]/smarty3
+        fi
+        chmod 777 $friendica_dir/store/[data]/smarty3
+        chown -R www-data:www-data $friendica_dir/*
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
+    fi
+}
+
+function backup_remote_friendica {
+    temp_backup_dir=/var/www/${FRIENDICA_DOMAIN_NAME}/htdocs
+    if [ -d $temp_backup_dir ]; then
+        suspend_site ${FRIENDICA_DOMAIN_NAME}
+        backup_database_to_friend friendica
+        echo "Backing up Friendica installation"
+        backup_directory_to_friend $temp_backup_dir friendica
+        restart_site
+        echo "Backup of Friendica complete"
+    else
+        echo $"Friendica domain specified but not found in /var/www/${FRIENDICA_DOMAIN_NAME}"
+        exit 2578
+    fi
+}
+
+function restore_remote_friendica {
+    function_check restore_database_from_friend
+
+    function_check friendica_create_database
+    friendica_create_database
+
+    restore_database_from_friend friendica ${FRIENDICA_DOMAIN_NAME}
+    if [ -d $SERVER_DIRECTORY/backup/friendica ]; then
+        if [ ! -d /var/www/${FRIENDICA_DOMAIN_NAME}/htdocs/store/[data]/smarty3 ]; then
+            mkdir -p /var/www/${FRIENDICA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+        fi
+        chmod 777 /var/www/${FRIENDICA_DOMAIN_NAME}/htdocs/store/[data]/smarty3
+        chown -R www-data:www-data /var/www/${FRIENDICA_DOMAIN_NAME}/htdocs/*
+    fi
+    if [ -d /root/tempfriendica ]; then
+        rm -rf /root/tempfriendica
+    fi
+}
+
+function remove_friendica {
+    if [ ${#FRIENDICA_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+    nginx_dissite $FRIENDICA_DOMAIN_NAME
+    remove_certs ${FRIENDICA_DOMAIN_NAME}
+    if [ -d /var/www/$FRIENDICA_DOMAIN_NAME ]; then
+        rm -rf /var/www/$FRIENDICA_DOMAIN_NAME
+    fi
+    if [ -f /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+    fi
+    function_check drop_database
+    drop_database friendica
+    function_check remove_onion_service
+    remove_onion_service friendica ${FRIENDICA_ONION_PORT}
+    sed -i '/friendica/d' $COMPLETION_FILE
+    sed -i '/poller.php/d' /etc/crontab
+
+    function_check remove_ddns_domain
+    remove_ddns_domain $FRIENDICA_DOMAIN_NAME
+}
+
+function install_friendica {
+    if [ ! $FRIENDICA_DOMAIN_NAME ]; then
+        return
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+
+    FRIENDICA_PATH=/var/www/$FRIENDICA_DOMAIN_NAME/htdocs
+
+    function_check install_mariadb
+    install_mariadb
+
+    function_check get_mariadb_password
+    get_mariadb_password
+
+    function_check repair_databases_script
+    repair_databases_script
+
+    apt-get -yq install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
+    apt-get -yq install php5-dev imagemagick php5-imagick
+    apt-get -yq install php5-memcached
+
+    if [ ! -d /var/www/$FRIENDICA_DOMAIN_NAME ]; then
+        mkdir /var/www/$FRIENDICA_DOMAIN_NAME
+    fi
+    if [ ! -d $FRIENDICA_PATH ]; then
+        mkdir $FRIENDICA_PATH
+    fi
+
+    if [ ! -f $FRIENDICA_PATH/index.php ]; then
+        cd $INSTALL_DIR
+        function_check git_clone
+        git_clone $FRIENDICA_REPO friendica
+        git checkout $FRIENDICA_COMMIT -b $FRIENDICA_COMMIT
+        set_completion_param "friendica commit" "$FRIENDICA_COMMIT"
+
+        rm -rf $FRIENDICA_PATH
+        mv friendica $FRIENDICA_PATH
+
+        git_clone $FRIENDICA_ADDONS_REPO $FRIENDICA_PATH/addon
+        cd $FRIENDICA_PATH/addon
+        git checkout $FRIENDICA_ADDONS_COMMIT -b $FRIENDICA_ADDONS_COMMIT
+        set_completion_param "friendica addons commit" "$FRIENDICA_ADDONS_COMMIT"
+
+        chown -R www-data:www-data $FRIENDICA_PATH
+    fi
+
+    FRIENDICA_ONION_HOSTNAME=
+    if [[ $ONION_ONLY != "no" ]]; then
+        FRIENDICA_ONION_HOSTNAME=$(add_onion_service friendica 80 ${FRIENDICA_ONION_PORT})
+    fi
+
+    friendica_create_database
+
+    if ! grep -q "$FRIENDICA_PATH" /etc/crontab; then
+        echo "12,22,32,42,52 * *   *   *   root cd $FRIENDICA_PATH; /usr/bin/timeout 500 /usr/bin/php include/poller.php" >> /etc/crontab
+    fi
+
+    function_check add_ddns_domain
+    add_ddns_domain $FRIENDICA_DOMAIN_NAME
+
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $FRIENDICA_DOMAIN_NAME
+        echo 'server {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    listen 443 ssl;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    listen [::]:443 ssl;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "    root $FRIENDICA_PATH;" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "    server_name $FRIENDICA_DOMAIN_NAME;" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "    error_log /dev/null;" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    index index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    charset utf-8;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    access_log /dev/null;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        function_check nginx_ssl
+        nginx_ssl $FRIENDICA_DOMAIN_NAME
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $FRIENDICA_DOMAIN_NAME
+        echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location / {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        function_check nginx_limits
+        nginx_limits $FRIENDICA_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        nginx_keybase ${FRIENDICA_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        expires 30d;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # block these file types' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # or a unix socket' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        function_check nginx_limits
+        nginx_limits $FRIENDICA_DOMAIN_NAME
+        echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '      deny  all;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '}' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+    else
+        echo 'server {' > /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "    listen 127.0.0.1:${FRIENDICA_ONION_PORT} default_server;" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "    root $FRIENDICA_PATH;" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "    server_name $FRIENDICA_ONION_HOSTNAME;" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "    error_log /dev/null;" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    index index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    charset utf-8;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    access_log /dev/null;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    add_header Strict-Transport-Security max-age=15768000;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # rewrite to front controller as default rule' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location / {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        nginx_limits $FRIENDICA_DOMAIN_NAME
+        nginx_disable_sniffing $FRIENDICA_DOMAIN_NAME
+        echo '        rewrite ^/(.*) /index.php?q=$uri&$args last;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        nginx_keybase ${FRIENDICA_DOMAIN_NAME}
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # statically serve these file types when possible' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # otherwise fall back to front controller' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # allow browser to cache them' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # added .htm for advanced source code editor library' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~* \.(jpg|jpeg|gif|png|ico|css|js|htm|html|ttf|woff|svg)$ {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        expires 30d;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        try_files $uri /index.php?q=$uri&$args;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # block these file types' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~* \.(tpl|md|tgz|log|out)$ {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # or a unix socket' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~* \.php$ {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        nginx_limits $FRIENDICA_DOMAIN_NAME
+        nginx_disable_sniffing $FRIENDICA_DOMAIN_NAME
+        echo '        # Zero-day exploit defense.' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # http://forum.nginx.org/read.php?2,88845,page=3' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # Won't work properly (404 error) if the file is not stored on this" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # server, which is entirely possible with php-fpm/php-fcgi." >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # Comment the 'try_files' line out if you set up php-fpm/php-fcgi on" >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo "        # another machine. And then cross your fingers that you won't get hacked." >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    # deny access to all dot files' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~ /\. {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        deny all;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    location ~ /\.ht {' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '      deny  all;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '    }' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '}' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+    fi
+
+    function_check configure_php
+    configure_php
+
+    function_check create_site_certificate
+    create_site_certificate $FRIENDICA_DOMAIN_NAME 'yes'
+
+    if [ ! -d $FRIENDICA_PATH/view/tpl/smarty3 ]; then
+        mkdir $FRIENDICA_PATH/view/tpl/smarty3
+    fi
+    if [ ! -d "$FRIENDICA_PATH/store" ]; then
+        mkdir "$FRIENDICA_PATH/store"
+    fi
+    if [ ! -d "$FRIENDICA_PATH/store/[data]" ]; then
+        mkdir "$FRIENDICA_PATH/store/[data]"
+    fi
+    if [ ! -d "$FRIENDICA_PATH/store/[data]/smarty3" ]; then
+        mkdir "$FRIENDICA_PATH/store/[data]/smarty3"
+        chmod 777 "$FRIENDICA_PATH/store/[data]/smarty3"
+    fi
+    chmod 777 $FRIENDICA_PATH/view/tpl
+    chown -R www-data:www-data "$FRIENDICA_PATH/store"
+    chmod 777 $FRIENDICA_PATH/view/tpl/smarty3
+
+    # Ensure that the database gets backed up locally, if remote
+    # backups are not being used
+    function_check backup_databases_script_header
+    backup_databases_script_header
+
+    function_check backup_database_local
+    backup_database_local friendica
+
+    chown -R www-data:www-data $FRIENDICA_PATH
+
+    function_check nginx_ensite
+    nginx_ensite $FRIENDICA_DOMAIN_NAME
+
+    # initialize the database
+    if [ ! -f $FRIENDICA_PATH/install/schema_mysql.sql ]; then
+        echo $'No database schema found for friendica'
+        exit 252782
+    fi
+    function_check initialise_database
+    initialise_database friendica $FRIENDICA_PATH/install/schema_mysql.sql
+
+    # create the config file
+    echo '<?php' > $FRIENDICA_PATH/.htconfig.php
+    echo "\$db_host = 'localhost';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$db_user = 'root';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$db_pass = '${MARIADB_PASSWORD}';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$db_data = 'friendica';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$default_timezone = 'Europe/London';" >> $FRIENDICA_PATH/.htconfig.php
+    if [[ $ONION_ONLY == 'no' ]]; then
+        echo "\$a->config['system']['baseurl'] = 'https://${FRIENDICA_DOMAIN_NAME}';" >> $FRIENDICA_PATH/.htconfig.php
+    else
+        echo "\$a->config['system']['baseurl'] = 'http://${FRIENDICA_ONION_HOSTNAME}';" >> $FRIENDICA_PATH/.htconfig.php
+    fi
+    echo "\$a->config['system']['sitename'] = \"Friendica\";" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['register_policy'] = REGISTER_OPEN;" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['register_text'] = '';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['admin_email'] = '${MY_EMAIL_ADDRESS}';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['no_regfullname'] = true;" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['max_import_size'] = 200000;" >> $FRIENDICA_PATH/.htconfig.php
+    echo "$a->config['system']['maximagesize'] = 800000;" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['php_path'] = '/usr/bin/php';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['directory'] = 'http://dir.friendi.ca';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['allowed_themes'] = 'quattro,vier,duepuntozero,smoothly';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['theme'] = 'vier';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['huburl'] = '[internal]';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['language'] = 'en';" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['rino_encrypt'] = 2;" >> $FRIENDICA_PATH/.htconfig.php
+    echo "\$a->config['system']['allowed_link_protocols'] = array('mailto', 'cid');" >> $FRIENDICA_PATH/.htconfig.php
+    chown www-data:www-data $FRIENDICA_PATH/.htconfig.php
+    chmod 755 $FRIENDICA_PATH/.htconfig.php
+
+    systemctl restart php5-fpm
+    systemctl restart nginx
+    systemctl restart cron
+
+    ${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$FRIENDICA_DOMAIN_NAME" -g friendica --public no
+
+    set_completion_param "friendica domain" "${FRIENDICA_DOMAIN_NAME}"
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately there is no "exit 0"
