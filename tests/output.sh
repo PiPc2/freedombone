@@ -1591,7 +1591,8 @@ site:\nhttps://docs.redhat.com/docs/en-US/Red_Hat_Enterprise_Linux/6/html/Securi
                   printf '\n######################\n\nSTIG-ID:RHEL-06-000281\n\nVulnerability Discussion: The hash on important files like audit system executables should match the information given by the packages. Audit executables with erroneous hashes could be a sign of nefarious activity on the system.\n\nFix text: In Debian there is directly way to get the package\047s hash and change it.\n\nThere\047s one way to use :\n\n#aptitude download auditd\n\nTo dowanload the package\047s file and use dpkg -c <package.deb> to extract it and use sha512sum to get the origin hash and compare with the current hash and change it manually\n\n' >> $LOG
               fi
               ;;
-    V-38643)  if [ "$3" = "en" ]; then
+    V-38643)  find / -xdev -type f -perm -002
+              if [ "$3" = "en" ]; then
                   log_msg $2 'There must be no world-writable files on the system.'
               else
                   log_msg $2 '系统上必须没有允许任意用户都可以进行修改的文件。'
