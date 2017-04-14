@@ -45,6 +45,7 @@ prosody_nightly=382
 prosody_nightly_hash='770f1a0466f2361184eebffac9f50c102ad842cd855190db6c7f42f2f09884f5'
 prosody_filename=prosody-${prosody_latest_version}-1nightly${prosody_nightly}
 prosody_nightly_url="https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz"
+prosody_modules_repo='https://hg.prosody.im/prosody-modules/'
 
 LIBMESODE_REPO="https://github.com/boothj5/libmesode"
 LIBMESODE_COMMIT='e3db0e9bfba61b2d82193874343a94a88f910800'
@@ -289,16 +290,23 @@ function update_prosody_modules {
         return
     fi
 
+    hg clone $prosody_modules_repo /var/lib/prosody/prosody-modules-new
+    if [ -d /var/lib/prosody/prosody-modules-new ]; then
+        rm -rf /var/lib/prosody/prosody-modules
+        mv /var/lib/prosody/prosody-modules-new /var/lib/prosody/prosody-modules
+        chown -R prosody:prosody /var/lib/prosody/prosody-modules
+    fi
+
     cd /var/lib/prosody/prosody-modules
     hg pull
     hg update
 
-    # change to using profile rather than pep and vcard modules
-    if grep '"pep"' /etc/prosody/prosody.cfg.lua; then
-        if grep '"vcard"' /etc/prosody/prosody.cfg.lua; then
-            sed -i 's|"pep"|"profile"|g' /etc/prosody/prosody.cfg.lua
-            sed -i '/"vcard"/d' /etc/prosody/prosody.cfg.lua
-        fi
+    # change to using pep rather than profile modules
+    if grep '"profile"' /etc/prosody/prosody.cfg.lua; then
+        sed -i 's|"profile"|"pep"|g' /etc/prosody/prosody.cfg.lua
+    fi
+    if ! grep '"vcard"' /etc/prosody/prosody.cfg.lua; then
+        sed -i '/"pep"/a "vcard";' /etc/prosody/prosody.cfg.lua
     fi
 }
 
@@ -585,7 +593,8 @@ function xmpp_modules {
     echo '  "carbons_copies"; -- Message carbons' >> $filename
     echo '  "smacks"; -- Stream management' >> $filename
     echo '  "smacks_offline"; -- Stream management' >> $filename
-    echo '  "profile"; -- Personal Eventing Protocol (to support OMEMO)' >> $filename
+    echo '  "pep"; -- Personal Eventing Protocol (to support OMEMO)' >> $filename
+    echo '  "vcard"; -- Personal Eventing Protocol (to support OMEMO)' >> $filename
     echo '  "e2e_policy"; -- To support OMEMO' >> $filename
     echo '  "pep_vcard_avatar"; -- Personal Eventing Protocol (to support OMEMO)' >> $filename
     echo '  "blocklist"; -- Privacy lists' >> $filename
@@ -829,7 +838,7 @@ function install_xmpp_main {
 
     # obtain the prosody modules
     if [ ! -d /var/lib/prosody/prosody-modules ]; then
-        hg clone https://hg.prosody.im/prosody-modules/ /var/lib/prosody/prosody-modules
+        hg clone $prosody_modules_repo /var/lib/prosody/prosody-modules
     fi
     if [ ! -d /var/lib/prosody/prosody-modules/mod_onions ]; then
         echo $'mod_onions prosody module could not be found'
