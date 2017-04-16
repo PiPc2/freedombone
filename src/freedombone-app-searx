@@ -40,12 +40,14 @@ SEARX_ONION_PORT=8094
 SEARX_ONION_HOSTNAME=
 SEARX_LOGIN_TEXT=$"Search engine login"
 SEARX_PASSWORD=
+SEARX_BACKGROUND_IMAGE_URL=
 
 searx_variables=(SEARX_REPO
                  SEARX_COMMIT
                  SEARX_PATH
                  SEARX_LOGIN_TEXT
                  MY_USERNAME
+                 SEARX_BACKGROUND_IMAGE_URL
                  SYSTEM_TYPE)
 
 function searx_set_default_background {
@@ -58,6 +60,102 @@ function searx_set_default_background {
             chown -R searx:searx ${SEARX_PATH}/searx
         fi
     fi
+}
+
+function searx_set_background_image_from_url {
+    url="$1"
+
+    ext=
+    if [ ${#url} -gt 0 ]; then
+        if [[ "$url" == *".jpeg" || "$url" == *".jpg" ]]; then
+            ext="jpg"
+        fi
+        if [[ "$url" == *".png" ]]; then
+            ext="png"
+        fi
+        if [[ "$url" == *".gif" ]]; then
+            ext="gif"
+        fi
+    fi
+
+    if [ ${#ext} -gt 0 ]; then
+        if [ -d /etc/searx/searx/static/themes/courgette/img ]; then
+            cd /etc/searx/searx/static/themes/courgette/img
+
+
+            # remove any existing image
+            if [ -f bg-body-index.jpg ]; then
+                rm bg-body-index.jpg
+            fi
+
+            # get the new image
+            if [[ "$ext" != 'jpg' ]]; then
+                if [ -f bg-body-index.${ext} ]; then
+                    rm bg-body-index.${ext}
+                fi
+                wget "$url" -O bg-body-index.${ext}
+                convert bg-body-index.${ext} bg-body-index.jpg
+            else
+                wget "$url" -O bg-body-index.jpg
+            fi
+            if [ ! -f bg-body-index.jpg ]; then
+                echo "$url"
+                echo $'Custom background image for SearX could not be downloaded'
+                echo "1"
+                return
+            fi
+            chown -R searx:searx ${SEARX_PATH}/searx
+        fi
+    else
+        echo "2"
+        return
+    fi
+
+    echo "0"
+}
+
+function searx_set_background_image {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"SearX Metasearch" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'Set a background image URL' 10 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            temp_background=$(<$data)
+            if [ ${#temp_background} -gt 0 ]; then
+                SEARX_BACKGROUND_IMAGE_URL="$temp_background"
+                write_config_param "SEARX_BACKGROUND_IMAGE_URL" "$SEARX_BACKGROUND_IMAGE_URL"
+                if [[ $(searx_set_background_image_from_url "$SEARX_BACKGROUND_IMAGE_URL" | tail -n 1) == "0" ]]; then
+                    dialog --title $"Set SearX background" \
+                           --msgbox $"The background image has been set" 6 60
+                fi
+            fi
+           ;;
+    esac
+}
+
+function configure_interactive_searx {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"SearX Metasearch" \
+               --radiolist $"Choose an operation:" 11 70 2 \
+               1 $"Set a background image" off \
+               2 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+        case $(cat $data) in
+            1) searx_set_background_image;;
+            2) break;;
+        esac
+    done
 }
 
 function remove_user_searx {
@@ -625,8 +723,16 @@ function create_searx_config {
 }
 
 function upgrade_searx {
+    background_image=/etc/searx/searx/static/themes/courgette/img/bg-body-index.jpg
+    if [ -f ${background_image} ]; then
+        cp ${background_image} ${background_image}.prev
+    fi
+
     set_repo_commit $SEARX_PATH/searx "searx commit" "$SEARX_COMMIT" $SEARX_REPO
-    searx_set_default_background
+    if [ -f ${background_image}.prev ]; then
+        cp ${background_image}.prev ${background_image}
+        chown -R searx:searx ${SEARX_PATH}/searx
+    fi
 }
 
 function backup_local_searx {
@@ -672,7 +778,7 @@ function install_searx {
     fi
 
     apt-get -yq install python-pip libyaml-dev python-werkzeug python-babel python-lxml apache2-utils
-    apt-get -yq install git build-essential libxslt-dev python-dev python-virtualenv python-pybabel zlib1g-dev uwsgi uwsgi-plugin-python libapache2-mod-uwsgi
+    apt-get -yq install git build-essential libxslt-dev python-dev python-virtualenv python-pybabel zlib1g-dev uwsgi uwsgi-plugin-python libapache2-mod-uwsgi imagemagick
 
     pip install --upgrade pip
 
