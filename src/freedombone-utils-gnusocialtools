@@ -327,6 +327,64 @@ function gnusocial_hourly_script {
     chmod +x /etc/cron.hourly/${gnusocial_type}-daemons
 }
 
+function gnusocial_block_user_script {
+    echo '#!/bin/bash' > /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo 'database_name=$1' >> /usr/bin/gnusocial-delete-user
+    echo 'remove_user=$2' >> /usr/bin/gnusocial-delete-user
+    echo 'MARIADB_PASSWORD=$(freedombone-pass -u root -a mariadb)' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo 'if [ ${#remove_user} -lt 2 ]; then' >> /usr/bin/gnusocial-delete-user
+    echo '  echo $"No user was specified"' >> /usr/bin/gnusocial-delete-user
+    echo '  exit 1' >> /usr/bin/gnusocial-delete-user
+    echo 'fi' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo 'if [[ "$remove_user" != *"."* || "$remove_user" != *"@"* ]]; then' >> /usr/bin/gnusocial-delete-user
+    echo '  echo $"This doesnt look like a user"' >> /usr/bin/gnusocial-delete-user
+    echo '  exit 2' >> /usr/bin/gnusocial-delete-user
+    echo 'fi' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo 'if [ ${#database_name} -lt 2 ]; then' >> /usr/bin/gnusocial-delete-user
+    echo '  echo $"No database was specified"' >> /usr/bin/gnusocial-delete-user
+    echo '  exit 3' >> /usr/bin/gnusocial-delete-user
+    echo 'fi' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo "nickname=\$(echo \"\$remove_user\" | awk -F '@' '{print \$1}')" >> /usr/bin/gnusocial-delete-user
+    echo "remove_domain=\$(echo "\$remove_user" | awk -F '@' '{print \$2}')" >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo 'database_query="select profile.id from profile where nickname = ${nickname} and profileurl like "%${remove_domain}%";"' >> /usr/bin/gnusocial-delete-user
+    echo 'declare -a ids=$(mysql -u root --password="$MARIADB_PASSWORD" << EOF' >> /usr/bin/gnusocial-delete-user
+    echo 'use $database_name;' >> /usr/bin/gnusocial-delete-user
+    echo '$database_query' >> /usr/bin/gnusocial-delete-user
+    echo 'EOF' >> /usr/bin/gnusocial-delete-user
+    echo ')' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo 'ctr=0' >> /usr/bin/gnusocial-delete-user
+    echo 'for id in $ids' >> /usr/bin/gnusocial-delete-user
+    echo 'do' >> /usr/bin/gnusocial-delete-user
+    echo '  if [ $ctr -gt 0 ]; then' >> /usr/bin/gnusocial-delete-user
+    echo '      #echo "Removing user ID $id on $remove_domain"' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo '      database_query="delete from conversation where uri like "%${remove_domain}%";"' >> /usr/bin/gnusocial-delete-user
+    echo '      mysql -u root --password="$MARIADB_PASSWORD" -e "$database_query" $database_name' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo '      database_query="delete from reply where profile_id=${id};"' >> /usr/bin/gnusocial-delete-user
+    echo '      mysql -u root --password="$MARIADB_PASSWORD" -e "$database_query" $database_name' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo '      database_query="delete from reply where replied_id=${id};"' >> /usr/bin/gnusocial-delete-user
+    echo '      mysql -u root --password="$MARIADB_PASSWORD" -e "$database_query" $database_name' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo '      database_query="delete from notice where profile_id=${id};"' >> /usr/bin/gnusocial-delete-user
+    echo '      mysql -u root --password="$MARIADB_PASSWORD" -e "$database_query" $database_name' >> /usr/bin/gnusocial-delete-user
+    echo '' >> /usr/bin/gnusocial-delete-user
+    echo '      database_query="delete from profile where id=${id};"' >> /usr/bin/gnusocial-delete-user
+    echo '      mysql -u root --password="$MARIADB_PASSWORD" -e "$database_query" $database_name' >> /usr/bin/gnusocial-delete-user
+    echo '  fi' >> /usr/bin/gnusocial-delete-user
+    echo '  ctr=$((ctr + 1))' >> /usr/bin/gnusocial-delete-user
+    echo 'done' >> /usr/bin/gnusocial-delete-user
+    chmod +x /usr/bin/gnusocial-delete-user
+}
+
 function gnusocial_block_domain_script {
     database_name=$1
 
@@ -390,7 +448,11 @@ function gnusocial_block_domain_script {
     echo 'FIREWALL_DOMAINS=$HOME/${PROJECT_NAME}-firewall-domains.cfg' >> /usr/bin/${database_name}-firewall
     echo '' >> /usr/bin/${database_name}-firewall
     echo 'while read block; do' >> /usr/bin/${database_name}-firewall
-    echo '    /usr/bin/gnusocial-delete-domain "$database_name" "$block"' >> /usr/bin/${database_name}-firewall
+    echo '    if [[ "$block" != *"@"* ]]; then' >> /usr/bin/${database_name}-firewall
+    echo '        /usr/bin/gnusocial-delete-domain "$database_name" "$block"' >> /usr/bin/${database_name}-firewall
+    echo '    else' >> /usr/bin/${database_name}-firewall
+    echo '        /usr/bin/gnusocial-delete-user "$database_name" "$block"' >> /usr/bin/${database_name}-firewall
+    echo '    fi' >> /usr/bin/${database_name}-firewall
     echo 'done <$FIREWALL_DOMAINS' >> /usr/bin/${database_name}-firewall
     chmod +x /usr/bin/${database_name}-firewall
 
