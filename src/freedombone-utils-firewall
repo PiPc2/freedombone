@@ -482,4 +482,29 @@ function firewall_drop_spoofed_packets {
     mark_completed $FUNCNAME
 }
 
+function firewall_rate_limits {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    # Limit connections per source IP
+    iptables -A INPUT -p tcp -m connlimit --connlimit-above 111 -j REJECT --reject-with tcp-reset
+
+    # Limit RST packets
+    iptables -A INPUT -p tcp --tcp-flags RST RST -m limit --limit 2/s --limit-burst 2 -j ACCEPT
+    iptables -A INPUT -p tcp --tcp-flags RST RST -j DROP
+
+    # Limit new TCP connections per second per source IP
+    iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m limit --limit 60/s --limit-burst 20 -j ACCEPT
+    iptables -A INPUT -p tcp -m conntrack --ctstate NEW -j DROP
+
+    # SSH brute-force protection
+    iptables -A INPUT -p tcp --dport ssh -m conntrack --ctstate NEW -m recent --set
+    iptables -A INPUT -p tcp --dport ssh -m conntrack --ctstate NEW -m recent --update --seconds 60 --hitcount 10 -j DROP
+
+    function_check save_firewall_settings
+    save_firewall_settings
+    mark_completed $FUNCNAME
+}
+
 # NOTE: deliberately no exit 0
