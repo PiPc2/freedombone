@@ -73,6 +73,82 @@ GPGIT_COMMIT='583dc76119f19420f8a33f606744faa7c8922738'
 # refresh gpg keys every few hours
 REFRESH_GPG_KEYS_HOURS=2
 
+function email_create_template {
+    if [ ! -d /etc/skel/log ]; then
+        mkdir -m 700 /etc/skel/log
+    fi
+    if [ ! -d /etc/skel/Maildir ]; then
+        mkdir -m 700 /etc/skel/.mutt
+        mkdir -m 700 /etc/skel/Maildir
+        mkdir -m 700 /etc/skel/Maildir/new
+        mkdir -m 700 /etc/skel/Maildir/cur
+        mkdir -m 700 /etc/skel/Maildir/Sent
+        mkdir -m 700 /etc/skel/Maildir/Sent/tmp
+        mkdir -m 700 /etc/skel/Maildir/Sent/cur
+        mkdir -m 700 /etc/skel/Maildir/Sent/new
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam/cur
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam/new
+        mkdir -m 700 /etc/skel/Maildir/.learn-spam/tmp
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham/cur
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham/new
+        mkdir -m 700 /etc/skel/Maildir/.learn-ham/tmp
+        ln -s /etc/skel/Maildir/.learn-spam /etc/skel/Maildir/spam
+        ln -s /etc/skel/Maildir/.learn-ham /etc/skel/Maildir/ham
+    fi
+
+    if [ ! -d /home/$MY_USERNAME/Maildir ]; then
+        mkdir -m 700 /home/$MY_USERNAME/.mutt
+        mkdir -m 700 /home/$MY_USERNAME/Maildir
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/tmp
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/tmp
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/tmp
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/cur
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/new
+        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/tmp
+        ln -s /home/$MY_USERNAME/Maildir/.learn-spam /home/$MY_USERNAME/Maildir/spam
+        ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
+        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
+    fi
+}
+
+function email_install_tls {
+    # make a tls certificate for email
+    if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
+        ${PROJECT_NAME}-addcert -h exim --dhkey $DH_KEYLENGTH
+        check_certificates exim
+    fi
+    cp /etc/ssl/private/exim.key /etc/exim4
+    cp /etc/ssl/certs/exim.crt /etc/exim4
+    cp /etc/ssl/certs/exim.dhparam /etc/exim4
+    chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+    chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+
+    sed -i '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template
+    if ! grep -q "MAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template; then
+        sed -i "/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME =\nMAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template
+    else
+        sed -i "s|MAIN_HARDCODE_PRIMARY_HOSTNAME =.*|MAIN_HARDCODE_PRIMARY_HOSTNAME =|g" /etc/exim4/exim4.conf.template
+    fi
+    sed -i "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4
+    if ! grep -q "tls_on_connect_ports=465" /etc/exim4/exim4.conf.template; then
+        sed -i '/SSL configuration for exim/i\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template
+    fi
+    if ! grep -q "# don't send system passwords" /etc/exim4/exim4.conf.template; then
+        sed -i "s|don't send system passwords.*|# don't send system passwords unencrypted|g" /etc/exim4/exim4.conf.template
+    fi
+}
+
 function configure_email_onion {
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
@@ -863,80 +939,13 @@ function install_email_with_tor {
     sed -i "s/START=no/START=yes/g" /etc/default/saslauthd
     systemctl start saslauthd
 
-    # make a tls certificate for email
-    if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
-        ${PROJECT_NAME}-addcert -h exim --dhkey $DH_KEYLENGTH
-        check_certificates exim
-    fi
-    cp /etc/ssl/private/exim.key /etc/exim4
-    cp /etc/ssl/certs/exim.crt /etc/exim4
-    cp /etc/ssl/certs/exim.dhparam /etc/exim4
-    chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
-    chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
-
-    sed -i '/login_saslauthd_server/,/.endif/ s/# *//' /etc/exim4/exim4.conf.template
-    if ! grep -q "MAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template; then
-        sed -i "/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME =\nMAIN_TLS_ENABLE = true" /etc/exim4/exim4.conf.template
-    else
-        sed -i "s|MAIN_HARDCODE_PRIMARY_HOSTNAME =.*|MAIN_HARDCODE_PRIMARY_HOSTNAME =|g" /etc/exim4/exim4.conf.template
-    fi
-    sed -i "s|SMTPLISTENEROPTIONS=''|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4
-    if ! grep -q "tls_on_connect_ports=465" /etc/exim4/exim4.conf.template; then
-        sed -i '/SSL configuration for exim/i\tls_on_connect_ports=465' /etc/exim4/exim4.conf.template
-    fi
-    if ! grep -q "# don't send system passwords" /etc/exim4/exim4.conf.template; then
-        sed -i "s|don't send system passwords.*|# don't send system passwords unencrypted|g" /etc/exim4/exim4.conf.template
-    fi
+    email_install_tls
 
     adduser $MY_USERNAME sasl
     addgroup Debian-exim sasl
     systemctl restart exim4
-    if [ ! -d /etc/skel/log ]; then
-        mkdir -m 700 /etc/skel/log
-    fi
-    if [ ! -d /etc/skel/Maildir ]; then
-        mkdir -m 700 /etc/skel/.mutt
-        mkdir -m 700 /etc/skel/Maildir
-        mkdir -m 700 /etc/skel/Maildir/new
-        mkdir -m 700 /etc/skel/Maildir/cur
-        mkdir -m 700 /etc/skel/Maildir/Sent
-        mkdir -m 700 /etc/skel/Maildir/Sent/tmp
-        mkdir -m 700 /etc/skel/Maildir/Sent/cur
-        mkdir -m 700 /etc/skel/Maildir/Sent/new
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam/cur
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam/new
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam/tmp
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham/cur
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham/new
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham/tmp
-        ln -s /etc/skel/Maildir/.learn-spam /etc/skel/Maildir/spam
-        ln -s /etc/skel/Maildir/.learn-ham /etc/skel/Maildir/ham
-    fi
 
-    if [ ! -d /home/$MY_USERNAME/Maildir ]; then
-        mkdir -m 700 /home/$MY_USERNAME/.mutt
-        mkdir -m 700 /home/$MY_USERNAME/Maildir
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/tmp
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/tmp
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/tmp
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/tmp
-        ln -s /home/$MY_USERNAME/Maildir/.learn-spam /home/$MY_USERNAME/Maildir/spam
-        ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
-        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
-    fi
+    email_create_template
 
     if [ -f /usr/sbin/exim ]; then
         chmod u+s /usr/sbin/exim
@@ -995,66 +1004,13 @@ function install_email_basic {
     sed -i "s/START=no/START=yes/g" /etc/default/saslauthd
     systemctl start saslauthd
 
-    # make a tls certificate for email
-    if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
-        ${PROJECT_NAME}-addcert -h exim --dhkey $DH_KEYLENGTH
-        check_certificates exim
-    fi
-    cp /etc/ssl/private/exim.key /etc/exim4
-    cp /etc/ssl/certs/exim.crt /etc/exim4
-    cp /etc/ssl/certs/exim.dhparam /etc/exim4
-    chown root:Debian-exim /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
-    chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+    email_install_tls
 
-    if [ ! -d /etc/skel/log ]; then
-        mkdir -m 700 /etc/skel/log
-    fi
-    if [ ! -d /etc/skel/Maildir ]; then
-        mkdir -m 700 /etc/skel/.mutt
-        mkdir -m 700 /etc/skel/Maildir
-        mkdir -m 700 /etc/skel/Maildir/new
-        mkdir -m 700 /etc/skel/Maildir/cur
-        mkdir -m 700 /etc/skel/Maildir/Sent
-        mkdir -m 700 /etc/skel/Maildir/Sent/tmp
-        mkdir -m 700 /etc/skel/Maildir/Sent/cur
-        mkdir -m 700 /etc/skel/Maildir/Sent/new
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam/cur
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam/new
-        mkdir -m 700 /etc/skel/Maildir/.learn-spam/tmp
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham/cur
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham/new
-        mkdir -m 700 /etc/skel/Maildir/.learn-ham/tmp
-        ln -s /etc/skel/Maildir/.learn-spam /etc/skel/Maildir/spam
-        ln -s /etc/skel/Maildir/.learn-ham /etc/skel/Maildir/ham
-    fi
+    adduser $MY_USERNAME sasl
+    addgroup Debian-exim sasl
+    systemctl restart exim4
 
-    if [ ! -d /home/$MY_USERNAME/Maildir ]; then
-        mkdir -m 700 /home/$MY_USERNAME/.mutt
-        mkdir -m 700 /home/$MY_USERNAME/Maildir
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/tmp
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/tmp
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/Sent/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-spam/tmp
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/cur
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/new
-        mkdir -m 700 /home/$MY_USERNAME/Maildir/.learn-ham/tmp
-        ln -s /home/$MY_USERNAME/Maildir/.learn-spam /home/$MY_USERNAME/Maildir/spam
-        ln -s /home/$MY_USERNAME/Maildir/.learn-ham /home/$MY_USERNAME/Maildir/ham
-        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Maildir
-    fi
-
-    function_check configure_firewall_for_email
-    configure_firewall_for_email
+    email_create_template
 
     if [ -f /usr/sbin/exim ]; then
         chmod u+s /usr/sbin/exim
@@ -1063,6 +1019,8 @@ function install_email_basic {
         chmod u+s /usr/sbin/exim4
     fi
 
+    function_check configure_firewall_for_email
+    configure_firewall_for_email
     dpkg-reconfigure --frontend noninteractive exim4-config
     systemctl restart exim4
 }
