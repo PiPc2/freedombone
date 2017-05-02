@@ -371,11 +371,33 @@ function disable_nfs_insecure_locks {
     fi
 }
 
-function check_for_AMT {
-    pci_hardware=$(lspci)
-    if [[ "$pci_hardware" == *"MEI"* || "$pci_hardware" == *"HECI"* ]]; then
-        echo $'Intel Active Management Technology (Management Engine) was detected. This is an active backdoor.'
-        exit 782352
+function remove_management_engine_interface {
+    # see https://www.kernel.org/doc/Documentation/misc-devices/mei/mei.txt
+    # Disabling this interface doesn't cure the problems of ME, but it
+    # might stop an adversary in control of AMT from using the command
+    # interface to control the operating system.
+    if [ -f /dev/mei0 ]; then
+        rmmod mei_me
+        rmmod mei0
+    fi
+
+    blacklist_changed=
+    if [ ! -f /etc/modprobe.d/blacklist.conf ]; then
+        touch /etc/modprobe.d/blacklist.conf
+        blacklist_changed=1
+    fi
+    if ! grep -q "blacklist mei" /etc/modprobe.d/blacklist.conf; then
+        echo "blacklist mei" >> /etc/modprobe.d/blacklist.conf
+        blacklist_changed=1
+    fi
+    if ! grep -q "blacklist mei_me" /etc/modprobe.d/blacklist.conf; then
+        echo "blacklist mei_me" >> /etc/modprobe.d/blacklist.conf
+        blacklist_changed=1
+    fi
+
+    if [ $blacklist_changed ]; then
+        depmod -ae -E
+        update-initramfs -u
     fi
 }
 
@@ -609,8 +631,8 @@ function setup_utils {
     read_config_param "PROJECT_REPO"
     write_config_param "PROJECT_REPO" "$PROJECT_REPO"
 
-    function_check check_for_AMT
-    check_for_AMT
+    function_check remove_management_engine_interface
+    remove_management_engine_interface
 
     function_check separate_tmp_filesystem
     separate_tmp_filesystem 150
