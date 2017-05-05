@@ -15,6 +15,8 @@
 #
 # Test by visiting https://$MATRIX_DOMAIN_NAME/_matrix/key/v2/server/auto
 #
+# If working then telnet $MATRIX_DOMAIN_NAME 8448 should return a response
+#
 # License
 # =======
 #
@@ -45,15 +47,12 @@ MATRIX_CODE=
 
 MATRIX_DATA_DIR='/var/lib/matrix'
 MATRIX_HTTP_PORT=8448
-MATRIX_ID_HTTP_PORT=8557
 MATRIX_PORT=8008
 MATRIX_ID_PORT=8081
 MATRIX_ONION_PORT=8109
 MATRIX_ID_ONION_PORT=8111
 MATRIX_REPO="https://github.com/matrix-org/synapse"
 MATRIX_COMMIT='c45dc6c62aa2a2e83a10d8116a709dfd8c144e3c'
-SYDENT_REPO="https://github.com/matrix-org/sydent"
-SYDENT_COMMIT='d087278afd712222653b69ff72bd8ff4aa0180ec'
 REPORT_STATS="no"
 MATRIX_SECRET=
 
@@ -67,9 +66,8 @@ matrix_variables=(ONION_ONLY
 function matrix_nginx {
     matrix_nginx_site=/etc/nginx/sites-available/$MATRIX_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
-        echo 'server {' > $matrix_nginx_site
-        echo "  listen 443 ssl;" >> $matrix_nginx_site
-        echo "  listen [::]:443 ssl;" >> $matrix_nginx_site
+        echo 'server {' >> $matrix_nginx_site
+        echo "  listen 0.0.0.0:443;" >> $matrix_nginx_site
         echo "  server_name ${MATRIX_DOMAIN_NAME};" >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
         echo '  # Security' >> $matrix_nginx_site
@@ -98,8 +96,7 @@ function matrix_nginx {
         echo '}' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
         echo 'server {' >> $matrix_nginx_site
-        echo "  listen ${MATRIX_ID_HTTP_PORT} ssl;" >> $matrix_nginx_site
-        echo "  listen [::]:${MATRIX_ID_HTTP_PORT} ssl;" >> $matrix_nginx_site
+        echo "  listen 0.0.0.0:8448;" >> $matrix_nginx_site
         echo "  server_name ${MATRIX_DOMAIN_NAME};" >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
         echo '  # Security' >> $matrix_nginx_site
@@ -149,26 +146,6 @@ function matrix_nginx {
     echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
     echo '  }' >> $matrix_nginx_site
     echo '}' >> $matrix_nginx_site
-    echo '' >> $matrix_nginx_site
-    echo 'server {' >> $matrix_nginx_site
-    echo "    listen 127.0.0.1:$MATRIX_ID_ONION_PORT default_server;" >> $matrix_nginx_site
-    echo "    server_name $MATRIX_DOMAIN_NAME;" >> $matrix_nginx_site
-    echo '' >> $matrix_nginx_site
-    function_check nginx_disable_sniffing
-    nginx_disable_sniffing $MATRIX_DOMAIN_NAME
-    echo '' >> $matrix_nginx_site
-    echo '  # Logs' >> $matrix_nginx_site
-    echo '  access_log /dev/null;' >> $matrix_nginx_site
-    echo '  error_log /dev/null;' >> $matrix_nginx_site
-    echo '' >> $matrix_nginx_site
-    echo '  # Location' >> $matrix_nginx_site
-    echo '  location / {' >> $matrix_nginx_site
-    function_check nginx_limits
-    nginx_limits $MATRIX_DOMAIN_NAME '15m'
-    echo "      proxy_pass http://localhost:${MATRIX_ID_PORT};" >> $matrix_nginx_site
-    echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
-    echo '  }' >> $matrix_nginx_site
-    echo '}' >> $matrix_nginx_site
 
     if [ ! -d /var/www/$MATRIX_DOMAIN_NAME ]; then
         mkdir -p /var/www/$MATRIX_DOMAIN_NAME/htdocs
@@ -183,9 +160,6 @@ function matrix_nginx {
     systemctl restart nginx
     systemctl restart turn
     systemctl restart matrix
-    if [ -f /etc/systemd/system/sydent.service ]; then
-        systemctl restart sydent
-    fi
 
     # wait for nginx to start otherwise user add fails later
     sleep 5
@@ -196,17 +170,6 @@ function matrix_generate_homeserver_file {
 
     cd /etc/matrix
     python -m synapse.app.homeserver \
-           --config-path "${filepath}" \
-           --generate-config \
-           --report-stats ${REPORT_STATS} \
-           --server-name ${MATRIX_DOMAIN_NAME}
-}
-
-function matrix_generate_identityserver_file {
-    local filepath="${1}"
-
-    cd /etc/sydent
-    python -m sydent.sydent \
            --config-path "${filepath}" \
            --generate-config \
            --report-stats ${REPORT_STATS} \
@@ -237,7 +200,9 @@ function matrix_configure_homeserver_yaml {
 
     mv ${ymltemp} "${filepath}"
 
-    sed -i 's|no_tls: .*|no_tls: False|g' "${filepath}"
+    sed -i 's|8448|8449|g' "${filepath}"
+    sed -i 's|tls:.*|tls: False|g' "${filepath}"
+    sed -i 's|no_tls: .*|no_tls: True|g' "${filepath}"
     sed -i ':a;N;$!ba;s/ tls: [^\n]*/ tls: False/2' "${filepath}"
     sed -i 's|enable_registration_captcha.*|enable_registration_captcha: False|g' "${filepath}"
     sed -i "s|database: \".*|database: \"${MATRIX_DATA_DIR}/homeserver.db\"|g" "${filepath}"
@@ -251,17 +216,6 @@ function matrix_configure_homeserver_yaml {
     sed -i "/trusted_third_party_id_servers:/a     - ${MATRIX_DOMAIN_NAME}" "${filepath}"
     sed -i "s|- ${MATRIX_DOMAIN_NAME}|    - ${MATRIX_DOMAIN_NAME}|g" "${filepath}"
     sed -i "s|enable_registration:.*|enable_registration: False|g" "${filepath}"
-}
-
-function matrix_configure_identityserver {
-    local filepath=/etc/sydent/sydent.conf
-
-    sed -i "s|http.port.*|http.port = $MATRIX_ID_PORT|g" ${filepath}
-    sed -i "s|db.file.*|db.file = /etc/sydent/sydent.db|g" ${filepath}
-    sed -i "s|Sydent Validation|Freedombone Matrix Account Validation|g" ${filepath}
-    sed -i "s|pidfile.path.*|pidfile.path = /etc/sydent/sydent.pid|g" ${filepath}
-    sed -i "s|log.path.*|log.path = /dev/null|g" ${filepath}
-    sed -i "s|server.name.*|server.name = ${MATRIX_DOMAIN_NAME}|g" ${filepath}
 }
 
 function matrix_diff {
@@ -351,36 +305,26 @@ function reconfigure_matrix {
 }
 
 function upgrade_matrix {
-    if [ ! -d /etc/sydent ]; then
-       return
-    fi
     if [ ! -d /etc/matrix ]; then
        return
     fi
     systemctl stop turn
     systemctl stop matrix
-    systemctl stop sydent
 
     function_check set_repo_commit
     set_repo_commit /etc/matrix "matrix commit" "$MATRIX_COMMIT" $MATRIX_REPO
     cd /etc/matrix
     pip install --upgrade --process-dependency-links .
 
-    set_repo_commit /etc/sydent "sydent commit" "$SYDENT_COMMIT" $SYDENT_REPO
-    cd /etc/sydent
-    pip install --upgrade --process-dependency-links .
-
     sed -i 's/ssl.PROTOCOL_SSLv23/ssl.PROTOCOL_TLSv1/g' /usr/local/bin/register_new_matrix_user
 
     chown -R matrix:matrix /etc/matrix
-    chown -R matrix:matrix /etc/sydent
     chown -R matrix:matrix $MATRIX_DATA_DIR
 
     pip install --upgrade --force "pynacl==0.3.0"
 
     systemctl start turn
     systemctl start matrix
-    systemctl start sydent
 }
 
 function backup_local_matrix {
@@ -388,7 +332,6 @@ function backup_local_matrix {
     if [ -d $source_directory ]; then
         systemctl stop turn
         systemctl stop matrix
-        systemctl stop sydent
 
         function_check backup_directory_to_usb
         backup_directory_to_usb $source_directory matrix
@@ -396,14 +339,9 @@ function backup_local_matrix {
         if [ -d $source_directory ]; then
             backup_directory_to_usb $source_directory matrixdata
         fi
-        source_directory=/etc/sydent
-        if [ -d $source_directory ]; then
-            backup_directory_to_usb $source_directory matrixid
-        fi
 
         systemctl start turn
         systemctl start matrix
-        systemctl start sydent
     fi
 }
 
@@ -411,7 +349,6 @@ function restore_local_matrix {
     if [ -d /etc/matrix ]; then
         systemctl stop turn
         systemctl stop matrix
-        systemctl stop sydent
 
         temp_restore_dir=/root/tempmatrix
         function_check restore_directory_from_usb
@@ -436,20 +373,8 @@ function restore_local_matrix {
         rm -rf $temp_restore_dir
         chown -R matrix:matrix $MATRIX_DATA_DIR
 
-        temp_restore_dir=/root/tempmatrixid
-        restore_directory_from_usb $temp_restore_dir matrixid
-        cp -r $temp_restore_dir/etc/sydent/* /etc/sydent
-        if [ ! "$?" = "0" ]; then
-            function_check backup_unmount_drive
-            backup_unmount_drive
-            exit 29562
-        fi
-        rm -rf $temp_restore_dir
-        chown -R matrix:matrix /etc/sydent
-
         systemctl start turn
         systemctl start matrix
-        systemctl start sydent
     fi
 }
 
@@ -458,7 +383,6 @@ function backup_remote_matrix {
     if [ -d $source_directory ]; then
         systemctl stop turn
         systemctl stop matrix
-        systemctl stop sydent
 
         function_check backup_directory_to_friend
         backup_directory_to_friend $source_directory matrix
@@ -466,14 +390,9 @@ function backup_remote_matrix {
         if [ -d $source_directory ]; then
             backup_directory_to_friend $source_directory matrixdata
         fi
-        source_directory=/etc/sydent
-        if [ -d $source_directory ]; then
-            backup_directory_to_friend $source_directory matrixid
-        fi
 
         systemctl start turn
         systemctl start matrix
-        systemctl start sydent
     fi
 }
 
@@ -481,7 +400,6 @@ function restore_remote_matrix {
     if [ -d /etc/matrix ]; then
         systemctl stop turn
         systemctl stop matrix
-        systemctl stop sydent
 
         temp_restore_dir=/root/tempmatrix
         function_check restore_directory_from_friend
@@ -502,18 +420,8 @@ function restore_remote_matrix {
         rm -rf $temp_restore_dir
         chown -R matrix:matrix $MATRIX_DATA_DIR
 
-        temp_restore_dir=/root/tempmatrixid
-        restore_directory_from_friend $temp_restore_dir matrixid
-        cp -r $temp_restore_dir/etc/sydent/* /etc/sydent
-        if [ ! "$?" = "0" ]; then
-            exit 738356
-        fi
-        rm -rf $temp_restore_dir
-        chown -R matrix:matrix /etc/sydent
-
         systemctl start turn
         systemctl start matrix
-        systemctl start sydent
     fi
 }
 
@@ -532,29 +440,17 @@ function remove_matrix {
     remove_ddns_domain $MATRIX_DOMAIN_NAME
 
     systemctl stop matrix
-    if [ -f /etc/systemd/system/sydent.service ]; then
-        systemctl stop sydent
-    fi
 
     function_check remove_turn
     remove_turn
 
     systemctl disable matrix
-    if [ -f /etc/systemd/system/sydent.service ]; then
-        systemctl disable sydent
-        rm /etc/systemd/system/sydent.service
-    fi
     if [ -f /etc/systemd/system/matrix.service ]; then
         rm /etc/systemd/system/matrix.service
     fi
     apt-get -y remove --purge coturn
     cd /etc/matrix
     pip uninstall .
-    if [ -d /etc/sydent ]; then
-        cd /etc/sydent
-        pip uninstall .
-        rm -rf /etc/sydent
-    fi
     rm -rf $MATRIX_DATA_DIR
     rm -rf /etc/matrix
     deluser matrix
@@ -567,79 +463,6 @@ function remove_matrix {
 
     remove_completion_param install_matrix
     sed -i '/matrix/d' $COMPLETION_FILE
-}
-
-function install_identity_server {
-    if [ ! -d /etc/sydent ]; then
-        function_check git_clone
-        git_clone $SYDENT_REPO /etc/sydent
-        if [ ! -d /etc/sydent ]; then
-            echo $'Unable to clone sydent repo'
-            exit 936525
-        fi
-    fi
-
-    cd /etc/sydent
-    git checkout $SYDENT_COMMIT -b $SYDENT_COMMIT
-    set_completion_param "sydent commit" "$SYDENT_COMMIT"
-    if [ ! -d $INSTALL_DIR/sydent ]; then
-        mkdir -p $INSTALL_DIR/sydent
-    fi
-    if [ -d $INSTALL_DIR/sydent ]; then
-        rm -rf $INSTALL_DIR/sydent/*
-    fi
-    sed -i "s|8090|${MATRIX_ID_PORT}|g" /etc/sydent/sydent/sydent.py
-    python setup.py install
-    pip install --upgrade --process-dependency-links . -b $INSTALL_DIR/sydent
-    if [ ! "$?" = "0" ]; then
-        echo $'Failed to install matrix identity server'
-        exit 798362
-    fi
-
-    #function_check matrix_generate_identityserver_file
-    #matrix_generate_identityserver_file /etc/sydent/sydent.conf
-
-    #if [ ! -f /etc/sydent/sydent.conf ]; then
-    #    echo $'Matrix identity server configuration not generated'
-    #    exit 72528
-    #fi
-
-    #function_check matrix_configure_identityserver
-    #matrix_configure_identityserver
-
-    chmod -R 700 /etc/sydent/sydent.conf
-    chown -R matrix:matrix /etc/sydent
-
-    echo '[Unit]' > /etc/systemd/system/sydent.service
-    echo 'Description=Sydent Matrix identity server' >> /etc/systemd/system/sydent.service
-    echo 'After=network.target nginx.target' >> /etc/systemd/system/sydent.service
-    echo '' >> /etc/systemd/system/sydent.service
-    echo '[Service]' >> /etc/systemd/system/sydent.service
-    echo 'Type=simple' >> /etc/systemd/system/sydent.service
-    echo 'User=matrix' >> /etc/systemd/system/sydent.service
-    echo "WorkingDirectory=/etc/sydent" >> /etc/systemd/system/sydent.service
-    echo "ExecStart=/usr/bin/python -m sydent.sydent --config-path /etc/sydent/sydent.conf --report-stats ${REPORT_STATS} --server-name ${MATRIX_DOMAIN_NAME}" >> /etc/systemd/system/sydent.service
-    echo 'Restart=always' >> /etc/systemd/system/sydent.service
-    echo 'RestartSec=10' >> /etc/systemd/system/sydent.service
-    echo '' >> /etc/systemd/system/sydent.service
-    echo '[Install]' >> /etc/systemd/system/sydent.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/sydent.service
-    systemctl enable sydent
-    systemctl daemon-reload
-    systemctl start sydent
-
-    sleep 5
-
-    if [ ! -f /etc/sydent/sydent.conf ]; then
-        echo $'Matrix identity server config was not generated'
-        exit 82352
-    fi
-
-    if [ ! -f /etc/sydent/sydent.db ]; then
-        echo $'No matrix identity server database was created'
-        exit 7354383
-    fi
-    chmod -R 700 /etc/sydent/sydent.db
 }
 
 function install_home_server {
@@ -780,9 +603,6 @@ function install_matrix {
 
     function_check install_home_server
     install_home_server
-
-    #function_check install_identity_server
-    #install_identity_server
 
     function_check update_default_domain
     update_default_domain
