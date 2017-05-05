@@ -175,19 +175,6 @@ function matrix_nginx {
 
     function_check add_ddns_domain
     add_ddns_domain $MATRIX_DOMAIN_NAME
-
-    if [[ $ONION_ONLY == "no" ]]; then
-        function_check create_site_certificate
-        create_site_certificate $MATRIX_DOMAIN_NAME 'yes'
-        chmod 755 /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam
-    fi
-
-    systemctl restart nginx
-    systemctl restart turn
-    systemctl restart matrix
-
-    # wait for nginx to start otherwise user add fails later
-    sleep 5
 }
 
 function matrix_generate_homeserver_file {
@@ -569,7 +556,6 @@ function install_home_server {
     echo 'Type=simple' >> /etc/systemd/system/matrix.service
     echo 'User=matrix' >> /etc/systemd/system/matrix.service
     echo "WorkingDirectory=/etc/matrix" >> /etc/systemd/system/matrix.service
-    echo "ExecStartPre=/usr/bin/python -m synapse.app.homeserver --config-path ${MATRIX_DATA_DIR}/homeserver.yaml --generate-keys" >> /etc/systemd/system/matrix.service
     echo "ExecStart=/usr/bin/python -m synapse.app.homeserver --config-path ${MATRIX_DATA_DIR}/homeserver.yaml" >> /etc/systemd/system/matrix.service
     echo 'Restart=on-failure' >> /etc/systemd/system/matrix.service
     echo 'RestartSec=10' >> /etc/systemd/system/matrix.service
@@ -642,16 +628,30 @@ function install_matrix {
     pip install --upgrade python-ldap
     pip install --upgrade lxml
 
+    function_check matrix_nginx
+    matrix_nginx
+
+    function_check create_site_certificate
+    create_site_certificate $MATRIX_DOMAIN_NAME 'yes'
+
+    if [[ $ONION_ONLY == "no" ]]; then
+        chmod 755 /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam
+    fi
+
     function_check install_home_server
     install_home_server
+
+    systemctl restart nginx
+    systemctl restart turn
+    systemctl restart matrix
 
     function_check update_default_domain
     update_default_domain
 
-    pip install --upgrade --force "pynacl==0.3.0"
+    # wait for nginx to start otherwise user add fails later
+    sleep 5
 
-    function_check matrix_nginx
-    matrix_nginx
+    pip install --upgrade --force "pynacl==0.3.0"
 
     if [[ $(add_user_matrix "${MY_USERNAME}" "${MATRIX_PASSWORD}" | tail -n 1) != "0" ]]; then
         echo $'Failed to add matrix admin user';
