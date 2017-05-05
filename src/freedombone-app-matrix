@@ -48,9 +48,8 @@ MATRIX_CODE=
 MATRIX_DATA_DIR='/var/lib/matrix'
 MATRIX_HTTP_PORT=8448
 MATRIX_PORT=8008
-MATRIX_ID_PORT=8081
+MATRIX_FEDERATION_ONION_PORT=8111
 MATRIX_ONION_PORT=8109
-MATRIX_ID_ONION_PORT=8111
 MATRIX_REPO="https://github.com/matrix-org/synapse"
 MATRIX_COMMIT='c45dc6c62aa2a2e83a10d8116a709dfd8c144e3c'
 REPORT_STATS="no"
@@ -66,7 +65,7 @@ matrix_variables=(ONION_ONLY
 function matrix_nginx {
     matrix_nginx_site=/etc/nginx/sites-available/$MATRIX_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
-        echo 'server {' >> $matrix_nginx_site
+        echo 'server {' > $matrix_nginx_site
         echo "  listen 0.0.0.0:443;" >> $matrix_nginx_site
         echo "  server_name ${MATRIX_DOMAIN_NAME};" >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
@@ -83,15 +82,15 @@ function matrix_nginx {
         echo '  access_log /dev/null;' >> $matrix_nginx_site
         echo '  error_log /dev/null;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
+        echo '  root /var/lib/matrix/media_store;' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
         echo '  # Index' >> $matrix_nginx_site
         echo '  index index.html;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
-        echo '  # Location' >> $matrix_nginx_site
         echo '  location /_matrix {' >> $matrix_nginx_site
         function_check nginx_limits
         nginx_limits ${MATRIX_DOMAIN_NAME} '15m'
         echo '    proxy_pass http://localhost:8008;' >> $matrix_nginx_site
-        echo '    proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
         echo '  }' >> $matrix_nginx_site
         echo '}' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
@@ -112,6 +111,8 @@ function matrix_nginx {
         echo '  access_log /dev/null;' >> $matrix_nginx_site
         echo '  error_log /dev/null;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
+        echo '  root /var/lib/matrix/media_store;' >> $matrix_nginx_site
+        echo '' >> $matrix_nginx_site
         echo '  # Index' >> $matrix_nginx_site
         echo '  index index.html;' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
@@ -120,13 +121,33 @@ function matrix_nginx {
         function_check nginx_limits
         nginx_limits ${MATRIX_DOMAIN_NAME} '15m'
         echo '    proxy_pass http://localhost:8008;' >> $matrix_nginx_site
-        echo '    proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
         echo '  }' >> $matrix_nginx_site
         echo '}' >> $matrix_nginx_site
         echo '' >> $matrix_nginx_site
     else
         echo -n '' > $matrix_nginx_site
     fi
+    echo 'server {' >> $matrix_nginx_site
+    echo "    listen 127.0.0.1:$MATRIX_FEDERATION_ONION_PORT default_server;" >> $matrix_nginx_site
+    echo "    server_name $MATRIX_DOMAIN_NAME;" >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $MATRIX_DOMAIN_NAME
+    echo '' >> $matrix_nginx_site
+    echo '  # Logs' >> $matrix_nginx_site
+    echo '  access_log /dev/null;' >> $matrix_nginx_site
+    echo '  error_log /dev/null;' >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    echo '  root /var/lib/matrix/media_store;' >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
+    echo '  # Location' >> $matrix_nginx_site
+    echo '  location /_matrix {' >> $matrix_nginx_site
+    function_check nginx_limits
+    nginx_limits ${MATRIX_DOMAIN_NAME} '15m'
+    echo '    proxy_pass http://localhost:8008;' >> $matrix_nginx_site
+    echo '  }' >> $matrix_nginx_site
+    echo '}' >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
     echo 'server {' >> $matrix_nginx_site
     echo "    listen 127.0.0.1:$MATRIX_ONION_PORT default_server;" >> $matrix_nginx_site
     echo "    server_name $MATRIX_DOMAIN_NAME;" >> $matrix_nginx_site
@@ -138,12 +159,13 @@ function matrix_nginx {
     echo '  access_log /dev/null;' >> $matrix_nginx_site
     echo '  error_log /dev/null;' >> $matrix_nginx_site
     echo '' >> $matrix_nginx_site
+    echo '  root /var/lib/matrix/media_store;' >> $matrix_nginx_site
+    echo '' >> $matrix_nginx_site
     echo '  # Location' >> $matrix_nginx_site
-    echo '  location / {' >> $matrix_nginx_site
+    echo '  location /_matrix {' >> $matrix_nginx_site
     function_check nginx_limits
-    nginx_limits $MATRIX_DOMAIN_NAME '15m'
-    echo "      proxy_pass http://localhost:${MATRIX_PORT}/_matrix;" >> $matrix_nginx_site
-    echo '      proxy_set_header X-Forwarded-For $remote_addr;' >> $matrix_nginx_site
+    nginx_limits ${MATRIX_DOMAIN_NAME} '15m'
+    echo '    proxy_pass http://localhost:8008;' >> $matrix_nginx_site
     echo '  }' >> $matrix_nginx_site
     echo '}' >> $matrix_nginx_site
 
@@ -154,8 +176,11 @@ function matrix_nginx {
     function_check add_ddns_domain
     add_ddns_domain $MATRIX_DOMAIN_NAME
 
-    function_check create_site_certificate
-    create_site_certificate $MATRIX_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check create_site_certificate
+        create_site_certificate $MATRIX_DOMAIN_NAME
+        chmod 755 /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam
+    fi
 
     systemctl restart nginx
     systemctl restart turn
@@ -200,6 +225,11 @@ function matrix_configure_homeserver_yaml {
 
     mv ${ymltemp} "${filepath}"
 
+    if [[ $ONION_ONLY == "no" ]]; then
+        sed -i "s|tls_certificate_path:.*|tls_certificate_path: \"/etc/ssl/certs/${MATRIX_DOMAIN_NAME}.pem\"|g" "${filepath}"
+        sed -i "s|tls_private_key_path:.*|tls_private_key_path: \"/etc/ssl/private/${MATRIX_DOMAIN_NAME}.key\"|g" "${filepath}"
+        sed -i "s|tls_dh_params_path:.*|tls_dh_params_path: \"/etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam\"|g" "${filepath}"
+    fi
     sed -i 's|8448|8449|g' "${filepath}"
     sed -i 's|tls:.*|tls: False|g' "${filepath}"
     sed -i 's|no_tls: .*|no_tls: True|g' "${filepath}"
@@ -323,6 +353,9 @@ function upgrade_matrix {
 
     pip install --upgrade --force "pynacl==0.3.0"
 
+    if [ -f /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam ]; then
+        chmod 755 /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam
+    fi
     systemctl start turn
     systemctl start matrix
 }
@@ -372,6 +405,12 @@ function restore_local_matrix {
         fi
         rm -rf $temp_restore_dir
         chown -R matrix:matrix $MATRIX_DATA_DIR
+
+        if [[ $ONION_ONLY == "no" ]]; then
+            if [ -f /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam ]; then
+                chmod 755 /etc/ssl/certs/${MATRIX_DOMAIN_NAME}.dhparam
+            fi
+        fi
 
         systemctl start turn
         systemctl start matrix
@@ -456,7 +495,7 @@ function remove_matrix {
     deluser matrix
     delgroup matrix
     remove_onion_service matrix ${MATRIX_ONION_PORT}
-    remove_onion_service matrix ${MATRIX_ID_ONION_PORT}
+    remove_onion_service matrix ${MATRIX_FEDERATION_ONION_PORT}
 
     #sed -i "/# Matrix Server/,/# End of Matrix Server/d" /etc/nginx/sites-available/${MATRIX_DOMAIN_NAME}
     systemctl restart nginx
@@ -551,7 +590,9 @@ function install_home_server {
     chmod -R 700 $MATRIX_DATA_DIR/homeserver.db
 
     MATRIX_ONION_HOSTNAME=$(add_onion_service matrix ${MATRIX_PORT} ${MATRIX_ONION_PORT})
-    MATRIX_ID_ONION_HOSTNAME=$(add_onion_service matrixid ${MATRIX_ID_PORT} ${MATRIX_ID_ONION_PORT})
+    echo "HiddenServicePort ${MATRIX_HTTP_PORT} 127.0.0.1:${MATRIX_FEDERATION_ONION_PORT}" >> /etc/tor/torrc
+    systemctl reload tor
+
     if [ ! ${MATRIX_PASSWORD} ]; then
         if [ -f ${IMAGE_PASSWORD_FILE} ]; then
             MATRIX_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
