@@ -15,7 +15,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2016-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -146,11 +146,11 @@ function remove_jitsi {
     fi
 
     if [ -f /etc/nginx/sites-available/${JITSI_DOMAIN_NAME} ]; then
-        nginx_dissite ${JITSI_DOMAIN_NAME}.conf
+        nginx_dissite ${JITSI_DOMAIN_NAME}
         if [ -d /var/www/${JITSI_DOMAIN_NAME} ]; then
             rm -rf /var/www/${JITSI_DOMAIN_NAME}
         fi
-        rm /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+        rm /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}
 
         function_check remove_certs
         remove_certs ${JITSI_DOMAIN_NAME}
@@ -255,7 +255,7 @@ function install_jitsi {
     debconf-set-selections <<< "jitsi-meet jitsi-meet/cert-choice multiselect 1"
     apt-get -yq install jitsi-meet jitsi-meet-prosody
 
-    jitsi_nginx_site=/etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+    jitsi_nginx_site=/etc/nginx/sites-available/${JITSI_DOMAIN_NAME}
     echo 'server_names_hash_bucket_size 64;' > $jitsi_nginx_site
     if [[ $ONION_ONLY == "no" ]]; then
         echo '' >> $jitsi_nginx_site
@@ -269,15 +269,14 @@ function install_jitsi {
         echo '    listen [::]:443 ssl;' >> $jitsi_nginx_site
         echo "    server_name ${JITSI_DOMAIN_NAME};" >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
-        echo '    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;' >> $jitsi_nginx_site
-        echo '    ssl_prefer_server_ciphers on;' >> $jitsi_nginx_site
-        echo '    ssl_ciphers "EECDH+ECDSA+AESGCM:EECDH+aRSA+AESGCM:EECDH+ECDSA+SHA256:EECDH+aRSA+SHA256:EECDH+ECDSA+SHA384:EECDH+ECDSA+SHA256:EECDH+aRSA+SHA384:EDH+aRSA+AESGCM:EDH+aRSA+SHA256:EDH+aRSA:EECDH:!aNULL:!eNULL:!MEDIUM:!LOW:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS:!RC4:!SEED";' >> $jitsi_nginx_site
-        echo '' >> $jitsi_nginx_site
-        echo '    add_header Strict-Transport-Security "max-age=31536000";' >> $jitsi_nginx_site
-        echo '' >> $jitsi_nginx_site
-        echo "    ssl_certificate /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt;" >> $jitsi_nginx_site
-        echo "    ssl_certificate_key /etc/ssl/private/${JITSI_DOMAIN_NAME}.key;" >> $jitsi_nginx_site
-        echo "    ssl_dhparam /etc/ssl/certs/${JITSI_DOMAIN_NAME}.dhparam;" >> $jitsi_nginx_site
+
+        function_check nginx_ssl
+        nginx_ssl ${JITSI_DOMAIN_NAME}
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing ${JITSI_DOMAIN_NAME}
+
+        echo '    add_header Strict-Transport-Security max-age=15768000;' >> $jitsi_nginx_site
         echo '' >> $jitsi_nginx_site
         echo '    root /usr/share/jitsi-meet;' >> $jitsi_nginx_site
         echo '    index index.html index.htm;' >> $jitsi_nginx_site
@@ -352,35 +351,35 @@ function install_jitsi {
     echo '    }' >> $jitsi_nginx_site
     echo '}' >> $jitsi_nginx_site
 
-    sed -i "s|server_name ${JITSI_DOMAIN_NAME}.conf|server_name ${JITSI_DOMAIN_NAME}|g" $jitsi_nginx_site
-    sed -i "s|/var/www/${JITSI_DOMAIN_NAME}.conf/htdocs|/usr/share/jitsi-meet|g" $jitsi_nginx_site
+    sed -i "s|/var/www/${JITSI_DOMAIN_NAME}/htdocs|/usr/share/jitsi-meet|g" $jitsi_nginx_site
 
     if [ ! -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
+        if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt ]; then
+            rm /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt
+        fi
+        if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.dhparam ]; then
+            rm /etc/ssl/certs/${JITSI_DOMAIN_NAME}.dhparam
+        fi
         function_check create_site_certificate
         create_site_certificate ${JITSI_DOMAIN_NAME} 'yes'
+        if [[ $ONION_ONLY == "no" ]]; then
+            if [ ! -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
+                exit 678363
+            fi
+        fi
     fi
 
-    if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt ]; then
-        mv /etc/ssl/certs/${JITSI_DOMAIN_NAME}.crt /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem
+    if [ -d /etc/letsencrypt ]; then
+        usermod -a -G www-data jitsi
+        usermod -a -G ssl-cert jitsi
     fi
-
-    # ensure that certs are available to prosody with correct permissions
-    cp /etc/ssl/certs/${JITSI_DOMAIN_NAME}.* /etc/prosody/certs
-    cp /etc/ssl/private/${JITSI_DOMAIN_NAME}.key /etc/prosody/certs
-    chown prosody:prosody /etc/prosody/certs/${JITSI_DOMAIN_NAME}.*
 
     if [ -f /etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
-        sed -i "s|.crt|.pem|g" $jitsi_nginx_site
         sed -i "s|.crt|.pem|g" /etc/prosody/conf.d/${JITSI_DOMAIN_NAME}.cfg.lua
     fi
 
-    sed -i "s|key =.*|key = \"/etc/prosody/certs/${JITSI_DOMAIN_NAME}.key\"|g" /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
-    sed -i "s|certificate =.*|certificate = \"/etc/prosody/certs/${JITSI_DOMAIN_NAME}.pem\"|g" /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
-
-    sed -i "s|.conf.crt|.crt|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
-    sed -i "s|.conf.pem|.pem|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
-    sed -i "s|.conf.key|.key|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
-    sed -i "s|.conf.dhparam|.dhparam|g" /etc/nginx/sites-available/${JITSI_DOMAIN_NAME}.conf
+    sed -i "s|key =.*|key = \"/etc/ssl/private/${JITSI_DOMAIN_NAME}.key\"|g" /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
+    sed -i "s|certificate =.*|certificate = \"/etc/ssl/certs/${JITSI_DOMAIN_NAME}.pem\"|g" /etc/prosody/conf.avail/${JITSI_DOMAIN_NAME}.cfg.lua
 
     sed -i "s|enableWelcomePage:.*|enableWelcomePage: false,|g" /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js
     sed -i "s|disableStats:.*|disableStats: true,|g" /etc/jitsi/meet/${JITSI_DOMAIN_NAME}-config.js
@@ -389,6 +388,7 @@ function install_jitsi {
 
     sed -i "s|navigator.mozGetUserMedia|navigator.mediaDevices.getUserMedia|g" /usr/share/jitsi-meet/libs/lib-jitsi-meet.min.js
 
+    # generated certs which aren't used
     if [ -f /usr/lib/ssl/certs/${JITSI_DOMAIN_NAME}.pem ]; then
         rm /usr/lib/ssl/certs/${JITSI_DOMAIN_NAME}.pem
     fi
@@ -400,7 +400,7 @@ function install_jitsi {
     fi
 
     function_check nginx_ensite
-    nginx_ensite ${JITSI_DOMAIN_NAME}.conf
+    nginx_ensite ${JITSI_DOMAIN_NAME}
 
     set_completion_param "jitsi domain" "$JITSI_DOMAIN_NAME"
 
