@@ -65,7 +65,9 @@ function reconfigure_mumble {
 }
 
 function upgrade_mumble {
-    echo -n ''
+    if [ -d /etc/letsencrypt ]; then
+        usermod -a -G ssl-cert mumble-server
+    fi
 }
 
 function backup_local_mumble {
@@ -200,11 +202,39 @@ function install_mumble {
         fi
     fi
 
+    if [[ ${ONION_ONLY} == 'no' ]]; then
+        if [ ! -d /var/www/${DEFAULT_DOMAIN_NAME}/htdocs ]; then
+            mkdir /var/www/${DEFAULT_DOMAIN_NAME}/htdocs
+        fi
+        if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+            if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt ]; then
+                rm /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt
+            fi
+            if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam ]; then
+                rm /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam
+            fi
+            echo $'Obtaining certificate for the main domain'
+            function_check create_site_certificate
+            create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
+            chmod 755 /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam
+
+            if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt ]; then
+                echo $'Incorrect certificate generated'
+                exit 78352
+            fi
+        fi
+        chgrp -R ssl-cert /etc/letsencrypt
+        chmod -R g=rX /etc/letsencrypt
+    fi
+
+
     # Make an ssl cert for the server
-    if [ ! -f /etc/ssl/certs/mumble.dhparam ]; then
-        ${PROJECT_NAME}-addcert -h mumble --dhkey $DH_KEYLENGTH
-        function_check check_certificates
-        check_certificates mumble
+    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        if [ ! -f /etc/ssl/certs/mumble.dhparam ]; then
+            ${PROJECT_NAME}-addcert -h mumble --dhkey $DH_KEYLENGTH
+            function_check check_certificates
+            check_certificates mumble
+        fi
     fi
 
     # Check that the cert was created
@@ -241,8 +271,13 @@ function install_mumble {
         echo 'allowping=False' >> /etc/mumble-server.ini
     fi
     sed -i 's|allowping=.*|allowping=False|g' /etc/mumble-server.ini
-    sed -i 's|#sslCert=.*|sslCert=/var/lib/mumble-server/mumble.pem|g' /etc/mumble-server.ini
-    sed -i 's|#sslKey=.*|sslKey=/var/lib/mumble-server/mumble.key|g' /etc/mumble-server.ini
+    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        sed -i 's|#sslCert=.*|sslCert=/var/lib/mumble-server/mumble.pem|g' /etc/mumble-server.ini
+        sed -i 's|#sslKey=.*|sslKey=/var/lib/mumble-server/mumble.key|g' /etc/mumble-server.ini
+    else
+        sed -i "s|#sslCert=.*|sslCert=/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/mumble-server.ini
+        sed -i "s|#sslKey=.*|sslKey=/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/mumble-server.ini
+    fi
     sed -i 's|#certrequired=.*|certrequired=True|g' /etc/mumble-server.ini
     sed -i 's|users=100|users=10|g' /etc/mumble-server.ini
     sed -i 's|#channelnestinglimit=10|channelnestinglimit=10|g' /etc/mumble-server.ini
@@ -257,6 +292,10 @@ function install_mumble {
 
     # turn off logs by default
     sed -i 's|logfile=.*|logfile=/dev/null|g' /etc/mumble-server.ini
+
+    if [ -d /etc/letsencrypt ]; then
+        usermod -a -G ssl-cert mumble-server
+    fi
 
     update_default_domain
     systemctl restart mumble-server

@@ -706,13 +706,30 @@ function update_default_domain {
                 fi
             fi
 
+            if [ -f /etc/mumble-server.ini ]; then
+                if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+                    if ! grep -q "mumble.pem" /etc/mumble-server.ini; then
+                        sed -i 's|sslCert=.*|sslCert=/var/lib/mumble-server/mumble.pem|g' /etc/mumble-server.ini
+                        sed -i 's|sslKey=.*|sslKey=/var/lib/mumble-server/mumble.key|g' /etc/mumble-server.ini
+                        systemctl restart mumble
+                    fi
+                else
+                    if ! grep -q "${DEFAULT_DOMAIN_NAME}.pem" /etc/mumble-server.ini; then
+                        usermod -a -G ssl-cert mumble-server
+                        sed -i "s|sslCert=.*|sslCert=/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/mumble-server.ini
+                        sed -i "s|sslKey=.*|sslKey=/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/mumble-server.ini
+                        systemctl restart mumble
+                    fi
+                fi
+            fi
+
             if [ ! -d /etc/prosody/certs ]; then
                 mkdir /etc/prosody/certs
             fi
-
             cp /etc/ssl/private/xmpp* /etc/prosody/certs
             cp /etc/ssl/certs/xmpp* /etc/prosody/certs
             if [ /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+                usermod -a -G ssl-cert prosody
                 sed -i "s|/etc/prosody/certs/xmpp.key|/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/prosody/conf.avail/xmpp.cfg.lua
                 sed -i "s|/etc/prosody/certs/xmpp.crt|/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/prosody/conf.avail/xmpp.cfg.lua
 
@@ -740,19 +757,6 @@ function update_default_domain {
             chmod -R 700 /etc/prosody/certs/*
             chmod 600 /etc/prosody/prosody.cfg.lua
             systemctl reload prosody
-        fi
-
-        if [ -d /var/lib/mumble-server ]; then
-            if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "1" ]]; then
-                cp /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem /var/lib/mumble-server/mumble.pem
-                cp /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.dhparam /var/lib/mumble-server/mumble.dhparam
-                cp /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key /var/lib/mumble-server/mumble.key
-                chown -R mumble-server:mumble-server /var/lib/mumble-server
-                chmod -R 700 /var/lib/mumble-server/*.pem
-                chmod -R 700 /var/lib/mumble-server/*.key
-                chmod -R 700 /var/lib/mumble-server/*.dhparam
-                systemctl restart mumble-server
-            fi
         fi
 
         if [ -d /home/znc/.znc ]; then
