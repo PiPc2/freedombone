@@ -38,6 +38,8 @@ SHOW_ON_ABOUT=1
 NEXTCLOUD_DOMAIN_NAME=
 NEXTCLOUD_CODE=
 NEXTCLOUD_ONION_PORT=8112
+NEXTCLOUD_DOWNLOAD_URL='https://download.nextcloud.com/server/releases/nextcloud-'
+NEXTCLOUD_VERSION='11.0.3'
 NEXTCLOUD_REPO="https://github.com/nextcloud/server"
 # Stable 11 branch
 NEXTCLOUD_COMMIT='4fe02f6e3a812551661a3a7a7ceb4e1f3791cbd3'
@@ -336,6 +338,11 @@ function install_nextcloud_main {
     git checkout $NEXTCLOUD_COMMIT -b $NEXTCLOUD_COMMIT
     set_completion_param "nextcloud commit" "$NEXTCLOUD_COMMIT"
 
+    # some extra apps
+    git clone https://github.com/nextcloud/gallery /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs/apps/gallery
+    git clone https://github.com/nextcloud/spreed /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs/apps/spreed
+    git clone https://github.com/nextcloud/calendar /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs/apps/calendar
+
     chmod g+w /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
     chown -R www-data:www-data /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
 
@@ -403,6 +410,16 @@ function install_nextcloud_main {
         echo '    deny all;' >> $nextcloud_nginx_site
         echo '  }' >> $nextcloud_nginx_site
         echo '' >> $nextcloud_nginx_site
+        echo '  location = /.well-known/carddav {' >> $nextcloud_nginx_site
+        echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
+        echo '  }' >> $nextcloud_nginx_site
+        echo '  location = /.well-known/caldav {' >> $nextcloud_nginx_site
+        echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
+        echo '  }' >> $nextcloud_nginx_site
+        echo '' >> $nextcloud_nginx_site
+        echo '  location /.well-known/acme-challenge { }' >> $nextcloud_nginx_site
+        echo '' >> $nextcloud_nginx_site
+
         # DO NOT ENABLE KEYBASE. nextcloud really doesn't like having a .well-known directory
         echo '}' >> $nextcloud_nginx_site
     else
@@ -448,7 +465,17 @@ function install_nextcloud_main {
     echo '    deny all;' >> $nextcloud_nginx_site
     echo '  }' >> $nextcloud_nginx_site
     echo '' >> $nextcloud_nginx_site
+    echo '  location = /.well-known/carddav {' >> $nextcloud_nginx_site
+    echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
+    echo '  }' >> $nextcloud_nginx_site
+    echo '  location = /.well-known/caldav {' >> $nextcloud_nginx_site
+    echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
+    echo '  }' >> $nextcloud_nginx_site
+    echo '' >> $nextcloud_nginx_site
+    echo '  location /.well-known/acme-challenge { }' >> $nextcloud_nginx_site
     echo '}' >> $nextcloud_nginx_site
+
+    sed -i 's| DENY;| SAMEORIGIN;|g' $nextcloud_nginx_site
 
     function_check configure_php
     configure_php
@@ -499,14 +526,18 @@ function install_nextcloud_main {
     cd /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
     chown -R www-data:www-data config
     chown -R www-data:www-data data
+    chmod +x occ
     ./occ maintenance:install --database-name nextcloud --admin-user ${MY_USERNAME} --admin-pass "${NEXTCLOUD_ADMIN_PASSWORD}" --database mysql --database-user root --database-pass "${MARIADB_PASSWORD}"
     ./occ check
     ./occ status
     ./occ app:list
-    ./occ app:enable passman
-    ./occ config:system:set defaultapp --value=passman
-    ./occ config:system:set appstoreenabled --value=true
-    ./occ config:system:set trusted_domains 2 --value=$NEXTCLOUD_DOMAIN_NAME
+    ./occ app:enable encryption
+    ./occ app:enable gallery
+    ./occ app:enable calendar
+    ./occ app:enable spreed
+    ./occ config:system:set defaultapp --value=gallery
+    ./occ config:system:set appstoreenabled --value=false
+#    ./occ config:system:set trusted_domains 2 --value=$NEXTCLOUD_DOMAIN_NAME
     chmod g+w /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/config.php
     chown -R www-data:www-data /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
 
