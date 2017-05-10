@@ -117,8 +117,49 @@ function reconfigure_riot {
     echo -n ''
 }
 
+function riot_download {
+    # download
+    if [ ! -f $INSTALL_DIR/${RIOT_FILENAME}.tar.gz ]; then
+        wget ${RIOT_DOWNLOAD_URL}/${RIOT_FILENAME}.tar.gz -O $INSTALL_DIR/${RIOT_FILENAME}.tar.gz
+    fi
+    if [ ! -f $INSTALL_DIR/${RIOT_FILENAME}.tar.gz ]; then
+        echo $'Unable to download Riot Web from releases'
+        exit 62836
+    fi
+    cd $INSTALL_DIR
+
+    # check the hash
+    curr_hash=$(sha256sum ${RIOT_FILENAME}.tar.gz | awk -F ' ' '{print $1}')
+    if [[ "$curr_hash" != "$RIOT_HASH" ]]; then
+        echo $'Riot download hash does not match'
+        exit 78352
+    fi
+
+    tar -xzvf ${RIOT_FILENAME}.tar.gz
+    if [ ! -d $INSTALL_DIR/${RIOT_FILENAME} ]; then
+        echo $'Unable to extract Riot Web tarball'
+        exit 542826
+    fi
+    cp -r $INSTALL_DIR/${RIOT_FILENAME}/* /var/www/$RIOT_DOMAIN_NAME/htdocs
+    chown -R www-data:www-data /var/www/$RIOT_DOMAIN_NAME/htdocs
+}
+
 function upgrade_riot {
-    set_repo_commit /var/www/$RIOT_DOMAIN_NAME/htdocs "riot commit" "$RIOT_COMMIT" $RIOT_REPO
+    if ! grep -q 'riot version:' $COMPLETION_FILE; then
+        return
+    fi
+
+    CURR_RIOT_VERSION=$(get_completion_param "riot version")
+    echo "riot current version: ${CURR_RIOT_VERSION}"
+    echo "riot app version: ${RIOT_VERSION}"
+    if [[ "${CURR_RIOT_VERSION}" == "${RIOT_VERSION}" ]]; then
+        return
+    fi
+
+    riot_download
+    sed -i "s|riot version.*|riot version:$RIOT_VERSION|g" ${COMPLETION_FILE}
+
+    systemctl restart nginx
 }
 
 function backup_local_riot {
@@ -170,29 +211,8 @@ function install_riot {
         mkdir $INSTALL_DIR
     fi
 
-    # download
-    if [ ! -f $INSTALL_DIR/${RIOT_FILENAME}.tar.gz ]; then
-        wget ${RIOT_DOWNLOAD_URL}/${RIOT_FILENAME}.tar.gz -O $INSTALL_DIR/${RIOT_FILENAME}.tar.gz
-    fi
-    if [ ! -f $INSTALL_DIR/${RIOT_FILENAME}.tar.gz ]; then
-        echo $'Unable to download Riot Web from releases'
-        exit 62836
-    fi
-    cd $INSTALL_DIR
+    riot_download
 
-    # check the hash
-    curr_hash=$(sha256sum ${RIOT_FILENAME}.tar.gz | awk -F ' ' '{print $1}')
-    if [[ "$curr_hash" != "$RIOT_HASH" ]]; then
-        echo $'Riot download hash does not match'
-        exit 78352
-    fi
-
-    tar -xzvf ${RIOT_FILENAME}.tar.gz
-    if [ ! -d $INSTALL_DIR/${RIOT_FILENAME} ]; then
-        echo $'Unable to extract Riot Web tarball'
-        exit 542826
-    fi
-    cp -r $INSTALL_DIR/${RIOT_FILENAME}/* /var/www/$RIOT_DOMAIN_NAME/htdocs
     cd /var/www/$RIOT_DOMAIN_NAME/htdocs
     cp config.sample.json config.json
 
@@ -282,6 +302,11 @@ function install_riot {
     systemctl restart nginx
 
     set_completion_param "riot domain" "$RIOT_DOMAIN_NAME"
+    if ! grep -q "riot version:" ${COMPLETION_FILE}; then
+        echo "riot version:${RIOT_VERSION}" >> ${COMPLETION_FILE}
+    else
+        sed -i "s|riot version.*|riot version:${RIOT_VERSION}|g" ${COMPLETION_FILE}
+    fi
     APP_INSTALLED=1
 }
 
