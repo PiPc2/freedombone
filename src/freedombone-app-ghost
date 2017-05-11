@@ -36,7 +36,7 @@ SHOW_ON_ABOUT=1
 GHOST_DOMAIN_NAME=
 GHOST_CODE=
 GHOST_ONION_PORT=8104
-GHOST_VERSION='0.11.3'
+GHOST_VERSION='0.11.8'
 GHOST_PORT=2368
 
 ghost_variables=(GHOST_VERSION
@@ -150,17 +150,42 @@ function reconfigure_ghost {
 }
 
 function upgrade_ghost {
+    if ! grep -q "ghost version:" $COMPLETION_FILE; then
+        return
+    fi
+
+    CURR_GHOST_VERSION=$(get_completion_param "ghost version")
+    if [[ "$GHOST_VERSION" == "$CURR_GHOST_VERSION" ]]; then
+        return
+    fi
+
     read_config_param "GHOST_DOMAIN_NAME"
 
     GHOST_PATH=/var/www/$GHOST_DOMAIN_NAME/htdocs
 
-    function_check set_repo_commit
-    set_repo_commit $GHOST_PATH "ghost commit" "$GHOST_COMMIT" $GHOST_REPO
+    cd $GHOST_PATH
+    wget https://ghost.org/zip/ghost-${GHOST_VERSION}.zip
+    if [ ! -f ghost-${GHOST_VERSION}.zip ]; then
+        echo $'Unable to download ghost'
+        rm -rf /var/www/$GHOST_DOMAIN_NAME
+        exit 367245
+    fi
+    unzip ghost-${GHOST_VERSION}.zip
+    if [ ! -f $GHOST_PATH/index.js ]; then
+        echo $'ghost failed to unzip'
+        rm -rf /var/www/$GHOST_DOMAIN_NAME
+        exit 63835
+    fi
 
+    sed -i "/sqlite/d" $GHOST_PATH/package.json
+    npm install --production
+
+    chown -R ghost: $GHOST_PATH/
     ghost_replace_services
     chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
 
     ghost_remove_offsite_links
+    sed -i "s|ghost version.*|ghost version:${GHOST_VERSION}|g" ${COMPLETION_FILE}
     systemctl restart ghost
 }
 
@@ -495,6 +520,11 @@ function install_ghost {
     add_ddns_domain $GHOST_DOMAIN_NAME
 
     set_completion_param "ghost domain" "$GHOST_DOMAIN_NAME"
+    if ! grep -q "ghost version:" ${COMPLETION_FILE}; then
+        echo "ghost version:${GHOST_VERSION}" >> ${COMPLETION_FILE}
+    else
+        sed -i "s|ghost version.*|ghost version:${GHOST_VERSION}|g" ${COMPLETION_FILE}
+    fi
     APP_INSTALLED=1
 }
 
