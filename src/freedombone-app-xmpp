@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -45,7 +45,10 @@ prosody_nightly=382
 prosody_nightly_hash='770f1a0466f2361184eebffac9f50c102ad842cd855190db6c7f42f2f09884f5'
 prosody_filename=prosody-${prosody_latest_version}-1nightly${prosody_nightly}
 prosody_nightly_url="https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz"
-prosody_modules_repo='https://hg.prosody.im/prosody-modules/'
+
+# From https://hg.prosody.im/prosody-modules
+prosody_modules_filename='prosody-modules-20170514.tar.gz'
+prosody_modules_hash='ef404c203317cc0de6da7aaec4f21765a57f630adfbf082cf2dd92b881c15f86'
 
 LIBMESODE_REPO="https://github.com/boothj5/libmesode"
 LIBMESODE_COMMIT='e3db0e9bfba61b2d82193874343a94a88f910800'
@@ -283,18 +286,44 @@ function reconfigure_xmpp {
 }
 
 function update_prosody_modules {
-    if [ ! -d /var/lib/prosody/prosody-modules ]; then
-        return
+    if [ ! $1 ]; then
+        if [ ! -d /var/lib/prosody/prosody-modules ]; then
+            return
+        fi
     fi
     if [ ! -d /usr/lib/prosody ]; then
         return
     fi
 
-    hg clone $prosody_modules_repo /var/lib/prosody/prosody-modules-new
-    if [ -d /var/lib/prosody/prosody-modules-new ]; then
-        rm -rf /var/lib/prosody/prosody-modules
-        mv /var/lib/prosody/prosody-modules-new /var/lib/prosody/prosody-modules
-        chown -R prosody:prosody /var/lib/prosody/prosody-modules
+    if [ ! -f $INSTALL_DIR/$prosody_modules_filename ]; then
+        # Obtain the modules
+        if [ -f ~/freedombone/image_build/$prosody_modules_filename ]; then
+            cp ~/freedombone/image_build/$prosody_modules_filename $INSTALL_DIR
+        else
+            if [ -f /home/$MY_USERNAME/freedombone/image_build/$prosody_modules_filename ]; then
+                cp /home/$MY_USERNAME/freedombone/image_build/$prosody_modules_filename $INSTALL_DIR
+            fi
+        fi
+
+        if [ -f $INSTALL_DIR/$prosody_modules_filename ]; then
+            cd $INSTALL_DIR
+
+            # Check the hash
+            curr_hash=$(sha256sum $INSTALL_DIR/$prosody_modules_filename | awk -F ' ' '{print $1}')
+            if [[ "$curr_hash" != "$prosody_modules_hash" ]]; then
+                echo $'Prosody modules hash does not match'
+            else
+                # Extract the modules
+                if [ -d prosody-modules ]; then
+                    rm -rf prosody-modules
+                fi
+                tar -xzvf $prosody_modules_filename
+                if [ -d prosody-modules ]; then
+                    cp -r prosody-modules/* /var/lib/prosody/prosody-modules
+                    chown -R prosody:prosody /var/lib/prosody/prosody-modules
+                fi
+            fi
+        fi
     fi
 
     # change to using pep rather than profile modules
@@ -835,21 +864,12 @@ function install_xmpp_main {
         mkdir /etc/prosody/conf.d
     fi
 
-    # obtain the prosody modules
-    if [ ! -d /var/lib/prosody/prosody-modules ]; then
-        hg clone $prosody_modules_repo /var/lib/prosody/prosody-modules
-    fi
-    if [ ! -d /var/lib/prosody/prosody-modules/mod_onions ]; then
-        echo $'mod_onions prosody module could not be found'
-        exit 73254
-    fi
-
     chmod -R 700 /etc/prosody/conf.d
     chown -R prosody /var/lib/prosody
     chown -R prosody /etc/prosody/conf.d
 
-    # install the onions module
-    update_prosody_modules
+    # install modules
+    update_prosody_modules initial
 
     # create a certificate
     if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
