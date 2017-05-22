@@ -1,0 +1,204 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# scuttlebot pub application
+# https://scuttlebot.io
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim chat'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=0
+SHOW_ICANN_ADDRESS_ON_ABOUT=0
+
+SCUTTLEBOT_VERSION='9.8.0'
+
+scuttlebot_variables=(MY_USERNAME
+                      SYSTEM_TYPE)
+
+
+#function configure_interactive_scuttlebot {
+#    echo -n ''
+#}
+
+function remove_user_scuttlebot {
+    remove_username="$1"
+}
+
+function add_user_scuttlebot {
+    new_username="$1"
+    new_user_password="$2"
+    echo '0'
+}
+
+function install_interactive_scuttlebot {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function change_password_scuttlebot {
+    new_username="$1"
+    new_user_password="$2"
+    echo '0'
+}
+
+function reconfigure_scuttlebot {
+    if [ -d /etc/scuttlebot/.ssb ]; then
+        systemctl stop scuttlebot
+        rm -rf /etc/scuttlebot/.ssb
+        systemctl start scuttlebot
+    fi
+}
+
+function upgrade_scuttlebot {
+    if ! grep -q 'scuttlebot version:' $COMPLETION_FILE; then
+        return
+    fi
+
+    CURR_SCUTTLEBOT_VERSION=$(get_completion_param "scuttlebot version")
+    echo "scuttlebot current version: ${CURR_SCUTTLEBOT_VERSION}"
+    echo "scuttlebot app version: ${SCUTTLEBOT_VERSION}"
+    if [[ "${CURR_SCUTTLEBOT_VERSION}" == "${SCUTTLEBOT_VERSION}" ]]; then
+        return
+    fi
+
+    npm upgrade -g scuttlebot@${SCUTTLEBOT_VERSION} --save
+    if [ ! "$?" = "0" ]; then
+        return
+    fi
+    sed -i "s|scuttlebot version.*|scuttlebot version:${SCUTTLEBOT_VERSION}|g" ${COMPLETION_FILE}
+}
+
+function backup_local_scuttlebot {
+    if [ -d /etc/scuttlebot/.ssb ]; then
+        systemctl stop scuttlebot
+        function_check backup_directory_to_usb
+        backup_directory_to_usb /etc/scuttlebot/.ssb scuttlebot
+        systemctl start scuttlebot
+    fi
+}
+
+function restore_local_scuttlebot {
+    if [ -d /etc/scuttlebot ]; then
+        systemctl stop scuttlebot
+        temp_restore_dir=/root/tempscuttlebot
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir scuttlebot
+        cp -r $temp_restore_dir/etc/scuttlebot/.ssb /etc/scuttlebot/
+        systemctl start scuttlebot
+    fi
+}
+
+function backup_remote_scuttlebot {
+    if [ -d /etc/scuttlebot/.ssb ]; then
+        systemctl stop scuttlebot
+        function_check backup_directory_to_friend
+        backup_directory_to_friend /etc/scuttlebot/.ssb scuttlebot
+        systemctl start scuttlebot
+    fi
+}
+
+function restore_remote_scuttlebot {
+    if [ -d /etc/scuttlebot ]; then
+        systemctl stop scuttlebot
+        temp_restore_dir=/root/tempscuttlebot
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir scuttlebot
+        cp -r $temp_restore_dir/etc/scuttlebot/.ssb /etc/scuttlebot/
+        systemctl start scuttlebot
+    fi
+}
+
+function remove_scuttlebot {
+    systemctl stop scuttlebot
+    systemctl disable scuttlebot
+    rm /etc/systemd/system/scuttlebot.service
+
+    userdel -r scuttlebot
+
+    if [ -d /etc/scuttlebot ]; then
+        rm -rf /etc/scuttlebot
+    fi
+
+    remove_completion_param install_scuttlebot
+    sed -i '/scuttlebot /d' $COMPLETION_FILE
+}
+
+function install_scuttlebot {
+    function_check install_nodejs
+    install_nodejs scuttlebot
+
+    npm install -g scuttlebot@${SCUTTLEBOT_VERSION}
+    if [ ! -f /usr/local/bin/sbot ]; then
+        exit 528253
+    fi
+
+    if [ ! -d /etc/scuttlebot ]; then
+        mkdir -p /etc/scuttlebot
+    fi
+
+    # an unprivileged user to run as
+    useradd -d /etc/scuttlebot/ -s /bin/false scuttlebot
+
+    # daemon
+    echo '[Unit]' > /etc/systemd/system/scuttlebot.service
+    echo 'Description=Scuttlebot (messaging system)' >> /etc/systemd/system/scuttlebot.service
+    echo 'After=syslog.target' >> /etc/systemd/system/scuttlebot.service
+    echo 'After=network.target' >> /etc/systemd/system/scuttlebot.service
+    echo '' >> /etc/systemd/system/scuttlebot.service
+    echo '[Service]' >> /etc/systemd/system/scuttlebot.service
+    echo 'Type=simple' >> /etc/systemd/system/scuttlebot.service
+    echo 'User=scuttlebot' >> /etc/systemd/system/scuttlebot.service
+    echo 'Group=scuttlebot' >> /etc/systemd/system/scuttlebot.service
+    echo "WorkingDirectory=/etc/scuttlebot" >> /etc/systemd/system/scuttlebot.service
+    echo 'ExecStart=/usr/local/bin/sbot server' >> /etc/systemd/system/scuttlebot.service
+    echo 'Restart=always' >> /etc/systemd/system/scuttlebot.service
+    echo 'Environment="USER=scuttlebot"' >> /etc/systemd/system/scuttlebot.service
+    echo '' >> /etc/systemd/system/scuttlebot.service
+    echo '[Install]' >> /etc/systemd/system/scuttlebot.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/scuttlebot.service
+
+    chown -R scuttlebot:scuttlebot /etc/scuttlebot
+
+    # files gw_name myhostname mdns4_minimal [NOTFOUND=return] dns
+    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf
+
+    # start the daemon
+    systemctl enable scuttlebot.service
+    systemctl daemon-reload
+    systemctl start scuttlebot.service
+
+    if ! grep -q "scuttlebot version:" ${COMPLETION_FILE}; then
+        echo "scuttlebot version:${SCUTTLEBOT_VERSION}" >> ${COMPLETION_FILE}
+    else
+        sed -i "s|scuttlebot version.*|scuttlebot version:${SCUTTLEBOT_VERSION}|g" ${COMPLETION_FILE}
+    fi
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
