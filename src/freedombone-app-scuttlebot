@@ -36,14 +36,42 @@ SHOW_ON_ABOUT=0
 SHOW_ICANN_ADDRESS_ON_ABOUT=0
 
 SCUTTLEBOT_VERSION='9.8.0'
+SCUTTLEBOT_PORT=8008
+SCUTTLEBOT_ONION_PORT=8118
 
 scuttlebot_variables=(MY_USERNAME
+                      DEFAULT_DOMAIN_NAME
                       SYSTEM_TYPE)
 
+function scuttlebot_create_invite {
+    invite_string=$(su -c "sbot invite.create 1" - scuttlebot | sed 's/"//g')
 
-#function configure_interactive_scuttlebot {
-#    echo -n ''
-#}
+    clear
+    echo -e '\n\nYour Scuttlebot invite code is:\n\n'${invite_string}'\n\n'
+    read -n1 -r -p $"Press any key to continue..." key
+}
+
+function configure_interactive_scuttlebot {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"Scuttlebot" \
+               --radiolist $"Choose an operation:" 10 50 2 \
+               1 $"Create an invite" off \
+               2 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+        case $(cat $data) in
+            1) scuttlebot_create_invite;;
+            2) break;;
+        esac
+    done
+}
 
 function remove_user_scuttlebot {
     remove_username="$1"
@@ -138,6 +166,9 @@ function remove_scuttlebot {
     systemctl disable scuttlebot
     rm /etc/systemd/system/scuttlebot.service
 
+    function_check remove_onion_service
+    remove_onion_service scuttlebot ${SCUTTLEBOT_ONION_PORT}
+
     userdel -r scuttlebot
 
     if [ -d /etc/scuttlebot ]; then
@@ -191,6 +222,36 @@ function install_scuttlebot {
     systemctl enable scuttlebot.service
     systemctl daemon-reload
     systemctl start scuttlebot.service
+
+    sleep 3
+
+    SCUTTLEBOT_ONION_HOSTNAME=$(add_onion_service scuttlebot ${SCUTTLEBOT_PORT} ${SCUTTLEBOT_ONION_PORT})
+
+    if [ ! -d /etc/scuttlebot/.ssb ]; then
+        echo $'Scuttlebot config not generated'
+        exit 73528
+    fi
+
+    echo '{' > /etc/scuttlebot/.ssb/config
+    echo "  \"host\": \"${SCUTTLEBOT_ONION_HOSTNAME}\"," >> /etc/scuttlebot/.ssb/config
+    echo "  \"port\": ${SCUTTLEBOT_PORT}," >> /etc/scuttlebot/.ssb/config
+    echo '  "timeout": 30000,' >> /etc/scuttlebot/.ssb/config
+    echo '  "pub": true,' >> /etc/scuttlebot/.ssb/config
+    echo '  "local": true,' >> /etc/scuttlebot/.ssb/config
+    echo '  "friends": {' >> /etc/scuttlebot/.ssb/config
+    echo '    "dunbar": 150,' >> /etc/scuttlebot/.ssb/config
+    echo '    "hops": 3' >> /etc/scuttlebot/.ssb/config
+    echo '  },' >> /etc/scuttlebot/.ssb/config
+    echo '  "gossip": {' >> /etc/scuttlebot/.ssb/config
+    echo '    "connections": 2' >> /etc/scuttlebot/.ssb/config
+    echo '  },' >> /etc/scuttlebot/.ssb/config
+    echo '  "master": [],' >> /etc/scuttlebot/.ssb/config
+    echo '  "logging": {' >> /etc/scuttlebot/.ssb/config
+    echo '    "level": "error"' >> /etc/scuttlebot/.ssb/config
+    echo '  }' >> /etc/scuttlebot/.ssb/config
+    echo '}' >> /etc/scuttlebot/.ssb/config
+    chown scuttlebot:scuttlebot /etc/scuttlebot/.ssb/config
+    systemctl restart scuttlebot.service
 
     if ! grep -q "scuttlebot version:" ${COMPLETION_FILE}; then
         echo "scuttlebot version:${SCUTTLEBOT_VERSION}" >> ${COMPLETION_FILE}
