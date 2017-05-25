@@ -1,0 +1,531 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# koel application
+# https://gist.github.com/bplower/613a99156d603abac083
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim media'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+KOEL_DOMAIN_NAME=
+KOEL_CODE=
+KOEL_ONION_PORT=8118
+KOEL_REPO="https://github.com/phanan/koel"
+KOEL_COMMIT='70464a8977b1058f3bd0a4ec77877fe7894d8d84'
+KOEL_ADMIN_PASSWORD=
+
+koel_variables=(ONION_ONLY
+                KOEL_DOMAIN_NAME
+                KOEL_CODE
+                DDNS_PROVIDER
+                MY_EMAIL_ADDRESS
+                MY_USERNAME)
+
+function remove_user_koel {
+    remove_username="$1"
+
+    ${PROJECT_NAME}-pass -u $remove_username --rmapp koel
+}
+
+function add_user_koel {
+    new_username="$1"
+    new_user_password="$2"
+
+    ${PROJECT_NAME}-pass -u $new_username -a koel -p "$new_user_password"
+    echo '0'
+}
+
+function install_interactive_koel {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        KOEL_DOMAIN_NAME='koel.local'
+    else
+        KOEL_DETAILS_COMPLETE=
+        while [ ! $KOEL_DETAILS_COMPLETE ]
+        do
+            data=$(tempfile 2>/dev/null)
+            trap "rm -f $data" 0 1 2 5 15
+            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"Koel Configuration" \
+                       --form $"\nPlease enter your Koel details. The background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 3 \
+                       $"Domain:" 1 1 "$(grep 'KOEL_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       $"Code:" 2 1 "$(grep 'KOEL_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 25 33 255 \
+                       2> $data
+            else
+                dialog --backtitle $"Freedombone Configuration" \
+                       --title $"Koel Configuration" \
+                       --form $"\nPlease enter your Koel details. The background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 3 \
+                       $"Domain:" 1 1 "$(grep 'KOEL_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
+                       2> $data
+            fi
+            sel=$?
+            case $sel in
+                1) exit 1;;
+                255) exit 1;;
+            esac
+            KOEL_DOMAIN_NAME=$(cat $data | sed -n 1p)
+            if [ $KOEL_DOMAIN_NAME ]; then
+                if [[ $KOEL_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
+                    KOEL_DOMAIN_NAME=""
+                fi
+                TEST_DOMAIN_NAME=$KOEL_DOMAIN_NAME
+                validate_domain_name
+                if [[ $TEST_DOMAIN_NAME != $KOEL_DOMAIN_NAME ]]; then
+                    KOEL_DOMAIN_NAME=
+                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+                else
+                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                        KOEL_CODE=$(cat $data | sed -n 2p)
+                        validate_freedns_code "$KOEL_CODE"
+                        if [ ! $VALID_CODE ]; then
+                            KOEL_DOMAIN_NAME=
+                        fi
+                    fi
+                fi
+            fi
+            if [ $KOEL_DOMAIN_NAME ]; then
+                KOEL_DETAILS_COMPLETE="yes"
+            fi
+        done
+
+        # save the results in the config file
+        write_config_param "KOEL_CODE" "$KOEL_CODE"
+    fi
+    write_config_param "KOEL_DOMAIN_NAME" "$KOEL_DOMAIN_NAME"
+    APP_INSTALLED=1
+}
+
+function change_password_koel {
+    curr_username="$1"
+    new_user_password="$2"
+
+    read_config_param 'KOEL_DOMAIN_NAME'
+
+    ${PROJECT_NAME}-pass -u "$curr_username" -a koel -p "$new_user_password"
+}
+
+function koel_create_database {
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        KOEL_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        if [ ! $KOEL_ADMIN_PASSWORD ]; then
+            KOEL_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    if [ ! $KOEL_ADMIN_PASSWORD ]; then
+        return
+    fi
+
+    function_check create_database
+    create_database koel "$KOEL_ADMIN_PASSWORD" $MY_USERNAME
+}
+
+function reconfigure_koel {
+    echo -n ''
+}
+
+function configure_interactive_koel {
+    echo -n ''
+}
+
+function upgrade_koel {
+    if grep -q "koel domain" $COMPLETION_FILE; then
+        KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$KOEL_DOMAIN_NAME/htdocs "koel commit" "$KOEL_COMMIT" $KOEL_REPO
+
+    chown -R www-data:www-data /var/www/${KOEL_DOMAIN_NAME}/htdocs
+}
+
+
+function backup_local_koel {
+    KOEL_DOMAIN_NAME='koel'
+    if grep -q "koel domain" $COMPLETION_FILE; then
+        KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
+    fi
+
+    source_directory=/var/www/${KOEL_DOMAIN_NAME}/htdocs
+    if [ -d $source_directory ]; then
+        dest_directory=koel
+        function_check suspend_site
+        suspend_site ${KOEL_DOMAIN_NAME}
+
+        function_check backup_directory_to_usb
+        backup_directory_to_usb $source_directory $dest_directory
+
+        function_check backup_database_to_usb
+        backup_database_to_usb koel
+
+        function_check restart_site
+        restart_site
+    fi
+}
+
+function restore_local_koel {
+    if ! grep -q "koel domain" $COMPLETION_FILE; then
+        return
+    fi
+    KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
+    if [ $KOEL_DOMAIN_NAME ]; then
+        echo $"Restoring koel"
+        temp_restore_dir=/root/tempkoel
+        koel_dir=/var/www/${KOEL_DOMAIN_NAME}/htdocs
+
+        function_check koel_create_database
+        koel_create_database
+
+        restore_database koel ${KOEL_DOMAIN_NAME}
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
+    fi
+}
+
+function backup_remote_koel {
+    if grep -q "koel domain" $COMPLETION_FILE; then
+        KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
+        temp_backup_dir=/var/www/${KOEL_DOMAIN_NAME}/htdocs
+        if [ -d $temp_backup_dir ]; then
+            function_check suspend_site
+            suspend_site ${KOEL_DOMAIN_NAME}
+
+            function_check backup_database_to_friend
+            backup_database_to_friend koel
+
+            echo $"Backing up Koel installation"
+
+            function_check backup_directory_to_friend
+            backup_directory_to_friend $temp_backup_dir koel
+
+            function_check restart_site
+            restart_site
+        else
+            echo $"koel domain specified but not found in ${temp_backup_dir}"
+        fi
+    fi
+}
+
+function restore_remote_koel {
+    if grep -q "koel domain" $COMPLETION_FILE; then
+        echo $"Restoring koel"
+        KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
+
+        # stop the daemons
+        cd /var/www/${KOEL_DOMAIN_NAME}/htdocs
+        su -c "sh scripts/stopdaemons.sh" -s /bin/sh www-data
+
+        function_check koel_create_database
+        koel_create_database
+
+        function_check restore_database_from_friend
+        restore_database_from_friend koel ${KOEL_DOMAIN_NAME}
+        if [ -d /root/tempkoel ]; then
+            rm -rf /root/tempkoel
+        fi
+
+        # start the daemons
+        cd /var/www/${KOEL_DOMAIN_NAME}/htdocs
+        su -c "sh scripts/startdaemons.sh" -s /bin/sh www-data
+        echo $"Restore of koel complete"
+    fi
+}
+
+function remove_koel {
+    if [ ${#KOEL_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+    function_check remove_nodejs
+    remove_nodejs koel
+
+    read_config_param "KOEL_DOMAIN_NAME"
+    read_config_param "MY_USERNAME"
+    echo "Removing $KOEL_DOMAIN_NAME"
+    nginx_dissite $KOEL_DOMAIN_NAME
+    remove_certs $KOEL_DOMAIN_NAME
+
+    if [ -d /var/www/$KOEL_DOMAIN_NAME ]; then
+        rm -rf /var/www/$KOEL_DOMAIN_NAME
+    fi
+    if [ -f /etc/nginx/sites-available/$KOEL_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$KOEL_DOMAIN_NAME
+    fi
+    function_check drop_database
+    drop_database koel
+    function_check remove_onion_service
+    remove_onion_service koel ${KOEL_ONION_PORT}
+    if grep -q "koel" /etc/crontab; then
+        sed -i "/koel/d" /etc/crontab
+    fi
+    remove_app koel
+    remove_completion_param install_koel
+    sed -i '/koel/d' $COMPLETION_FILE
+    remove_backup_database_local koel
+
+    sed -i '/koel-firewall/d' /etc/crontab
+
+    function_check remove_ddns_domain
+    remove_ddns_domain $KOEL_DOMAIN_NAME
+}
+
+function install_koel_main {
+    if [ ! $KOEL_DOMAIN_NAME ]; then
+        echo $'No domain name was given for koel'
+        exit 7359
+    fi
+
+    if [[ $(app_is_installed koel_main) == "1" ]]; then
+        return
+    fi
+
+    koel_hourly_script koel $KOEL_DOMAIN_NAME
+
+    function_check install_mariadb
+    install_mariadb
+
+    function_check get_mariadb_password
+    get_mariadb_password
+
+    function_check repair_databases_script
+    repair_databases_script
+
+    apt-get -yq install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
+    apt-get -yq install php5-memcached php5-intl exiftool
+
+    if [ ! -d /var/www/$KOEL_DOMAIN_NAME ]; then
+        mkdir /var/www/$KOEL_DOMAIN_NAME
+    fi
+    if [ ! -d /var/www/$KOEL_DOMAIN_NAME/htdocs ]; then
+        function_check git_clone
+        git_clone $KOEL_REPO /var/www/$KOEL_DOMAIN_NAME/htdocs
+        if [ ! -d /var/www/$KOEL_DOMAIN_NAME/htdocs ]; then
+            echo $'Unable to clone koel repo'
+            exit 365735
+        fi
+    fi
+
+    cd /var/www/$KOEL_DOMAIN_NAME/htdocs
+    git checkout $KOEL_COMMIT -b $KOEL_COMMIT
+    set_completion_param "koel commit" "$KOEL_COMMIT"
+
+    chown -R www-data:www-data /var/www/$KOEL_DOMAIN_NAME/htdocs
+
+    function_check koel_create_database
+    koel_create_database
+
+    function_check add_ddns_domain
+    add_ddns_domain $KOEL_DOMAIN_NAME
+
+    koel_nginx_site=/etc/nginx/sites-available/$KOEL_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $KOEL_DOMAIN_NAME "index index.php"
+        echo 'server {' >> $koel_nginx_site
+        echo '  listen 443 ssl;' >> $koel_nginx_site
+        echo '  listen [::]:443 ssl;' >> $koel_nginx_site
+        echo "  server_name $KOEL_DOMAIN_NAME;" >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        function_check nginx_compress
+        nginx_compress $KOEL_DOMAIN_NAME
+        echo '' >> $koel_nginx_site
+        echo '  # Security' >> $koel_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $KOEL_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $KOEL_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  # Logs' >> $koel_nginx_site
+        echo '  access_log /dev/null;' >> $koel_nginx_site
+        echo '  error_log /dev/null;' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  # Root' >> $koel_nginx_site
+        echo "  root /var/www/$KOEL_DOMAIN_NAME/htdocs;" >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  # Index' >> $koel_nginx_site
+        echo '  index index.php;' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  # PHP' >> $koel_nginx_site
+        echo '  location ~ \.php {' >> $koel_nginx_site
+        echo '    include snippets/fastcgi-php.conf;' >> $koel_nginx_site
+        echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $koel_nginx_site
+        echo '  }' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  # Location' >> $koel_nginx_site
+        echo '  location / {' >> $koel_nginx_site
+        function_check nginx_limits
+        nginx_limits $KOEL_DOMAIN_NAME '15m'
+        echo '    try_files $uri $uri/ @koel;' >> $koel_nginx_site
+        echo '  }' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  # Fancy URLs' >> $koel_nginx_site
+        echo '  location @koel {' >> $koel_nginx_site
+        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $koel_nginx_site
+        echo '  }' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  # Restrict access that is unnecessary anyway' >> $koel_nginx_site
+        echo '  location ~ /\.(ht|git) {' >> $koel_nginx_site
+        echo '    deny all;' >> $koel_nginx_site
+        echo '  }' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '}' >> $koel_nginx_site
+    else
+        echo -n '' > $koel_nginx_site
+    fi
+    echo 'server {' >> $koel_nginx_site
+    echo "    listen 127.0.0.1:$KOEL_ONION_PORT default_server;" >> $koel_nginx_site
+    echo "    server_name $KOEL_DOMAIN_NAME;" >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    function_check nginx_compress
+    nginx_compress $KOEL_DOMAIN_NAME
+    echo '' >> $koel_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $KOEL_DOMAIN_NAME
+    echo '' >> $koel_nginx_site
+    echo '  # Logs' >> $koel_nginx_site
+    echo '  access_log /dev/null;' >> $koel_nginx_site
+    echo '  error_log /dev/null;' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '  # Root' >> $koel_nginx_site
+    echo "  root /var/www/$KOEL_DOMAIN_NAME/htdocs;" >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '  # Index' >> $koel_nginx_site
+    echo '  index index.php;' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '  # PHP' >> $koel_nginx_site
+    echo '  location ~ \.php {' >> $koel_nginx_site
+    echo '    include snippets/fastcgi-php.conf;' >> $koel_nginx_site
+    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $koel_nginx_site
+    echo '  }' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '  # Location' >> $koel_nginx_site
+    echo '  location / {' >> $koel_nginx_site
+    function_check nginx_limits
+    nginx_limits $KOEL_DOMAIN_NAME '15m'
+    echo '    try_files $uri $uri/ @koel;' >> $koel_nginx_site
+    echo '  }' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '  # Fancy URLs' >> $koel_nginx_site
+    echo '  location @koel {' >> $koel_nginx_site
+    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $koel_nginx_site
+    echo '  }' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '  # Restrict access that is unnecessary anyway' >> $koel_nginx_site
+    echo '  location ~ /\.(ht|git) {' >> $koel_nginx_site
+    echo '    deny all;' >> $koel_nginx_site
+    echo '  }' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '}' >> $koel_nginx_site
+
+    function_check configure_php
+    configure_php
+
+    function_check create_site_certificate
+    create_site_certificate $KOEL_DOMAIN_NAME 'yes'
+
+    # Ensure that the database gets backed up locally, if remote
+    # backups are not being used
+    function_check backup_databases_script_header
+    backup_databases_script_header
+
+    function_check backup_database_local
+    backup_database_local koel
+
+    function_check nginx_ensite
+    nginx_ensite $KOEL_DOMAIN_NAME
+
+    KOEL_ONION_HOSTNAME=$(add_onion_service koel 80 ${KOEL_ONION_PORT})
+
+    KOEL_SERVER=${KOEL_DOMAIN_NAME}
+    if [[ $ONION_ONLY != 'no' ]]; then
+        KOEL_SERVER=${KOEL_ONION_HOSTNAME}
+    fi
+
+    systemctl restart php5-fpm
+    systemctl restart nginx
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a koel -p "$KOEL_ADMIN_PASSWORD"
+
+    set_completion_param "koel domain" "$KOEL_DOMAIN_NAME"
+
+    install_completed koel_main
+}
+
+function install_koel {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    function_check install_nodejs
+    install_nodejs koel
+
+    install_koel_main
+
+    cd /var/www/$KOEL_DOMAIN_NAME/htdocs
+
+    # curl -sS https://getcomposer.org/installer | php
+    if [ -f ~/freedombone/image_build/composer_install ]; then
+        cat ~/freedombone/image_build/composer_install | php
+    else
+        if [ -f /home/$MY_USERNAME/freedombone/image_build/composer_install ]; then
+            cat /home/$MY_USERNAME/freedombone/image_build/composer_install | php
+        fi
+    fi
+    npm install
+    php composer install
+
+    cp .env.example .env
+    sed -i "s/ADMIN_EMAIL=.*/ADMIN_EMAIL=$MY_EMAIL_ADDRESS/g" .env
+    sed -i "s/ADMIN_NAME=.*/ADMIN_NAME=$MY_USERNAME/g" .env
+    sed -i "s/ADMIN_PASSWORD=.*/ADMIN_PASSWORD=$KOEL_ADMIN_PASSWORD/g" .env
+    sed -i 's/DB_CONNECTION=.*/DB_CONNECTION=mysql/g' .env
+    sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/g' .env
+    sed -i 's/DB_DATABASE=.*/DB_DATABASE=koel/g' .env
+    sed -i 's/DB_USERNAME=.*/DB_USERNAME=root/g' .env
+    sed -i "s/DB_PASSWORD=secret/DB_PASSWORD=$MARIADB_PASSWORD/g" .env
+
+    php artisan koel:init
+    php artisan serve
+
+    chown -R www-data:www-data /var/www/$KOEL_DOMAIN_NAME/htdocs
+    systemctl restart nginx
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately there is no "exit 0"
