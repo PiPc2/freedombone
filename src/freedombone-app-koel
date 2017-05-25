@@ -269,6 +269,13 @@ function remove_koel {
     if [ ${#KOEL_DOMAIN_NAME} -eq 0 ]; then
         return
     fi
+
+    systemctl stop koel
+    systemctl disable koel
+    if [ -f /etc/systemd/system/koel.service ]; then
+        rm /etc/systemd/system/koel.service
+    fi
+
     function_check remove_nodejs
     remove_nodejs koel
 
@@ -538,9 +545,28 @@ function install_koel {
     sed -i "s/DB_PASSWORD=secret/DB_PASSWORD=$MARIADB_PASSWORD/g" .env
 
     php artisan koel:init
-    php artisan serve --port=$KOEL_PORT
-
     chown -R www-data:www-data /var/www/$KOEL_DOMAIN_NAME/htdocs
+
+    # daemon
+    echo '[Unit]' > /etc/systemd/system/koel.service
+    echo 'Description=Koel (music player)' >> /etc/systemd/system/koel.service
+    echo 'After=syslog.target' >> /etc/systemd/system/koel.service
+    echo 'After=network.target' >> /etc/systemd/system/koel.service
+    echo '' >> /etc/systemd/system/koel.service
+    echo '[Service]' >> /etc/systemd/system/koel.service
+    echo 'Type=simple' >> /etc/systemd/system/koel.service
+    echo 'User=www-data' >> /etc/systemd/system/koel.service
+    echo 'Group=www-data' >> /etc/systemd/system/koel.service
+    echo "WorkingDirectory=/var/www/$KOEL_DOMAIN_NAME/htdocs" >> /etc/systemd/system/koel.service
+    echo "ExecStart=/usr/bin/php artisan serve --port=$KOEL_PORT" >> /etc/systemd/system/koel.service
+    echo 'Restart=on-failure' >> /etc/systemd/system/koel.service
+    echo '' >> /etc/systemd/system/koel.service
+    echo '[Install]' >> /etc/systemd/system/koel.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/koel.service
+    systemctl enable koel.service
+    systemctl daemon-reload
+    systemctl start koel.service
+
     systemctl restart nginx
 
     APP_INSTALLED=1
