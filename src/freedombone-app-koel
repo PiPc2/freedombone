@@ -37,6 +37,7 @@ SHOW_ON_ABOUT=1
 KOEL_DOMAIN_NAME=
 KOEL_CODE=
 KOEL_ONION_PORT=8118
+KOEL_PORT=9000
 KOEL_REPO="https://github.com/phanan/koel"
 KOEL_COMMIT='70464a8977b1058f3bd0a4ec77877fe7894d8d84'
 KOEL_ADMIN_PASSWORD=
@@ -380,27 +381,37 @@ function install_koel_main {
         echo '  # Index' >> $koel_nginx_site
         echo '  index index.php;' >> $koel_nginx_site
         echo '' >> $koel_nginx_site
-        echo '  # PHP' >> $koel_nginx_site
-        echo '  location ~ \.php {' >> $koel_nginx_site
-        echo '    include snippets/fastcgi-php.conf;' >> $koel_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $koel_nginx_site
+        echo '  # Whitelist only index.php, robots.txt, and those start with public/ or api/' >> $koel_nginx_site
+        echo '  if ($request_uri !~ ^/$|index\.php|robots\.txt|api/|public/) {' >> $koel_nginx_site
+        echo '    return 404;' >> $koel_nginx_site
         echo '  }' >> $koel_nginx_site
         echo '' >> $koel_nginx_site
-        echo '  # Location' >> $koel_nginx_site
+        echo '  location /media/ {' >> $koel_nginx_site
+        echo '    internal;' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '    # A X-Media-Root should be set to media_path settings from upstream' >> $koel_nginx_site
+        echo '    alias       $upstream_http_x_media_root;' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo '  }' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
         echo '  location / {' >> $koel_nginx_site
         function_check nginx_limits
         nginx_limits $KOEL_DOMAIN_NAME '15m'
-        echo '    try_files $uri $uri/ @koel;' >> $koel_nginx_site
+        echo '    try_files   $uri $uri/ /index.php?$args;' >> $koel_nginx_site
         echo '  }' >> $koel_nginx_site
         echo '' >> $koel_nginx_site
-        echo '  # Fancy URLs' >> $koel_nginx_site
-        echo '  location @koel {' >> $koel_nginx_site
-        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $koel_nginx_site
-        echo '  }' >> $koel_nginx_site
+        echo '  location ~ \.php$ {' >> $koel_nginx_site
+        echo '    try_files $uri $uri/ /index.php?$args;' >> $koel_nginx_site
         echo '' >> $koel_nginx_site
-        echo '  # Restrict access that is unnecessary anyway' >> $koel_nginx_site
-        echo '  location ~ /\.(ht|git) {' >> $koel_nginx_site
-        echo '    deny all;' >> $koel_nginx_site
+        echo '    fastcgi_param     PATH_INFO $fastcgi_path_info;' >> $koel_nginx_site
+        echo '    fastcgi_param     PATH_TRANSLATED $document_root$fastcgi_path_info;' >> $koel_nginx_site
+        echo '    fastcgi_param     SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> $koel_nginx_site
+        echo '' >> $koel_nginx_site
+        echo "    fastcgi_pass              127.0.0.1:$KOEL_PORT;" >> $koel_nginx_site
+        echo '    fastcgi_index             index.php;' >> $koel_nginx_site
+        echo '    fastcgi_split_path_info   ^(.+\.php)(/.+)$;' >> $koel_nginx_site
+        echo '    fastcgi_intercept_errors  on;' >> $koel_nginx_site
+        echo '    include                   fastcgi_params;' >> $koel_nginx_site
         echo '  }' >> $koel_nginx_site
         echo '' >> $koel_nginx_site
         echo '}' >> $koel_nginx_site
@@ -414,9 +425,6 @@ function install_koel_main {
     function_check nginx_compress
     nginx_compress $KOEL_DOMAIN_NAME
     echo '' >> $koel_nginx_site
-    function_check nginx_disable_sniffing
-    nginx_disable_sniffing $KOEL_DOMAIN_NAME
-    echo '' >> $koel_nginx_site
     echo '  # Logs' >> $koel_nginx_site
     echo '  access_log /dev/null;' >> $koel_nginx_site
     echo '  error_log /dev/null;' >> $koel_nginx_site
@@ -427,27 +435,37 @@ function install_koel_main {
     echo '  # Index' >> $koel_nginx_site
     echo '  index index.php;' >> $koel_nginx_site
     echo '' >> $koel_nginx_site
-    echo '  # PHP' >> $koel_nginx_site
-    echo '  location ~ \.php {' >> $koel_nginx_site
-    echo '    include snippets/fastcgi-php.conf;' >> $koel_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $koel_nginx_site
+    echo '  # Whitelist only index.php, robots.txt, and those start with public/ or api/' >> $koel_nginx_site
+    echo '  if ($request_uri !~ ^/$|index\.php|robots\.txt|api/|public/) {' >> $koel_nginx_site
+    echo '    return 404;' >> $koel_nginx_site
     echo '  }' >> $koel_nginx_site
     echo '' >> $koel_nginx_site
-    echo '  # Location' >> $koel_nginx_site
+    echo '  location /media/ {' >> $koel_nginx_site
+    echo '    internal;' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '    # A X-Media-Root should be set to media_path settings from upstream' >> $koel_nginx_site
+    echo '    alias       $upstream_http_x_media_root;' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo '  }' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
     echo '  location / {' >> $koel_nginx_site
     function_check nginx_limits
     nginx_limits $KOEL_DOMAIN_NAME '15m'
-    echo '    try_files $uri $uri/ @koel;' >> $koel_nginx_site
+    echo '    try_files   $uri $uri/ /index.php?$args;' >> $koel_nginx_site
     echo '  }' >> $koel_nginx_site
     echo '' >> $koel_nginx_site
-    echo '  # Fancy URLs' >> $koel_nginx_site
-    echo '  location @koel {' >> $koel_nginx_site
-    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $koel_nginx_site
-    echo '  }' >> $koel_nginx_site
+    echo '  location ~ \.php$ {' >> $koel_nginx_site
+    echo '    try_files $uri $uri/ /index.php?$args;' >> $koel_nginx_site
     echo '' >> $koel_nginx_site
-    echo '  # Restrict access that is unnecessary anyway' >> $koel_nginx_site
-    echo '  location ~ /\.(ht|git) {' >> $koel_nginx_site
-    echo '    deny all;' >> $koel_nginx_site
+    echo '    fastcgi_param     PATH_INFO $fastcgi_path_info;' >> $koel_nginx_site
+    echo '    fastcgi_param     PATH_TRANSLATED $document_root$fastcgi_path_info;' >> $koel_nginx_site
+    echo '    fastcgi_param     SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> $koel_nginx_site
+    echo '' >> $koel_nginx_site
+    echo "    fastcgi_pass              127.0.0.1:$KOEL_PORT;" >> $koel_nginx_site
+    echo '    fastcgi_index             index.php;' >> $koel_nginx_site
+    echo '    fastcgi_split_path_info   ^(.+\.php)(/.+)$;' >> $koel_nginx_site
+    echo '    fastcgi_intercept_errors  on;' >> $koel_nginx_site
+    echo '    include                   fastcgi_params;' >> $koel_nginx_site
     echo '  }' >> $koel_nginx_site
     echo '' >> $koel_nginx_site
     echo '}' >> $koel_nginx_site
@@ -520,7 +538,7 @@ function install_koel {
     sed -i "s/DB_PASSWORD=secret/DB_PASSWORD=$MARIADB_PASSWORD/g" .env
 
     php artisan koel:init
-    php artisan serve
+    php artisan serve --port=$KOEL_PORT
 
     chown -R www-data:www-data /var/www/$KOEL_DOMAIN_NAME/htdocs
     systemctl restart nginx
