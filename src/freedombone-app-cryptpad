@@ -330,6 +330,10 @@ function install_cryptpad_main {
 
         echo '  add_header Strict-Transport-Security max-age=15768000;' >> $cryptpad_nginx_site
         echo '' >> $cryptpad_nginx_site
+        echo '  if ($uri = /pad/inner.html) {' >> $cryptpad_nginx_site
+        echo "    set \$scriptSrc \"'self' 'unsafe-eval' 'unsafe-inline'\";" >> $cryptpad_nginx_site
+        echo '  }' >> $cryptpad_nginx_site
+        echo '' >> $cryptpad_nginx_site
         echo '  # Logs' >> $cryptpad_nginx_site
         echo '  access_log /dev/null;' >> $cryptpad_nginx_site
         echo '  error_log /dev/null;' >> $cryptpad_nginx_site
@@ -372,14 +376,14 @@ function install_cryptpad_main {
         echo '    rewrite ^(.*)$ $1/ redirect;' >> $cryptpad_nginx_site
         echo '  }' >> $cryptpad_nginx_site
         echo '' >> $cryptpad_nginx_site
-        echo '  try_files $uri $uri/index.html /customize/$uri;' >> $cryptpad_nginx_site
+        echo '  try_files /www/$uri /www/$uri/index.html /customize/$uri;' >> $cryptpad_nginx_site
         echo '}' >> $cryptpad_nginx_site
     else
         echo -n '' > $cryptpad_nginx_site
     fi
     echo 'server {' >> $cryptpad_nginx_site
-    echo "    listen 127.0.0.1:$CRYPTPAD_ONION_PORT default_server;" >> $cryptpad_nginx_site
-    echo "    server_name $CRYPTPAD_ONION_HOSTNAME;" >> $cryptpad_nginx_site
+    echo "  listen 127.0.0.1:$CRYPTPAD_ONION_PORT default_server;" >> $cryptpad_nginx_site
+    echo "  server_name $CRYPTPAD_ONION_HOSTNAME;" >> $cryptpad_nginx_site
     echo '' >> $cryptpad_nginx_site
     echo '  # Logs' >> $cryptpad_nginx_site
     echo '  access_log /dev/null;' >> $cryptpad_nginx_site
@@ -389,6 +393,16 @@ function install_cryptpad_main {
     echo "  root $CRYPTPAD_DIR;" >> $cryptpad_nginx_site
     echo '' >> $cryptpad_nginx_site
     echo '  index index.html;' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  add_header X-XSS-Protection "1; mode=block";' >> $cryptpad_nginx_site
+    echo '  add_header X-Content-Type-Options nosniff;' >> $cryptpad_nginx_site
+    echo '  add_header X-Frame-Options SAMEORIGIN;' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  if ($uri = /pad/inner.html) {' >> $cryptpad_nginx_site
+    echo "    set \$scriptSrc \"'self' 'unsafe-eval' 'unsafe-inline'\";" >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo "  add_header Content-Security-Policy \"default-src http:; script-src http: 'unsafe-inline'; style-src http: 'unsafe-inline'; img-src data: * blob: font-src self\";" >> $cryptpad_nginx_site
     echo '' >> $cryptpad_nginx_site
     echo '  location = /cryptpad_websocket {' >> $cryptpad_nginx_site
     echo "    proxy_pass http://localhost:$CRYPTPAD_PORT;" >> $cryptpad_nginx_site
@@ -423,10 +437,11 @@ function install_cryptpad_main {
     echo '    rewrite ^(.*)$ $1/ redirect;' >> $cryptpad_nginx_site
     echo '  }' >> $cryptpad_nginx_site
     echo '' >> $cryptpad_nginx_site
-    echo '  try_files $uri $uri/index.html /customize/$uri;' >> $cryptpad_nginx_site
+    echo '  try_files /www/$uri /www/$uri/index.html /customize/$uri;' >> $cryptpad_nginx_site
     echo '}' >> $cryptpad_nginx_site
 
     sed -i 's|DENY;|SAMEORIGIN;|g' $cryptpad_nginx_site
+    sed -i "s|Content-Security-Policy.*|Content-Security-Policy \"default-src http:; script-src http: 'unsafe-inline'; style-src http: 'unsafe-inline'; img-src data: * blob: font-src self\";|g" $cryptpad_nginx_site
 
     function_check create_site_certificate
     create_site_certificate $CRYPTPAD_DOMAIN_NAME 'yes'
@@ -463,7 +478,6 @@ function install_cryptpad {
     fi
 
     sed -i "s|httpPort:.*|httpPort: $CRYPTPAD_PORT,|g" config.js
-    sed -i "s|websocketPath:.*|websocketPath: '/',|g" config.js
     sed -i "s|// domain:|domain:|g" config.js
     sed -i 's|openFileLimit:.*|openFileLimit: 1024,|g' config.js
     if [[ $ONION_ONLY == 'no' ]]; then
@@ -471,6 +485,12 @@ function install_cryptpad {
     else
         sed -i "s|domain:.*|domain: 'http://$CRYPTPAD_ONION_HOSTNAME',|g" config.js
     fi
+    #if [[ $ONION_ONLY != 'no' ]]; then
+    #    sed -i "/module.exports/a ]," config.js
+    #    sed -i "/module.exports/a '\/etc\/ssl\/private\/${CRYPTPAD_DOMAIN_NAME}.key'" config.js
+    #    sed -i "/module.exports/a '\/etc\/ssl\/certs\/${CRYPTPAD_DOMAIN_NAME}.pem'" config.js
+    #    sed -i "/module.exports/a privKeyAndCertFiles: [" config.js
+    #fi
 
     chown -R cryptpad:cryptpad $CRYPTPAD_DIR
 
@@ -481,11 +501,12 @@ function install_cryptpad {
     echo 'After=network.target' >> /etc/systemd/system/cryptpad.service
     echo '' >> /etc/systemd/system/cryptpad.service
     echo '[Service]' >> /etc/systemd/system/cryptpad.service
-    echo 'Type=simple' >> /etc/systemd/system/cryptpad.service
     echo 'User=cryptpad' >> /etc/systemd/system/cryptpad.service
     echo 'Group=cryptpad' >> /etc/systemd/system/cryptpad.service
     echo "WorkingDirectory=$CRYPTPAD_DIR" >> /etc/systemd/system/cryptpad.service
     echo "ExecStart=/usr/local/bin/node $CRYPTPAD_DIR/server.js" >> /etc/systemd/system/cryptpad.service
+    echo 'Environment=PATH=/usr/bin:/usr/local/bin' >> /etc/systemd/system/cryptpad.service
+    echo 'Environment=NODE_ENV=production' >> /etc/systemd/system/cryptpad.service
     echo 'Restart=on-failure' >> /etc/systemd/system/cryptpad.service
     echo '' >> /etc/systemd/system/cryptpad.service
     echo '[Install]' >> /etc/systemd/system/cryptpad.service
