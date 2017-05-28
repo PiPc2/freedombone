@@ -32,108 +32,34 @@ VARIANTS='full full-vim writer'
 
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
+SHOW_ICANN_ADDRESS_ON_ABOUT=0
 
-CRYPTPAD_DOMAIN_NAME=
-CRYPTPAD_CODE=
 CRYPTPAD_ONION_PORT=8119
 CRYPTPAD_PORT=9003
 CRYPTPAD_REPO="https://github.com/xwiki-labs/cryptpad"
 CRYPTPAD_COMMIT='ed5b005216be9b9029c1ccd25a5fdc7908ed8730'
-CRYPTPAD_ADMIN_PASSWORD=
 CRYPTPAD_DIR=/etc/cryptpad
 
-cryptpad_variables=(ONION_ONLY
-                    CRYPTPAD_DOMAIN_NAME
-                    CRYPTPAD_CODE
-                    DDNS_PROVIDER
-                    MY_EMAIL_ADDRESS
-                    MY_USERNAME)
+cryptpad_variables=(ONION_ONLY)
 
 function remove_user_cryptpad {
     remove_username="$1"
-
-    ${PROJECT_NAME}-pass -u $remove_username --rmapp cryptpad
 }
 
 function add_user_cryptpad {
     new_username="$1"
     new_user_password="$2"
-
-    ${PROJECT_NAME}-pass -u $new_username -a cryptpad -p "$new_user_password"
     echo '0'
 }
 
 function install_interactive_cryptpad {
-    if [ ! $ONION_ONLY ]; then
-        ONION_ONLY='no'
-    fi
-
-    if [[ $ONION_ONLY != "no" ]]; then
-        CRYPTPAD_DOMAIN_NAME='cryptpad.local'
-    else
-        CRYPTPAD_DETAILS_COMPLETE=
-        while [ ! $CRYPTPAD_DETAILS_COMPLETE ]
-        do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Cryptpad Configuration" \
-                       --form $"\nPlease enter your Cryptpad details. The background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 3 \
-                       $"Domain:" 1 1 "$(grep 'CRYPTPAD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
-                       $"Code:" 2 1 "$(grep 'CRYPTPAD_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 25 33 255 \
-                       2> $data
-            else
-                dialog --backtitle $"Freedombone Configuration" \
-                       --title $"Cryptpad Configuration" \
-                       --form $"\nPlease enter your Cryptpad details. The background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 16 65 3 \
-                       $"Domain:" 1 1 "$(grep 'CRYPTPAD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
-                       2> $data
-            fi
-            sel=$?
-            case $sel in
-                1) exit 1;;
-                255) exit 1;;
-            esac
-            CRYPTPAD_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $CRYPTPAD_DOMAIN_NAME ]; then
-                if [[ $CRYPTPAD_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
-                    CRYPTPAD_DOMAIN_NAME=""
-                fi
-                TEST_DOMAIN_NAME=$CRYPTPAD_DOMAIN_NAME
-                validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $CRYPTPAD_DOMAIN_NAME ]]; then
-                    CRYPTPAD_DOMAIN_NAME=
-                    dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
-                else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        CRYPTPAD_CODE=$(cat $data | sed -n 2p)
-                        validate_freedns_code "$CRYPTPAD_CODE"
-                        if [ ! $VALID_CODE ]; then
-                            CRYPTPAD_DOMAIN_NAME=
-                        fi
-                    fi
-                fi
-            fi
-            if [ $CRYPTPAD_DOMAIN_NAME ]; then
-                CRYPTPAD_DETAILS_COMPLETE="yes"
-            fi
-        done
-
-        # save the results in the config file
-        write_config_param "CRYPTPAD_CODE" "$CRYPTPAD_CODE"
-    fi
-    write_config_param "CRYPTPAD_DOMAIN_NAME" "$CRYPTPAD_DOMAIN_NAME"
+    echo -n ''
     APP_INSTALLED=1
 }
 
 function change_password_cryptpad {
     curr_username="$1"
     new_user_password="$2"
-
-    read_config_param 'CRYPTPAD_DOMAIN_NAME'
-
-    ${PROJECT_NAME}-pass -u "$curr_username" -a cryptpad -p "$new_user_password"
 }
 
 function reconfigure_cryptpad {
@@ -143,10 +69,6 @@ function reconfigure_cryptpad {
 }
 
 function upgrade_cryptpad {
-    if grep -q "cryptpad domain" $COMPLETION_FILE; then
-        CRYPTPAD_DOMAIN_NAME=$(get_completion_param "cryptpad domain")
-    fi
-
     CURR_CRYPTPAD_COMMIT=$(get_completion_param "cryptpad commit")
     if [[ "$CURR_CRYPTPAD_COMMIT" == "$CRYPTPAD_COMMIT" ]]; then
         return
@@ -165,18 +87,13 @@ function upgrade_cryptpad {
 
 
 function backup_local_cryptpad {
-    CRYPTPAD_DOMAIN_NAME='cryptpad'
-    if grep -q "cryptpad domain" $COMPLETION_FILE; then
-        CRYPTPAD_DOMAIN_NAME=$(get_completion_param "cryptpad domain")
-    fi
-
     source_directory=$CRYPTPAD_DIR/datastore
     if [ -d $source_directory ]; then
         systemctl stop cryptpad
 
         dest_directory=cryptpad
         function_check suspend_site
-        suspend_site ${CRYPTPAD_DOMAIN_NAME}
+        suspend_site cryptpad
 
         function_check backup_directory_to_usb
         backup_directory_to_usb $source_directory $dest_directory
@@ -201,13 +118,12 @@ function restore_local_cryptpad {
 
 function backup_remote_cryptpad {
     if grep -q "cryptpad domain" $COMPLETION_FILE; then
-        CRYPTPAD_DOMAIN_NAME=$(get_completion_param "cryptpad domain")
         temp_backup_dir=$CRYPTPAD_DIR/datastore
         if [ -d $temp_backup_dir ]; then
             systemctl stop cryptpad
 
             function_check suspend_site
-            suspend_site ${CRYPTPAD_DOMAIN_NAME}
+            suspend_site cryptpad
 
             echo $"Backing up Cryptpad installation"
 
@@ -236,10 +152,6 @@ function restore_remote_cryptpad {
 }
 
 function remove_cryptpad {
-    if [ ${#CRYPTPAD_DOMAIN_NAME} -eq 0 ]; then
-        return
-    fi
-
     systemctl stop cryptpad
     systemctl disable cryptpad
     if [ -f /etc/systemd/system/cryptpad.service ]; then
@@ -249,17 +161,13 @@ function remove_cryptpad {
     function_check remove_nodejs
     remove_nodejs cryptpad
 
-    read_config_param "CRYPTPAD_DOMAIN_NAME"
-    read_config_param "MY_USERNAME"
-    echo "Removing $CRYPTPAD_DOMAIN_NAME"
-    nginx_dissite $CRYPTPAD_DOMAIN_NAME
-    remove_certs $CRYPTPAD_DOMAIN_NAME
+    nginx_dissite cryptpad
 
     if [ -d $CRYPTPAD_DIR ]; then
         rm -rf $CRYPTPAD_DIR
     fi
-    if [ -f /etc/nginx/sites-available/$CRYPTPAD_DOMAIN_NAME ]; then
-        rm /etc/nginx/sites-available/$CRYPTPAD_DOMAIN_NAME
+    if [ -f /etc/nginx/sites-available/cryptpad ]; then
+        rm /etc/nginx/sites-available/cryptpad
     fi
     function_check remove_onion_service
     remove_onion_service cryptpad ${CRYPTPAD_ONION_PORT}
@@ -268,23 +176,15 @@ function remove_cryptpad {
     sed -i '/cryptpad/d' $COMPLETION_FILE
 
     userdel -r cryptpad
-
-    function_check remove_ddns_domain
-    remove_ddns_domain $CRYPTPAD_DOMAIN_NAME
 }
 
 function install_cryptpad_main {
-    if [ ! $CRYPTPAD_DOMAIN_NAME ]; then
-        echo $'No domain name was given for cryptpad'
-        exit 7359
-    fi
-
     if [[ $(app_is_installed cryptpad_main) == "1" ]]; then
         return
     fi
 
-    if [ ! -d /var/www/$CRYPTPAD_DOMAIN_NAME ]; then
-        mkdir /var/www/$CRYPTPAD_DOMAIN_NAME
+    if [ ! -d /var/www/cryptpad ]; then
+        mkdir /var/www/cryptpad
     fi
     if [ -d $CRYPTPAD_DIR ]; then
         rm -rf $CRYPTPAD_DIR
@@ -311,85 +211,10 @@ function install_cryptpad_main {
 
     chown -R cryptpad:cryptpad $CRYPTPAD_DIR
 
-    function_check add_ddns_domain
-    add_ddns_domain $CRYPTPAD_DOMAIN_NAME
-
     CRYPTPAD_ONION_HOSTNAME=$(add_onion_service cryptpad 80 ${CRYPTPAD_ONION_PORT})
 
-    cryptpad_nginx_site=/etc/nginx/sites-available/$CRYPTPAD_DOMAIN_NAME
-    if [[ $ONION_ONLY == "no" ]]; then
-        function_check nginx_http_redirect
-        nginx_http_redirect $CRYPTPAD_DOMAIN_NAME "index index.html"
-        echo 'server {' >> $cryptpad_nginx_site
-        echo '  listen 443 ssl;' >> $cryptpad_nginx_site
-        echo '  listen [::]:443 ssl;' >> $cryptpad_nginx_site
-        echo "  server_name $CRYPTPAD_DOMAIN_NAME;" >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  # Security' >> $cryptpad_nginx_site
-        function_check nginx_ssl mobile
-        nginx_ssl $CRYPTPAD_DOMAIN_NAME
-
-        function_check nginx_disable_sniffing
-        nginx_disable_sniffing $CRYPTPAD_DOMAIN_NAME
-
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  if ($uri = /pad/inner.html) {' >> $cryptpad_nginx_site
-        echo "    set \$scriptSrc \"'self' 'unsafe-eval' 'unsafe-inline'\";" >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  # Logs' >> $cryptpad_nginx_site
-        echo '  access_log /dev/null;' >> $cryptpad_nginx_site
-        echo '  error_log /dev/null;' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  # Root' >> $cryptpad_nginx_site
-        echo "  root $CRYPTPAD_DIR;" >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  index index.html;' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  location = /cryptpad_websocket {' >> $cryptpad_nginx_site
-        echo "    proxy_pass http://localhost:$CRYPTPAD_PORT;" >> $cryptpad_nginx_site
-        echo '    proxy_set_header X-Real-IP $remote_addr;' >> $cryptpad_nginx_site
-        echo '    proxy_set_header Host $host;' >> $cryptpad_nginx_site
-        echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '    # WebSocket support (nginx 1.4)' >> $cryptpad_nginx_site
-        echo '    proxy_http_version 1.1;' >> $cryptpad_nginx_site
-        echo '    proxy_set_header Upgrade $http_upgrade;' >> $cryptpad_nginx_site
-        echo '    proxy_set_header Connection upgrade;' >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-
-        echo '  location ^~ /customize.dist/ {' >> $cryptpad_nginx_site
-        echo '    # This is needed in order to prevent infinite recursion between /customize/ and the root' >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '  location ^~ /customize/ {' >> $cryptpad_nginx_site
-        echo '    rewrite ^/customize/(.*)$ $1 break;' >> $cryptpad_nginx_site
-        echo '    try_files /customize/$uri /customize.dist/$uri;' >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '  location = /api/config {' >> $cryptpad_nginx_site
-        echo '    default_type text/javascript;' >> $cryptpad_nginx_site
-        echo '    rewrite ^.*$ /customize/api/config break;' >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  location ^~ /blob/ {' >> $cryptpad_nginx_site
-        echo '    try_files $uri =404;' >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  location ^~ /register/ {' >> $cryptpad_nginx_site
-        echo '    try_files $uri =404;' >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  location ~ ^/(register|login|settings|user|pad|drive|poll|slide|code|whiteboard|file|media)$ {' >> $cryptpad_nginx_site
-        echo '    rewrite ^(.*)$ $1/ redirect;' >> $cryptpad_nginx_site
-        echo '  }' >> $cryptpad_nginx_site
-        echo '' >> $cryptpad_nginx_site
-        echo '  try_files /www/$uri /www/$uri/index.html /customize/$uri;' >> $cryptpad_nginx_site
-        echo '}' >> $cryptpad_nginx_site
-    else
-        echo -n '' > $cryptpad_nginx_site
-    fi
-    echo 'server {' >> $cryptpad_nginx_site
+    cryptpad_nginx_site=/etc/nginx/sites-available/cryptpad
+    echo 'server {' > $cryptpad_nginx_site
     echo "  listen 127.0.0.1:$CRYPTPAD_ONION_PORT default_server;" >> $cryptpad_nginx_site
     echo "  server_name $CRYPTPAD_ONION_HOSTNAME;" >> $cryptpad_nginx_site
     echo '' >> $cryptpad_nginx_site
@@ -450,18 +275,8 @@ function install_cryptpad_main {
     echo '  try_files /www/$uri /www/$uri/index.html /customize/$uri;' >> $cryptpad_nginx_site
     echo '}' >> $cryptpad_nginx_site
 
-    sed -i 's|DENY;|SAMEORIGIN;|g' $cryptpad_nginx_site
-    sed -i "/Content-Security-Policy/d" $cryptpad_nginx_site
-
-    function_check create_site_certificate
-    create_site_certificate $CRYPTPAD_DOMAIN_NAME 'yes'
-
     function_check nginx_ensite
-    nginx_ensite $CRYPTPAD_DOMAIN_NAME
-
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a cryptpad -p "$CRYPTPAD_ADMIN_PASSWORD"
-
-    set_completion_param "cryptpad domain" "$CRYPTPAD_DOMAIN_NAME"
+    nginx_ensite cryptpad
 
     install_completed cryptpad_main
 }
@@ -490,11 +305,7 @@ function install_cryptpad {
     sed -i "s|httpPort:.*|httpPort: $CRYPTPAD_PORT,|g" config.js
     sed -i "s|// domain:|domain:|g" config.js
     sed -i 's|openFileLimit:.*|openFileLimit: 1024,|g' config.js
-    if [[ $ONION_ONLY == 'no' ]]; then
-        sed -i "s|domain:.*|domain: 'https://$CRYPTPAD_DOMAIN_NAME',|g" config.js
-    else
-        sed -i "s|domain:.*|domain: 'http://$CRYPTPAD_ONION_HOSTNAME',|g" config.js
-    fi
+    sed -i "s|domain:.*|domain: 'http://$CRYPTPAD_ONION_HOSTNAME',|g" config.js
 
     chown -R cryptpad:cryptpad $CRYPTPAD_DIR
 
