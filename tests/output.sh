@@ -1791,6 +1791,7 @@ site:\nhttps://docs.redhat.com/docs/en-US/Red_Hat_Enterprise_Linux/6/html/Securi
               fi
               ;;
     V-38699)  if [ "$3" = "en" ]; then
+                  find / -xdev -type d -perm -0002 -uid +499 -print
                   log_msg $2 'All public directories must be owned by a system account.'
               else
                   log_msg $2 '所有的公共目录必须属于一个系统帐号。'
