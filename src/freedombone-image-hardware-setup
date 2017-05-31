@@ -38,35 +38,125 @@ enable_serial_console() {
     echo "T0:12345:respawn:/sbin/getty -L $device 115200 vt100" >> /etc/inittab
 }
 
-setup_flash_kernel() {
-    if [ ! -d /etc/flash-kernel ] ; then
-       mkdir /etc/flash-kernel
-    fi
-    echo -n "$1" > /etc/flash-kernel/machine
+beaglebone_setup_boot() {
+    bbb_version=$1
 
-    command_line=""
-    if [ -n "$2" ] ; then
-        command_line="console=$2"
+    # Setup uEnv.txt
+    if grep -q btrfs /etc/fstab ; then
+        fstype=btrfs
+    else
+        fstype=ext4
     fi
-
-    if [ -n "$command_line" ] ; then
-        echo flash-kernel flash-kernel/linux_cmdline string "$command_line" | debconf-set-selections
+    if [ ! $bbb_version ]; then
+        kernelVersion=$(ls /usr/lib/*/am335x-boneblack.dtb | head -1 | cut -d/ -f4)
+    else
+        kernelVersion=$(ls /usr/lib/*/am335x-boneblack-${1}.dtb | head -1 | cut -d/ -f4)
     fi
+    version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
+    initRd=initrd.img-$version
+    vmlinuz=vmlinuz-$version
 
-    apt-get -yq install flash-kernel
+    bbb_loadaddr='0x82000000'
+    bbb_initrd_addr='0x88080000'
+    bbb_fdtaddr='0x88000000'
+
+    # uEnv.txt for Beaglebone
+    # based on https://github.com/beagleboard/image-builder/blob/master/target/boot/beagleboard.org.txt
+    cat >> /boot/uEnv.txt <<EOF
+mmcroot=/dev/mmcblk0p2 ro
+mmcrootfstype=$fstype rootwait fixrtc
+mmcrootflags=subvol=@
+
+console=ttyO0,115200n8
+
+kernel_file=$vmlinuz
+initrd_file=$initRd
+
+loadaddr=$bbb_loadaddr
+initrd_addr=$bbb_initrd_addr
+fdtaddr=$bbb_fdtaddr
+
+initrd_high=0xffffffff
+fdt_high=0xffffffff
+
+loadkernel=load mmc \${mmcdev}:\${mmcpart} \${loadaddr} \${kernel_file}
+loadinitrd=load mmc \${mmcdev}:\${mmcpart} \${initrd_addr} \${initrd_file}; setenv initrd_size \${filesize}
+loadfdt=load mmc \${mmcdev}:\${mmcpart} \${fdtaddr} /dtbs/\${fdtfile}
+
+loadfiles=run loadkernel; run loadinitrd; run loadfdt
+mmcargs=setenv bootargs console=tty0 console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags}
+
+uenvcmd=run loadfiles; run mmcargs; bootz \${loadaddr} \${initrd_addr}:\${initrd_size} \${fdtaddr}
+EOF
+
+    mkdir -p /boot/dtbs
+    cp /usr/lib/linux-image-*-armmp/* /boot/dtbs
 }
 
-a20_env() {
+beaglebone_flash() {
+    # allow flash-kernel to work without valid /proc contents
+    # ** this doesn't *really* work, since there are too many checks
+    #    that fail in an emulated environment!  We'll have to do it by
+    #    hand below anyway...
+    export FK_MACHINE="TI AM335x BeagleBone"
+    apt-get install -y flash-kernel
+}
+
+beaglebone_repack_kernel() {
+    bbb_version=$1
+    # process installed kernel to create uImage, uInitrd, dtb
+    # using flash-kernel would be a good approach, except it fails in the
+    # cross build environment due to too many environment checks...
+    #FK_MACHINE="TI AM335x BeagleBone" flash-kernel
+    #  so, let's do it manually...
+
+    # flash-kernel's hook-functions provided to mkinitramfs have the
+    # unfortunate side-effect of creating /conf/param.conf in the initrd
+    # when run from our emulated chroot environment, which means our root=
+    # on the kernel command line is completely ignored!  repack the initrd
+    # to remove this evil...
+
+    echo "info: repacking beaglebone kernel and initrd"
+
+    bbb_dtb='am335x-boneblack'
+    if [ $bbb_version ]; then
+        bbb_dtb="am335x-boneblack-${bbb_version}"
+    fi
+
+    kernelVersion=$(ls /usr/lib/*/${bbb_dtb}.dtb | head -1 | cut -d/ -f4)
+    version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
+    initRd=initrd.img-$version
+    vmlinuz=vmlinuz-$version
+
+    mkdir /tmp/initrd-repack
+
+    (cd /tmp/initrd-repack ; \
+     zcat /boot/$initRd | cpio -i ; \
+     rm -f conf/param.conf ; \
+     find . | cpio --quiet -o -H newc | \
+         gzip -9 > /boot/$initRd )
+
+    rm -rf /tmp/initrd-repack
+
+    (cd /boot ; \
+     cp /usr/lib/$kernelVersion/${bbb_dtb}.dtb dtb ; \
+     cat $vmlinuz dtb >> temp-kernel ; \
+     mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
+             -C none -a 0x82000000 -e 0x82000000 -d temp-kernel uImage ; \
+     rm -f temp-kernel ; \
+     mkimage -A arm -O linux -T ramdisk -C gzip -a 0x88080000 -e 0x88080000 \
+             -n "Debian ramdisk ${version}" \
+             -d $initRd uInitrd )
+}
+
+a20_setup_boot() {
     dtb="$1"
 
     # Setup boot.cmd
-    fstype=ext4
-    if grep -q btrfs /etc/fstab; then
+    if grep -q btrfs /etc/fstab ; then
         fstype=btrfs
-    fi
-
-    if [ -n "$command_line" ] ; then
-        echo flash-kernel flash-kernel/linux_cmdline string "$command_line" | debconf-set-selections
+    else
+        fstype=ext4
     fi
     kernelVersion=$(ls /usr/lib/*/$dtb | head -1 | cut -d/ -f4)
     version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
@@ -116,104 +206,37 @@ EOF
     echo "rtc_sunxi" >> /etc/initramfs-tools/modules
 }
 
-beaglebone_env() {
-    bbb_version=$1
-
-    # Setup uEnv.txt
-    fstype=ext4
-    if grep -q btrfs /etc/fstab ; then
-        fstype=btrfs
-    fi
-    if [ ! $bbb_version ]; then
-        kernelVersion=$(ls /usr/lib/*/am335x-boneblack.dtb | head -1 | cut -d/ -f4)
-    else
-        kernelVersion=$(ls /usr/lib/*/am335x-boneblack-${1}.dtb | head -1 | cut -d/ -f4)
-    fi
-    version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
-    initRd=initrd.img-$version
-    vmlinuz=vmlinuz-$version
-
-    #bbb_loadaddr='0x80200000'
-    #bbb_initrd_addr='0x81000000'
-    #bbb_fdtaddr='0x80F80000'
-    #if [[ "$bbb_version" == "wireless" ]]; then
-        bbb_loadaddr='0x82000000'
-        bbb_initrd_addr='0x88080000'
-        bbb_fdtaddr='0x88000000'
-    #fi
-
-    # uEnv.txt for Beaglebone
-    # based on https://github.com/beagleboard/image-builder/blob/master/target/boot/beagleboard.org.txt
-    cat >> /boot/uEnv.txt <<EOF
-mmcroot=/dev/mmcblk0p2 ro
-mmcrootfstype=$fstype rootwait fixrtc
-mmcrootflags=subvol=@
-
-console=ttyO0,115200n8
-
-kernel_file=$vmlinuz
-initrd_file=$initRd
-
-loadaddr=$bbb_loadaddr
-initrd_addr=$bbb_initrd_addr
-fdtaddr=$bbb_fdtaddr
-
-initrd_high=0xffffffff
-fdt_high=0xffffffff
-
-loadkernel=load mmc \${mmcdev}:\${mmcpart} \${loadaddr} \${kernel_file}
-loadinitrd=load mmc \${mmcdev}:\${mmcpart} \${initrd_addr} \${initrd_file}; setenv intrd_size \${filesize}
-loadfdt=load mmc \${mmcdev}:\${mmcpart} \${fdtaddr} /dtbs/\${fdtfile}
-
-loadfiles=run loadkernel; run loadinitrd; run loadfdt
-mmcargs=setenv bootargs console=tty0 console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags}
-
-uenvcmd=run loadfiles; run mmcargs; bootz \${loadaddr} \${initrd_addr}:\${initrd_size} \${fdtaddr}
-EOF
-
-    mkdir -p /boot/dtbs
-    cp /usr/lib/linux-image-*-armmp/* /boot/dtbs
-}
-
 case "$MACHINE" in
     beaglebone)
-        beaglebone_env
+        beaglebone_setup_boot
+        beaglebone_flash
+        beaglebone_repack_kernel
         enable_serial_console ttyO0
-        setup_flash_kernel 'TI AM335x BeagleBone Black' 'ttyO0'
         ;;
     beaglebonewifi)
-        beaglebone_env
+        beaglebone_setup_boot wireless
+        beaglebone_flash
+        beaglebone_repack_kernel wireless
         enable_serial_console ttyO0
-        setup_flash_kernel 'TI AM335x BeagleBone Black Wireless' 'ttyO0'
         ;;
     cubietruck)
-        a20_env sun7i-a20-cubietruck.dtb
-        enable_serial_console ttyO0
-        setup_flash_kernel 'Cubietech Cubietruck'
+        a20_setup_boot sun7i-a20-cubietruck.dtb
+        enable_serial_console ttyS0
         ;;
     a20-olinuxino-lime)
-        a20_env sun7i-a20-olinuxino-lime.dtb
-        enable_serial_console ttyO0
-        setup_flash_kernel 'Olimex A20-OLinuXino-LIME'
+        a20_setup_boot sun7i-a20-olinuxino-lime.dtb
+        enable_serial_console ttyS0
         ;;
     a20-olinuxino-lime2)
-        a20_env sun7i-a20-olinuxino-lime2.dtb
-        enable_serial_console ttyO0
-        setup_flash_kernel 'Olimex A20-OLinuXino-LIME2'
+        a20_setup_boot sun7i-a20-olinuxino-lime2.dtb
+        enable_serial_console ttyS0
         ;;
     a20-olinuxino-micro)
-        a20_env sun7i-a20-olinuxino-micro.dtb
-        enable_serial_console ttyO0
-        setup_flash_kernel 'Olimex A20-Olinuxino Micro'
+        a20_setup_boot sun7i-a20-olinuxino-micro.dtb
+        enable_serial_console ttyS0
         ;;
     cubieboard2)
-        a20_env sun7i-a20-cubieboard2.dtb
-        enable_serial_console ttyO0
-        setup_flash_kernel 'Cubietech Cubieboard2'
-        ;;
-    pcduino3)
-        a20_env sun7i-a20-pcduino3.dtb
-        enable_serial_console ttyO0
-        setup_flash_kernel 'LinkSprite pcDuino3'
+        a20_setup_boot sun7i-a20-cubieboard2.dtb
+        enable_serial_console ttyS0
         ;;
 esac
