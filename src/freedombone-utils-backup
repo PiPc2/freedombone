@@ -31,6 +31,9 @@
 # whether a given site is being suspended during backup
 SUSPENDED_SITE=
 
+# Dummy password used for the backup key
+BACKUP_DUMMY_PASSWORD='backup'
+
 function suspend_site {
     # suspends a given website
     SUSPENDED_SITE="$1"
@@ -48,6 +51,22 @@ function restart_site {
     SUSPENDED_SITE=
 }
 
+function backup_create_password {
+    BACKUP_PASSWORD_FILE=$(mktemp /tmp/fileXXXXX)
+    # Note: this doesn't need to be secure, it's just a way of
+    # getting around the forced interactivity of the gpg agent
+    echo -n "$BACKUP_DUMMY_PASSWORD" > $BACKUP_PASSWORD_FILE
+}
+
+function backup_remove_password {
+    if [ ! $BACKUP_PASSWORD_FILE ]; then
+        return
+    fi
+    if [ -f $BACKUP_PASSWORD_FILE ]; then
+        shred -zu $BACKUP_PASSWORD_FILE
+    fi
+}
+
 function configure_backup_key {
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
@@ -58,6 +77,8 @@ function configure_backup_key {
     if [[ $BACKUP_KEY_EXISTS == "yes" ]]; then
         return
     fi
+
+    backup_create_password
 
     # Generate a GPG key for backups
     BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
@@ -70,16 +91,16 @@ function configure_backup_key {
         echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
         echo "Name-Comment: backup key" >> /home/$MY_USERNAME/gpg-genkey.conf
         echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo "Passphrase: ''" >> /home/$MY_USERNAME/gpg-genkey.conf
         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
         echo $'Backup key does not exist. Creating it.'
-        su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --batch --full-gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+        su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --batch --passphrase-fd $BACKUP_PASSWORD_FILE --full-gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
         chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
 
         shred -zu /home/$MY_USERNAME/gpg-genkey.conf
         echo $'Checking that the Backup key was created'
         BACKUP_KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_NAME (backup key)")
         if [[ $BACKUP_KEY_EXISTS == "no" ]]; then
+            backup_remove_password
             echo $'Backup key could not be created'
             exit 43382
         fi
@@ -89,12 +110,14 @@ function configure_backup_key {
     echo "Backup key: $MY_BACKUP_KEY_ID"
     MY_BACKUP_KEY=/home/$MY_USERNAME/backup_key
     su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --output ${MY_BACKUP_KEY}_public.asc --armor --export $MY_BACKUP_KEY_ID" - $MY_USERNAME
-    su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --output ${MY_BACKUP_KEY}_private.asc --armor --export-secret-key $MY_BACKUP_KEY_ID" - $MY_USERNAME
+    su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --output ${MY_BACKUP_KEY}_private.asc --armor --passphrase-fd $BACKUP_PASSWORD_FILE --export-secret-key $MY_BACKUP_KEY_ID" - $MY_USERNAME
     if [ ! -f ${MY_BACKUP_KEY}_public.asc ]; then
+        backup_remove_password
         echo 'Public backup key could not be exported'
         exit 36829
     fi
     if [ ! -f ${MY_BACKUP_KEY}_private.asc ]; then
+        backup_remove_password
         echo 'Private backup key could not be exported'
         exit 29235
     fi
@@ -105,6 +128,7 @@ function configure_backup_key {
 
     shred -zu ${MY_BACKUP_KEY}_public.asc
     shred -zu ${MY_BACKUP_KEY}_private.asc
+    backup_remove_password
 
     mark_completed $FUNCNAME
 }
@@ -258,10 +282,10 @@ function backup_directory_to_usb {
             mkdir -p $USB_MOUNT/backup/${2}
         fi
         set_obnam_client_name
-        obnam force-lock -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
-        obnam backup -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
+        echo "$BACKUP_DUMMY_PASSWORD" | obnam force-lock -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
+        echo "$BACKUP_DUMMY_PASSWORD" | obnam backup -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
         if [[ $ENABLE_BACKUP_VERIFICATION == "yes" ]]; then
-            obnam verify -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
+            echo "$BACKUP_DUMMY_PASSWORD" | obnam verify -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
             if [ ! "$?" = "0" ]; then
                 umount $USB_MOUNT
                 rm -rf $USB_MOUNT
@@ -274,7 +298,7 @@ function backup_directory_to_usb {
                 exit 683252
             fi
         fi
-        obnam forget --keep=30d -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID
+        echo "$BACKUP_DUMMY_PASSWORD" | obnam forget --keep=30d -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID
         if [ ! "$?" = "0" ]; then
             umount $USB_MOUNT
             rm -rf $USB_MOUNT
@@ -308,7 +332,7 @@ function restore_directory_from_usb {
         mkdir ${1}
     fi
     set_obnam_client_name
-    obnam restore -r $USB_MOUNT/backup/${2} --to ${1}
+    echo "$BACKUP_DUMMY_PASSWORD" | obnam restore -r $USB_MOUNT/backup/${2} --to ${1}
 }
 
 function restore_directory_from_friend {
@@ -326,7 +350,7 @@ function restore_directory_from_friend {
         mkdir ${1}
     fi
     set_obnam_client_name
-    obnam restore -r $SERVER_DIRECTORY/backup/${2} --to ${1}
+    echo "$BACKUP_DUMMY_PASSWORD" | obnam restore -r $SERVER_DIRECTORY/backup/${2} --to ${1}
 }
 
 function backup_database_to_usb {
@@ -365,10 +389,10 @@ function backup_directory_to_friend {
         mkdir -p $SERVER_DIRECTORY/backup/${2}
     fi
     set_obnam_client_name
-    obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-    obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+    echo "$BACKUP_DUMMY_PASSWORD" | obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+    echo "$BACKUP_DUMMY_PASSWORD" | obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
     if [[ $ENABLE_VERIFICATION == "yes" ]]; then
-        obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
+        echo "$BACKUP_DUMMY_PASSWORD" | obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
         if [ ! "$?" = "0" ]; then
             if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
                 shred -zu /root/temp${2}/*
@@ -381,7 +405,7 @@ function backup_directory_to_friend {
             exit 953
         fi
     fi
-    obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID}
+    echo "$BACKUP_DUMMY_PASSWORD" | obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID}
     if [ ! "$?" = "0" ]; then
         if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
             shred -zu /root/temp${2}/*
