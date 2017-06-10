@@ -36,16 +36,13 @@ IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
 SHOW_ICANN_ADDRESS_ON_ABOUT=0
 
-TAHOELAFS_REPO="https://github.com/tahoe-lafs/tahoe-lafs"
-TAHOELAFS_COMMIT='bb782b0331a60de438136a593bba18338d8d866b'
-
 TAHOELAFS_PORT=50213
 TAHOELAFS_STORAGE_PORT=50214
 TAHOELAFS_ONION_PORT=8096
 TAHOELAFS_STORAGE_ONION_PORT=8097
 
 TAHOE_DIR=/home/tahoelafs
-TAHOE_COMMAND="cd $TAHOE_DIR/tahoelafs && venv/bin/tahoe"
+TAHOE_COMMAND='/usr/bin/tahoe'
 tahoelafs_storage_file=$TAHOE_DIR/client/private/servers.yaml
 
 TAHOELAFS_SHARES_NEEDED=3
@@ -54,7 +51,6 @@ TAHOELAFS_SHARES_TOTAL=10
 
 tahoelafs_variables=(ONION_ONLY
                      MY_USERNAME
-                     TAHOELAFS_REPO
                      TAHOELAFS_PORT
                      TAHOELAFS_SHARES_NEEDED
                      TAHOELAFS_SHARES_HAPPY
@@ -273,18 +269,7 @@ function install_interactive_tahoelafs {
 }
 
 function upgrade_tahoelafs {
-    if [ ! -d $TAHOE_DIR/tahoelafs ]; then
-        return
-    fi
-    systemctl stop tahoelafs
-    function_check set_repo_commit
-    set_repo_commit $TAHOE_DIR/tahoelafs "tahoelafs commit" "$TAHOELAFS_COMMIT" $TAHOELAFS_REPO
-    cd $TAHOE_DIR/tahoelafs
-    git submodule update --init --recursive
-    virtualenv venv
-    venv/bin/pip install --editable .
-    chown -R tahoelafs:debian-tor $TAHOE_DIR
-    systemctl start tahoelafs
+    echo -n ''
 }
 
 function backup_local_tahoelafs {
@@ -376,6 +361,8 @@ function remove_tahoelafs {
     systemctl disable tahoelafs-client
     rm /etc/systemd/system/tahoelafs-client.service
 
+    apt-get -yq remove tahoe-lafs
+
     if [ -d /var/lib/tahoelafs ]; then
         rm -rf /var/lib/tahoelafs
     fi
@@ -392,34 +379,7 @@ function remove_tahoelafs {
     if [ -f /etc/nginx/.htpasswd-tahoelafs ]; then
         shred -zu /etc/nginx/.htpasswd-tahoelafs
     fi
-    remove_completion_param "tahoelafs commit"
     systemctl restart tor
-}
-
-function install_tahoelafs_to_directory {
-    tahoe_dir=$1
-
-    apt-get -yq install build-essential autoconf python-dev
-    git_clone $TAHOELAFS_REPO $tahoe_dir
-    cd $tahoe_dir
-    git checkout $TAHOELAFS_COMMIT -b $TAHOELAFS_COMMIT
-    git submodule update --init --recursive
-    virtualenv venv --distribute
-    venv/bin/pip uninstall --yes setuptools
-    venv/bin/pip install setuptools==36.0.1
-    venv/bin/pip install six==1.10.0
-    venv/bin/pip install packaging==16.8
-    venv/bin/pip install attrs==17.2.0
-    venv/bin/pip install appdirs==1.4.3
-    venv/bin/pip install pycrypto==2.6.1
-
-
-    venv/bin/pip install cffi==1.9.1
-    venv/bin/pip install cryptography==1.7.2
-    venv/bin/pip install markerlib==0.6.0
-    venv/bin/pip install distribute==0.7.3
-    venv/bin/pip install txtorcon==0.18.0
-    venv/bin/pip install --editable .
 }
 
 function create_tahoelafs_stealth_node {
@@ -655,6 +615,7 @@ function install_tahoelafs {
 
     apt-get -yq install build-essential python-pip python-dev libffi-dev libssl-dev
     apt-get -yq install libcrypto++-dev python-pycryptopp python-cffi python-virtualenv
+    apt-get -yq install tahoe-lafs
 
     # create a user
     if [ ! -d $TAHOE_DIR ]; then
@@ -666,8 +627,6 @@ function install_tahoelafs {
     if [ -d $TAHOE_DIR/Maildir ]; then
         rm -rf $TAHOE_DIR/Maildir
     fi
-
-    install_tahoelafs_to_directory $TAHOE_DIR/tahoelafs
 
     # remove files we don't need
     rm -rf $TAHOE_DIR/.mutt
@@ -691,11 +650,11 @@ function install_tahoelafs {
     create_tahoelafs_stealth_node $TAHOE_DIR/storage $TAHOE_DIR/client ${node_nick} ${client_nick}
 
     # start the storage node
-    su -c "$TAHOE_DIR/tahoelafs/venv/bin/python2 $TAHOE_DIR/tahoelafs/venv/bin/tahoe start $TAHOE_DIR/storage" - tahoelafs
+    su -c "/usr/bin/python2 /usr/bin/tahoe start $TAHOE_DIR/storage" - tahoelafs
     create_tahoelafs_daemon "storage"
 
     # start the client
-    su -c "$TAHOE_DIR/tahoelafs/venv/bin/python2 $TAHOE_DIR/tahoelafs/venv/bin/tahoe start $TAHOE_DIR/client" - tahoelafs
+    su -c "/usr/bin/python2 /usr/bin/tahoe start $TAHOE_DIR/client" - tahoelafs
     add_tahoelafs_server "$(get_tahoelafs_storage_hostname)" "$(get_tahoelafs_public_key)" "${node_nick}" "$(get_tahoelafs_furl)"
     if ! grep -q "HidServAuth $(get_tahoelafs_storage_hostname)" /etc/tor/torrc; then
         echo $'Unable to create tahoelafs server'
@@ -707,7 +666,6 @@ function install_tahoelafs {
     fi
     create_tahoelafs_daemon "client"
 
-    set_completion_param "tahoelafs commit" "$TAHOELAFS_COMMIT"
     set_completion_param "tahoelafs onion domain" "$TAHOELAFS_ONION_HOSTNAME"
 
     create_tahoelafs_web
