@@ -34,6 +34,12 @@ MARIADB_PASSWORD=
 # Used to indicate whether the backup contains MariaDB databases or not
 BACKUP_INCLUDES_DATABASES="no"
 
+function keep_database_running {
+    if [ ! $(daemon_is_running mariadb) ]; then
+        systemctl start mariadb
+    fi
+}
+
 function remove_backup_database_local {
     database_name=$1
 
@@ -49,6 +55,15 @@ function backup_database_local {
     database_name=$1
 
     backup_databases_script=/usr/bin/backupdatabases
+    if ! grep -q "# Check database daemon" /usr/bin/backupdatabases; then
+        echo '' >> /usr/bin/backupdatabases
+        echo '# Check database daemon is running' >> /usr/bin/backupdatabases
+        echo 'if [ ! $(systemctl is-active mariadb >/dev/null 2>&1 && echo Running) ]; then' >> /usr/bin/backupdatabases
+        echo '    systemctl start mariadb' >> /usr/bin/backupdatabases
+        echo 'fi' >> /usr/bin/backupdatabases
+        echo '' >> /usr/bin/backupdatabases
+    fi
+
     if ! grep -q "# Backup the ${database_name} database" $backup_databases_script; then
         echo "# Backup the ${database_name} database" >> $backup_databases_script
         echo "TEMPFILE=/root/${database_name}.sql" >> $backup_databases_script
@@ -258,6 +273,7 @@ function remove_database {
     echo "drop database ${app_name};
 quit" > $INSTALL_DIR/batch.sql
     chmod 600 $INSTALL_DIR/batch.sql
+    keep_database_running
     mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
     shred -zu $INSTALL_DIR/batch.sql
 }
@@ -265,6 +281,7 @@ quit" > $INSTALL_DIR/batch.sql
 function initialise_database {
     database_name=$1
     database_file=$2
+    keep_database_running
     mysql -u root --password="$MARIADB_PASSWORD" -D $database_name < $database_file
     if [ ! "$?" = "0" ]; then
         exit 62952
@@ -274,12 +291,14 @@ function initialise_database {
 function run_query {
     database_name=$1
     database_query=$2
+    keep_database_running
     mysql -u root --password="$MARIADB_PASSWORD" -e "$database_query" $database_name
 }
 
 function run_query_root {
     database_name=$1
     database_query=$2
+    keep_database_running
     mysql -e "$database_query" $database_name
 }
 
@@ -301,6 +320,7 @@ GRANT ALL PRIVILEGES ON ${app_name}.* TO '$app_admin_username@localhost';
 flush privileges;
 quit" > $INSTALL_DIR/batch.sql
     chmod 600 $INSTALL_DIR/batch.sql
+    keep_database_running
     mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
     shred -zu $INSTALL_DIR/batch.sql
 }
@@ -308,6 +328,7 @@ quit" > $INSTALL_DIR/batch.sql
 function run_query_with_output {
     database_name=$1
     database_query=$2
+    keep_database_running
     output=$(mysql -u root --password="$MARIADB_PASSWORD" << EOF
 use $database_name;
 $database_query
@@ -325,6 +346,7 @@ function drop_database {
 flush privileges;
 quit" > $INSTALL_DIR/batch.sql
     chmod 600 $INSTALL_DIR/batch.sql
+    keep_database_running
     mysql -u root --password="$MARIADB_PASSWORD" < $INSTALL_DIR/batch.sql
     shred -zu $INSTALL_DIR/batch.sql
 }
