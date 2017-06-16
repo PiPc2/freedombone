@@ -95,6 +95,7 @@ MINIMAL_INSTALL="yes"
 DEFAULT_LANGUAGE='en_GB.UTF-8'
 ONION_ONLY="no"
 SELECTED_USERNAME=
+SOCIALINSTANCE=
 
 # Mirrors settings
 FRIENDS_MIRRORS_SERVER=
@@ -144,13 +145,14 @@ function show_help {
     echo $'Creates an inventory of remote backup locations'
     echo ''
     echo ''
-    echo $'  -h --help             Show help'
-    echo $'  -f --filename         Configuration file (usually freedombone.cfg)'
-    echo $'  -m --min              Minimum password length (characters)'
-    echo $'  -w --www              Freedombone web site'
-    echo $'  -b --bm               Freedombone support Bitmessage address'
-    echo $'  -o --onion [yes|no]   Whether to only create .onion sites'
-    echo $'     --minimal [yes|no] For minimalistic "consumer grade" installs'
+    echo $'  -h --help                         Show help'
+    echo $'  -f --filename                     Configuration file (usually freedombone.cfg)'
+    echo $'  -m --min                          Minimum password length (characters)'
+    echo $'  -w --www                          Freedombone web site'
+    echo $'  -b --bm                           Freedombone support Bitmessage address'
+    echo $'  -o --onion [yes|no]               Whether to only create .onion sites'
+    echo $'     --minimal [yes|no]             For minimalistic "consumer grade" installs'
+    echo $'     --social [gnusocial|postactiv] Create gnusocial/postactiv instance'
     echo ''
     exit 0
 }
@@ -184,7 +186,63 @@ function choose_email_address {
     save_configuration_values
 }
 
+function choose_social_instance_domain_name {
+    DEFAULT_DOMAIN_DETAILS_COMPLETE=
+    while [ ! $DEFAULT_DOMAIN_DETAILS_COMPLETE ]
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+            dialog --backtitle $"Freedombone Configuration" \
+                   --title $"Instance domain" \
+                   --form $"\nEnter your instance domain name and its FreeDNS code:" 11 55 3 \
+                   $"Domain:" 1 1 "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 24 33 40 \
+                   $"Code:" 2 1 "$(grep 'DEFAULT_DOMAIN_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 24 33 255 \
+                   2> $data
+            sel=$?
+            case $sel in
+                1) exit 1;;
+                255) exit 1;;
+            esac
+            DEFAULT_DOMAIN_NAME=$(cat $data | sed -n 1p)
+            DEFAULT_DOMAIN_CODE=$(cat $data | sed -n 2p)
+            if [ $DEFAULT_DOMAIN_NAME ]; then
+                validate_freedns_code "$DEFAULT_DOMAIN_CODE"
+                if [ ! $VALID_CODE ]; then
+                    DEFAULT_DOMAIN_NAME=
+                fi
+            fi
+        else
+            dialog --backtitle $"Freedombone Configuration" \
+                   --inputbox $"Enter your instance domain name:" 10 45 \
+                   "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
+            sel=$?
+            case $sel in
+                0) DEFAULT_DOMAIN_NAME=$(cat $data);;
+                1) exit 1;;
+                255) exit 1;;
+            esac
+        fi
+        if [ $DEFAULT_DOMAIN_NAME ]; then
+            TEST_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME
+            validate_domain_name
+            if [[ $TEST_DOMAIN_NAME != $DEFAULT_DOMAIN_NAME ]]; then
+                DEFAULT_DOMAIN_NAME=
+                dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+            else
+                DEFAULT_DOMAIN_DETAILS_COMPLETE="yes"
+            fi
+        fi
+    done
+    save_configuration_values
+}
+
 function choose_default_domain_name {
+    if [ $SOCIALINSTANCE ]; then
+        choose_social_instance_domain_name
+        return
+    fi
+
     if [[ $ONION_ONLY != "no" ]]; then
         DEFAULT_DOMAIN_NAME="${PROJECT_NAME}.local"
     else
@@ -782,6 +840,12 @@ do
             shift
             FREEDOMBONE_WEBSITE="$1"
             ;;
+        --social)
+            shift
+            if [[ "$1" == 'gnusocial' || "$1" == 'postactiv' ]]; then
+                SOCIALINSTANCE="$1"
+            fi
+            ;;
         --minimal)
             shift
             MINIMAL_INSTALL="$1"
@@ -1046,10 +1110,14 @@ function interactive_config {
 
     interactive_select_language
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nEnsure that you have your domain and dynamic DNS settings ready.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+    if [ $SOCIALINSTANCE ]; then
+        INITIAL_MESSAGE=$"Welcome to your Freedombone $SOCIALINSTANCE instance.\n\nEnsure that you have your domain and dynamic DNS settings ready.\n\nFor more information please visit ${FREEDOMBONE_WEBSITE}/socialinstance.html."
     else
-        INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nWeb sites created will only be viewable within a Tor browser.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+        if [[ $ONION_ONLY == "no" ]]; then
+            INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nEnsure that you have your domain and dynamic DNS settings ready.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+        else
+            INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nWeb sites created will only be viewable within a Tor browser.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+        fi
     fi
 
     dialog --title $"Freedombone" --msgbox "$INITIAL_MESSAGE" 15 50
