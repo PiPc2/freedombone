@@ -37,6 +37,11 @@ PLEROMA_COMMIT='7d46e3965d06e039537066eeb5fac99ebcab978d'
 ARMADILLO_REPO="https://git.postactiv.com/maiya/Armadillo"
 ARMADILLO_COMMIT='ec3938a678f373156c4cbf37926c9a5ab68222c4'
 
+SHARINGS_REPO="http://git.lasindias.club/bashrc/Sharings"
+SHARINGS_COMMIT='d5c6c7f855d9afff9086c09ea706f38c859bc0d4'
+SHARINGS_THEME_REPO="http://git.lasindias.club/manuel/SharingsTheme"
+SHARINGS_THEME_COMMIT='7106c7ef03'
+
 function qvitter_update_background {
     domain_name="$1"
     ext=$2
@@ -875,6 +880,133 @@ function gnusocial_use_armadillo {
     cp $INSTALL_DIR/armadillo/dash.html /var/www/${domain_name}/htdocs/dash.html
 
     systemctl restart nginx
+}
+
+function install_gnusocial_plugin_sharings {
+    domain_name=$1
+    social_app_name=$2
+
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins ]; then
+        mkdir -p /var/www/$domain_name/htdocs/local/plugins
+    fi
+
+    apt-get -yq install liblocale-msgfmt-perl gettext
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$domain_name/htdocs/local/plugins "$social_app_name sharings plugin commit" "$SHARINGS_COMMIT" $SHARINGS_REPO
+
+    if [[ $(app_is_installed ${social_app_name}_plugin_sharings) == "1" ]]; then
+        return
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins
+
+    if [ -d /repos/sharings ]; then
+        mkdir Sharings
+        cp -r -p /repos/sharings/. Sharings
+        cd Sharings
+        git pull
+    else
+        function_check git_clone
+        git_clone $SHARINGS_REPO Sharings
+    fi
+
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins/Sharings ]; then
+        echo $"Unable to clone $social_app_name sharings plugin"
+        exit 36738
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings
+    git stash
+    git checkout master
+    git branch -D $SHARINGS_COMMIT
+    git checkout $SHARINGS_COMMIT -b $SHARINGS_COMMIT
+
+    # enable the plugin
+    if ! grep -q "addPlugin('Sharings');" /var/www/$domain_name/htdocs/config.php; then
+        echo "addPlugin('Sharings');" >> /var/www/$domain_name/htdocs/config.php
+    fi
+
+    cd /var/www/$domain_name/htdocs
+    php scripts/checkschema.php
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings
+    php scripts/seedsharings.php
+    cd /var/www/$domain_name/htdocs
+    php scripts/upgrade.php
+    php scripts/checkschema.php
+
+    # Languages
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings/locale/en/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $"English translations for $social_app_name sharings plugin were not created"
+        exit 782923
+    fi
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings/locale/en_GB/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $"English (GB) translations for $social_app_name sharings plugin were not created"
+        exit 23528
+    fi
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings/locale/en_US/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $"English (US) translations for $social_app_name sharings plugin were not created"
+        exit 567382
+    fi
+
+    # Looks like this update function isn't supported by the current php version
+    sed -i 's|ActivityVerb::UPDATE, ||g' /var/www/$domain_name/htdocs/local/plugins/Sharings/SharingsPlugin.php
+
+    chown -R www-data:www-data /var/www/$domain_name/htdocs
+
+    set_completion_param gnusocial "$social_app_name sharings plugin commit" "$SHARINGS_COMMIT"
+    install_completed ${social_app_name}_plugin_sharings
+}
+
+function install_gnusocial_plugin_sharings_theme {
+    domain_name=$1
+    social_app_name=$2
+
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins ]; then
+        mkdir -p /var/www/$domain_name/htdocs/local/plugins
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$domain_name/htdocs/local/plugins "$social_app_name sharings theme plugin commit" "$SHARINGS_THEME_COMMIT" $SHARINGS_THEME_REPO
+
+    if [[ $(app_is_installed ${social_app_name}_plugin_sharings_theme) == "1" ]]; then
+        return
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins
+    function_check git_clone
+    git_clone $SHARINGS_THEME_REPO SharingsTheme
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins/SharingsTheme ]; then
+        echo $"Unable to clone $social_app_name sharings plugin theme"
+        exit 639253
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins/SharingsTheme
+    git stash
+    git checkout master
+    git branch -D $SHARINGS_THEME_COMMIT
+    git checkout $SHARINGS_THEME_COMMIT -b $SHARINGS_THEME_COMMIT
+
+    # enable the plugin
+    if ! grep -q "addPlugin('SharingsTheme');" /var/www/$domain_name/htdocs/config.php; then
+        echo "addPlugin('SharingsTheme');" >> /var/www/$domain_name/htdocs/config.php
+    fi
+
+    cd /var/www/$domain_name/htdocs
+    php scripts/checkschema.php
+
+    chown -R www-data:www-data /var/www/$domain_name/htdocs
+
+    set_completion_param "$social_app_name sharings plugin theme commit" "$SHARINGS_THEME_COMMIT"
+    install_completed ${social_app_name}_plugin_sharings_theme
 }
 
 # NOTE: deliberately there is no "exit 0"
