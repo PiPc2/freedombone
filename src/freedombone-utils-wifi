@@ -39,6 +39,12 @@ WIFI_NETWORKS_FILE=~/${PROJECT_NAME}-wifi.cfg
 # repo for atheros AR9271 wifi driver
 ATHEROS_WIFI_REPO="https://github.com/qca/open-ath9k-htc-firmware.git"
 
+function default_network_config {
+    echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
+    echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
+    echo 'source /etc/network/interfaces.d/*' >> /etc/network/interfaces
+}
+
 # Debian stretch has a problem where the formerly predictable wlan0 and eth0
 # device names get assigned random names. This is a hacky workaround.
 # Also adding net.ifnames=0 to kernel options on bootloader may work.
@@ -65,16 +71,15 @@ function wifi_static_network_interface {
     NETWORK_IS_STATIC=0
     read_config_param "NETWORK_IS_STATIC"
     if [ ${NETWORK_IS_STATIC} -eq 0 ]; then
-        echo '#this line must always be here' >> /etc/network/interfaces
-        echo 'iface default inet dhcp' >> /etc/network/interfaces
+        echo '#this line must always be here' > /etc/network/interfaces.d/static
+        echo 'iface default inet dhcp' >> /etc/network/interfaces.d/static
     else
         read_config_param "LOCAL_NETWORK_STATIC_IP_ADDRESS"
         read_config_param "ROUTER_IP_ADDRESS"
-        echo '#static address' >> /etc/network/interfaces
-        echo 'iface default inet static' >> /etc/network/interfaces
-        echo "    address ${LOCAL_NETWORK_STATIC_IP_ADDRESS}" >> /etc/network/interfaces
-        echo '    netmask 255.255.255.0' >> /etc/network/interfaces
-        echo "    gateway ${ROUTER_IP_ADDRESS}" >> /etc/network/interfaces
+        echo 'iface default inet static' > /etc/network/interfaces.d/static
+        echo "    address ${LOCAL_NETWORK_STATIC_IP_ADDRESS}" >> /etc/network/interfaces.d/static
+        echo '    netmask 255.255.255.0' >> /etc/network/interfaces.d/static
+        echo "    gateway ${ROUTER_IP_ADDRESS}" >> /etc/network/interfaces.d/static
     fi
 }
 
@@ -240,13 +245,25 @@ function hotspot_off {
 
     rm /etc/hostapd/hostapd.conf
 
-    if [ -f /etc/network/interfaces_original ]; then
-        cp /etc/network/interfaces_original /etc/network/interfaces
+    if [ -f /etc/network/interfaces_original_static ]; then
+        cp /etc/network/interfaces_original_static /etc/network/interfaces.d/static
     else
-        echo '# interfaces(5) file used by ifup(8) and ifdown(8)' > /etc/network/interfaces
-        echo '# Include files from /etc/network/interfaces.d:' >> /etc/network/interfaces
-        echo 'source-directory /etc/network/interfaces.d' >> /etc/network/interfaces
+        if [ -f /etc/network/interfaces.d/static ]; then
+            rm /etc/network/interfaces.d/static
+        fi
     fi
+    if [ -f /etc/network/interfaces_original_wifi ]; then
+        cp /etc/network/interfaces_original_wifi /etc/network/interfaces.d/wifi
+    else
+        if [ -f /etc/network/interfaces.d/wifi ]; then
+            rm /etc/network/interfaces.d/wifi
+        fi
+    fi
+    if [ -f /etc/network/interfaces.d/bridge ]; then
+        rm /etc/network/interfaces.d/bridge
+    fi
+
+    default_network_config
 
     wpa_action ${WIFI_INTERFACE} stop
     wpa_cli -i ${WIFI_INTERFACE} terminate
@@ -294,30 +311,29 @@ function hotspot_on {
     echo '## Accept all MAC address ###' >> /etc/hostapd/hostapd.conf
     echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
 
-    if [ ! -f /etc/network/interfaces_original ]; then
-        if ! grep -q "# wifi enabled" /etc/network/interfaces; then
-            cp /etc/network/interfaces /etc/network/interfaces_original
+    if [ ! -f /etc/network/interfaces_original_static ]; then
+        if [ -f /etc/network/interfaces.d/static ]; then
+            cp /etc/network/interfaces.d/static /etc/network/interfaces_original_static
+        fi
+    fi
+    if [ ! -f /etc/network/interfaces_original_wifi ]; then
+        if [ -f /etc/network/interfaces.d/wifi ]; then
+            cp /etc/network/interfaces.d/wifi /etc/network/interfaces_original_wifi
         fi
     fi
 
-    echo '# wifi enabled' > /etc/network/interfaces
-    echo 'auto lo br0' >> /etc/network/interfaces
-    echo 'iface lo inet loopback' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo "# wireless $WIFI_INTERFACE" >> /etc/network/interfaces
-    echo "allow-hotplug $WIFI_INTERFACE" >> /etc/network/interfaces
-    echo "iface $WIFI_INTERFACE inet manual" >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo '# eth0 connected to the ISP router' >> /etc/network/interfaces
-    echo 'allow-hotplug eth0' >> /etc/network/interfaces
-    echo 'iface eth0 inet manual' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo '# Setup bridge' >> /etc/network/interfaces
-    echo 'iface br0 inet static' >> /etc/network/interfaces
-    echo "    bridge_ports $WIFI_INTERFACE eth0" >> /etc/network/interfaces
+    default_network_config
+
+    echo "allow-hotplug $WIFI_INTERFACE" > /etc/network/interfaces.d/wifi
+    echo "iface $WIFI_INTERFACE inet manual" >> /etc/network/interfaces.d/wifi
+
+    echo 'allow-hotplug eth0' >> /etc/network/interfaces.d/static
+    echo 'iface eth0 inet manual' >> /etc/network/interfaces.d/static
+
+    echo 'iface br0 inet static' >> /etc/network/interfaces.d/bridge
+    echo "    bridge_ports $WIFI_INTERFACE eth0" >> /etc/network/interfaces.d/bridge
 
     systemctl restart network-manager
-    #ifconfig $WIFI_INTERFACE up
     ifup $WIFI_INTERFACE
     systemctl restart hostapd
 }
@@ -332,8 +348,14 @@ function wifi_store_original_network_settings {
 
 function wifi_original_network_settings {
     remove_config_param "NETWORK_IS_STATIC"
-    if [ -f /etc/network/interfaces_original ]; then
-        cp /etc/network/interfaces_original /etc/network/interfaces
+    if [ -f /etc/network/interfaces.d/static ]; then
+        rm /etc/network/interfaces.d/static
+    fi
+    if [ -f /etc/network/interfaces.d/wifi ]; then
+        rm /etc/network/interfaces.d/wifi
+    fi
+    if [ -f /etc/network/interfaces.d/bridge ]; then
+        rm /etc/network/interfaces.d/bridge
     fi
 }
 
@@ -343,23 +365,17 @@ function wifi_wpa2_psk {
 
     wifi_store_original_network_settings
 
-    echo '# wifi enabled' > /etc/network/interfaces
-    echo 'auto lo' >> /etc/network/interfaces
-    echo 'iface lo inet loopback' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo 'allow-hotplug eth0' >> /etc/network/interfaces
-    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo "allow-hotplug ${WIFI_INTERFACE}" >> /etc/network/interfaces
-    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
-    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' > /etc/network/interfaces.d/static
+    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces.d/static
+
+    echo "allow-hotplug ${WIFI_INTERFACE}" > /etc/network/interfaces.d/wifi
+    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces.d/wifi
+    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces.d/wifi
     wifi_static_network_interface
 
     wpa_passphrase "$ssid" "$passphrase" > $WIFI_CONFIG
 
     systemctl restart network-manager
-    #ifconfig ${WIFI_INTERFACE} up
     ifup $WIFI_INTERFACE
 }
 
@@ -368,17 +384,13 @@ function wifi_none {
 
     wifi_store_original_network_settings
 
-    echo '# wifi enabled' > /etc/network/interfaces
-    echo 'auto lo' >> /etc/network/interfaces
-    echo 'iface lo inet loopback' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo 'allow-hotplug eth0' >> /etc/network/interfaces
-    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo "allow-hotplug ${WIFI_INTERFACE}" >> /etc/network/interfaces
-    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
-    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' > /etc/network/interfaces.d/static
+    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces.d/static
+
+    echo "allow-hotplug ${WIFI_INTERFACE}" > /etc/network/interfaces.d/wifi
+    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces.d/wifi
+    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces.d/wifi
+
     wifi_static_network_interface
 
     echo 'ctrl_interface=/run/wpa_supplicant' > $WIFI_CONFIG
@@ -394,7 +406,6 @@ function wifi_none {
     echo '}' >> $WIFI_CONFIG
 
     systemctl restart network-manager
-    #ifconfig ${WIFI_INTERFACE} up
     ifup $WIFI_INTERFACE
 }
 
@@ -410,17 +421,13 @@ function networks_from_file {
 
     wifi_store_original_network_settings
 
-    echo '# wifi enabled' > /etc/network/interfaces
-    echo 'auto lo' >> /etc/network/interfaces
-    echo 'iface lo inet loopback' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo 'allow-hotplug eth0' >> /etc/network/interfaces
-    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
-    echo "allow-hotplug ${WIFI_INTERFACE}" >> /etc/network/interfaces
-    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces
-    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces
-    echo '' >> /etc/network/interfaces
+    echo 'allow-hotplug eth0' > /etc/network/interfaces.d/static
+    echo 'iface eth0 inet dhcp' >> /etc/network/interfaces.d/static
+
+    echo "allow-hotplug ${WIFI_INTERFACE}" >> /etc/network/interfaces.d/wifi
+    echo "iface ${WIFI_INTERFACE} inet manual" >> /etc/network/interfaces.d/wifi
+    echo "  wpa-roam $WIFI_CONFIG" >> /etc/network/interfaces.d/wifi
+
     wifi_static_network_interface
 
     # remove wpa_supplicant.conf if it exists
@@ -577,9 +584,19 @@ function create_networks_interactive {
 function disable_wifi {
     if [[ ${1} == 'yes' || ${1} == 'y' ]]; then
         hotspot_off
-        echo '# interfaces(5) file used by ifup(8) and ifdown(8)' > /etc/network/interfaces
-        echo '# Include files from /etc/network/interfaces.d:' >> /etc/network/interfaces
-        echo 'source-directory /etc/network/interfaces.d' >> /etc/network/interfaces
+
+        if [ -f /etc/network/interfaces.d/static ]; then
+            rm /etc/network/interfaces.d/static
+        fi
+        if [ -f /etc/network/interfaces.d/wifi ]; then
+            rm /etc/network/interfaces.d/wifi
+        fi
+        if [ -f /etc/network/interfaces.d/bridge ]; then
+            rm /etc/network/interfaces.d/bridge
+        fi
+
+        default_network_config
+
         remove_config_param "WIFI_INTERFACE"
         wpa_action ${WIFI_INTERFACE} stop
         wpa_cli -i ${WIFI_INTERFACE} terminate

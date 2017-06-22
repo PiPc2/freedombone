@@ -1441,9 +1441,9 @@ function set_static_IP {
 
     NEW_STATIC_IP=
     NEW_STATIC_GATEWAY=
-    if grep -q 'iface eth0 inet static' /etc/network/interfaces; then
-        STATIC_IP=$(cat /etc/network/interfaces | grep "address " | head -n 1 | awk -F ' ' '{print $2}')
-        STATIC_GATEWAY=$(cat /etc/network/interfaces | grep "gateway " | head -n 1 | awk -F ' ' '{print $2}')
+    if [ -f /etc/network/interfaces.d/static ]; then
+        STATIC_IP=$(cat /etc/network/interfaces.d/static | grep "address " | head -n 1 | awk -F ' ' '{print $2}')
+        STATIC_GATEWAY=$(cat /etc/network/interfaces.d/static | grep "gateway " | head -n 1 | awk -F ' ' '{print $2}')
     fi
 
     # get the IP for the box
@@ -1482,11 +1482,13 @@ Enter a static local IP address for this system.\n\nIt will typically be ${IPv4_
 
     if [[ "$NEW_STATIC_GATEWAY" == *"."* && "$NEW_STATIC_IP" == *"."* ]]; then
         ip_addresses_have_changed=
-        if ! grep -q "address ${NEW_STATIC_IP}" /etc/network/interfaces; then
-            ip_addresses_have_changed=1
-        fi
-        if ! grep -q "gateway ${NEW_STATIC_GATEWAY}" /etc/network/interfaces; then
-            ip_addresses_have_changed=1
+        if [ -f /etc/network/interfaces.d/static ]; then
+            if ! grep -q "address ${NEW_STATIC_IP}" /etc/network/interfaces.d/static; then
+                ip_addresses_have_changed=1
+            fi
+            if ! grep -q "gateway ${NEW_STATIC_GATEWAY}" /etc/network/interfaces.d/static; then
+                ip_addresses_have_changed=1
+            fi
         fi
         if [ $ip_addresses_have_changed ]; then
             write_config_param "NETWORK_IS_STATIC" "1"
@@ -1508,44 +1510,19 @@ Enter a static local IP address for this system.\n\nIt will typically be ${IPv4_
                 esac
             fi
 
+            echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
+            echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
+            echo 'source /etc/network/interfaces.d/*' >> /etc/network/interfaces
+
             if [ ! $static_wifi_address ]; then
                 # wired network
                 remove_wifi_startup_script
-                echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
-                echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# The loopback network interface' >> /etc/network/interfaces
-                echo 'auto lo' >> /etc/network/interfaces
-                echo 'iface lo inet loopback' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# The primary network interface' >> /etc/network/interfaces
-                echo 'auto eth0' >> /etc/network/interfaces
-                echo 'iface eth0 inet static' >> /etc/network/interfaces
-                echo "    address ${NEW_STATIC_IP}" >> /etc/network/interfaces
-                echo '    netmask 255.255.255.0' >> /etc/network/interfaces
-                echo "    gateway ${NEW_STATIC_GATEWAY}" >> /etc/network/interfaces
-                echo "    dns-nameservers 213.73.91.35 85.214.20.141" >> /etc/network/interfaces
-                echo '# Example to keep MAC address between reboots' >> /etc/network/interfaces
-                echo '#hwaddress ether DE:AD:BE:EF:CA:FE' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# The secondary network interface' >> /etc/network/interfaces
-                echo '#auto eth1' >> /etc/network/interfaces
-                echo '#iface eth1 inet dhcp' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# WiFi Example' >> /etc/network/interfaces
-                echo "#auto $WIFI_INTERFACE" >> /etc/network/interfaces
-                echo "#iface $WIFI_INTERFACE inet dhcp" >> /etc/network/interfaces
-                echo '#    wpa-ssid "essid"' >> /etc/network/interfaces
-                echo '#    wpa-psk  "password"' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# Ethernet/RNDIS gadget (g_ether)' >> /etc/network/interfaces
-                echo '# ... or on host side, usbnet and random hwaddr' >> /etc/network/interfaces
-                echo '# Note on some boards, usb0 is automaticly setup with an init script' >> /etc/network/interfaces
-                echo '#iface usb0 inet static' >> /etc/network/interfaces
-                echo '#    address 192.168.7.2' >> /etc/network/interfaces
-                echo '#    netmask 255.255.255.0' >> /etc/network/interfaces
-                echo '#    network 192.168.7.0' >> /etc/network/interfaces
-                echo '#    gateway 192.168.7.1' >> /etc/network/interfaces
+
+                echo 'auto eth0' > /etc/network/interfaces.d/static
+                echo 'iface eth0 inet static' >> /etc/network/interfaces.d/static
+                echo "    address ${NEW_STATIC_IP}" >> /etc/network/interfaces.d/static
+                echo '    netmask 255.255.255.0' >> /etc/network/interfaces.d/static
+                echo "    gateway ${NEW_STATIC_GATEWAY}" >> /etc/network/interfaces.d/static
             else
                 # wifi network
                 wifi_settings
@@ -2036,7 +2013,7 @@ function menu_wifi {
         if [ -f /etc/hostapd/hostapd.conf ]; then
             status_str=$'Hotspot ON'
         else
-            if grep -q "# wifi enabled" /etc/network/interfaces; then
+            if [ -f /etc/network/interfaces.d/wifi ]; then
                 status_str=$'Wifi ON'
             fi
         fi
