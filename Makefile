@@ -64,6 +64,7 @@ uninstall:
 	rm -rf /etc/${APP}
 	rm -f ${PREFIX}/bin/control
 	rm -f ${PREFIX}/bin/controluser
+	rm -f ${PREFIX}/bin/addremove
 	bash -c "./translate uninstall"
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log src/*~
