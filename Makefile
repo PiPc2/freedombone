@@ -27,7 +27,7 @@ install:
 	cp img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
 	cp img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
 	cp src/* ${DESTDIR}${PREFIX}/bin
-	cp src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
+#	cp src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
 	cp src/${APP}-mesh-batman ${DESTDIR}${PREFIX}/bin/batman
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
@@ -46,6 +46,7 @@ install:
 	chown -R root: /usr/share/${APP}
 	chmod -R +r /usr/share/${APP}
 #	bash -c "./translate install"
+	/usr/local/bin/${APP}-prepare-scripts
 uninstall:
 	rm -f ${PREFIX}/share/${APP}_*.png
 	rm -f ${PREFIX}/share/man/man1/backup.1.gz
@@ -61,6 +62,8 @@ uninstall:
 	rm -f ${PREFIX}/bin/restorefromfriend
 	rm -f ${PREFIX}/bin/batman
 	rm -rf /etc/${APP}
+	rm -f ${PREFIX}/bin/control
+	rm -f ${PREFIX}/bin/controluser
 	bash -c "./translate uninstall"
 clean:
 	rm -f \#* \.#* debian/*.substvars debian/*.log src/*~
