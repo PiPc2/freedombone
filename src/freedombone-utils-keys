@@ -28,6 +28,28 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+function gpg_delete_key {
+    key_username=$1
+    key_id=$2
+
+    su -c "gpg --batch --quiet --homedir=/home/$key_username/.gnupg --delete-secret-key $key_id" - $key_username
+    su -c "gpg --batch --quiet --homedir=/home/$key_username/.gnupg --delete-key $key_id" - $key_username
+}
+
+function gpg_set_permissions {
+    key_username=$1
+
+    if [[ "$key_username" != 'root' ]]; then
+        chmod 700 /home/$key_username/.gnupg
+        chmod -R 600 /home/$key_username/.gnupg/*
+        chown -R $key_username:$key_username /home/$key_username/.gnupg
+    else
+        chmod 700 /root/.gnupg
+        chmod -R 600 /root/.gnupg/*
+        chown -R $key_username:$key_username /root/.gnupg
+    fi
+}
+
 function reconstruct_key {
     if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
         return
@@ -143,18 +165,14 @@ function interactive_gpg_from_usb {
                 chown -R $MY_USERNAME:$MY_USERNAME $HOME_DIR/.gnupg_old
             fi
             echo $'Removing old gpg keys'
-            gpg --batch --quiet --homedir=$HOME_DIR/.gnupg --delete-key "$CURR_GPG_BACKUP_ID"
-            gpg --batch --quiet --homedir=$HOME_DIR/.gnupg --delete-key "$CURR_GPG_ID"
-            gpg --batch --quiet --homedir=$HOME_DIR/.gnupg --delete-secret-key "$CURR_GPG_BACKUP_ID"
-            gpg --batch --quiet --homedir=$HOME_DIR/.gnupg --delete-secret-key "$CURR_GPG_ID"
+            gpg_delete_key $MY_USERNAME $CURR_GPG_BACKUP_ID
+            gpg_delete_key $MY_USERNAME $CURR_GPG_ID
             echo $'Importing master keys'
             gpg --homedir=$HOME_DIR/.gnupg --allow-secret-key-import --import $USB_MOUNT/.mastergpgkey
             echo "$BACKUP_DUMMY_PASSWORD" | gpg --batch --passphrase-fd 0 --homedir=$HOME_DIR/.gnupg --allow-secret-key-import --import $USB_MOUNT/.backupgpgkey
             if [ -d $HOME_DIR/.gnupg ]; then
                 echo $'Setting permissions'
-                chmod 700 $HOME_DIR/.gnupg
-                chmod -R 600 $HOME_DIR/.gnupg/*
-                chown -R $MY_USERNAME:$MY_USERNAME $HOME_DIR/.gnupg
+                gpg_set_permissions $MY_USERNAME
             fi
             GPG_LOADING="no"
             dialog --title $"Recover Encryption Keys" \
