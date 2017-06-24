@@ -28,85 +28,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function gpg_delete_key {
-    key_username=$1
-    key_id=$2
-
-    su -c "gpg --batch --quiet --homedir=/home/$key_username/.gnupg --delete-secret-key $key_id" - $key_username
-    su -c "gpg --batch --quiet --homedir=/home/$key_username/.gnupg --delete-key $key_id" - $key_username
-}
-
-function gpg_set_permissions {
-    key_username=$1
-
-    if [[ "$key_username" != 'root' ]]; then
-        chmod 700 /home/$key_username/.gnupg
-        chmod -R 600 /home/$key_username/.gnupg/*
-        chown -R $key_username:$key_username /home/$key_username/.gnupg
-    else
-        chmod 700 /root/.gnupg
-        chmod -R 600 /root/.gnupg/*
-        chown -R $key_username:$key_username /root/.gnupg
-    fi
-}
-
-function reconstruct_key {
-    key_username=$1
-    key_interactive=$2
-
-    if [ ! -d /home/$key_username/.gnupg_fragments ]; then
-        return
-    fi
-    cd /home/$key_username/.gnupg_fragments
-    no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
-    if (( no_of_shares < 4 )); then
-        if [ $key_interactive ]; then
-            dialog --title $"Recover Encryption Keys" --msgbox $'Not enough fragments to reconstruct the key' 6 70
-        else
-            echo $'Not enough fragments to reconstruct the key'
-        fi
-        exit 7348
-    fi
-    gfcombine /home/$key_username/.gnupg_fragments/keyshare*
-    if [ ! "$?" = "0" ]; then
-        if [ $key_interactive ]; then
-            dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
-        else
-            echo $'Unable to reconstruct the key'
-        fi
-        exit 7348
-    fi
-
-    KEYS_FILE=/home/$key_username/.gnupg_fragments/keyshare.asc
-    if [ ! -f $KEYS_FILE ]; then
-        if [ $key_interactive ]; then
-            dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
-        else
-            echo $'Unable to reconstruct the key'
-        fi
-        exit 52852
-    fi
-
-    gpg --homedir=/home/$key_username/.gnupg --allow-secret-key-import --import $KEYS_FILE
-    if [ ! "$?" = "0" ]; then
-        shred -zu $KEYS_FILE
-        rm -rf /home/$key_username/.tempgnupg
-        if [ $key_interactive ]; then
-            dialog --title $"Recover Encryption Keys" --msgbox $'Unable to import gpg key' 6 70
-        else
-            echo $'Unable to import gpg key'
-        fi
-        exit 96547
-    fi
-    shred -zu $KEYS_FILE
-
-    if [ $key_interactive ]; then
-        dialog --title $"Recover Encryption Keys" --msgbox $'Key has been reconstructed' 6 70
-    else
-        echo $'Key has been reconstructed'
-    fi
-}
-
 function interactive_gpg_from_usb {
     dialog --title $"Recover Encryption Keys" \
            --msgbox $'Plug in a USB keydrive containing a copy of your full key or key fragment' 6 70
@@ -121,7 +42,7 @@ function interactive_gpg_from_usb {
 
         if [ ! -b $USB_DRIVE ]; then
             if (( GPG_CTR > 0 )); then
-                reconstruct_key $MY_USERNAME interactive
+                gpg_reconstruct_key $MY_USERNAME interactive
                 return 0
             fi
             dialog --title $"Recover Encryption Keys" --msgbox $'No USB drive found' 6 30
@@ -133,7 +54,7 @@ function interactive_gpg_from_usb {
         if [ ! -d $USB_MOUNT ]; then
             if (( GPG_CTR > 0 )); then
                 backup_unmount_drive ${USB_DRIVE}
-                reconstruct_key $MY_USERNAME interactive
+                gpg_reconstruct_key $MY_USERNAME interactive
                 return 0
             fi
             dialog --title $"Recover Encryption Keys" \
@@ -146,7 +67,7 @@ function interactive_gpg_from_usb {
             if [ ! -d $USB_MOUNT/.gnupg_fragments ]; then
                 if (( GPG_CTR > 0 )); then
                     backup_unmount_drive ${USB_DRIVE}
-                    reconstruct_key $MY_USERNAME interactive
+                    gpg_reconstruct_key $MY_USERNAME interactive
                     return 0
                 fi
                 dialog --title $"Recover Encryption Keys" \
@@ -209,8 +130,9 @@ function interactive_gpg_from_usb {
                 cp -r $USB_MOUNT/.gnupg/* $HOME_DIR/.gnupg
                 GPG_LOADING="no"
                 dialog --title $"Recover Encryption Keys" \
-                       --msgbox $"GPG Keyring loaded to $HOME_DIR" 6 70
+                       --msgbox $"GPG Keyring directory loaded to $HOME_DIR" 6 70
             else
+                # Collect fragments from the USB drive
                 if [ ! -d $HOME_DIR/.gnupg_fragments ]; then
                     mkdir $HOME_DIR/.gnupg_fragments
                 fi
