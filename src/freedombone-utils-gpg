@@ -28,6 +28,76 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+function gpg_import_public_key {
+    key_username=$1
+    key_filename=$2
+
+    gpg --homedir=/home/$key_username/.gnupg --import $key_filename
+    gpg_set_permissions $key_username
+}
+
+function gpg_import_private_key {
+    key_username=$1
+    key_filename=$2
+
+    gpg --homedir=/home/$key_username/.gnupg --allow-secret-key-import --import $key_filename
+    gpg_set_permissions $key_username
+}
+
+function gpg_export_public_key {
+    key_username=$1
+    key_id=$2
+    key_filename=$3
+
+    su -m root -c "gpg --homedir /home/$key_username/.gnupg --output $key_filename --armor --export $key_id" - $key_username
+}
+
+function gpg_export_private_key {
+    key_username=$1
+    key_id=$2
+    key_filename=$3
+
+    su -m root -c "gpg --homedir=/home/$key_username/.gnupg --armor --output $key_filename --export-secret-key $key_id" - $key_username
+}
+
+function gpg_create_key {
+    key_username=$1
+    key_passphrase=$2
+
+    gpg_dir=/home/$key_username/.gnupg
+
+    echo 'Key-Type: eddsa' > /home/$key_username/gpg-genkey.conf
+    echo 'Key-Curve: Ed25519' >> /home/$key_username/gpg-genkey.conf
+    echo 'Subkey-Type: eddsa' >> /home/$key_username/gpg-genkey.conf
+    echo 'Subkey-Curve: Ed25519' >> /home/$key_username/gpg-genkey.conf
+    echo "Name-Real:  $MY_NAME" >> /home/$key_username/gpg-genkey.conf
+    echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$key_username/gpg-genkey.conf
+    echo 'Expire-Date: 0' >> /home/$key_username/gpg-genkey.conf
+    cat /home/$key_username/gpg-genkey.conf
+    if [ $key_passphrase ]; then
+        echo "Passphrase: $key_passphrase" >> /home/$key_username/gpg-genkey.conf
+    else
+        echo "Passphrase: $PROJECT_NAME" >> /home/$key_username/gpg-genkey.conf
+    fi
+    chown $key_username:$key_username /home/$key_username/gpg-genkey.conf
+
+    echo $'Generating a new GPG key'
+    su -m root -c "gpg --homedir /home/$key_username/.gnupg --batch --full-gen-key /home/$key_username/gpg-genkey.conf" - $key_username
+    chown -R $key_username:$key_username /home/$key_username/.gnupg
+    KEY_EXISTS=$(gpg_key_exists "$key_username" "${key_username}@${HOSTNAME}")
+    if [[ $KEY_EXISTS == "no" ]]; then
+        echo $"A GPG key for ${key_username}@${HOSTNAME} could not be created"
+        exit 63621
+    fi
+    shred -zu /home/$key_username/gpg-genkey.conf
+    CURR_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$key_username" "${key_username}@${HOSTNAME}")
+    if [ ${#CURR_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
+        echo $"GPG public key ID could not be obtained for ${key_username}@${HOSTNAME}"
+        exit 825292
+    fi
+    gpg_set_permissions $key_username
+}
+
 function gpg_delete_key {
     key_username=$1
     key_id=$2

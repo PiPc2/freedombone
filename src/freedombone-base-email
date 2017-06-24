@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -1576,12 +1576,15 @@ function configure_gpg {
             echo $"GPG public key file $MY_GPG_PUBLIC_KEY was not found"
             exit 2483
         fi
+
         if [ ! -f $MY_GPG_PRIVATE_KEY ]; then
             echo $"GPG private key file $MY_GPG_PRIVATE_KEY was not found"
             exit 5383
         fi
-        su -c "gpg --import $MY_GPG_PUBLIC_KEY" - $MY_USERNAME
-        su -c "gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY" - $MY_USERNAME
+
+        gpg_import_public_key $MY_USERNAME $MY_GPG_PUBLIC_KEY
+        gpg_import_private_key $MY_USERNAME $MY_GPG_PRIVATE_KEY
+
         KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
         if [[ $KEY_EXISTS == "no" ]]; then
             echo $"The GPG key for $MY_EMAIL_ADDRESS could not be imported"
@@ -1596,35 +1599,14 @@ function configure_gpg {
         fi
     else
         # Generate a GPG key
-        echo 'Key-Type: eddsa' > /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Key-Curve: Ed25519' >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Subkey-Type: eddsa' >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Subkey-Curve: Ed25519' >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo "Name-Real:  $MY_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
-        cat /home/$MY_USERNAME/gpg-genkey.conf
         if [ -f $IMAGE_PASSWORD_FILE ]; then
-            echo "Passphrase: $(printf `cat $IMAGE_PASSWORD_FILE`)" >> /home/$MY_USERNAME/gpg-genkey.conf
+            gpg_create_key $MY_USERNAME $(printf `cat $IMAGE_PASSWORD_FILE`)
         else
-            echo "Passphrase: $PROJECT_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
+            gpg_create_key $MY_USERNAME $PROJECT_NAME
         fi
-        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
-        echo $'Generating a new GPG key'
-        su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --batch --full-gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
-        chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
-        KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
-        if [[ $KEY_EXISTS == "no" ]]; then
-            echo $"A GPG key for $MY_EMAIL_ADDRESS could not be created"
-            exit 6362
-        fi
-        shred -zu /home/$MY_USERNAME/gpg-genkey.conf
         MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
-        if [ ${#MY_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
-            echo $'GPG public key ID could not be obtained'
-        fi
         MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
-        su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
+        gpg_export_public_key $MY_USERNAME $MY_GPG_PUBLIC_KEY_ID $MY_GPG_PUBLIC_KEY
     fi
 
     if [ ! -d /root/.gnupg ]; then
