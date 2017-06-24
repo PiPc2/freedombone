@@ -51,37 +51,61 @@ function gpg_set_permissions {
 }
 
 function reconstruct_key {
-    if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
+    key_username=$1
+    key_interactive=$2
+
+    if [ ! -d /home/$key_username/.gnupg_fragments ]; then
         return
     fi
-    cd /home/$MY_USERNAME/.gnupg_fragments
+    cd /home/$key_username/.gnupg_fragments
     no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
     if (( no_of_shares < 4 )); then
-        dialog --title $"Recover Encryption Keys" --msgbox $'Not enough fragments to reconstruct the key' 6 70
+        if [ $key_interactive ]; then
+            dialog --title $"Recover Encryption Keys" --msgbox $'Not enough fragments to reconstruct the key' 6 70
+        else
+            echo $'Not enough fragments to reconstruct the key'
+        fi
         exit 7348
     fi
     apt-get -yq install libgfshare-bin gnupg
-    gfcombine /home/$MY_USERNAME/.gnupg_fragments/keyshare*
+    gfcombine /home/$key_username/.gnupg_fragments/keyshare*
     if [ ! "$?" = "0" ]; then
-        dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
+        if [ $key_interactive ]; then
+            dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
+        else
+            echo $'Unable to reconstruct the key'
+        fi
         exit 7348
     fi
 
-    KEYS_FILE=/home/$MY_USERNAME/.gnupg_fragments/keyshare.asc
+    KEYS_FILE=/home/$key_username/.gnupg_fragments/keyshare.asc
     if [ ! -f $KEYS_FILE ]; then
-        dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
+        if [ $key_interactive ]; then
+            dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
+        else
+            echo $'Unable to reconstruct the key'
+        fi
+        exit 52852
     fi
 
-    gpg --homedir=/home/$MY_USERNAME/.gnupg --allow-secret-key-import --import $KEYS_FILE
+    gpg --homedir=/home/$key_username/.gnupg --allow-secret-key-import --import $KEYS_FILE
     if [ ! "$?" = "0" ]; then
-        echo $'Unable to import gpg key'
         shred -zu $KEYS_FILE
-        rm -rf /home/$MY_USERNAME/.tempgnupg
-        exit 9654
+        rm -rf /home/$key_username/.tempgnupg
+        if [ $key_interactive ]; then
+            dialog --title $"Recover Encryption Keys" --msgbox $'Unable to import gpg key' 6 70
+        else
+            echo $'Unable to import gpg key'
+        fi
+        exit 96547
     fi
     shred -zu $KEYS_FILE
 
-    dialog --title $"Recover Encryption Keys" --msgbox $'Key has been reconstructed' 6 70
+    if [ $key_interactive ]; then
+        dialog --title $"Recover Encryption Keys" --msgbox $'Key has been reconstructed' 6 70
+    else
+        echo $'Key has been reconstructed'
+    fi
 }
 
 function interactive_gpg_from_usb {
@@ -98,7 +122,7 @@ function interactive_gpg_from_usb {
 
         if [ ! -b $USB_DRIVE ]; then
             if (( GPG_CTR > 0 )); then
-                reconstruct_key
+                reconstruct_key $MY_USERNAME interactive
                 return 0
             fi
             dialog --title $"Recover Encryption Keys" --msgbox $'No USB drive found' 6 30
@@ -110,7 +134,7 @@ function interactive_gpg_from_usb {
         if [ ! -d $USB_MOUNT ]; then
             if (( GPG_CTR > 0 )); then
                 backup_unmount_drive ${USB_DRIVE}
-                reconstruct_key
+                reconstruct_key $MY_USERNAME interactive
                 return 0
             fi
             dialog --title $"Recover Encryption Keys" \
@@ -123,7 +147,7 @@ function interactive_gpg_from_usb {
             if [ ! -d $USB_MOUNT/.gnupg_fragments ]; then
                 if (( GPG_CTR > 0 )); then
                     backup_unmount_drive ${USB_DRIVE}
-                    reconstruct_key
+                    reconstruct_key $MY_USERNAME interactive
                     return 0
                 fi
                 dialog --title $"Recover Encryption Keys" \
