@@ -144,12 +144,32 @@ function get_mariadb_password {
     fi
 }
 
+function mariadb_fix_authentication {
+    # See http://www.pontikis.net/blog/debian-9-stretch-rc3-web-server-setup-php7-mariadb
+    # https://mariadb.com/kb/en/mariadb/unix_socket-authentication-plugin
+    function_check run_query
+    run_query_root mysql "update mysql.user set plugin = '' where User='root'; flush privileges;"
+    run_query_root mysql "UPDATE user SET Password=PASSWORD('$MARIADB_PASSWORD') where USER='root'; flush privileges;"
+
+    sed -i 's| --skip-grant-tables||g' /lib/systemd/system/mariadb.service
+    systemctl daemon-reload
+    systemctl restart mariadb
+}
+
+function mariadb_create_root_user {
+    run_query mysql "CREATE USER 'root@localhost' IDENTIFIED BY '${MARIADB_PASSWORD}'; flush privileges;"
+    run_query mysql "update mysql.user set plugin = '' where User='root@localhost'; flush privileges;"
+    run_query mysql "GRANT ALL PRIVILEGES ON * TO 'root@localhost'; flush privileges;"
+}
+
 function install_mariadb {
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
     fi
     apt-get -yq install software-properties-common debconf-utils
     apt-get -yq update
+
+    remove_watchdog_daemon mariadb
 
     function_check get_mariadb_password
     get_mariadb_password
@@ -185,24 +205,13 @@ function install_mariadb {
     systemctl daemon-reload
     systemctl restart mariadb
 
-    # See http://www.pontikis.net/blog/debian-9-stretch-rc3-web-server-setup-php7-mariadb
-    # https://mariadb.com/kb/en/mariadb/unix_socket-authentication-plugin
-
-    function_check run_query
-    run_query_root mysql "update mysql.user set plugin = '' where User='root'; flush privileges;"
-    run_query_root mysql "UPDATE user SET Password=PASSWORD('$MARIADB_PASSWORD') where USER='root'; flush privileges;"
-
-    sed -i 's| --skip-grant-tables||g' /lib/systemd/system/mariadb.service
-    systemctl daemon-reload
-    systemctl restart mariadb
+    mariadb_fix_authentication
 
     # mariadb daemon seems to occasionally crash
     # This is a crude attempt to keep it running
     add_watchdog_daemon mariadb
 
-    run_query mysql "CREATE USER 'root@localhost' IDENTIFIED BY '${MARIADB_PASSWORD}'; flush privileges;"
-    run_query mysql "update mysql.user set plugin = '' where User='root@localhost'; flush privileges;"
-    run_query mysql "GRANT ALL PRIVILEGES ON * TO 'root@localhost'; flush privileges;"
+    mariadb_create_root_user
 
     mark_completed $FUNCNAME
 }
