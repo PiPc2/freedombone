@@ -156,13 +156,22 @@ function get_mariadb_password {
 function mariadb_fix_authentication {
     # See http://www.pontikis.net/blog/debian-9-stretch-rc3-web-server-setup-php7-mariadb
     # https://mariadb.com/kb/en/mariadb/unix_socket-authentication-plugin
-    function_check run_query
-    run_query_root mysql "update mysql.user set plugin = '' where User='root'; flush privileges;"
-    run_query_root mysql "UPDATE user SET Password=PASSWORD('$MARIADB_PASSWORD') where USER='root'; flush privileges;"
+    remove_watchdog_daemon mariadb
+    systemctl stop mariadb
+    mysqld_safe --skip-grant-tables &
+    output=$(mysql -u root << EOF
+use mysql;
+update mysql.user set plugin = '' where User='root'; flush privileges;
+UPDATE user SET Password=PASSWORD('$MARIADB_PASSWORD') where USER='root'; flush privileges;
+EOF
+)
+    kill_pid=$(ps aux | grep mysql | awk -F ' ' '{print $2}' | head -n 1)
+    kill -9 $kill_pid
 
     sed -i 's| --skip-grant-tables||g' /lib/systemd/system/mariadb.service
     systemctl daemon-reload
     systemctl restart mariadb
+    add_watchdog_daemon mariadb
 }
 
 function mariadb_create_root_user {
@@ -215,10 +224,6 @@ function install_mariadb {
     systemctl restart mariadb
 
     mariadb_fix_authentication
-
-    # mariadb daemon seems to occasionally crash
-    # This is a crude attempt to keep it running
-    add_watchdog_daemon mariadb
 
     mariadb_create_root_user
 
