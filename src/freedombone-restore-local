@@ -83,9 +83,6 @@ if [ -f $COMPLETION_FILE ]; then
     ADMIN_USERNAME=$(get_completion_param "Admin user")
 fi
 
-# MariaDB password
-DATABASE_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
-
 function check_backup_exists {
     if [ ! -d $USB_MOUNT/backup ]; then
         echo $"No backup directory found on the USB drive."
@@ -209,13 +206,17 @@ function restore_mariadb {
         keep_database_running
         temp_restore_dir=/root/tempmariadb
         restore_directory_from_usb $temp_restore_dir mariadb
-        echo $'Obtaining MariaDB password'
-        db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
+
+        store_original_mariadb_password
+
+        echo $'Obtaining original MariaDB password'
+        db_pass=$(cat /root/.mariadboriginal)
         if [ ${#db_pass} -gt 0 ]; then
             echo $"Restore the MariaDB user table"
-            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+            mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             if [ ! "$?" = "0" ]; then
                 echo $"Try again using the password obtained from backup"
+                db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
                 mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             fi
             if [ ! "$?" = "0" ]; then
@@ -226,9 +227,9 @@ function restore_mariadb {
             fi
             echo $"Restarting database"
             systemctl restart mariadb
-            echo $"Change the MariaDB password to the backup version"
-            DATABASE_PASSWORD="$db_pass"
-            ${PROJECT_NAME}-pass -u root -a mariadb -p "$DATABASE_PASSWORD"
+            echo $"Ensure MariaDB handles authentication"
+            MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+            mariadb_fix_authentication
         fi
         rm -rf $temp_restore_dir
     fi
@@ -248,6 +249,15 @@ function restore_letsencrypt {
     fi
 }
 
+function store_original_mariadb_password {
+    if [ ! -f /root/.mariadboriginal ]; then
+        echo $'Storing original mariadb password'
+        ORIGINAL_MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        # We can store this in plaintext because it will soon be of historical interest only
+        echo -n "$ORIGINAL_MARIADB_PASSWORD" > /root/.mariadboriginal
+    fi
+}
+
 function restore_passwordstore {
     if [[ $RESTORE_APP != 'all' ]]; then
         if [[ $RESTORE_APP != 'passwords' ]]; then
@@ -255,6 +265,7 @@ function restore_passwordstore {
         fi
     fi
     if [ -d $USB_MOUNT/backup/passwordstore ]; then
+        store_original_mariadb_password
         echo $"Restoring password store"
         restore_directory_from_usb / passwordstore
     fi
