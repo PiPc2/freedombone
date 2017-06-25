@@ -185,13 +185,16 @@ function restore_mariadb {
         temp_restore_dir=/root/tempmariadb
         restore_directory_from_friend $temp_restore_dir mariadb
 
+        store_original_mariadb_password
+
         echo $'Obtaining MariaDB password'
-        db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        db_pass=$(cat /root/.mariadboriginal)
         if [ ${#db_pass} -gt 0 ]; then
             echo $"Restore the MariaDB user table"
-            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+            mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             if [ ! "$?" = "0" ]; then
                 echo $"Try again using the password obtained from backup"
+                db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
                 mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             fi
             if [ ! "$?" = "0" ]; then
@@ -200,9 +203,9 @@ function restore_mariadb {
             fi
             echo $"Restarting database"
             systemctl restart mariadb
-            echo $"Change the MariaDB password to the backup version"
-            DATABASE_PASSWORD="$db_pass"
-            ${PROJECT_NAME}-pass -u root -a mariadb -p "$DATABASE_PASSWORD"
+            echo $"Ensure MariaDB handles authentication"
+            MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+            mariadb_fix_authentication
         fi
         rm -rf ${temp_restore_dir}
     fi
@@ -227,6 +230,7 @@ function restore_passwordstore {
         fi
     fi
     if [ -d $SERVER_DIRECTORY/backup/passwordstore ]; then
+        store_original_mariadb_password
         echo $"Restoring password store"
         restore_directory_from_friend / passwordstore
     fi
