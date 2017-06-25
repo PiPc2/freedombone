@@ -153,24 +153,34 @@ function get_mariadb_password {
     fi
 }
 
+function mariadb_kill_stone_dead {
+    systemctl stop mariadb
+    kill_pid=$(ps aux | grep mysqld_safe | awk -F ' ' '{print $2}' | head -n 1)
+    kill -9 $kill_pid
+    kill_pid=$(ps aux | grep mysqld | awk -F ' ' '{print $2}' | head -n 1)
+    kill -9 $kill_pid
+    kill_pid=$(ps aux | grep mysqld | awk -F ' ' '{print $2}' | head -n 1)
+    kill -9 $kill_pid
+}
+
 function mariadb_fix_authentication {
     # See http://www.pontikis.net/blog/debian-9-stretch-rc3-web-server-setup-php7-mariadb
     # https://mariadb.com/kb/en/mariadb/unix_socket-authentication-plugin
     remove_watchdog_daemon mariadb
-    systemctl stop mariadb
+    mariadb_kill_stone_dead
     mysqld_safe --skip-grant-tables &
-    output=$(mysql -u root << EOF
+    sleep 5
+    mysql -u root --password="$MARIADB_PASSWORD" << EOF
 use mysql;
-update mysql.user set plugin = '' where User='root'; flush privileges;
-UPDATE user SET Password=PASSWORD('$MARIADB_PASSWORD') where USER='root'; flush privileges;
+update mysql.user set plugin = '' where User='root';
+UPDATE user SET Password=PASSWORD('$MARIADB_PASSWORD') where USER='root';
+flush privileges;
 EOF
-)
-    kill_pid=$(ps aux | grep mysql | awk -F ' ' '{print $2}' | head -n 1)
-    kill -9 $kill_pid
+    mariadb_kill_stone_dead
 
     sed -i 's| --skip-grant-tables||g' /lib/systemd/system/mariadb.service
     systemctl daemon-reload
-    systemctl restart mariadb
+    systemctl start mariadb
     add_watchdog_daemon mariadb
 }
 
