@@ -354,14 +354,27 @@ function firewall_add {
     if ! grep -q "${firewall_name}=${firewall_port}" $FIREWALL_CONFIG; then
         echo "${firewall_name}=${firewall_port}" >> $FIREWALL_CONFIG
         if [ ! ${firewall_protocol} ]; then
-            iptables -A INPUT -p udp --dport ${firewall_port} -j ACCEPT
-            iptables -A INPUT -p tcp --dport ${firewall_port} -j ACCEPT
-        else
-            if [[ "${firewall_protocol}" == *"udp"* ]]; then
+            iptables -C INPUT -p udp --dport ${firewall_port} -j ACCEPT
+            if [ ! "$?" = "0" ]; then
                 iptables -A INPUT -p udp --dport ${firewall_port} -j ACCEPT
             fi
-            if [[ "${firewall_protocol}" == *"tcp"* ]]; then
+
+            iptables -C INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+            if [ ! "$?" = "0" ]; then
                 iptables -A INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+            fi
+        else
+            if [[ "${firewall_protocol}" == *"udp"* ]]; then
+                iptables -C INPUT -p udp --dport ${firewall_port} -j ACCEPT
+                if [ ! "$?" = "0" ]; then
+                    iptables -A INPUT -p udp --dport ${firewall_port} -j ACCEPT
+                fi
+            fi
+            if [[ "${firewall_protocol}" == *"tcp"* ]]; then
+                iptables -C INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+                if [ ! "$?" = "0" ]; then
+                    iptables -A INPUT -p tcp --dport ${firewall_port} -j ACCEPT
+                fi
             fi
         fi
         save_firewall_settings
@@ -377,14 +390,26 @@ function firewall_add_range {
     if ! grep -q "${firewall_name}=${firewall_port_start}:${firewall_port_end}" $FIREWALL_CONFIG; then
         echo "${firewall_name}=${firewall_port_start}:${firewall_port_end}" >> $FIREWALL_CONFIG
         if [ ! ${firewall_protocol} ]; then
-            iptables -A INPUT -p udp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
-            iptables -A INPUT -p tcp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
-        else
-            if [[ "${firewall_protocol}" == *"udp"* ]]; then
+            iptables -C INPUT -p udp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
+            if [ ! "$?" = "0" ]; then
                 iptables -A INPUT -p udp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
             fi
-            if [[ "${firewall_protocol}" == *"tcp"* ]]; then
+            iptables -C INPUT -p tcp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
+            if [ ! "$?" = "0" ]; then
                 iptables -A INPUT -p tcp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
+            fi
+        else
+            if [[ "${firewall_protocol}" == *"udp"* ]]; then
+                iptables -C INPUT -p udp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
+                if [ ! "$?" = "0" ]; then
+                    iptables -A INPUT -p udp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
+                fi
+            fi
+            if [[ "${firewall_protocol}" == *"tcp"* ]]; then
+                iptables -C INPUT -p tcp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
+                if [ ! "$?" = "0" ]; then
+                    iptables -A INPUT -p tcp --dport ${firewall_port_start}:${firewall_port_end} -j ACCEPT
+                fi
             fi
         fi
         save_firewall_settings
@@ -438,16 +463,23 @@ function domain_to_hex_string {
 
 function firewall_block_domain {
     blocked_domain="$1"
+    if [[ "$blocked_domain" == *'@'* ]]; then
+        # Don't try to block email/microblog addresses
+        return
+    fi
     if ! grep "$blocked_domain" $FIREWALL_DOMAINS; then
         hexstr=$(domain_to_hex_string $blocked_domain)
-        iptables -A INPUT -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
-        iptables -A INPUT -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
-        iptables -A OUTPUT -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
-        iptables -A OUTPUT -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
-        iptables -I FORWARD -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
-        iptables -I FORWARD -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
-        echo "${blocked_domain}" >> $FIREWALL_DOMAINS
-        save_firewall_settings
+        iptables -C INPUT -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+        if [ ! "$?" = "0" ]; then
+            iptables -A INPUT -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+            iptables -A INPUT -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+            iptables -A OUTPUT -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+            iptables -A OUTPUT -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+            iptables -I FORWARD -p udp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+            iptables -I FORWARD -p tcp --dport 53 -m string --hex-string "$hexstr" --algo bm -j DROP
+            echo "${blocked_domain}" >> $FIREWALL_DOMAINS
+            save_firewall_settings
+        fi
 
         # run the blocking rules now
         if [ -f /usr/bin/gnusocial-firewall ]; then
