@@ -40,6 +40,48 @@ WEBSERVER_LOG_LEVEL='warn'
 # Also the shred command can be very slow on Beaglebone Black
 REMOVE_FILES_COMMAND='rm -rf'
 
+APP_FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+for f in $APP_FILES
+do
+    source $f
+done
+
+APPS_AVAILABLE=()
+
+function logging_get_app_names {
+    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+
+    for filename in $FILES
+    do
+        app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+        if grep -q "logging_on_" ${filename}; then
+            if grep -q "logging_off_" ${filename}; then
+                APPS_AVAILABLE+=("${app_name}")
+            fi
+        fi
+    done
+}
+
+function turn_logging_on {
+    logging_get_app_names
+
+    for a in "${APPS_AVAILABLE[@]}"
+    do
+        echo $"Turning on logging for ${a}"
+        logging_on_${a}
+    done
+}
+
+function turn_logging_off {
+    logging_get_app_names
+
+    for a in "${APPS_AVAILABLE[@]}"
+    do
+        echo $"Turning off logging for ${a}"
+        logging_off_${a}
+    done
+}
+
 function turn_off_rsys_logging {
     sed -i 's|mail,news.none.*|mail,news.none      /dev/null|g' /etc/rsyslog.conf
     sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /dev/null|g' /etc/rsyslog.conf
@@ -83,12 +125,8 @@ if [ ! "$1" ]; then
 fi
 
 if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
-    if [ -f /var/lib/matrix/homeserver.yaml ]; then
-        sed -i 's|log_file:.*|log_file: /etc/matrix/homeserver.log|g' /var/lib/matrix/homeserver.yaml
-        if ! grep -q "#log_config:" /var/lib/matrix/homeserver.yaml; then
-            sed -i 's|log_config:|#log_config:|g' /var/lib/matrix/homeserver.yaml
-        fi
-    fi
+    turn_logging_on
+
     if [ -f /etc/fail2ban/fail2ban.conf ]; then
         sed -i 's|loglevel.*|loglevel = 3|g' /etc/fail2ban/fail2ban.conf
         sed -i 's|logtarget.*|logtarget = /var/log/fail2ban.log|g' /etc/fail2ban/fail2ban.conf
@@ -104,9 +142,6 @@ if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
         fi
         sed -i 's|#Log notice file.*|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
         sed -i 's|Log notice file.*|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
-    fi
-    if [ -f /etc/mumble-server.ini ]; then
-        sed -i 's|logfile=.*|logfile=/var/log/mumble-server.log|g' /etc/mumble-server.ini
     fi
     if [ -f /etc/php/7.0/fpm/php-fpm.conf ]; then
         sed -i 's|error_log =.*|error_log = /var/log/php-fpm.log|g' /etc/php/7.0/fpm/php-fpm.conf
@@ -125,15 +160,6 @@ if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
     fi
     if [ -f /etc/init.d/spamassassin ]; then
         sed -i 's|DOPTIONS="-s null -d --pidfile=$PIDFILE"|DOPTIONS="-d --pidfile=$PIDFILE"|g' /etc/init.d/spamassassin
-    fi
-    if [ -d /etc/prosody ]; then
-        if [ ! -d /var/log/prosody ]; then
-            mkdir /var/log/prosody
-            chown root:adm /var/log/prosody
-        fi
-        sed -i 's|info = "/dev/null";|info = "/var/log/prosody/prosody.log";|g' /etc/prosody/prosody.cfg.lua
-        sed -i 's|error = "/dev/null";|error = "/var/log/prosody/prosody.err";|g' /etc/prosody/prosody.cfg.lua
-        sed -i 's|levels = { "error" }; to = "/dev/null";|levels = { "error" }; to = "syslog";|g' /etc/prosody/prosody.cfg.lua
     fi
     if [ -d /etc/exim4 ]; then
         if [ ! -d /var/log/exim4 ]; then
@@ -158,28 +184,11 @@ if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
     fi
     turn_on_rsys_logging
 else
-    if [ -f /var/lib/matrix/homeserver.yaml ]; then
-        sed -i 's|log_file:.*|log_file: /dev/null|g' /var/lib/matrix/homeserver.yaml
-        if ! grep -q "#log_config:" /var/lib/matrix/homeserver.yaml; then
-            sed -i 's|log_config:|#log_config:|g' /var/lib/matrix/homeserver.yaml
-        fi
-        if [ -f /etc/matrix/homeserver.log ]; then
-            $REMOVE_FILES_COMMAND /etc/matrix/homeserver.log
-        fi
-        if [ -f /etc/matrix/homeserver.log.1 ]; then
-            $REMOVE_FILES_COMMAND /etc/matrix/homeserver.log.1
-        fi
-    fi
+    rurn_logging_off
+
     if [ -d /etc/tor ]; then
         sed -i 's|#Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
         sed -i 's|Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
-    fi
-    if [ -f /etc/mumble-server.ini ]; then
-        sed -i 's|logfile=.*|logfile=/dev/null|g' /etc/mumble-server.ini
-        if [ -d /var/log/mumble-server ]; then
-            $REMOVE_FILES_COMMAND /var/log/mumble-server/*
-            rm -rf /var/log/mumble-server
-        fi
     fi
     if [ -d /var/log/radicale ]; then
         $REMOVE_FILES_COMMAND /var/log/radicale/*
@@ -201,13 +210,6 @@ else
     fi
     if [ -f /etc/init.d/spamassassin ]; then
         sed -i 's|DOPTIONS="-d --pidfile=$PIDFILE"|DOPTIONS="-s null -d --pidfile=$PIDFILE"|g' /etc/init.d/spamassassin
-    fi
-    if [ -d /etc/prosody ]; then
-        sed -i 's|info = "/var/log/prosody/prosody.log";|info = "/dev/null";|g' /etc/prosody/prosody.cfg.lua
-        sed -i 's|error = "/var/log/prosody/prosody.err";|error = "/dev/null";|g' /etc/prosody/prosody.cfg.lua
-        sed -i 's|levels = { "error" }; to = "syslog";|levels = { "error" }; to = "/dev/null";|g' /etc/prosody/prosody.cfg.lua
-        $REMOVE_FILES_COMMAND /var/log/prosody/*
-        rm -rf /var/log/prosody
     fi
     if [ -d /etc/exim4 ]; then
         sed -i 's|MAIN_LOG_SELECTOR = .*|MAIN_LOG_SELECTOR = -all|g' /etc/exim4/conf.d/main/01_exim4-config_listmacrosdefs
