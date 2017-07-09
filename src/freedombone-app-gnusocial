@@ -375,21 +375,31 @@ function backup_local_gnusocial {
         GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
     fi
 
-    source_directory=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
-    if [ -d $source_directory ]; then
-        dest_directory=gnusocial
-        function_check suspend_site
-        suspend_site ${GNUSOCIAL_DOMAIN_NAME}
-
-        function_check backup_directory_to_usb
-        backup_directory_to_usb $source_directory $dest_directory
-
-        function_check backup_database_to_usb
-        backup_database_to_usb gnusocial
-
-        function_check restart_site
-        restart_site
+    source_directory=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/backup
+    if [ ! -d $source_directory ]; then
+        mkdir $source_directory
     fi
+    cp -p /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/config.php $source_directory
+    if [ -d /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/static ]; then
+        cp -rp /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/static $source_directory
+    fi
+
+    function_check suspend_site
+    suspend_site ${GNUSOCIAL_DOMAIN_NAME}
+
+    function_check backup_directory_to_usb
+    dest_directory=gnusocialconfig
+    backup_directory_to_usb $source_directory $dest_directory
+
+    source_directory=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/file
+    dest_directory=gnusocialfile
+    backup_directory_to_usb $source_directory $dest_directory
+
+    function_check backup_database_to_usb
+    backup_database_to_usb gnusocial
+
+    function_check restart_site
+    restart_site
 }
 
 function restore_local_gnusocial {
@@ -408,8 +418,25 @@ function restore_local_gnusocial {
         function_check gnusocial_create_database
         gnusocial_create_database
 
-        restore_database gnusocial ${GNUSOCIAL_DOMAIN_NAME}
+        restore_database gnusocial
         if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
+
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir gnusocialconfig
+        if [ -d $temp_restore_dir ]; then
+            cp $temp_restore_dir$gnusocial_dir/backup/config.php $gnusocial_dir/
+            chown www-data:www-data $gnusocial_dir/config.php
+            cp -rp $temp_restore_dir$gnusocial_dir/static $gnusocial_dir/
+            chown -R www-data:www-data $gnusocial_dir/static
+            rm -rf $temp_restore_dir
+        fi
+
+        restore_directory_from_usb $temp_restore_dir gnusocialfile
+        if [ -d $temp_restore_dir ]; then
+            cp -rp $temp_restore_dir$gnusocial_dir/file $gnusocial_dir/
+            chown -R www-data:www-data $gnusocial_dir/file
             rm -rf $temp_restore_dir
         fi
 
@@ -420,45 +447,75 @@ function restore_local_gnusocial {
 }
 
 function backup_remote_gnusocial {
+    GNUSOCIAL_DOMAIN_NAME='gnusocial'
     if grep -q "gnusocial domain" $COMPLETION_FILE; then
         GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
-        temp_backup_dir=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
-        if [ -d $temp_backup_dir ]; then
-            function_check suspend_site
-            suspend_site ${GNUSOCIAL_DOMAIN_NAME}
-
-            function_check backup_database_to_friend
-            backup_database_to_friend gnusocial
-
-            echo $"Backing up GNU social installation"
-
-            function_check backup_directory_to_friend
-            backup_directory_to_friend $temp_backup_dir gnusocial
-
-            function_check restart_site
-            restart_site
-        else
-            echo $"gnusocial domain specified but not found in ${temp_backup_dir}"
-        fi
     fi
+
+    source_directory=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/backup
+    if [ ! -d $source_directory ]; then
+        mkdir $source_directory
+    fi
+    cp -p /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/config.php $source_directory
+    if [ -d /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/static ]; then
+        cp -rp /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/static $source_directory
+    fi
+
+    function_check suspend_site
+    suspend_site ${GNUSOCIAL_DOMAIN_NAME}
+
+    function_check backup_directory_to_friend
+    dest_directory=gnusocialconfig
+    backup_directory_to_friend $source_directory $dest_directory
+
+    source_directory=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs/file
+    dest_directory=gnusocialfile
+    backup_directory_to_friend $source_directory $dest_directory
+
+    function_check backup_database_to_friend
+    backup_database_to_friend gnusocial
+
+    function_check restart_site
+    restart_site
 }
 
 function restore_remote_gnusocial {
-    if grep -q "gnusocial domain" $COMPLETION_FILE; then
+    if ! grep -q "gnusocial domain" $COMPLETION_FILE; then
+        return
+    fi
+    GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
+    if [ $GNUSOCIAL_DOMAIN_NAME ]; then
         echo $"Restoring gnusocial"
-        GNUSOCIAL_DOMAIN_NAME=$(get_completion_param "gnusocial domain")
-
+        temp_restore_dir=/root/tempgnusocial
+        gnusocial_dir=/var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
         # stop the daemons
-        cd /var/www/${GNUSOCIAL_DOMAIN_NAME}/htdocs
+        cd $gnusocial_dir
         scripts/stopdaemons.sh
 
         function_check gnusocial_create_database
         gnusocial_create_database
 
         function_check restore_database_from_friend
-        restore_database_from_friend gnusocial ${GNUSOCIAL_DOMAIN_NAME}
-        if [ -d /root/tempgnusocial ]; then
-            rm -rf /root/tempgnusocial
+        restore_database_from_friend gnusocial
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
+
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir gnusocialconfig
+        if [ -d $temp_restore_dir ]; then
+            cp $temp_restore_dir$gnusocial_dir/backup/config.php $gnusocial_dir/
+            chown www-data:www-data $gnusocial_dir/config.php
+            cp -rp $temp_restore_dir$gnusocial_dir/static $gnusocial_dir/
+            chown -R www-data:www-data $gnusocial_dir/static
+            rm -rf $temp_restore_dir
+        fi
+
+        restore_directory_from_friend $temp_restore_dir gnusocialfile
+        if [ -d $temp_restore_dir ]; then
+            cp -rp $temp_restore_dir$gnusocial_dir/file $gnusocial_dir/
+            chown -R www-data:www-data $gnusocial_dir/file
+            rm -rf $temp_restore_dir
         fi
 
         gnusocial_update_after_restore gnusocial ${GNUSOCIAL_DOMAIN_NAME}
