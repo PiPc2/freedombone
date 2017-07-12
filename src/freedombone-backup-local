@@ -42,6 +42,22 @@ if [ -f /usr/bin/${PROJECT_NAME} ]; then
     PROJECT_INSTALL_DIR=/usr/bin
 fi
 
+function please_wait {
+        local str width height length
+
+        width=$(tput cols)
+        height=$(tput lines)
+        str="Standby to backup to USB"
+        length=${#str}
+        clear
+        tput cup $((height / 2)) $(((width / 2) - (length / 2)))
+        echo "$str"
+        tput cup $((height * 3 / 5)) $(((width / 2)))
+        echo -n ''
+}
+
+please_wait
+
 source $PROJECT_INSTALL_DIR/${PROJECT_NAME}-vars
 
 # include utils which allow function_check and drive mount
@@ -50,6 +66,8 @@ for f in $UTILS_FILES
 do
   source $f
 done
+
+clear
 
 USB_DRIVE=/dev/sdb1
 USB_MOUNT=/mnt/usb
@@ -241,6 +259,22 @@ function prepare_directories {
     fi
 }
 
+function backup_blocklist {
+    if [ ! -f /root/${PROJECT_NAME}-firewall-domains.cfg ]; then
+        return
+    fi
+    echo $"Backing up ${PROJECT_NAME} blocklist"
+    temp_backup_dir=/root/tempbackupblocklist
+    if [ ! -d $temp_backup_dir ]; then
+        mkdir -p $temp_backup_dir
+    fi
+    if [ -f $NODEJS_INSTALLED_APPS_FILE ]; then
+        cp -f /root/${PROJECT_NAME}-firewall-domains.cfg $temp_backup_dir
+    fi
+    backup_directory_to_usb $temp_backup_dir blocklist
+    rm -rf $temp_backup_dir
+}
+
 function backup_configfiles {
     echo $"Backing up ${PROJECT_NAME} configuration files"
     temp_backup_dir=/root/tempbackupconfig
@@ -267,6 +301,7 @@ function backup_configfiles {
         cp -f /etc/nginx/.htpasswd $temp_backup_dir/htpasswd
     fi
     backup_directory_to_usb $temp_backup_dir configfiles
+    rm -rf $temp_backup_dir
 }
 
 function backup_admin_readme {
@@ -287,6 +322,7 @@ function backup_mariadb {
         if [ ! -d $temp_backup_dir ]; then
             mkdir $temp_backup_dir
         fi
+        keep_database_running
         mysqldump --lock-tables --password="$DATABASE_PASSWORD" mysql user > $temp_backup_dir/mysql.sql
         if [ ! -s $temp_backup_dir/mysql.sql ]; then
             echo $"Unable to backup mysql settings"
@@ -316,6 +352,7 @@ prepare_directories
 backup_directories
 backup_apps local
 backup_configfiles
+backup_blocklist
 backup_admin_readme
 backup_mariadb
 backup_extra_directories local

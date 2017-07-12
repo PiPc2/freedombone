@@ -44,6 +44,14 @@ librevault_variables=(PROTOBUF_REPO
                       LIBREVAULT_REPO
                       LIBREVAULT_PORT)
 
+function logging_on_librevault {
+    echo -n ''
+}
+
+function logging_off_librevault {
+    echo -n ''
+}
+
 function install_interactive_librevault {
     echo -n ''
     APP_INSTALLED=1
@@ -55,6 +63,11 @@ function reconfigure_librevault {
 }
 
 function upgrade_librevault {
+    CURR_LIBREVAULT_COMMIT=$(get_completion_param "librevault commit")
+    if [[ "$CURR_LIBREVAULT_COMMIT" == "$LIBREVAULT_COMMIT" ]]; then
+        return
+    fi
+
     function_check set_repo_commit
 
     if [ -d $INSTALL_DIR/protobuf ]; then
@@ -71,8 +84,8 @@ function upgrade_librevault {
     fi
 
     if [ -d $INSTALL_DIR/librevault/build ]; then
-        if ! grep -q "Librevault commit:$LIBREVAULT_COMMIT" $COMPLETION_FILE; then
-            set_repo_commit $INSTALL_DIR/librevault "Librevault commit" "$LIBREVAULT_COMMIT" $LIBREVAULT_REPO
+        if ! grep -q "librevault commit:$LIBREVAULT_COMMIT" $COMPLETION_FILE; then
+            set_repo_commit $INSTALL_DIR/librevault "librevault commit" "$LIBREVAULT_COMMIT" $LIBREVAULT_REPO
             cd $INSTALL_DIR/librevault
             git submodule update --init --recursive
             cd $INSTALL_DIR/librevault/build
@@ -108,6 +121,7 @@ function remove_librevault {
     systemctl stop librevault
     systemctl disable librevault
     rm /etc/systemd/system/librevault.service
+    systemctl daemon-reload
     remove_completion_param install_librevault
     remove_completion_param configure_firewall_for_librevault
 }
@@ -130,15 +144,10 @@ function mesh_install_librevault {
     chroot "$rootdir" apt-get -yq install autoconf automake libtool curl make unzip
 
     # A workaround which allows c++14 to be installed
-    sed -i 's|jessie|stretch|g' $rootdir/etc/apt/sources.list
-    sed -i 's|stretch-backports|jessie-backports|g' $rootdir/etc/apt/sources.list
-    chroot "$rootdir" apt-get update
     chroot "$rootdir" apt-get -yq install g++ gcc-6 g++-6 libboost-all-dev libssl-dev
     chroot "$rootdir" apt-get -yq install protobuf-compiler libprotobuf-dev
     chroot "$rootdir" apt-get -yq install qtbase5-dev libqt5svg5-dev libqt5websockets5-dev
     chroot "$rootdir" apt-get -yq install libsqlite3-dev qttools5-dev qttools5-dev-tools libnatpmp-dev
-    sed -i 's|stretch|jessie|g' $rootdir/etc/apt/sources.list
-    chroot "$rootdir" apt-get update
 
     if [ ! -d $rootdir$INSTALL_DIR ]; then
         mkdir -p $rootdir$INSTALL_DIR
@@ -228,16 +237,11 @@ function install_librevault {
     apt-get -yq install autoconf automake libtool curl make unzip
 
     # A workaround which allows c++14 to be installed
-    sed -i 's|jessie|stretch|g' /etc/apt/sources.list
-    sed -i 's|stretch-backports|jessie-backports|g' /etc/apt/sources.list
-    apt-get update
     apt-get -yq install protobuf-compiler libprotobuf-dev
     apt-get -yq install g++ gcc-6 g++-6 libboost-all-dev libssl-dev
     apt-get -yq install qtbase5-dev libqt5svg5-dev libqt5websockets5-dev
     apt-get -yq install libsqlite3-dev qttools5-dev qttools5-dev-tools libnatpmp-dev
     apt-get -yq install gcc-6 g++-6 libboost-all-dev
-    sed -i 's|stretch|jessie|g' /etc/apt/sources.list
-    apt-get update
 
     if [ ! -d $INSTALL_DIR ]; then
         mkdir -p $INSTALL_DIR
@@ -254,7 +258,15 @@ function install_librevault {
 
     set_completion_param "Protobuf commit" "$PROTOBUF_COMMIT"
 
-    git_clone $LIBREVAULT_REPO $INSTALL_DIR/librevault
+    if [ -d /repos/librevault ]; then
+        mkdir $INSTALL_DIR/librevault
+        cp -r -p /repos/librevault/. $INSTALL_DIR/librevault
+        cd $INSTALL_DIR/librevault
+        git pull
+    else
+        git_clone $LIBREVAULT_REPO $INSTALL_DIR/librevault
+    fi
+
     cd $INSTALL_DIR/librevault
     git checkout $LIBREVAULT_COMMIT -b $LIBREVAULT_COMMIT
     git submodule update --init --recursive
@@ -271,7 +283,7 @@ function install_librevault {
     cmake --build .
     make install
 
-    set_completion_param "Librevault commit" "$LIBREVAULT_COMMIT"
+    set_completion_param "librevault commit" "$LIBREVAULT_COMMIT"
 
     LIBREVAULT_DAEMON=/etc/systemd/system/librevault-daemon.service
     echo '[Unit]' > $LIBREVAULT_DAEMON

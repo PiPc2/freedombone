@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2016-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -49,6 +49,14 @@ mediagoblin_variables=(ONION_ONLY
                        DEFAULT_DOMAIN_NAME
                        DDNS_PROVIDER)
 
+function logging_on_mediagoblin {
+    echo -n ''
+}
+
+function logging_off_mediagoblin {
+    echo -n ''
+}
+
 function mediagoblin_fix_email {
     # This is a crude hack and there may be a better solution
     # The cause of verification problems might be that the mediagoblin user
@@ -60,7 +68,7 @@ function mediagoblin_fix_email {
         echo $'Unable to fix email sending'
         exit 792532
     fi
-    if ! grep 'import os' $mgfile; then
+    if ! grep -q 'import os' $mgfile; then
         sed -i '/import sys/a import os' $mgfile
     fi
     sed -i "s|return mhost.sendmail(from_addr, to_addrs, message.as_string())|return os.system(\"echo '\" + message_body + \"' \| mail -s '\" + message['Subject'] + \"' \" + message['To'])|g" $mgfile
@@ -235,6 +243,7 @@ function remove_mediagoblin {
     systemctl stop mediagoblin
     systemctl disable mediagoblin
     rm /etc/systemd/system/mediagoblin.service
+    systemctl daemon-reload
 
     function_check remove_onion_service
     remove_onion_service mediagoblin ${MEDIAGOBLIN_ONION_PORT}
@@ -251,8 +260,9 @@ function remove_mediagoblin {
     sed -i '/mediagoblin/d' $COMPLETION_FILE
 
     remove_nodejs mediagoblin
-    deluser mediagoblin
-    delgroup mediagoblin
+
+    groupdel -f mediagoblin
+    userdel -r mediagoblin
 
     function_check remove_ddns_domain
     remove_ddns_domain $MEDIAGOBLIN_DOMAIN_NAME
@@ -279,7 +289,17 @@ function install_mediagoblin {
     chown -hR mediagoblin:www-data $MEDIAGOBLIN_BASE_DIR
     chown -hR mediagoblin:www-data /var/lib/mediagoblin
     chmod -R g+wx /var/lib/mediagoblin
-    su -c "cd $MEDIAGOBLIN_BASE_DIR && git clone $MEDIAGOBLIN_REPO $MEDIAGOBLIN_BASE_DIR/mediagoblin" - mediagoblin
+
+    if [ -d /repos/mediagoblin ]; then
+        mkdir -p $MEDIAGOBLIN_BASE_DIR/mediagoblin
+        cp -r -p /repos/mediagoblin/. $MEDIAGOBLIN_BASE_DIR/mediagoblin
+        cd $MEDIAGOBLIN_BASE_DIR/mediagoblin
+        git pull
+        chown -R mediagoblin:mediagoblin $MEDIAGOBLIN_BASE_DIR/mediagoblin
+    else
+        su -c "cd $MEDIAGOBLIN_BASE_DIR && git clone $MEDIAGOBLIN_REPO $MEDIAGOBLIN_BASE_DIR/mediagoblin" - mediagoblin
+    fi
+
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git checkout $MEDIAGOBLIN_COMMIT -b $MEDIAGOBLIN_COMMIT" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git submodule sync" - mediagoblin
     su -c "cd $MEDIAGOBLIN_BASE_DIR/mediagoblin && git submodule update --force --init --recursive" - mediagoblin
@@ -382,6 +402,7 @@ function install_mediagoblin {
         echo '        include /etc/nginx/fastcgi_params;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '        fastcgi_param PATH_INFO $fastcgi_script_name;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '        fastcgi_param SCRIPT_NAME "";' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
         echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
     else
@@ -438,6 +459,7 @@ function install_mediagoblin {
     echo '        include /etc/nginx/fastcgi_params;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
     echo '        fastcgi_param PATH_INFO $fastcgi_script_name;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
     echo '        fastcgi_param SCRIPT_NAME "";' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
+    echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
     echo '    }' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
     echo '}' >> /etc/nginx/sites-available/$MEDIAGOBLIN_DOMAIN_NAME
 
@@ -469,7 +491,7 @@ function install_mediagoblin {
 
     sed -i 's|allow_reporting.*|allow_reporting = false|g' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
 
-    if ! grep '[[[skip_transcode]]]' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini; then
+    if ! grep -q '[[[skip_transcode]]]' $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini; then
         echo '[[[skip_transcode]]]' >> $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
         echo 'mime_types = video/webm, video/ogg, video/mp4, audio/ogg, application/ogg, application/x-annodex' >> $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
         echo 'container_formats = Matroska, Ogg, ISO MP4/M4A' >> $MEDIAGOBLIN_BASE_DIR/mediagoblin/mediagoblin_local.ini
@@ -496,7 +518,7 @@ function install_mediagoblin {
 
     nginx_ensite $MEDIAGOBLIN_DOMAIN_NAME
 
-    systemctl restart php5-fpm
+    systemctl restart php7.0-fpm
     systemctl restart nginx
 
     function_check add_ddns_domain

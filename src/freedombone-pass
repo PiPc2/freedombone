@@ -22,7 +22,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2016-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -57,9 +57,7 @@ MASTER_PASSWORD=''
 NO_PASSWORD_STORE_FILE=~/.nostore
 
 function get_backup_key_id {
-    MY_BACKUP_KEY_ID=$(gpg --list-keys "(backup key)" | \
-                           grep 'pub ' | awk -F ' ' '{print $2}' | \
-                           awk -F '/' '{print $2}')
+    MY_BACKUP_KEY_ID=$(gpg --list-keys "(backup key)" | sed -n '2p' | sed 's/^[ \t]*//')
     if [ ${#MY_BACKUP_KEY_ID} -lt 4 ]; then
         echo $"Error: gpg backup key was not found"
         return 58213
@@ -121,6 +119,11 @@ function run_tests {
         exit 78352
     fi
     ${PROJECT_NAME}-pass -u root -a tests -p "$pass"
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to encrypt password'
+        exit 72725
+    fi
+    echo $'Password encrypted'
     returned_pass=$(${PROJECT_NAME}-pass -u root -a tests)
     if [[ "$pass" != "$returned_pass" ]]; then
         echo "pass     :${pass}:"
@@ -128,6 +131,7 @@ function run_tests {
         echo "returned :${returned_pass}:"
         exit 73825
     fi
+    echo $'Password decrypted'
     ${PROJECT_NAME}-pass -u root --rmapp tests
     echo "Tests passed"
 }
@@ -303,7 +307,7 @@ if [ ${#CURR_PASSWORD} -eq 0 ]; then
         echo ""
         exit 4
     else
-        pass=$(gpg -dq --passphrase "$MASTER_PASSWORD" ~/.passwords/$CURR_USERNAME/$CURR_APP)
+        pass=$(gpg --batch -dq --passphrase "$MASTER_PASSWORD" ~/.passwords/$CURR_USERNAME/$CURR_APP)
         remove_padding "${pass}"
     fi
 else
@@ -318,7 +322,7 @@ else
         mkdir -p ~/.passwords/$CURR_USERNAME
     fi
     # padding helps to ensure than nothing can be learned from the length of the cyphertext
-    pad_string "${CURR_PASSWORD}" | gpg -ca --cipher-algo AES256 --passphrase "$MASTER_PASSWORD" > ~/.passwords/$CURR_USERNAME/$CURR_APP
+    pad_string "${CURR_PASSWORD}" | gpg --batch -ca --cipher-algo AES256 --passphrase "$MASTER_PASSWORD" > ~/.passwords/$CURR_USERNAME/$CURR_APP
     if [ ! -f ~/.passwords/$CURR_USERNAME/$CURR_APP ]; then
         MASTER_PASSWORD=
         exit 5

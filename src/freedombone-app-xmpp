@@ -50,15 +50,6 @@ prosody_nightly_url="https://prosody.im/nightly/${prosody_latest_version}/latest
 prosody_modules_filename='prosody-modules-20170514.tar.gz'
 prosody_modules_hash='ef404c203317cc0de6da7aaec4f21765a57f630adfbf082cf2dd92b881c15f86'
 
-LIBMESODE_REPO="https://github.com/boothj5/libmesode"
-LIBMESODE_COMMIT='e3db0e9bfba61b2d82193874343a94a88f910800'
-
-PROFANITY_REPO="https://github.com/boothj5/profanity"
-PROFANITY_COMMIT='2fafaec8a7dc9bc01ee894d83214590598b32914'
-
-PROFANITY_OMEMO_PLUGIN_REPO="https://github.com/ReneVolution/profanity-omemo-plugin"
-PROFANITY_OMEMO_PLUGIN_COMMIT='3ec8ec173656bed9761b740b086123e07c749548'
-
 xmpp_variables=(ONION_ONLY
                 INSTALLED_WITHIN_DOCKER
                 XMPP_CIPHERS
@@ -67,6 +58,28 @@ xmpp_variables=(ONION_ONLY
                 MY_USERNAME
                 DEFAULT_DOMAIN_NAME
                 XMPP_DOMAIN_CODE)
+
+function logging_on_xmpp {
+    if [ -d /etc/prosody ]; then
+        if [ ! -d /var/log/prosody ]; then
+            mkdir /var/log/prosody
+            chown root:adm /var/log/prosody
+        fi
+        sed -i 's|info = "/dev/null";|info = "/var/log/prosody/prosody.log";|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|error = "/dev/null";|error = "/var/log/prosody/prosody.err";|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|levels = { "error" }; to = "/dev/null";|levels = { "error" }; to = "syslog";|g' /etc/prosody/prosody.cfg.lua
+    fi
+}
+
+function logging_off_xmpp {
+    if [ -d /etc/prosody ]; then
+        sed -i 's|info = "/var/log/prosody/prosody.log";|info = "/dev/null";|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|error = "/var/log/prosody/prosody.err";|error = "/dev/null";|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|levels = { "error" }; to = "syslog";|levels = { "error" }; to = "/dev/null";|g' /etc/prosody/prosody.cfg.lua
+        $REMOVE_FILES_COMMAND /var/log/prosody/*
+        rm -rf /var/log/prosody
+    fi
+}
 
 function xmpp_add_onion_address {
     domain_name="$1"
@@ -343,7 +356,7 @@ function update_prosody_modules {
     fi
 
     # change to using pep rather than profile modules
-    if grep '"pep"' /etc/prosody/prosody.cfg.lua; then
+    if grep -q '"pep"' /etc/prosody/prosody.cfg.lua; then
         # This strange dance seems to fix occasional breakage of PEP
         # Is there a better solution?
         sed -i 's|"pep"|"profile"|g' /etc/prosody/prosody.cfg.lua
@@ -352,7 +365,7 @@ function update_prosody_modules {
         sed -i 's|"profile"|"pep"|g' /etc/prosody/prosody.cfg.lua
         systemctl restart prosody
     fi
-    if ! grep '"vcard"' /etc/prosody/prosody.cfg.lua; then
+    if ! grep -q '"vcard"' /etc/prosody/prosody.cfg.lua; then
         systemctl stop prosody
         sed -i '/"pep"/a "vcard";' /etc/prosody/prosody.cfg.lua
         systemctl start prosody
@@ -420,6 +433,9 @@ function upgrade_xmpp {
         set_completion_param "prosody_filename" "${prosody_filename}"
     fi
 
+    cp -r $INSTALL_DIR/prosody-modules/* /var/lib/prosody/prosody-modules/
+    chown -R prosody:prosody /var/lib/prosody/prosody-modules
+
     systemctl restart prosody
 }
 
@@ -447,7 +463,7 @@ function restore_local_xmpp {
             exit 725
         fi
         rm -rf $temp_restore_dir
-        service prosody restart
+        systemctl restart prosody
         chown -R prosody:prosody /var/lib/prosody/*
         echo $"Restore of xmpp settings complete"
     fi
@@ -472,7 +488,7 @@ function restore_remote_xmpp {
             exit 725
         fi
         rm -rf $temp_restore_dir
-        service prosody restart
+        systemctl restart prosody
         chown -R prosody:prosody /var/lib/prosody/*
         echo $"Restore of xmpp settings complete"
     fi

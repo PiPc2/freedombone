@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -53,6 +53,24 @@ rss_variables=(RSS_READER_REPO
                USB_MOUNT
                MY_USERNAME)
 
+function logging_on_rss {
+    echo -n ''
+}
+
+function logging_off_rss {
+    echo -n ''
+}
+
+function remove_user_rss {
+    remove_username="$1"
+}
+
+function add_user_rss {
+    new_username="$1"
+    new_user_password="$2"
+    echo '0'
+}
+
 function install_interactive_rss {
     echo -n ''
     APP_INSTALLED=1
@@ -86,6 +104,11 @@ function reconfigure_rss {
 }
 
 function upgrade_rss {
+    CURR_RSS_READER_COMMIT=$(get_completion_param "rss reader commit")
+    if [[ "$CURR_RSS_READER_COMMIT" == "$RSS_READER_COMMIT" ]]; then
+        return
+    fi
+
     RSS_MOBILE_READER_PATH=/etc/share/ttrss-mobile
 
     if [[ $(app_is_installed rss) == "1" ]]; then
@@ -180,6 +203,10 @@ function restore_local_rss {
             rm -rf $temp_restore_dir
         fi
     fi
+
+    MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+    sed -i "s|define('DB_PASS'.*|define('DB_PASS', '${MARIADB_PASSWORD}');|g" $RSS_READER_PATH/config.php
+    MARIADB_PASSWORD=
 }
 
 function backup_remote_rss {
@@ -238,6 +265,11 @@ function restore_remote_rss {
         if [ -d /root/tempttrss ]; then
             rm -rf /root/tempttrss
         fi
+
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        sed -i "s|define('DB_PASS'.*|define('DB_PASS', '${MARIADB_PASSWORD}');|g" $RSS_READER_PATH/config.php
+        MARIADB_PASSWORD=
+
         echo $"Restore of ttrss complete"
     fi
 }
@@ -249,7 +281,8 @@ function remove_rss {
 
     nginx_dissite $RSS_READER_DOMAIN_NAME
     function_check remove_onion_service
-    remove_onion_service rss ${RSS_READER_ONION_PORT} ${RSS_MOBILE_READER_ONION_PORT}
+    remove_onion_service mobilerss ${RSS_MOBILE_READER_ONION_PORT}
+    remove_onion_service rss ${RSS_READER_ONION_PORT}
     if [ -f /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME ]; then
         rm /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     fi
@@ -261,6 +294,7 @@ function remove_rss {
     remove_completion_param install_rss
     sed -i '/RSS /d' $COMPLETION_FILE
     sed -i '/rss /d' $COMPLETION_FILE
+    sed -i '/rss_/d' $COMPLETION_FILE
     remove_backup_database_local ttrss
 }
 
@@ -294,15 +328,27 @@ function install_rss_main {
     function_check remove_onion_service
     remove_onion_service rss ${RSS_READER_ONION_PORT} ${RSS_MOBILE_READER_ONION_PORT}
 
-    apt-get -yq install php-gettext php5-curl php5-gd php5-mysql git
-    apt-get -yq install curl php-xml-parser php5-mcrypt
+    apt-get -yq install php-gettext php-curl php-gd php-mysql git
+    apt-get -yq install curl php-mcrypt libfcgi0ldbl
+
+    remove_onion_service mobilerss ${RSS_MOBILE_READER_ONION_PORT}
+    remove_onion_service rss ${RSS_READER_ONION_PORT}
 
     if [ ! -d /etc/share ]; then
         mkdir /etc/share
     fi
     cd /etc/share
-    function_check git_clone
-    git_clone $RSS_READER_REPO tt-rss
+
+    if [ -d /repos/rss ]; then
+        mkdir tt-rss
+        cp -r -p /repos/rss/. tt-rss
+        cd tt-rss
+        git pull
+    else
+        function_check git_clone
+        git_clone $RSS_READER_REPO tt-rss
+    fi
+
     if [ ! -d $RSS_READER_PATH ]; then
         echo $'Could not clone RSS reader repo'
         exit 52925
@@ -323,7 +369,12 @@ function install_rss_main {
     rss_create_database
 
     RSS_READER_ONION_HOSTNAME=$(add_onion_service rss 80 ${RSS_READER_ONION_PORT})
-    RSS_MOBILE_READER_ONION_HOSTNAME=$(add_onion_service rss_mobile 80 ${RSS_MOBILE_READER_ONION_PORT})
+
+    sleep 2
+
+    RSS_MOBILE_READER_ONION_HOSTNAME=$(add_onion_service mobilerss 80 ${RSS_MOBILE_READER_ONION_PORT})
+
+    set_completion_param "rss_mobile onion domain" "$RSS_MOBILE_READER_ONION_HOSTNAME"
 
     echo 'server {' > /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo "  listen 127.0.0.1:$RSS_MOBILE_READER_ONION_PORT;" >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
@@ -337,7 +388,8 @@ function install_rss_main {
     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  location ~ \.php {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  location / {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
@@ -375,7 +427,8 @@ function install_rss_main {
     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  location ~ \.php {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  set $mobile_rewrite do_not_perform;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
@@ -396,7 +449,7 @@ function install_rss_main {
     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  location ~ \.php {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '    include snippets/fastcgi-php.conf;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
+    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  }' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
     echo '  location / {' >> /etc/nginx/sites-available/$RSS_READER_DOMAIN_NAME
@@ -420,7 +473,7 @@ function install_rss_main {
         # generate a config file
         RSS_FEED_CRYPT_KEY="$(create_password 24)"
         echo '<?php' > $RSS_READER_PATH/config.php
-        echo "  define ('_CURL_HTTP_PROXY', '127.0.0.1:9050');" >> $RSS_READER_PATH/config.php
+        echo "  define('_CURL_HTTP_PROXY', '127.0.0.1:9050');" >> $RSS_READER_PATH/config.php
         echo "  define('DB_TYPE', 'mysql');" >> $RSS_READER_PATH/config.php
         echo "  define('DB_HOST', 'localhost');" >> $RSS_READER_PATH/config.php
         echo "  define('DB_USER', 'root');" >> $RSS_READER_PATH/config.php
@@ -482,13 +535,14 @@ function install_rss_main {
     configure_php
 
     nginx_ensite $RSS_READER_DOMAIN_NAME
-    systemctl restart php5-fpm
+    systemctl restart mariadb
+    systemctl restart php7.0-fpm
     systemctl restart nginx
 
     # daemon to update feeds
     echo '[Unit]' > /etc/systemd/system/ttrss.service
     echo 'Description=ttrss_backend' >> /etc/systemd/system/ttrss.service
-    echo 'After=network.target mysql.service' >> /etc/systemd/system/ttrss.service
+    echo 'After=network.target mariadb.service' >> /etc/systemd/system/ttrss.service
     echo 'After=tor.service' >> /etc/systemd/system/ttrss.service
     echo '' >> /etc/systemd/system/ttrss.service
     echo '[Service]' >> /etc/systemd/system/ttrss.service
@@ -570,8 +624,17 @@ function install_rss_mobile_reader {
     fi
 
     cd /etc/share
-    function_check git_clone
-    git_clone $RSS_MOBILE_READER_REPO ttrss-mobile
+
+    if [ -d /repos/rss-mobile ]; then
+        mkdir ttrss-mobile
+        cp -r -p /repos/rss-mobile/. ttrss-mobile
+        cd ttrss-mobile
+        git pull
+    else
+        function_check git_clone
+        git_clone $RSS_MOBILE_READER_REPO ttrss-mobile
+    fi
+
     if [ ! -d $RSS_MOBILE_READER_PATH ]; then
         echo $'Could not clone RSS mobile reader repo'
         exit 24816

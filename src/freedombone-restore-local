@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2015-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -44,6 +44,25 @@ if [ -f /usr/bin/${PROJECT_NAME} ]; then
     PROJECT_INSTALL_DIR=/usr/bin
 fi
 
+# MariaDB password
+DATABASE_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+
+function please_wait {
+        local str width height length
+
+        width=$(tput cols)
+        height=$(tput lines)
+        str="Standby to restore from USB"
+        length=${#str}
+        clear
+        tput cup $((height / 2)) $(((width / 2) - (length / 2)))
+        echo "$str"
+        tput cup $((height * 3 / 5)) $(((width / 2)))
+        echo -n ''
+}
+
+please_wait
+
 source $PROJECT_INSTALL_DIR/${PROJECT_NAME}-vars
 
 # include utils which allow function_check, go and drive mount
@@ -52,6 +71,8 @@ for f in $UTILS_FILES
 do
     source $f
 done
+
+clear
 
 USB_DRIVE=/dev/sdb1
 USB_MOUNT=/mnt/usb
@@ -64,9 +85,6 @@ read_config_param USB_DRIVE
 if [ -f $COMPLETION_FILE ]; then
     ADMIN_USERNAME=$(get_completion_param "Admin user")
 fi
-
-# MariaDB password
-DATABASE_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
 
 function check_backup_exists {
     if [ ! -d $USB_MOUNT/backup ]; then
@@ -90,6 +108,29 @@ function check_admin_user {
 function copy_gpg_keys {
     echo $"Copying GPG keys from admin user to root"
     cp -r /home/$ADMIN_USERNAME/.gnupg /root
+    gpg_set_permissions root
+}
+
+function restore_blocklist {
+    if [[ $RESTORE_APP != 'all' ]]; then
+        if [[ $RESTORE_APP != 'blocklist' ]]; then
+            return
+        fi
+    fi
+
+    if [ -d $USB_MOUNT/backup/blocklist ]; then
+        echo $"Restoring blocklist"
+        temp_restore_dir=/root/tempblocklist
+        restore_directory_from_usb $temp_restore_dir blocklist
+
+        if [ -f $temp_restore_dir/root/tempbackupblocklist/${PROJECT_NAME}-firewall-domains.cfg ]; then
+            cp -f $temp_restore_dir/root/tempbackupblocklist/${PROJECT_NAME}-firewall-domains.cfg /root/${PROJECT_NAME}-firewall-domains.cfg
+        fi
+
+        rm -rf $temp_restore_dir
+
+        firewall_refresh_blocklist
+    fi
 }
 
 function restore_configfiles {
@@ -100,9 +141,9 @@ function restore_configfiles {
     fi
 
     # this restores *.cfg and COMPLETION_FILE
-    if [ -d $USB_MOUNT/backup/config ]; then
+    if [ -d $USB_MOUNT/backup/configfiles ]; then
         echo $"Restoring configuration files"
-        temp_restore_dir=/root/tempconfig
+        temp_restore_dir=/root/tempconfigfiles
         restore_directory_from_usb $temp_restore_dir configfiles
 
         if [ -f $temp_restore_dir/root/.nostore ]; then
@@ -115,34 +156,34 @@ function restore_configfiles {
             fi
         fi
 
-        if [ -f $temp_restore_dir$NODEJS_INSTALLED_APPS_FILE ]; then
-            cp -f $temp_restore_dir$NODEJS_INSTALLED_APPS_FILE $NODEJS_INSTALLED_APPS_FILE
-        fi
+        #if [ -f $temp_restore_dir$NODEJS_INSTALLED_APPS_FILE ]; then
+        #    cp -f $temp_restore_dir$NODEJS_INSTALLED_APPS_FILE $NODEJS_INSTALLED_APPS_FILE
+        #fi
 
-        if [ -f $temp_restore_dir/root/${PROJECT_NAME}.cfg ]; then
-            cp -f $temp_restore_dir/root/${PROJECT_NAME}.cfg $CONFIGURATION_FILE
-            if [ ! "$?" = "0" ]; then
-                set_user_permissions
-                backup_unmount_drive
-                rm -rf $temp_restore_dir
-                exit 5294
-            fi
-        fi
+        #if [ -f $temp_restore_dir/root/${PROJECT_NAME}.cfg ]; then
+        #    cp -f $temp_restore_dir/root/${PROJECT_NAME}.cfg $CONFIGURATION_FILE
+        #    if [ ! "$?" = "0" ]; then
+        #        set_user_permissions
+        #        backup_unmount_drive
+        #        rm -rf $temp_restore_dir
+        #        exit 5294
+        #    fi
+        #fi
 
-        if [ -f $CONFIGURATION_FILE ]; then
-            # install according to the config file
-            freedombone -c $CONFIGURATION_FILE
-        fi
+        #if [ -f $CONFIGURATION_FILE ]; then
+        #    # install according to the config file
+        #    freedombone -c $CONFIGURATION_FILE
+        #fi
 
-        if [ -f $temp_restore_dir/root/${PROJECT_NAME}-completed.txt ]; then
-            cp -f $temp_restore_dir/root/${PROJECT_NAME}-completed.txt $COMPLETION_FILE
-            if [ ! "$?" = "0" ]; then
-                set_user_permissions
-                backup_unmount_drive
-                rm -rf $temp_restore_dir
-                exit 6382
-            fi
-        fi
+        #if [ -f $temp_restore_dir/root/${PROJECT_NAME}-completed.txt ]; then
+        #    cp -f $temp_restore_dir/root/${PROJECT_NAME}-completed.txt $COMPLETION_FILE
+        #    if [ ! "$?" = "0" ]; then
+        #        set_user_permissions
+        #        backup_unmount_drive
+        #        rm -rf $temp_restore_dir
+        #        exit 6382
+        #    fi
+        #fi
 
         if [ -f ${temp_restore_dir}${BACKUP_EXTRA_DIRECTORIES} ]; then
             cp -f ${temp_restore_dir}${BACKUP_EXTRA_DIRECTORIES} ${BACKUP_EXTRA_DIRECTORIES}
@@ -187,15 +228,20 @@ function restore_mariadb {
 
     if [ -d $USB_MOUNT/backup/mariadb ]; then
         echo $"Restoring mysql settings"
+        keep_database_running
         temp_restore_dir=/root/tempmariadb
         restore_directory_from_usb $temp_restore_dir mariadb
-        echo $'Obtaining MariaDB password'
-        db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
+
+        store_original_mariadb_password
+
+        echo $'Obtaining original MariaDB password'
+        db_pass=$(cat /root/.mariadboriginal)
         if [ ${#db_pass} -gt 0 ]; then
             echo $"Restore the MariaDB user table"
-            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+            mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             if [ ! "$?" = "0" ]; then
                 echo $"Try again using the password obtained from backup"
+                db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
                 mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
             fi
             if [ ! "$?" = "0" ]; then
@@ -205,10 +251,11 @@ function restore_mariadb {
                 exit 962
             fi
             echo $"Restarting database"
-            service mysql restart
-            echo $"Change the MariaDB password to the backup version"
-            DATABASE_PASSWORD="$db_pass"
-            ${PROJECT_NAME}-pass -u root -a mariadb -p "$DATABASE_PASSWORD"
+            systemctl restart mariadb
+            echo $"Ensure MariaDB handles authentication"
+            MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+            mariadb_fix_authentication
+            DATABASE_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
         fi
         rm -rf $temp_restore_dir
     fi
@@ -235,6 +282,7 @@ function restore_passwordstore {
         fi
     fi
     if [ -d $USB_MOUNT/backup/passwordstore ]; then
+        store_original_mariadb_password
         echo $"Restoring password store"
         restore_directory_from_usb / passwordstore
     fi
@@ -270,9 +318,13 @@ function restore_mutt_settings {
                 restore_directory_from_usb $temp_restore_dir mutt/$USERNAME
                 if [ -f $temp_restore_dir/home/$USERNAME/tempbackup/.muttrc ]; then
                     cp -f $temp_restore_dir/home/$USERNAME/tempbackup/.muttrc /home/$USERNAME/.muttrc
+                    sed -i '/set sidebar_delim/d' /home/$USERNAME/.muttrc
+                    sed -i '/set sidebar_sort/d' /home/$USERNAME/.muttrc
                 fi
                 if [ -f $temp_restore_dir/home/$USERNAME/tempbackup/Muttrc ]; then
                     cp -f $temp_restore_dir/home/$USERNAME/tempbackup/Muttrc /etc/Muttrc
+                    sed -i '/set sidebar_delim/d' /etc/Muttrc
+                    sed -i '/set sidebar_sort/d' /etc/Muttrc
                 fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
@@ -287,11 +339,10 @@ function restore_mutt_settings {
 }
 
 function restore_gpg {
-    if [[ $RESTORE_APP != 'all' ]]; then
-        if [[ $RESTORE_APP != 'gpg' ]]; then
-            return
-        fi
+    if [[ $RESTORE_APP != 'gpg' ]]; then
+        return
     fi
+
     if [ -d $USB_MOUNT/backup/gnupg ]; then
         for d in $USB_MOUNT/backup/gnupg/*/ ; do
             USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
@@ -310,6 +361,7 @@ function restore_gpg {
                     exit 276
                 fi
                 rm -rf $temp_restore_dir
+                gpg_set_permissions $USERNAME
                 if [[ "$USERNAME" == "$ADMIN_USERNAME" ]]; then
                     cp -r /home/$USERNAME/.gnupg /root
                     if [ ! "$?" = "0" ]; then
@@ -317,6 +369,7 @@ function restore_gpg {
                         backup_unmount_drive
                         exit 283
                     fi
+                    gpg_set_permissions root
                 fi
             fi
         done
@@ -585,6 +638,7 @@ function restore_certs {
             exit 276
         fi
         rm -rf /root/tempssl
+        update-ca-certificates
 
         # restore ownership
         if [ -f /etc/ssl/private/xmpp.key ]; then
@@ -710,6 +764,7 @@ backup_mount_drive ${1} ${ADMIN_USERNAME} ${2}
 check_backup_exists
 check_admin_user
 copy_gpg_keys
+restore_blocklist
 restore_configfiles
 same_admin_user
 restore_passwordstore

@@ -28,26 +28,64 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-QVITTER_THEME_REPO="https://git.gnu.io/h2p/Qvitter"
-QVITTER_THEME_COMMIT='0eff0c80ffe32013a0cd2016b8ffbee768338b69'
+# Qvitter upstream: https://git.gnu.io/h2p/Qvitter"
+QVITTER_THEME_REPO="https://git.postactiv.com/bob/Qvitter"
+QVITTER_THEME_COMMIT='b5791cf935a6391c492cefa1ffa50cc3cea44c12'
 
 PLEROMA_REPO="https://gitgud.io/lambadalambda/pleroma-fe"
-PLEROMA_COMMIT='76624c9e4ba2dd648af0effdfe14c24b4e858f8f'
+PLEROMA_COMMIT='7d59051fc5e93585d8d9858ac989d9ebf7aa3cf9'
 
 ARMADILLO_REPO="https://git.postactiv.com/maiya/Armadillo"
 ARMADILLO_COMMIT='ec3938a678f373156c4cbf37926c9a5ab68222c4'
+
+SHARINGS_REPO="http://git.lasindias.club/bashrc/Sharings"
+SHARINGS_COMMIT='d5c6c7f855d9afff9086c09ea706f38c859bc0d4'
+SHARINGS_THEME_REPO="http://git.lasindias.club/manuel/SharingsTheme"
+SHARINGS_THEME_COMMIT='7106c7ef03'
+
+GNUSOCIAL_MARKDOWN_REPO="https://git.gnu.io/chimo/markdown.git"
+GNUSOCIAL_MARKDOWN_COMMIT='03c53942f94b3376f0946e6e1fe566cc21ccf232'
+
+# Stuff to be done after restoring from backup
+function gnusocial_update_after_restore {
+    gnusocial_variant=$1
+    gnusocial_domain=$2
+
+    cd /var/www/${gnusocial_domain}/htdocs
+
+    # Ensure that the database password is correct
+    MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+    sed -i "s|\$config['db']['database'].*|\$config['db']['database'] = 'mysqli://root:${MARIADB_PASSWORD}@localhost/${gnusocial_variant}';|g" config.php
+    MARIADB_PASSWORD=
+
+    # Set permissions
+    chmod g+w /var/www/$gnusocial_domain/htdocs
+    chmod a+w /var/www/$gnusocial_domain/htdocs/avatar
+    chmod a+w /var/www/$gnusocial_domain/htdocs/file
+    chown -R www-data:www-data /var/www/$gnusocial_domain/htdocs
+    chmod +x /var/www/$gnusocial_domain/htdocs/scripts/maildaemon.php
+
+    # This seems to be necessary to get the UI back
+    gnusocial_use_classic $gnusocial_variant
+    gnusocial_use_qvitter $gnusocial_variant
+
+    # start the daemons
+    su -c "sh scripts/startdaemons.sh" -s /bin/sh www-data
+}
 
 function qvitter_update_background {
     domain_name="$1"
     ext=$2
 
     if [ -d /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img ]; then
-        cp bg_custom.${ext} /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img
-        if ! grep -q "bg_custom.${ext}" /var/www/${domain_name}/htdocs/config.php; then
-            if grep -q 'sitebackground' /var/www/${domain_name}/htdocs/config.php; then
-                sed -i '/sitebackground/d' /var/www/${domain_name}/htdocs/config.php
+        if [ -f bg_custom.${ext} ]; then
+            cp bg_custom.${ext} /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img
+            if ! grep -q "bg_custom.${ext}" /var/www/${domain_name}/htdocs/config.php; then
+                if grep -q 'sitebackground' /var/www/${domain_name}/htdocs/config.php; then
+                    sed -i '/sitebackground/d' /var/www/${domain_name}/htdocs/config.php
+                fi
+                echo "\$config['site']['qvitter']['sitebackground'] = 'img/bg_custom.${ext}';" >> /var/www/${domain_name}/htdocs/config.php
             fi
-            echo "\$config['site']['qvitter']['sitebackground'] = 'img/bg_custom.${ext}';" >> /var/www/${domain_name}/htdocs/config.php
         fi
     fi
 }
@@ -93,9 +131,9 @@ function pleroma_set_background_image_from_url {
         fi
 
         if [ -d /var/www/${domain_name}/htdocs/static ]; then
-            cd /var/www/${domain_name}/htdocs/static
-            cp ../bg_custom.${ext} bg_custom.${ext}
-            sed -i "s|\"background\":.*|\"background\": \"/static/bg_custom.${ext}\",|g" config.json
+            cp bg_custom.${ext} static/bg_custom.${ext}
+            chown www-data:www-data static/bg_custom.${ext}
+            sed -i "s|\"background\":.*|\"background\": \"/static/bg_custom.${ext}\",|g" static/config.json
         fi
 
         qvitter_update_background ${domain_name} ${ext}
@@ -211,8 +249,17 @@ function install_qvitter {
     fi
 
     cd /var/www/${domain_name}/htdocs/local/plugins
-    function_check git_clone
-    git_clone $QVITTER_THEME_REPO Qvitter
+
+    if [ -d /repos/qvitter ]; then
+        mkdir Qvitter
+        cp -r -p /repos/qvitter/. Qvitter
+        cd Qvitter
+        git pull
+    else
+        function_check git_clone
+        git_clone $QVITTER_THEME_REPO Qvitter
+    fi
+
     cd /var/www/${domain_name}/htdocs/local/plugins/Qvitter
     git checkout $QVITTER_THEME_COMMIT -b $QVITTER_THEME_COMMIT
 
@@ -237,8 +284,8 @@ function install_qvitter {
 
     # customise with project logo
     if [ -f /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png ]; then
-        if [ -f ~/freedombone/img/gnusocial_sprite.png ]; then
-            cp ~/freedombone/img/gnusocial_sprite.png /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png
+        if [ -f ~/freedombone/img/${app_name}_sprite.png ]; then
+            cp ~/freedombone/img/${app_name}_sprite.png /var/www/${domain_name}/htdocs/local/plugins/Qvitter/img/sprite.png
         fi
     fi
 
@@ -332,8 +379,17 @@ function install_pleroma_front_end {
     title="$4"
 
     if [ ! -d $INSTALL_DIR/pleroma ]; then
-        function_check git_clone
-        git_clone $PLEROMA_REPO $INSTALL_DIR/pleroma
+
+        if [ -d /repos/pleroma ]; then
+            mkdir -p $INSTALL_DIR/pleroma
+            cp -r -p /repos/pleroma/. $INSTALL_DIR/pleroma
+            cd $INSTALL_DIR/pleroma
+            git pull
+        else
+            function_check git_clone
+            git_clone $PLEROMA_REPO $INSTALL_DIR/pleroma
+        fi
+
         if [ ! -d $INSTALL_DIR/pleroma ]; then
             echo $'Unable to clone pleroma repo'
             exit 682252
@@ -703,12 +759,12 @@ function expire_gnusocial_posts {
     echo "\$password=shell_exec('${PROJECT_NAME}-pass -u root -a mariadb');" >> $gnusocial_expire_posts_script
     echo "\$database=\"${gnusocial_type}\";" >> $gnusocial_expire_posts_script
     echo '' >> $gnusocial_expire_posts_script
-    echo 'if (!$link = mysql_connect("localhost", $username, $password)) {' >> $gnusocial_expire_posts_script
+    echo 'if (!$link = mysqli_connect("localhost", $username, $password)) {' >> $gnusocial_expire_posts_script
     echo '    echo "Could not connect to mariadb";' >> $gnusocial_expire_posts_script
     echo '    exit;' >> $gnusocial_expire_posts_script
     echo '}' >> $gnusocial_expire_posts_script
     echo '' >> $gnusocial_expire_posts_script
-    echo 'if (!mysql_select_db($database, $link)) {' >> $gnusocial_expire_posts_script
+    echo 'if (!mysqli_select_db($link, $database)) {' >> $gnusocial_expire_posts_script
     echo "    echo \"Could not select ${gnusocial_type} database\";" >> $gnusocial_expire_posts_script
     echo '    exit;' >> $gnusocial_expire_posts_script
     echo '}' >> $gnusocial_expire_posts_script
@@ -718,15 +774,15 @@ function expire_gnusocial_posts {
     echo "\$reply_query=\"DELETE FROM reply WHERE modified <= '\$oldate 01:01:01'\";" >> $gnusocial_expire_posts_script
     echo "\$notification_query=\"DELETE FROM qvitternotification WHERE created <= '\$oldate 01:01:01'\";" >> $gnusocial_expire_posts_script
     echo '' >> $gnusocial_expire_posts_script
-    echo 'mysql_query($notice_query);' >> $gnusocial_expire_posts_script
-    echo '$rowaff1=mysql_affected_rows();' >> $gnusocial_expire_posts_script
-    echo 'mysql_query($conversation_query);' >> $gnusocial_expire_posts_script
-    echo '$rowaff2=mysql_affected_rows();' >> $gnusocial_expire_posts_script
-    echo 'mysql_query($reply_query);' >> $gnusocial_expire_posts_script
-    echo '$rowaff3=mysql_affected_rows();' >> $gnusocial_expire_posts_script
-    echo 'mysql_query($notification_query);' >> $gnusocial_expire_posts_script
-    echo '$rowaff4=mysql_affected_rows();' >> $gnusocial_expire_posts_script
-    echo 'mysql_close();' >> $gnusocial_expire_posts_script
+    echo 'mysqli_query($link, $notice_query);' >> $gnusocial_expire_posts_script
+    echo '$rowaff1=mysqli_affected_rows($link);' >> $gnusocial_expire_posts_script
+    echo 'mysqli_query($link, $conversation_query);' >> $gnusocial_expire_posts_script
+    echo '$rowaff2=mysqli_affected_rows($link);' >> $gnusocial_expire_posts_script
+    echo 'mysqli_query($link, $reply_query);' >> $gnusocial_expire_posts_script
+    echo '$rowaff3=mysqli_affected_rows($link);' >> $gnusocial_expire_posts_script
+    echo 'mysqli_query($link, $notification_query);' >> $gnusocial_expire_posts_script
+    echo '$rowaff4=mysqli_affected_rows($link);' >> $gnusocial_expire_posts_script
+    echo 'mysqli_close($link);' >> $gnusocial_expire_posts_script
     echo '' >> $gnusocial_expire_posts_script
     echo -n "echo \"Expire ${gnusocial_type} posts: " >> $gnusocial_expire_posts_script
     echo '$rowaff1 notices, $rowaff2 conversations, $rowaff3 replies, and $rowaff4 qvitter notifications deleted from database.\n";' >> $gnusocial_expire_posts_script
@@ -734,8 +790,8 @@ function expire_gnusocial_posts {
 
     gnusocial_expire_script=/usr/bin/${gnusocial_type}-expire
     echo '#!/bin/bash' > $gnusocial_expire_script
-    echo "/usr/bin/php $gnusocial_expire_posts_script" >> $gnusocial_expire_script
     echo "find /var/www/${domain_name}/htdocs/file/* -mtime +${expire_days} -exec rm {} +" >> $gnusocial_expire_script
+    echo "/usr/bin/php $gnusocial_expire_posts_script" >> $gnusocial_expire_script
     chmod +x $gnusocial_expire_script
 
     # Add a cron job
@@ -767,6 +823,8 @@ function gnusocial_use_classic {
         sed -i "s|// addPlugin('Qvitter')|addPlugin('Qvitter')|g" /var/www/$domain_name/htdocs/config.php
         sed -i "s|addPlugin('Qvitter')|//addPlugin('Qvitter')|g" /var/www/$domain_name/htdocs/config.php
     fi
+    chown -R www-data:www-data /var/www/${domain_name}/htdocs
+
     systemctl restart nginx
 }
 
@@ -790,8 +848,10 @@ function gnusocial_use_qvitter {
     if grep -q "// addPlugin('Qvitter')" /var/www/$domain_name/htdocs/config.php; then
         sed -i "s|// addPlugin('Qvitter')|addPlugin('Qvitter')|g" /var/www/$domain_name/htdocs/config.php
     fi
+    chown -R www-data:www-data /var/www/${domain_name}/htdocs
 
     systemctl restart nginx
+    systemctl restart php7.0-fpm
 }
 
 function gnusocial_use_pleroma {
@@ -820,6 +880,13 @@ function gnusocial_use_pleroma {
     fi
 
     cp $INSTALL_DIR/pleroma/dist/index.html /var/www/${domain_name}/htdocs/index.html
+    chmod +x static/css
+    chmod +x static/font
+    chmod +x static/font/css
+    chmod +x static/font/font
+    chmod +x static/js
+    chmod +x static
+    chown -R www-data:www-data /var/www/${domain_name}/htdocs
 
     systemctl restart nginx
 }
@@ -855,8 +922,187 @@ function gnusocial_use_armadillo {
     cp -r $INSTALL_DIR/armadillo/armadillo/* /var/www/${domain_name}/htdocs/armadillo
     cp $INSTALL_DIR/armadillo/armadillo.html /var/www/${domain_name}/htdocs/index.html
     cp $INSTALL_DIR/armadillo/dash.html /var/www/${domain_name}/htdocs/dash.html
+    chown -R www-data:www-data /var/www/${domain_name}/htdocs
 
     systemctl restart nginx
+}
+
+function install_gnusocial_plugin_sharings {
+    domain_name=$1
+    social_app_name=$2
+
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins ]; then
+        mkdir -p /var/www/$domain_name/htdocs/local/plugins
+    fi
+
+    apt-get -yq install liblocale-msgfmt-perl gettext
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$domain_name/htdocs/local/plugins/Sharings "$social_app_name sharings plugin commit" "$SHARINGS_COMMIT" $SHARINGS_REPO
+
+    if [[ $(app_is_installed ${social_app_name}_plugin_sharings) == "1" ]]; then
+        return
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins
+
+    if [ -d /repos/sharings ]; then
+        mkdir Sharings
+        cp -r -p /repos/sharings/. Sharings
+        cd Sharings
+        git pull
+    else
+        function_check git_clone
+        git_clone $SHARINGS_REPO Sharings
+    fi
+
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins/Sharings ]; then
+        echo $"Unable to clone $social_app_name sharings plugin"
+        exit 36738
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings
+    git stash
+    git checkout master
+    git branch -D $SHARINGS_COMMIT
+    git checkout $SHARINGS_COMMIT -b $SHARINGS_COMMIT
+
+    # enable the plugin
+    if ! grep -q "addPlugin('Sharings');" /var/www/$domain_name/htdocs/config.php; then
+        echo "addPlugin('Sharings');" >> /var/www/$domain_name/htdocs/config.php
+    fi
+
+    cd /var/www/$domain_name/htdocs
+    php scripts/checkschema.php
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings
+    php scripts/seedsharings.php
+    cd /var/www/$domain_name/htdocs
+    php scripts/upgrade.php
+    php scripts/checkschema.php
+
+    # Languages
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings/locale/en/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $"English translations for $social_app_name sharings plugin were not created"
+        exit 782923
+    fi
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings/locale/en_GB/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $"English (GB) translations for $social_app_name sharings plugin were not created"
+        exit 23528
+    fi
+    cd /var/www/$domain_name/htdocs/local/plugins/Sharings/locale/en_US/LC_MESSAGES
+    msgfmt -o Sharings.mo Sharings.po
+    if [ ! -f Sharings.po ]; then
+        echo $"English (US) translations for $social_app_name sharings plugin were not created"
+        exit 567382
+    fi
+
+    # Looks like this update function isn't supported by the current php version
+    sed -i 's|ActivityVerb::UPDATE, ||g' /var/www/$domain_name/htdocs/local/plugins/Sharings/SharingsPlugin.php
+
+    chown -R www-data:www-data /var/www/$domain_name/htdocs
+
+    set_completion_param gnusocial "$social_app_name sharings plugin commit" "$SHARINGS_COMMIT"
+    install_completed ${social_app_name}_plugin_sharings
+}
+
+function install_gnusocial_plugin_sharings_theme {
+    domain_name=$1
+    social_app_name=$2
+
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins ]; then
+        mkdir -p /var/www/$domain_name/htdocs/local/plugins
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$domain_name/htdocs/local/plugins/SharingsTheme "$social_app_name sharings theme plugin commit" "$SHARINGS_THEME_COMMIT" $SHARINGS_THEME_REPO
+
+    if [[ $(app_is_installed ${social_app_name}_plugin_sharings_theme) == "1" ]]; then
+        return
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins
+    function_check git_clone
+    git_clone $SHARINGS_THEME_REPO SharingsTheme
+    if [ ! -d /var/www/$domain_name/htdocs/local/plugins/SharingsTheme ]; then
+        echo $"Unable to clone $social_app_name sharings plugin theme"
+        exit 639253
+    fi
+
+    cd /var/www/$domain_name/htdocs/local/plugins/SharingsTheme
+    git stash
+    git checkout master
+    git branch -D $SHARINGS_THEME_COMMIT
+    git checkout $SHARINGS_THEME_COMMIT -b $SHARINGS_THEME_COMMIT
+
+    # enable the plugin
+    if ! grep -q "addPlugin('SharingsTheme');" /var/www/$domain_name/htdocs/config.php; then
+        echo "addPlugin('SharingsTheme');" >> /var/www/$domain_name/htdocs/config.php
+    fi
+
+    cd /var/www/$domain_name/htdocs
+    php scripts/checkschema.php
+
+    chown -R www-data:www-data /var/www/$domain_name/htdocs
+
+    set_completion_param "$social_app_name sharings plugin theme commit" "$SHARINGS_THEME_COMMIT"
+    install_completed ${social_app_name}_plugin_sharings_theme
+}
+
+function install_gnusocial_markdown {
+    domain_name=$1
+    social_app_name=$2
+
+    GNUSOCIAL_PATH=/var/www/$domain_name/htdocs
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit $GNUSOCIAL_PATH/local/plugins/Markdown "$social_app_name Markdown commit" "$GNUSOCIAL_MARKDOWN_COMMIT" $GNUSOCIAL_MARKDOWN_REPO
+
+    if [[ $(app_is_installed ${social_app_name}_markdown) == "1" ]]; then
+        return
+    fi
+
+    if [ -d $GNUSOCIAL_PATH/local/plugins/Markdown ]; then
+        rm -rf $GNUSOCIAL_PATH/local/plugins/Markdown
+    fi
+
+    if [ ! -d $GNUSOCIAL_PATH/local/plugins ]; then
+        mkdir -p $GNUSOCIAL_PATH/local/plugins
+    fi
+
+    cd $GNUSOCIAL_PATH/local/plugins
+
+    if [ -d /repos/gnusocial-markdown ]; then
+        mkdir Markdown
+        cp -r -p /repos/gnusocial-markdown/. Markdown
+        cd Markdown
+        git pull
+    else
+        function_check git_clone
+        git_clone $GNUSOCIAL_MARKDOWN_REPO Markdown
+    fi
+
+    cd $GNUSOCIAL_PATH/local/plugins/Markdown
+    git checkout $GNUSOCIAL_MARKDOWN_COMMIT -b $GNUSOCIAL_MARKDOWN_COMMIT
+
+    gnusocial_config_file=$GNUSOCIAL_PATH/config.php
+    if ! grep -q "addPlugin('Markdown'" $gnusocial_config_file; then
+        echo "" >> $gnusocial_config_file
+        echo "// Markdown settings" >> $gnusocial_config_file
+        echo "addPlugin('Markdown');" >> $gnusocial_config_file
+    fi
+
+    set_completion_param "$social_app_name markdown commit" "$GNUSOCIAL_MARKDOWN_COMMIT"
+
+    chown -R www-data:www-data $GNUSOCIAL_PATH
+
+    install_completed ${social_app_name}_markdown
 }
 
 # NOTE: deliberately there is no "exit 0"

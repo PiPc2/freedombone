@@ -47,6 +47,14 @@ mailpile_variables=(MAILPILE_REPO
                     DDNS_PROVIDER
                     MY_USERNAME)
 
+function logging_on_mailpile {
+    echo -n ''
+}
+
+function logging_off_mailpile {
+    echo -n ''
+}
+
 function remove_user_mailpile {
     remove_username="$1"
     ${PROJECT_NAME}-pass -u $remove_username --rmapp mailpile
@@ -83,24 +91,21 @@ function reconfigure_mailpile {
 function upgrade_mailpile {
     read_config_param "MAILPILE_DOMAIN_NAME"
 
-    upgrade_mp=
     CURR_COMMIT=$MAILPILE_COMMIT
     if grep -q "mailpile commit" $COMPLETION_FILE; then
         CURR_COMMIT=$(get_completion_param "mailpile commit")
     fi
-    if [[ "$CURR_COMMIT" != "$MAILPILE_COMMIT" ]]; then
-        upgrade_mp=1
+    if [[ "$CURR_COMMIT" == "$MAILPILE_COMMIT" ]]; then
+        return
     fi
 
     function_check set_repo_commit
     set_repo_commit /var/www/$MAILPILE_DOMAIN_NAME/mail "mailpile commit" "$MAILPILE_COMMIT" $MAILPILE_REPO
 
-    if [ $upgrade_mp ]; then
-        cd /var/www/$MAILPILE_DOMAIN_NAME/mail
-        pip install -r requirements.txt
+    cd /var/www/$MAILPILE_DOMAIN_NAME/mail
+    pip install -r requirements.txt
 
-        chown -R mailpile:mailpile /var/www/$MAILPILE_DOMAIN_NAME/mail
-    fi
+    chown -R mailpile:mailpile /var/www/$MAILPILE_DOMAIN_NAME/mail
 }
 
 function backup_local_mailpile {
@@ -226,6 +231,7 @@ function remove_mailpile {
     systemctl stop mailpile
     systemctl disable mailpile
     rm /etc/systemd/system/mailpile.service
+    systemctl daemon-reload
 
     read_config_param "MAILPILE_DOMAIN_NAME"
     nginx_dissite $MAILPILE_DOMAIN_NAME
@@ -238,7 +244,9 @@ function remove_mailpile {
     fi
     function_check remove_ddns_domain
     remove_ddns_domain $MAILPILE_DOMAIN_NAME
-    deluser --remove-all-files mailpile
+
+    groupdel -f mailpile
+    userdel -r mailpile
 
     remove_config_param MAILPILE_DOMAIN_NAME
     remove_config_param MAILPILE_CODE
@@ -272,7 +280,16 @@ function install_mailpile {
     if [ -d /var/www/$MAILPILE_DOMAIN_NAME/mail ]; then
         rm -rf /var/www/$MAILPILE_DOMAIN_NAME/mail
     fi
-    git_clone $MAILPILE_REPO mail
+
+    if [ -d /repos/mailpile ]; then
+        mkdir mail
+        cp -r -p /repos/mailpile/. mail
+        cd mail
+        git pull
+    else
+        git_clone $MAILPILE_REPO mail
+    fi
+
     cd mail
     git checkout $MAILPILE_COMMIT -b $MAILPILE_COMMIT
     set_completion_param "mailpile commit" "$MAILPILE_COMMIT"
@@ -419,6 +436,9 @@ function install_mailpile {
     cp -r /home/$MY_USERNAME/.gnupg /var/www/$MAILPILE_DOMAIN_NAME/mail/
     chown -R mailpile:mailpile /var/www/$MAILPILE_DOMAIN_NAME/mail/.gnupg
     chmod +x /var/www/$MAILPILE_DOMAIN_NAME/mail/.gnupg
+
+    pip install jinja2==2.9.6
+    pip install pgpdump==1.5
 
     systemctl enable mailpile
     systemctl daemon-reload

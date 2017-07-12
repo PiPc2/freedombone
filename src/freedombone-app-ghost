@@ -9,6 +9,7 @@
 #                    Freedom in the Cloud
 #
 # Ghost blog
+# Only works with nodejs version ^6.9.0
 #
 # License
 # =======
@@ -37,8 +38,8 @@ GHOST_DOMAIN_NAME=
 GHOST_CODE=
 GHOST_ONION_PORT=8104
 GHOST_PORT=2368
-GHOST_VERSION='0.11.8'
-GHOST_HASH='244faad0b16eb1b90c8095f1e536db65299a3a2d85a20af76342be3707522b38'
+GHOST_VERSION='0.11.10'
+GHOST_HASH='cccdf02d46112f1671739696f2b1888a90a5c3bdf2fae45e8e81d538a8e0f487'
 GHOST_DOWNLOAD_URL="https://github.com/TryGhost/Ghost/releases/download/${GHOST_VERSION}/Ghost-${GHOST_VERSION}.zip"
 
 ghost_variables=(GHOST_DOMAIN_NAME
@@ -47,6 +48,14 @@ ghost_variables=(GHOST_DOMAIN_NAME
                  ONION_ONLY
                  DDNS_PROVIDER
                  MY_USERNAME)
+
+function logging_on_ghost {
+    echo -n ''
+}
+
+function logging_off_ghost {
+    echo -n ''
+}
 
 function ghost_replace_jquery {
     sed -i "s|code.jquery.com/jquery-${previous_jquery_version}.min.js|$GHOST_DOMAIN_NAME/jquery-${jquery_version}.js|g" content/themes/casper/default.hbs
@@ -170,7 +179,7 @@ function upgrade_ghost {
     GHOST_PATH=/var/www/$GHOST_DOMAIN_NAME/htdocs
 
     cd $GHOST_PATH
-    if [ ! -f ghost-${GHOST_VERSION}.zip ]; then
+    if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
         wget ${GHOST_DOWNLOAD_URL}
     fi
     if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
@@ -233,6 +242,28 @@ function restore_local_ghost {
         function_check restore_database
         restore_database ghost ${GHOST_DOMAIN_NAME}
 
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        ghost_config=/var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
+        sed -i "s|password :.*|password : '${MARIADB_PASSWORD}',|g" $ghost_config
+        MARIADB_PASSWORD=
+
+        # install any missing packages
+        if [ ! -d /var/www/${GHOST_DOMAIN_NAME}/htdocs/node_modules/intl ]; then
+            cd /var/www/${GHOST_DOMAIN_NAME}/htdocs
+            npm install passport-http-bearer@1.0.1
+            npm install amperize@0.3.4
+            npm install bcryptjs@2.4.3
+            npm install knex@0.12.9
+            npm install bookshelf@0.10.2
+            npm install cookie-session@1.2.0
+            npm install ghost-gql@0.0.6
+            npm install intl@1.2.5
+            npm install sanitize-html@1.14.1
+            npm install showdown-ghost@0.3.6
+            npm install superagent@3.5.2
+            npm install mysql@2.1.1
+        fi
+
         systemctl start ghost
         restart_site
     fi
@@ -273,6 +304,29 @@ function restore_remote_ghost {
     ghost_create_database
 
     restore_database_from_friend ghost ${GHOST_DOMAIN_NAME}
+
+    MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+    ghost_config=/var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
+    sed -i "s|password :.*|password : '${MARIADB_PASSWORD}',|g" $ghost_config
+    MARIADB_PASSWORD=
+
+    # install any missing packages
+    if [ ! -d /var/www/${GHOST_DOMAIN_NAME}/htdocs/node_modules/intl ]; then
+        cd /var/www/${GHOST_DOMAIN_NAME}/htdocs
+        npm install passport-http-bearer@1.0.1
+        npm install amperize@0.3.4
+        npm install bcryptjs@2.4.3
+        npm install knex@0.12.9
+        npm install bookshelf@0.10.2
+        npm install cookie-session@1.2.0
+        npm install ghost-gql@0.0.6
+        npm install intl@1.2.5
+        npm install sanitize-html@1.14.1
+        npm install showdown-ghost@0.3.6
+        npm install superagent@3.5.2
+        npm install mysql@2.1.1
+    fi
+
     systemctl start ghost
     restart_site
     chown -R ghost: /var/www/$GHOST_DOMAIN_NAME/htdocs/
@@ -286,6 +340,7 @@ function remove_ghost {
     systemctl stop ghost
     systemctl disable ghost
     rm /etc/systemd/system/ghost.service
+    systemctl daemon-reload
 
     function_check remove_nodejs
     remove_nodejs ghost
@@ -296,7 +351,6 @@ function remove_ghost {
     read_config_param "GHOST_DOMAIN_NAME"
     nginx_dissite $GHOST_DOMAIN_NAME
     remove_certs ${GHOST_DOMAIN_NAME}
-    deluser --remove-all-files ghost
     if [ -f /etc/nginx/sites-available/$GHOST_DOMAIN_NAME ]; then
         rm -f /etc/nginx/sites-available/$GHOST_DOMAIN_NAME
     fi
@@ -311,12 +365,18 @@ function remove_ghost {
     sed -i '/Ghost/d' $COMPLETION_FILE
     sed -i '/ghost/d' $COMPLETION_FILE
 
+    groupdel -f ghost
+    userdel -r ghost
+
     function_check remove_ddns_domain
     remove_ddns_domain $GHOST_DOMAIN_NAME
 }
 
 function ghost_create_config {
     ghost_config=/var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
+
+    function_check get_mariadb_password
+    get_mariadb_password
 
     echo "var path = require('path')," > $ghost_config
     echo '    config;' >> $ghost_config
@@ -393,7 +453,9 @@ function install_ghost {
         mkdir -p /var/www/$GHOST_DOMAIN_NAME/htdocs
     fi
     cd /var/www/$GHOST_DOMAIN_NAME/htdocs
-    wget ${GHOST_DOWNLOAD_URL}
+    if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
+        wget ${GHOST_DOWNLOAD_URL}
+    fi
     if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
         echo $'Unable to download ghost'
         rm -rf /var/www/$GHOST_DOMAIN_NAME
@@ -418,6 +480,60 @@ function install_ghost {
     install_nodejs ghost
 
     sed -i "/sqlite/d" /var/www/${GHOST_DOMAIN_NAME}/htdocs/package.json
+
+    cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+    npm install -g jison@0.4.13 --save
+    npm install moment-timezone@0.5.13
+    npm install express@4.15.3
+    npm install lodash@4.17.4
+    npm install uuid@3.0.1
+    npm install bluebird@3.5.0
+    npm install chalk@1.1.3
+    npm install intl-messageformat@1.3.0
+    npm install validator@7.0.0
+    npm install express-hbs@1.0.4
+    npm install glob@7.1.2
+    npm install unidecode@0.1.8
+    npm install csv-parser@1.11.0
+    npm install archiver@1.3.0
+    npm install fs-extra@3.0.1
+    npm install extract-zip-fork@1.5.1
+    npm install moment@2.18.1
+    npm install nodemailer@4.0.1
+    npm install html-to-text@3.3.0
+    npm install gscan@1.1.0
+    npm install body-parser@1.17.2
+    npm install compression@1.6.2
+    npm install morgan@1.8.2
+    npm install semver@5.3.0
+    npm install path-match@1.2.4
+    npm install downsize@0.0.8
+    npm install rss@1.2.2
+    npm install cheerio@1.0.0-rc.1
+    npm install passport@0.3.2
+    npm install xml@1.0.1
+    npm install multer@1.3.0
+    npm install oauth2orize@1.8.0
+    npm install connect-slashes@1.3.1
+    npm install cors@2.8.3
+    npm install netjet@1.1.3
+    npm install jsonpath@0.2.11
+    npm install image-size@0.5.4
+    npm install passport-oauth2-client-password@0.1.2
+    npm install passport-http-bearer@1.0.1
+    npm install amperize@0.3.4
+    npm install bcryptjs@2.4.3
+    npm install knex@0.12.9
+    npm install bookshelf@0.10.2
+    npm install cookie-session@1.2.0
+    npm install ghost-gql@0.0.6
+    npm install intl@1.2.5
+    npm install sanitize-html@1.14.1
+    npm install showdown-ghost@0.3.6
+    npm install superagent@3.5.2
+    npm install mysql@2.1.1
+    npm install mariasql@0.2.6
+
     npm install --production
 
     function_check install_mariadb
@@ -432,7 +548,7 @@ function install_ghost {
     ghost_create_config
 
     adduser --system --home=/var/www/${GHOST_DOMAIN_NAME}/htdocs/ --group ghost
-    chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs/
+    chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
 
     echo '[Unit]' > /etc/systemd/system/ghost.service
     echo 'Description=Ghost Blog' >> /etc/systemd/system/ghost.service
@@ -540,6 +656,7 @@ function install_ghost {
 
     if [[ $ONION_ONLY != 'no' ]]; then
         sed -i "s|url: .*|url: 'http://${GHOST_ONION_HOSTNAME}',|g" /var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
+        systemctl restart mariadb
         systemctl restart ghost
     fi
 
@@ -549,12 +666,14 @@ function install_ghost {
     nginx_ensite $GHOST_DOMAIN_NAME
 
     systemctl restart nginx
+    systemctl restart mariadb
 
     ${PROJECT_NAME}-pass -u $MY_USERNAME -a ghost -p "$GHOST_ADMIN_PASSWORD"
 
     function_check add_ddns_domain
     add_ddns_domain $GHOST_DOMAIN_NAME
 
+    chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
     set_completion_param "ghost domain" "$GHOST_DOMAIN_NAME"
     if ! grep -q "ghost version:" ${COMPLETION_FILE}; then
         echo "ghost version:${GHOST_VERSION}" >> ${COMPLETION_FILE}

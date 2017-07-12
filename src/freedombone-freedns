@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2016-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -33,8 +33,13 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-freedns
 export TEXTDOMAINDIR="/usr/share/locale"
 
+VERBOSE=
 CONFIGURATION_FILE=$HOME/${PROJECT_NAME}.cfg
-FREEDNS_WGET='wget -q --read-timeout=0.0 --waitretry=5 --tries=4 https://freedns.afraid.org/dynamic/update.php?'
+FREEDNS_WGET='wget --read-timeout=0.0 --waitretry=5 --tries=4 https://freedns.afraid.org/dynamic/update.php?'
+
+if [[ "$1" == "--verbose" || "$1" == "-v" ]]; then
+    VERBOSE=1
+fi
 
 if [ ! -f $CONFIGURATION_FILE ]; then
     exit 0
@@ -47,15 +52,14 @@ function item_in_array {
 }
 
 detected_codes=()
-codelines=($(grep "_CODE=" $CONFIGURATION_FILE | uniq))
-for line in "${codelines[@]}"
-do
+codelines=$(grep "_CODE=" $CONFIGURATION_FILE | uniq)
+while read -r line; do
     code=$(echo "$line" | awk -F '=' '{print $2}')
     item_in_array "$code" "${detected_codes[@]}"
     if [[ $? != 0 ]]; then
         detected_codes+=("$code")
     fi
-done
+done <<< "$codelines"
 
 if [ ! -d $HOME/.freedns-update ]; then
     mkdir $HOME/.freedns-update
@@ -63,7 +67,19 @@ fi
 cd $HOME/.freedns-update
 for code in "${detected_codes[@]}"
 do
-    $FREEDNS_WGET${code}
+    if [ $VERBOSE ]; then
+        echo $"command: $FREEDNS_WGET${code}="
+        $FREEDNS_WGET${code}=
+    else
+        if [ -f /tmp/freedns ]; then
+            rm /tmp/freedns
+        fi
+        $FREEDNS_WGET${code}= >> /tmp/freedns 2>&1
+    fi
 done
+
+if [ -f /tmp/freedns ]; then
+    rm /tmp/freedns
+fi
 
 exit 0

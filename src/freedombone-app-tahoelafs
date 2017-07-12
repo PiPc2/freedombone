@@ -36,16 +36,14 @@ IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
 SHOW_ICANN_ADDRESS_ON_ABOUT=0
 
-TAHOELAFS_REPO="https://github.com/tahoe-lafs/tahoe-lafs"
-TAHOELAFS_COMMIT='bb782b0331a60de438136a593bba18338d8d866b'
-
 TAHOELAFS_PORT=50213
 TAHOELAFS_STORAGE_PORT=50214
 TAHOELAFS_ONION_PORT=8096
 TAHOELAFS_STORAGE_ONION_PORT=8097
 
-TAHOE_COMMAND="cd /home/tahoelafs/tahoelafs && venv/bin/tahoe"
-tahoelafs_storage_file=/home/tahoelafs/client/private/servers.yaml
+TAHOE_DIR=/home/tahoelafs
+TAHOE_COMMAND='/usr/bin/tahoe'
+tahoelafs_storage_file=$TAHOE_DIR/client/private/servers.yaml
 
 TAHOELAFS_SHARES_NEEDED=3
 TAHOELAFS_SHARES_HAPPY=7
@@ -53,11 +51,18 @@ TAHOELAFS_SHARES_TOTAL=10
 
 tahoelafs_variables=(ONION_ONLY
                      MY_USERNAME
-                     TAHOELAFS_REPO
                      TAHOELAFS_PORT
                      TAHOELAFS_SHARES_NEEDED
                      TAHOELAFS_SHARES_HAPPY
                      TAHOELAFS_SHARES_TOTAL)
+
+function logging_on_tahoelafs {
+    echo -n ''
+}
+
+function logging_off_tahoelafs {
+    echo -n ''
+}
 
 function add_user_tahoelafs {
     if [[ $(app_is_installed tahoelafs) == "0" ]]; then
@@ -68,7 +73,7 @@ function add_user_tahoelafs {
     new_username="$1"
     new_user_password="$2"
     ${PROJECT_NAME}-pass -u $new_username -a tahoelafs -p "$new_user_password"
-    if grep "${new_username}:" /etc/nginx/.htpasswd-tahoelafs; then
+    if grep -q "${new_username}:" /etc/nginx/.htpasswd-tahoelafs; then
         sed -i '/${new_username}:/d' /etc/nginx/.htpasswd-tahoelafs
     fi
     echo "${new_user_password}" | htpasswd -i -s /etc/nginx/.htpasswd-tahoelafs ${new_username}
@@ -78,7 +83,7 @@ function add_user_tahoelafs {
 function remove_user_tahoelafs {
     remove_username="$1"
     ${PROJECT_NAME}-pass -u $remove_username --rmapp tahoelafs
-    if grep "${remove_username}:" /etc/nginx/.htpasswd-tahoelafs; then
+    if grep -q "${remove_username}:" /etc/nginx/.htpasswd-tahoelafs; then
         sed -i '/${remove_username}:/d' /etc/nginx/.htpasswd-tahoelafs
     fi
 }
@@ -87,7 +92,7 @@ function change_password_tahoelafs {
     change_username="$1"
     change_password="$2"
     ${PROJECT_NAME}-pass -u $change_username -a tahoelafs -p "$change_password"
-    if grep "${change_username}:" /etc/nginx/.htpasswd-tahoelafs; then
+    if grep -q "${change_username}:" /etc/nginx/.htpasswd-tahoelafs; then
         sed -i '/tahoe-${change_username}:/d' /etc/nginx/.htpasswd-tahoelafs
     fi
     echo "${change_password}" | htpasswd -i -s /etc/nginx/.htpasswd-tahoelafs ${change_username}
@@ -164,13 +169,13 @@ function edit_tahoelafs_shares {
         TAHOELAFS_SHARES_TOTAL=${tl_total}
     fi
 
-    sed -i "s|shares.needed.*|shares.needed = ${TAHOELAFS_SHARES_NEEDED}|g" /home/tahoelafs/tahoelafs/client/tahoe.cfg
-    sed -i "s|shares.happy.*|shares.happy = ${TAHOELAFS_SHARES_HAPPY}|g" /home/tahoelafs/tahoelafs/client/tahoe.cfg
-    sed -i "s|shares.total.*|shares.total = ${TAHOELAFS_SHARES_TOTAL}|g" /home/tahoelafs/tahoelafs/client/tahoe.cfg
+    sed -i "s|shares.needed.*|shares.needed = ${TAHOELAFS_SHARES_NEEDED}|g" $TAHOE_DIR/tahoelafs/client/tahoe.cfg
+    sed -i "s|shares.happy.*|shares.happy = ${TAHOELAFS_SHARES_HAPPY}|g" $TAHOE_DIR/tahoelafs/client/tahoe.cfg
+    sed -i "s|shares.total.*|shares.total = ${TAHOELAFS_SHARES_TOTAL}|g" $TAHOE_DIR/tahoelafs/client/tahoe.cfg
 
-    sed -i "s|shares.needed.*|shares.needed = ${TAHOELAFS_SHARES_NEEDED}|g" /home/tahoelafs/tahoelafs/storage/tahoe.cfg
-    sed -i "s|shares.happy.*|shares.happy = ${TAHOELAFS_SHARES_HAPPY}|g" /home/tahoelafs/tahoelafs/storage/tahoe.cfg
-    sed -i "s|shares.total.*|shares.total = ${TAHOELAFS_SHARES_TOTAL}|g" /home/tahoelafs/tahoelafs/storage/tahoe.cfg
+    sed -i "s|shares.needed.*|shares.needed = ${TAHOELAFS_SHARES_NEEDED}|g" $TAHOE_DIR/tahoelafs/storage/tahoe.cfg
+    sed -i "s|shares.happy.*|shares.happy = ${TAHOELAFS_SHARES_HAPPY}|g" $TAHOE_DIR/tahoelafs/storage/tahoe.cfg
+    sed -i "s|shares.total.*|shares.total = ${TAHOELAFS_SHARES_TOTAL}|g" $TAHOE_DIR/tahoelafs/storage/tahoe.cfg
 
     systemctl restart tahoelafs-storage
     systemctl restart tahoelafs-client
@@ -263,7 +268,7 @@ function tahoelafs_setup_storage_config {
     echo '[connections]' >> $config_file
     echo 'tcp = tor' >> $config_file
 
-    chown -R tahoelafs:debian-tor /home/tahoelafs
+    chown -R tahoelafs:debian-tor $TAHOE_DIR
 }
 
 function install_interactive_tahoelafs {
@@ -272,22 +277,11 @@ function install_interactive_tahoelafs {
 }
 
 function upgrade_tahoelafs {
-    if [ ! -d /home/tahoelafs/tahoelafs ]; then
-        return
-    fi
-    systemctl stop tahoelafs
-    function_check set_repo_commit
-    set_repo_commit /home/tahoelafs/tahoelafs "tahoelafs commit" "$TAHOELAFS_COMMIT" $TAHOELAFS_REPO
-    cd /home/tahoelafs/tahoelafs
-    git submodule update --init --recursive
-    virtualenv venv
-    venv/bin/pip install --editable .
-    chown -R tahoelafs:debian-tor /home/tahoelafs
-    systemctl start tahoelafs
+    echo -n ''
 }
 
 function backup_local_tahoelafs {
-    source_directory=/home/tahoelafs
+    source_directory=$TAHOE_DIR
     if [ ! -d $source_directory ]; then
         return
     fi
@@ -304,21 +298,21 @@ function restore_local_tahoelafs {
     systemctl stop tahoelafs-client
     temp_restore_dir=/root/temptahoelafs
     restore_directory_from_usb $temp_restore_dir tahoelafs
-    mv /home/tahoelafs /home/tahoelafs-old
-    cp -r $temp_restore_dir/home/tahoelafs /home/tahoelafs
+    mv $TAHOE_DIR ${TAHOE_DIR}-old
+    cp -r $temp_restore_dir$TAHOE_DIR $TAHOE_DIR
     if [ ! "$?" = "0" ]; then
-        mv /home/tahoelafs-old /home/tahoelafs
+        mv ${TAHOE_DIR}-old $TAHOE_DIR
         exit 246833
     fi
-    rm -rf /home/tahoelafs-old
-    chown -R tahoelafs:debian-tor /home/tahoelafs
+    rm -rf ${TAHOE_DIR}-old
+    chown -R tahoelafs:debian-tor $TAHOE_DIR
     systemctl start tahoelafs-client
     systemctl start tahoelafs-storage
     echo $"Restore complete"
 }
 
 function backup_remote_tahoelafs {
-    source_directory=/home/tahoelafs
+    source_directory=$TAHOE_DIR
     if [ ! -d $source_directory ]; then
         return
     fi
@@ -337,14 +331,14 @@ function restore_remote_tahoelafs {
     systemctl stop tahoelafs-client
     temp_restore_dir=/root/temptahoelafs
     restore_directory_from_friend $temp_restore_dir tahoelafs
-    mv /home/tahoelafs /home/tahoelafs-old
-    cp -r $temp_restore_dir/home/tahoelafs /home/tahoelafs
+    mv $TAHOE_DIR ${TAHOE_DIR}-old
+    cp -r $temp_restore_dir$TAHOE_DIR $TAHOE_DIR
     if [ ! "$?" = "0" ]; then
-        mv /home/tahoelafs-old /home/tahoelafs
+        mv ${TAHOE_DIR}old $TAHOE_DIR
         exit 623925
     fi
-    rm -rf /home/tahoelafs-old
-    chown -R tahoelafs:debian-tor /home/tahoelafs
+    rm -rf ${$TAHOE_DIR}-old
+    chown -R tahoelafs:debian-tor $TAHOE_DIR
     systemctl start tahoelafs-client
     systemctl start tahoelafs-storage
     echo $"Restore complete"
@@ -370,10 +364,15 @@ function remove_tahoelafs {
     systemctl stop tahoelafs-storage
     systemctl disable tahoelafs-storage
     rm /etc/systemd/system/tahoelafs-storage.service
+    systemctl daemon-reload
 
     systemctl stop tahoelafs-client
     systemctl disable tahoelafs-client
     rm /etc/systemd/system/tahoelafs-client.service
+    systemctl daemon-reload
+
+    pip uninstall tahoe-lafs[tor]
+    apt-get -yq remove tahoe-lafs
 
     if [ -d /var/lib/tahoelafs ]; then
         rm -rf /var/lib/tahoelafs
@@ -383,32 +382,18 @@ function remove_tahoelafs {
     remove_onion_service tahoelafs ${TAHOELAFS_ONION_PORT}
     remove_onion_service storage-tahoelafs ${TAHOELAFS_STORAGE_ONION_PORT} $(get_tahoelafs_nick)
     sed -i '/HidServAuth /d' /etc/tor/torrc
-    deluser tahoelafs
-    if [ -d /home/tahoelafs ]; then
-        rm -rf /home/tahoelafs
+
+    groupdel -f tahoelafs
+    userdel -r tahoelafs
+
+    if [ -d $TAHOE_DIR ]; then
+        rm -rf $TAHOE_DIR
     fi
     remove_app tahoelafs
     if [ -f /etc/nginx/.htpasswd-tahoelafs ]; then
         shred -zu /etc/nginx/.htpasswd-tahoelafs
     fi
-    remove_completion_param "tahoelafs commit"
-    systemctl reload tor
-}
-
-function install_tahoelafs_to_directory {
-    tahoe_dir=$1
-
-    git_clone $TAHOELAFS_REPO $tahoe_dir
-    cd $tahoe_dir
-    git checkout $TAHOELAFS_COMMIT -b $TAHOELAFS_COMMIT
-    git submodule update --init --recursive
-    virtualenv venv --distribute
-    venv/bin/pip uninstall --yes setuptools
-    venv/bin/pip install setuptools==11.3
-    venv/bin/pip install six==1.10.0 packaging==16.8 attrs==16.3.0 appdirs==1.4.2 pycrypto==2.1.0 cffi==1.9.1
-    venv/bin/pip install cryptography==1.7.2 markerlib==0.6.0 distribute==0.7.3
-    venv/bin/pip install txtorcon==0.18.0
-    venv/bin/pip install --editable .
+    onion_update
 }
 
 function create_tahoelafs_stealth_node {
@@ -496,7 +481,7 @@ function create_tahoelafs_client {
 }
 
 function get_tahoelafs_furl {
-    furl=$(cat /home/tahoelafs/storage/private/storage.furl)
+    furl=$(cat $TAHOE_DIR/storage/private/storage.furl)
     furl_1=$(echo "${furl}" | awk -F ' ' '{print $1}')
     furl_2=$(echo "${furl}" | awk -F ':' '{print $5}')
     echo "${furl_1}:${furl_2}"
@@ -511,7 +496,7 @@ function get_tahoelafs_storage_hostname {
 }
 
 function get_tahoelafs_public_key {
-    echo "$(cat /home/tahoelafs/storage/node.pubkey | grep 'v0-' | sed 's|pub-||g')"
+    echo "$(cat $TAHOE_DIR/storage/node.pubkey | grep 'v0-' | sed 's|pub-||g')"
 }
 
 function add_tahoelafs_server {
@@ -572,12 +557,12 @@ function create_tahoelafs_daemon {
     echo 'Type=simple' >> $TAHOELAFS_DAEMON_FILE
     echo "User=tahoelafs" >> $TAHOELAFS_DAEMON_FILE
     echo "Group=debian-tor" >> $TAHOELAFS_DAEMON_FILE
-    echo "WorkingDirectory=/home/tahoelafs/tahoelafs" >> $TAHOELAFS_DAEMON_FILE
-    echo "ExecStart=/home/tahoelafs/tahoelafs/venv/bin/tahoe run /home/tahoelafs/${daemon_name}" >> $TAHOELAFS_DAEMON_FILE
-    echo "ExecStop=/home/tahoelafs/tahoelafs/venv/bin/tahoe stop /home/tahoelafs/${daemon_name}" >> $TAHOELAFS_DAEMON_FILE
+    echo "WorkingDirectory=${TAHOE_DIR}" >> $TAHOELAFS_DAEMON_FILE
+    echo "ExecStart=/usr/bin/tahoe run ${TAHOE_DIR}/${daemon_name}" >> $TAHOELAFS_DAEMON_FILE
+    echo "ExecStop=/usr/bin/tahoe stop ${TAHOE_DIR}/${daemon_name}" >> $TAHOELAFS_DAEMON_FILE
     echo 'Restart=on-failure' >> $TAHOELAFS_DAEMON_FILE
     echo 'RestartSec=10' >> $TAHOELAFS_DAEMON_FILE
-    echo "Environment=\"USER=tahoelafs\" \"HOME=/home/tahoelafs\"" >> $TAHOELAFS_DAEMON_FILE
+    echo "Environment=\"USER=tahoelafs\" \"HOME=${TAHOE_DIR}\"" >> $TAHOELAFS_DAEMON_FILE
     echo '' >> $TAHOELAFS_DAEMON_FILE
     echo '[Install]' >> $TAHOELAFS_DAEMON_FILE
     echo 'WantedBy=multi-user.target' >> $TAHOELAFS_DAEMON_FILE
@@ -627,7 +612,7 @@ function create_tahoelafs_web {
     if [ ! -f /etc/nginx/.htpasswd-tahoelafs ]; then
         touch /etc/nginx/.htpasswd-tahoelafs
     fi
-    if grep "${MY_USERNAME}:" /etc/nginx/.htpasswd-tahoelafs; then
+    if grep -q "${MY_USERNAME}:" /etc/nginx/.htpasswd-tahoelafs; then
         sed -i '/${MY_USERNAME}:/d' /etc/nginx/.htpasswd-tahoelafs
     fi
     echo "${TAHOELAFS_ADMIN_PASSWORD}" | htpasswd -i -s /etc/nginx/.htpasswd-tahoelafs ${MY_USERNAME}
@@ -643,30 +628,42 @@ function install_tahoelafs {
     fi
 
     apt-get -yq install build-essential python-pip python-dev libffi-dev libssl-dev
-    apt-get -yq install libcrypto++-dev python-pycryptopp python-cffi python-virtualenv
+    apt-get -yq install libcrypto++-dev python-pycryptopp python-cffi
+    apt-get -yq install python-virtualenv apache2-utils
+
+    if [ -d $TAHOE_DIR ]; then
+        groupdel -f tahoelafs
+        userdel -r tahoelafs
+        rm -rf $TAHOE_DIR
+    fi
 
     # create a user
-    if [ ! -d /home/tahoelafs ]; then
-        # add a gogs user account
-        adduser --disabled-login --gecos 'tahoe-lafs' tahoelafs
-        adduser tahoelafs debian-tor
+    adduser --disabled-login --gecos 'tahoe-lafs' tahoelafs
+
+    if [ ! -d $TAHOE_DIR ]; then
+        echo $"$TAHOE_DIR directory was not created"
+        exit 879335
     fi
 
-    if [ -d /home/tahoelafs/Maildir ]; then
-        rm -rf /home/tahoelafs/Maildir
-    fi
+    adduser tahoelafs debian-tor
+    groupadd tahoelafs
 
-    install_tahoelafs_to_directory /home/tahoelafs/tahoelafs
+    apt-get -yq install tahoe-lafs
+    pip install tahoe-lafs[tor]
+
+    if [ -d $TAHOE_DIR/Maildir ]; then
+        rm -rf $TAHOE_DIR/Maildir
+    fi
 
     # remove files we don't need
-    rm -rf /home/tahoelafs/.mutt
-    rm /home/tahoelafs/.emacs-mutt
-    rm /home/tahoelafs/.muttrc
-    rm /home/tahoelafs/.mutt-alias
-    rm /home/tahoelafs/.procmailrc
+    rm -rf $TAHOE_DIR/.mutt
+    rm $TAHOE_DIR/.emacs-mutt
+    rm $TAHOE_DIR/.muttrc
+    rm $TAHOE_DIR/.mutt-alias
+    rm $TAHOE_DIR/.procmailrc
 
     # set permissions
-    chown -R tahoelafs:debian-tor /home/tahoelafs
+    chown -R tahoelafs:debian-tor $TAHOE_DIR
 
     node_nick=$(get_tahoelafs_nick)
     client_nick=${MY_USERNAME}-client
@@ -677,14 +674,14 @@ function install_tahoelafs {
     # create an onion address for client node
     TAHOELAFS_ONION_HOSTNAME=$(add_onion_service tahoelafs 80 ${TAHOELAFS_ONION_PORT})
 
-    create_tahoelafs_stealth_node /home/tahoelafs/storage /home/tahoelafs/client ${node_nick} ${client_nick}
+    create_tahoelafs_stealth_node $TAHOE_DIR/storage $TAHOE_DIR/client ${node_nick} ${client_nick}
 
     # start the storage node
-    su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/storage' - tahoelafs
+    su -c "/usr/bin/python2 /usr/bin/tahoe start $TAHOE_DIR/storage" - tahoelafs
     create_tahoelafs_daemon "storage"
 
     # start the client
-    su -c '/home/tahoelafs/tahoelafs/venv/bin/python2 /home/tahoelafs/tahoelafs/venv/bin/tahoe start /home/tahoelafs/client' - tahoelafs
+    su -c "/usr/bin/python2 /usr/bin/tahoe start $TAHOE_DIR/client" - tahoelafs
     add_tahoelafs_server "$(get_tahoelafs_storage_hostname)" "$(get_tahoelafs_public_key)" "${node_nick}" "$(get_tahoelafs_furl)"
     if ! grep -q "HidServAuth $(get_tahoelafs_storage_hostname)" /etc/tor/torrc; then
         echo $'Unable to create tahoelafs server'
@@ -696,11 +693,10 @@ function install_tahoelafs {
     fi
     create_tahoelafs_daemon "client"
 
-    set_completion_param "tahoelafs commit" "$TAHOELAFS_COMMIT"
     set_completion_param "tahoelafs onion domain" "$TAHOELAFS_ONION_HOSTNAME"
 
     create_tahoelafs_web
-    systemctl restart tor
+    onion_update
     APP_INSTALLED=1
 }
 

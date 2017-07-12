@@ -50,6 +50,14 @@ friendica_variables=(ONION_ONLY
                      FRIENDICA_REPO
                      FRIENDICA_ADDONS_REPO)
 
+function logging_on_friendica {
+    echo -n ''
+}
+
+function logging_off_friendica {
+    echo -n ''
+}
+
 function remove_user_friendica {
     remove_username="$1"
     ${PROJECT_NAME}-pass -u $remove_username --rmapp friendica
@@ -213,6 +221,11 @@ function reconfigure_friendica {
 }
 
 function upgrade_friendica {
+    CURR_FRIENDICA_COMMIT=$(get_completion_param "friendica commit")
+    if [[ "$CURR_FRIENDICA_COMMIT" == "$FRIENDICA_COMMIT" ]]; then
+        return
+    fi
+
     FRIENDICA_PATH=/var/www/$FRIENDICA_DOMAIN_NAME/htdocs
 
     function_check set_repo_commit
@@ -247,6 +260,11 @@ function restore_local_friendica {
         if [ -d $temp_restore_dir ]; then
             rm -rf $temp_restore_dir
         fi
+
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        FRIENDICA_PATH=/var/www/$FRIENDICA_DOMAIN_NAME/htdocs
+        sed -i "s|\$db_pass =.*|\$db_pass = '${MARIADB_PASSWORD}';|g" $FRIENDICA_PATH/.htconfig.php
+        MARIADB_PASSWORD=
     fi
 }
 
@@ -282,6 +300,11 @@ function restore_remote_friendica {
     if [ -d /root/tempfriendica ]; then
         rm -rf /root/tempfriendica
     fi
+
+    MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+    FRIENDICA_PATH=/var/www/$FRIENDICA_DOMAIN_NAME/htdocs
+    sed -i "s|\$db_pass =.*|\$db_pass = '${MARIADB_PASSWORD}';|g" $FRIENDICA_PATH/.htconfig.php
+    MARIADB_PASSWORD=
 }
 
 function remove_friendica {
@@ -327,9 +350,9 @@ function install_friendica {
     function_check repair_databases_script
     repair_databases_script
 
-    apt-get -yq install php5-common php5-cli php5-curl php5-gd php5-mysql php5-mcrypt git
-    apt-get -yq install php5-dev imagemagick php5-imagick
-    apt-get -yq install php5-memcached
+    apt-get -yq install php-common php-cli php-curl php-gd php-mysql php-mcrypt git
+    apt-get -yq install php-dev imagemagick php-imagick libfcgi0ldbl
+    apt-get -yq install php-memcached
 
     if [ ! -d /var/www/$FRIENDICA_DOMAIN_NAME ]; then
         mkdir /var/www/$FRIENDICA_DOMAIN_NAME
@@ -340,8 +363,17 @@ function install_friendica {
 
     if [ ! -f $FRIENDICA_PATH/index.php ]; then
         cd $INSTALL_DIR
-        function_check git_clone
-        git_clone $FRIENDICA_REPO friendica
+
+        if [ -d /repos/friendica ]; then
+            mkdir friendica
+            cp -r -p /repos/friendica/. friendica
+            cd friendica
+            git pull
+        else
+            function_check git_clone
+            git_clone $FRIENDICA_REPO friendica
+        fi
+
         git checkout $FRIENDICA_COMMIT -b $FRIENDICA_COMMIT
         set_completion_param "friendica commit" "$FRIENDICA_COMMIT"
 
@@ -425,11 +457,12 @@ function install_friendica {
         echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
-        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php-cgi alone:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
-        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
-        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php-fpm:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
@@ -493,11 +526,12 @@ function install_friendica {
         echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
-        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php-cgi alone:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
-        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
-        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        # With php-fpm:' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
         echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$FRIENDICA_DOMAIN_NAME
@@ -588,7 +622,8 @@ function install_friendica {
     chown www-data:www-data $FRIENDICA_PATH/.htconfig.php
     chmod 755 $FRIENDICA_PATH/.htconfig.php
 
-    systemctl restart php5-fpm
+    systemctl restart mariadb
+    systemctl restart php7.0-fpm
     systemctl restart nginx
     systemctl restart cron
 

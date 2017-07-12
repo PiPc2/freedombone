@@ -35,7 +35,7 @@ SHOW_ON_ABOUT=1
 SHOW_ICANN_ADDRESS_ON_ABOUT=0
 
 SEARX_REPO="https://github.com/asciimoo/searx"
-SEARX_COMMIT='259735f30901ae884f8234f1f138c28a9e59713a'
+SEARX_COMMIT='80460be8f69cea5f15c9d5ddbb63e4e48fde2dd0'
 SEARX_PATH=/etc
 SEARX_ONION_PORT=8094
 SEARX_ONION_HOSTNAME=
@@ -47,6 +47,14 @@ searx_variables=(SEARX_LOGIN_TEXT
                  MY_USERNAME
                  SEARX_BACKGROUND_IMAGE_URL
                  SYSTEM_TYPE)
+
+function logging_on_searx {
+    echo -n ''
+}
+
+function logging_off_searx {
+    echo -n ''
+}
 
 function searx_set_default_background {
     if [ -f ~/freedombone/img/backgrounds/searx.jpg ]; then
@@ -737,6 +745,11 @@ function create_searx_config {
 }
 
 function upgrade_searx {
+    CURR_SEARX_COMMIT=$(get_completion_param "searx commit")
+    if [[ "$CURR_SEARX_COMMIT" == "$SEARX_COMMIT" ]]; then
+        return
+    fi
+
     settings_file=${SEARX_PATH}/searx/searx/settings.yml
     background_image=/etc/searx/searx/static/themes/courgette/img/bg-body-index.jpg
 
@@ -789,6 +802,8 @@ function remove_searx {
     systemctl stop searx
     systemctl disable searx
     rm /etc/systemd/system/searx.service
+    systemctl daemon-reload
+
     function_check remove_onion_service
     remove_onion_service searx ${SEARX_ONION_PORT}
     userdel -r searx
@@ -811,8 +826,15 @@ function install_searx {
         exit 62429
     fi
 
-    apt-get -yq install python-pip libyaml-dev python-werkzeug python-babel python-lxml apache2-utils
-    apt-get -yq install git build-essential libxslt-dev python-dev python-virtualenv python-pybabel zlib1g-dev uwsgi uwsgi-plugin-python libapache2-mod-uwsgi imagemagick
+    apt-get -yq install python-pip libyaml-dev python-werkzeug python-babel python-lxml
+    apt-get -yq install git build-essential libxslt-dev python-dev python-virtualenv zlib1g-dev uwsgi uwsgi-plugin-python imagemagick
+    apt-get -yq install apache2-utils
+
+    apt-get -yq remove --purge apache2-bin*
+    if [ -d /etc/apache2 ]; then
+        rm -rf /etc/apache2
+        echo $'Removed Apache installation'
+    fi
 
     pip install --upgrade pip
 
@@ -846,14 +868,35 @@ function install_searx {
         exit 63738
     fi
 
+    pip install requests --upgrade
+    if [ ! "$?" = "0" ]; then
+        echo $'Failed to install requests'
+        exit 357282
+    fi
+
+    pip install pygments --upgrade
+    if [ ! "$?" = "0" ]; then
+        echo $'Failed to install pygments'
+        exit 357282
+    fi
+
     if [ ! -d $SEARX_PATH ]; then
         mkdir -p $SEARX_PATH
     fi
 
     # clone the repo
     cd $SEARX_PATH
-    function_check git_clone
-    git_clone $SEARX_REPO searx
+
+    if [ -d /repos/searx ]; then
+        mkdir searx
+        cp -r -p /repos/searx/. searx
+        cd searx
+        git pull
+    else
+        function_check git_clone
+        git_clone $SEARX_REPO searx
+    fi
+
     git checkout $SEARX_COMMIT -b $SEARX_COMMIT
     set_completion_param "searx commit" "$SEARX_COMMIT"
 
@@ -915,7 +958,7 @@ function install_searx {
     echo '}' >> /etc/nginx/sites-available/searx
 
     # replace the secret key
-    if ! grep "searx key" $COMPLETION_FILE; then
+    if ! grep -q "searx key" $COMPLETION_FILE; then
         SEARX_SECRET_KEY="$(create_password 30)"
         set_completion_param "searx key" "${SEARX_SECRET_KEY}"
     fi
@@ -930,7 +973,7 @@ function install_searx {
     nginx_ensite searx
 
     # restart the web server
-    systemctl restart php5-fpm
+    systemctl restart php7.0-fpm
     systemctl restart nginx
 
     # start the daemon

@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -50,6 +50,14 @@ gogs_variables=(ONION_ONLY
                 MY_USERNAME
                 DDNS_PROVIDER
                 ARCHITECTURE)
+
+function logging_on_gogs {
+    echo -n ''
+}
+
+function logging_off_gogs {
+    echo -n ''
+}
 
 function change_password_gogs {
     curr_username="$1"
@@ -102,12 +110,15 @@ function gogs_parameters {
         ARCHITECTURE=$(uname -m)
         if [[ ${ARCHITECTURE} == "arm"* ]]; then
             CURR_ARCH=armv5
+            echo $"Using $CURR_ARCH"
         fi
         if [[ ${ARCHITECTURE} == "amd"* || ${ARCHITECTURE} == "x86_64" ]]; then
             CURR_ARCH=amd64
+            echo $"Using $CURR_ARCH"
         fi
         if [[ ${ARCHITECTURE} == *"386" || ${ARCHITECTURE} == *"686" ]]; then
             CURR_ARCH=386
+            echo $"Using $CURR_ARCH"
         fi
     fi
 
@@ -192,6 +203,7 @@ function upgrade_gogs {
     rm $INSTALL_DIR/gogs_config.ini
 
     sed -i "s|gogs version.*|gogs version:$GOGS_VERSION|g" ${COMPLETION_FILE}
+    systemctl restart mariadb
     systemctl restart gogs
 }
 
@@ -275,6 +287,12 @@ function restore_local_gogs {
             rm -rf ${temp_restore_dir}ssh
             chown -R ${GOGS_USERNAME}:${GOGS_USERNAME} /home/${GOGS_USERNAME}
         fi
+
+        GOGS_CONFIG_PATH=/home/${GOGS_USERNAME}/custom/conf
+        GOGS_CONFIG_FILE=${GOGS_CONFIG_PATH}/app.ini
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        sed -i "s|PASSWD =.*|PASSWD = $MARIADB_PASSWORD|g" ${GOGS_CONFIG_FILE}
+        MARIADB_PASSWORD=
     fi
 }
 
@@ -345,6 +363,12 @@ function restore_remote_gogs {
             chown -R ${GOGS_USERNAME}:${GOGS_USERNAME} /home/${GOGS_USERNAME}
             echo $"Restore of Gogs complete"
         fi
+
+        GOGS_CONFIG_PATH=/home/${GOGS_USERNAME}/custom/conf
+        GOGS_CONFIG_FILE=${GOGS_CONFIG_PATH}/app.ini
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        sed -i "s|PASSWD =.*|PASSWD = $MARIADB_PASSWORD|g" ${GOGS_CONFIG_FILE}
+        MARIADB_PASSWORD=
     fi
 }
 
@@ -354,6 +378,7 @@ function remove_gogs {
     fi
     systemctl stop gogs
     systemctl disable gogs
+
     nginx_dissite ${GIT_DOMAIN_NAME}
     remove_certs ${GIT_DOMAIN_NAME}
     if [ -d /var/www/${GIT_DOMAIN_NAME} ]; then
@@ -365,11 +390,15 @@ function remove_gogs {
     function_check drop_database
     drop_database gogs
     rm /etc/systemd/system/gogs.service
+    systemctl daemon-reload
     rm -rf /home/${GOGS_USERNAME}/*
     remove_onion_service gogs ${GIT_ONION_PORT} 9418
     remove_completion_param "install_gogs"
     sed -i '/gogs /d' $COMPLETION_FILE
     remove_backup_database_local gogs
+
+    groupdel -f gogs
+    userdel -r gogs
 
     function_check remove_ddns_domain
     remove_ddns_domain $GIT_DOMAIN_NAME
@@ -381,6 +410,13 @@ function install_gogs {
     fi
 
     adduser --disabled-login --gecos 'Gogs' $GOGS_USERNAME
+
+    if [ ! -d /home/$GOGS_USERNAME ]; then
+        echo $"/home/$GOGS_USERNAME directory not created"
+        exit 783528
+    fi
+
+    groupadd gogs
 
     gogs_parameters
 
@@ -575,7 +611,8 @@ function install_gogs {
 
     GIT_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_gogs/hostname)
 
-    systemctl restart php5-fpm
+    systemctl restart mariadb
+    systemctl restart php7.0-fpm
     systemctl restart nginx
 
     set_completion_param "gogs domain" "$GIT_DOMAIN_NAME"

@@ -39,7 +39,7 @@ KOEL_CODE=
 KOEL_ONION_PORT=8118
 KOEL_PORT=9002
 KOEL_REPO="https://github.com/phanan/koel"
-KOEL_COMMIT='70464a8977b1058f3bd0a4ec77877fe7894d8d84'
+KOEL_COMMIT='70464a'
 KOEL_ADMIN_PASSWORD=
 
 koel_variables=(ONION_ONLY
@@ -48,6 +48,14 @@ koel_variables=(ONION_ONLY
                 DDNS_PROVIDER
                 MY_EMAIL_ADDRESS
                 MY_USERNAME)
+
+function logging_on_koel {
+    echo -n ''
+}
+
+function logging_off_koel {
+    echo -n ''
+}
 
 function koel_remove_gravatar {
     cd /var/www/${KOEL_DOMAIN_NAME}/htdocs
@@ -323,7 +331,7 @@ function backup_local_koel {
 
     source_directory=/var/www/${KOEL_DOMAIN_NAME}/htdocs
     if [ -d $source_directory ]; then
-        systemctl stop koal
+        systemctl stop koel
 
         dest_directory=koel
         function_check suspend_site
@@ -338,7 +346,7 @@ function backup_local_koel {
         function_check restart_site
         restart_site
 
-        systemctl start koal
+        systemctl start koel
     fi
 }
 
@@ -349,7 +357,7 @@ function restore_local_koel {
     KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
     if [ $KOEL_DOMAIN_NAME ]; then
         echo $"Restoring koel"
-        systemctl stop koal
+        systemctl stop koel
 
         temp_restore_dir=/root/tempkoel
         koel_dir=/var/www/${KOEL_DOMAIN_NAME}/htdocs
@@ -361,7 +369,13 @@ function restore_local_koel {
         if [ -d $temp_restore_dir ]; then
             rm -rf $temp_restore_dir
         fi
-        systemctl start koal
+
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        cd /var/www/$KOEL_DOMAIN_NAME/htdocs
+        sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$MARIADB_PASSWORD|g" .env
+        MARIADB_PASSWORD=
+
+        systemctl start koel
     fi
 }
 
@@ -370,7 +384,7 @@ function backup_remote_koel {
         KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
         temp_backup_dir=/var/www/${KOEL_DOMAIN_NAME}/htdocs
         if [ -d $temp_backup_dir ]; then
-            systemctl stop koal
+            systemctl stop koel
 
             function_check suspend_site
             suspend_site ${KOEL_DOMAIN_NAME}
@@ -386,7 +400,7 @@ function backup_remote_koel {
             function_check restart_site
             restart_site
 
-            systemctl start koal
+            systemctl start koel
         else
             echo $"koel domain specified but not found in ${temp_backup_dir}"
         fi
@@ -397,7 +411,7 @@ function restore_remote_koel {
     if grep -q "koel domain" $COMPLETION_FILE; then
         echo $"Restoring koel"
 
-        systemctl stop koal
+        systemctl stop koel
 
         KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
 
@@ -410,7 +424,12 @@ function restore_remote_koel {
             rm -rf /root/tempkoel
         fi
 
-        systemctl start koal
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        cd /var/www/$KOEL_DOMAIN_NAME/htdocs
+        sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$MARIADB_PASSWORD|g" .env
+        MARIADB_PASSWORD=
+
+        systemctl start koel
 
         echo $"Restore of koel complete"
     fi
@@ -426,6 +445,7 @@ function remove_koel {
     if [ -f /etc/systemd/system/koel.service ]; then
         rm /etc/systemd/system/koel.service
     fi
+    systemctl daemon-reload
 
     function_check remove_nodejs
     remove_nodejs koel
@@ -479,15 +499,25 @@ function install_koel_main {
     function_check repair_databases_script
     repair_databases_script
 
-    apt-get -yq install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
-    apt-get -yq install php5-memcached php5-intl exiftool
+    apt-get -yq install php-gettext php-curl php-gd php-mysql git curl php-zip
+    apt-get -yq install php-memcached php-intl exiftool libfcgi0ldbl
+    apt-get -yq install ffmpeg
 
     if [ ! -d /var/www/$KOEL_DOMAIN_NAME ]; then
         mkdir /var/www/$KOEL_DOMAIN_NAME
     fi
     if [ ! -d /var/www/$KOEL_DOMAIN_NAME/htdocs ]; then
-        function_check git_clone
-        git_clone $KOEL_REPO /var/www/$KOEL_DOMAIN_NAME/htdocs
+
+        if [ -d /repos/koel ]; then
+            mkdir /var/www/$KOEL_DOMAIN_NAME/htdocs
+            cp -r -p /repos/koel/. /var/www/$KOEL_DOMAIN_NAME/htdocs
+            cd /var/www/$KOEL_DOMAIN_NAME/htdocs
+            git pull
+        else
+            function_check git_clone
+            git_clone $KOEL_REPO /var/www/$KOEL_DOMAIN_NAME/htdocs
+        fi
+
         if [ ! -d /var/www/$KOEL_DOMAIN_NAME/htdocs ]; then
             echo $'Unable to clone koel repo'
             exit 365735
@@ -554,7 +584,8 @@ function install_koel_main {
         echo '  # PHP' >> $koel_nginx_site
         echo '  location ~ \.php {' >> $koel_nginx_site
         echo '    include snippets/fastcgi-php.conf;' >> $koel_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $koel_nginx_site
+        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $koel_nginx_site
+        echo '    fastcgi_read_timeout 30;' >> $koel_nginx_site
         echo '  }' >> $koel_nginx_site
         echo '' >> $koel_nginx_site
         echo '  # Location' >> $koel_nginx_site
@@ -612,7 +643,8 @@ function install_koel_main {
     echo '  # PHP' >> $koel_nginx_site
     echo '  location ~ \.php {' >> $koel_nginx_site
     echo '    include snippets/fastcgi-php.conf;' >> $koel_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $koel_nginx_site
+    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $koel_nginx_site
+    echo '    fastcgi_read_timeout 30;' >> $koel_nginx_site
     echo '  }' >> $koel_nginx_site
     echo '' >> $koel_nginx_site
     echo '  # Location' >> $koel_nginx_site
@@ -661,7 +693,8 @@ function install_koel_main {
         KOEL_SERVER=${KOEL_ONION_HOSTNAME}
     fi
 
-    systemctl restart php5-fpm
+    systemctl restart mariadb
+    systemctl restart php7.0-fpm
     systemctl restart nginx
 
     ${PROJECT_NAME}-pass -u $MY_USERNAME -a koel -p "$KOEL_ADMIN_PASSWORD"
@@ -691,8 +724,13 @@ function install_koel {
             cat /home/$MY_USERNAME/freedombone/image_build/composer_install | php
         fi
     fi
-    npm install
+    npm install -g yarn
     php composer.phar install
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to run composer install'
+        exit 7252198
+    fi
+    npm install
 
     function_check get_mariadb_password
     get_mariadb_password
@@ -708,8 +746,13 @@ function install_koel {
     sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=$MARIADB_PASSWORD|g" .env
     sed -i 's/MAIL_HOST=.*/MAIL_HOST=localhost/g' .env
     sed -i 's/MAIL_PORT=.*/MAIL_PORT=25/g' .env
+    sed -i 's|FFMPEG_PATH=.*|FFMPEG_PATH=/usr/bin/ffmpeg|g' .env
 
     php artisan koel:init
+    if [ ! "$?" = "0" ]; then
+        echo $"Can't install koel:init"
+        exit 78362
+    fi
     koel_remove_gravatar
     chown -R www-data:www-data /var/www/$KOEL_DOMAIN_NAME/htdocs
 
@@ -738,6 +781,7 @@ function install_koel {
     fi
     chown -R www-data:www-data /music
 
+    systemctl restart mariadb
     systemctl restart nginx
 
     APP_INSTALLED=1

@@ -401,11 +401,11 @@ function letsencrypt_renewals {
 }
 
 function configure_php {
-    sed -i "s/memory_limit = 128M/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php5/fpm/php.ini
-    sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php5/fpm/php.ini
-    sed -i "s/memory_limit = -1/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php5/cli/php.ini
-    sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php5/fpm/php.ini
-    sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php5/fpm/php.ini
+    sed -i "s/memory_limit = 128M/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php/7.0/fpm/php.ini
+    sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php/7.0/fpm/php.ini
+    sed -i "s/memory_limit = -1/memory_limit = ${MAX_PHP_MEMORY}M/g" /etc/php/7.0/cli/php.ini
+    sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 50M/g" /etc/php/7.0/fpm/php.ini
+    sed -i "s/post_max_size = 8M/post_max_size = 50M/g" /etc/php/7.0/fpm/php.ini
 }
 
 function install_web_server_access_control {
@@ -441,7 +441,14 @@ function install_dynamicdns {
 
     apt-get -yq install build-essential curl libgnutls28-dev automake1.11
     if [ ! -d $INSTALL_DIR/inadyn ]; then
-        git_clone $INADYN_REPO $INSTALL_DIR/inadyn
+        if [ -d /repos/inadyn ]; then
+            mkdir $INSTALL_DIR/inadyn
+            cp -r -p /repos/inadyn/. $INSTALL_DIR/inadyn
+            cd $INSTALL_DIR/inadyn
+            git pull
+        else
+            git_clone $INADYN_REPO $INSTALL_DIR/inadyn
+        fi
     fi
     if [ ! -d $INSTALL_DIR/inadyn ]; then
         echo 'inadyn repo not cloned'
@@ -508,10 +515,10 @@ function install_command_line_browser {
 
     # set the home page
     if ! grep -q "WWW_HOME" /home/$MY_USERNAME/.bashrc; then
-        if ! grep -q 'control' /home/$MY_USERNAME/.bashrc; then
+        if ! grep -q 'controluser' /home/$MY_USERNAME/.bashrc; then
             echo "export WWW_HOME=$DEFAULT_SEARCH" >> /home/$MY_USERNAME/.bashrc
         else
-            sed -i "/control/i export WWW_HOME=$DEFAULT_SEARCH" /home/$MY_USERNAME/.bashrc
+            sed -i "/controluser/i export WWW_HOME=$DEFAULT_SEARCH" /home/$MY_USERNAME/.bashrc
         fi
     fi
 
@@ -552,23 +559,37 @@ function install_web_server {
     fi
     # install nginx
     apt-get -yq install nginx
-    apt-get -yq install php5-fpm git
+    apt-get -yq install php-fpm git
 
     # Turn off logs by default
     sed -i 's|access_log.*|access_log = /dev/null;|g' /etc/nginx/nginx.conf
     sed -i 's|error_log.*|error_log = /dev/null;|g' /etc/nginx/nginx.conf
 
     # limit the number of php processes
-    sed -i 's/; process.max =.*/process.max = 32/g' /etc/php5/fpm/php-fpm.conf
-    #sed -i 's/;process_control_timeout =.*/process_control_timeout = 300/g' /etc/php5/fpm/php-fpm.conf
+    sed -i 's/; process.max =.*/process.max = 32/g' /etc/php/7.0/fpm/php-fpm.conf
+    #sed -i 's/;process_control_timeout =.*/process_control_timeout = 300/g' /etc/php/7.0/fpm/php-fpm.conf
+    sed -i 's|;systemd_interval.*|systemd_interval = 10|g' /etc/php/7.0/fpm/php-fpm.conf
+    sed -i 's|;emergency_restart_threshold.*|emergency_restart_threshold = 2|g' /etc/php/7.0/fpm/php-fpm.conf
+    sed -i 's|emergency_restart_threshold.*|emergency_restart_threshold = 2|g' /etc/php/7.0/fpm/php-fpm.conf
+    sed -i 's|;emergency_restart_interval.*|emergency_restart_interval = 1m|g' /etc/php/7.0/fpm/php-fpm.conf
+    sed -i 's|emergency_restart_interval.*|emergency_restart_interval = 1m|g' /etc/php/7.0/fpm/php-fpm.conf
+    sed -i 's|;process_control_timeout.*|process_control_timeout = 10s|g' /etc/php/7.0/fpm/php-fpm.conf
+    sed -i 's|process_control_timeout.*|process_control_timeout = 10s|g' /etc/php/7.0/fpm/php-fpm.conf
 
-    if ! grep -q "pm.max_children" /etc/php5/fpm/php-fpm.conf; then
-        echo 'pm.max_children = 10' >> /etc/php5/fpm/php-fpm.conf
-        echo 'pm.start_servers = 2' >> /etc/php5/fpm/php-fpm.conf
-        echo 'pm.min_spare_servers = 2' >> /etc/php5/fpm/php-fpm.conf
-        echo 'pm.max_spare_servers = 5' >> /etc/php5/fpm/php-fpm.conf
-        echo 'pm.max_requests = 50' >> /etc/php5/fpm/php-fpm.conf
+    if ! grep -q "pm.max_children" /etc/php/7.0/fpm/php-fpm.conf; then
+        echo 'pm = static' >> /etc/php/7.0/fpm/php-fpm.conf
+        echo 'pm.max_children = 10' >> /etc/php/7.0/fpm/php-fpm.conf
+        echo 'pm.start_servers = 2' >> /etc/php/7.0/fpm/php-fpm.conf
+        echo 'pm.min_spare_servers = 2' >> /etc/php/7.0/fpm/php-fpm.conf
+        echo 'pm.max_spare_servers = 5' >> /etc/php/7.0/fpm/php-fpm.conf
+        echo 'pm.max_requests = 10' >> /etc/php/7.0/fpm/php-fpm.conf
     fi
+    if ! grep -q "request_terminate_timeout" /etc/php/7.0/fpm/php-fpm.conf; then
+        echo 'request_terminate_timeout = 30' >> /etc/php/7.0/fpm/php-fpm.conf
+    else
+        sed -i 's|request_terminate_timeout =.*|request_terminate_timeout = 30|g'  >> /etc/php/7.0/fpm/php-fpm.conf
+    fi
+    sed -i 's|max_execution_time =.*|max_execution_time = 30|g' /etc/php/7.0/fpm/php.ini
 
     if [ ! -d /etc/nginx ]; then
         echo $"ERROR: nginx does not appear to have installed. $CHECK_MESSAGE"
@@ -767,6 +788,8 @@ function update_default_domain {
             chown -R prosody:default /etc/prosody
             chmod -R 700 /etc/prosody/certs/*
             chmod 600 /etc/prosody/prosody.cfg.lua
+            cp -r $INSTALL_DIR/prosody-modules/* /var/lib/prosody/prosody-modules/
+            chown -R prosody:prosody /var/lib/prosody/prosody-modules
             systemctl reload prosody
         fi
 

@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -47,9 +47,6 @@ GPG_KEYSERVER="hkp://keys.gnupg.net"
 
 # whether to encrypt all incoming email with your public key
 GPG_ENCRYPT_STORED_EMAIL="yes"
-
-# gets set to yes if gpg keys are imported from usb
-GPG_KEYS_IMPORTED="no"
 
 # optionally you can provide your exported GPG key pair here
 # Note that the private key file will be deleted after use
@@ -157,10 +154,12 @@ function configure_email_onion {
         return
     fi
 
-    echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/' >> /etc/tor/torrc
-    echo 'HiddenServicePort 25 127.0.0.1:25' >> /etc/tor/torrc
-    echo 'HiddenServicePort 587 127.0.0.1:587' >> /etc/tor/torrc
-    echo 'HiddenServicePort 465 127.0.0.1:465' >> /etc/tor/torrc
+    if ! grep -q "hidden_service_email" /etc/tor/torrc; then
+        echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/' >> /etc/tor/torrc
+        echo 'HiddenServicePort 25 127.0.0.1:25' >> /etc/tor/torrc
+        echo 'HiddenServicePort 587 127.0.0.1:587' >> /etc/tor/torrc
+        echo 'HiddenServicePort 465 127.0.0.1:465' >> /etc/tor/torrc
+    fi
 
     function_check onion_update
     onion_update
@@ -168,8 +167,9 @@ function configure_email_onion {
     function_check wait_for_onion_service
     wait_for_onion_service email
 
-    if [[ $(onion_service_exists email) == "0" ]]; then
+    if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
         echo $"email onion site hostname not found"
+        systemctl restart tor
         exit 782352
     fi
 
@@ -303,15 +303,15 @@ function encrypt_outgoing_email {
     if ! grep -q "pgp_encrypt_only_command" /home/$MY_USERNAME/.muttrc; then
         echo '' >> /home/$MY_USERNAME/.muttrc
         echo $'# Encrypt items in the Sent folder' >> /home/$MY_USERNAME/.muttrc
-        echo "set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --trust-model always --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
+        echo "set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --trust-model always --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
     else
-        sed -i "s|set pgp_encrypt_only_command.*|set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --trust-model always --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
+        sed -i "s|set pgp_encrypt_only_command.*|set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --trust-model always --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
     fi
 
     if ! grep -q "pgp_encrypt_sign_command" /home/$MY_USERNAME/.muttrc; then
-        echo "set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --trust-model always --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
+        echo "set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --trust-model always --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$MY_USERNAME/.muttrc
     else
-        sed -i "s|set pgp_encrypt_sign_command.*|set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --trust-model always --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
+        sed -i "s|set pgp_encrypt_sign_command.*|set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --trust-model always --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$MY_USERNAME/.muttrc
     fi
 
     mark_completed $FUNCNAME
@@ -365,7 +365,7 @@ function email_client {
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
     fi
-    apt-get -yq install mutt-patched lynx abook urlview
+    apt-get -yq install lynx abook urlview mutt
 
     if [ ! -f /etc/Muttrc ]; then
         echo $"ERROR: Mutt does not appear to have installed. $CHECK_MESSAGE"
@@ -403,8 +403,6 @@ function email_client {
     echo '# set up the sidebar' >> /etc/Muttrc
     echo 'set sidebar_width=22' >> /etc/Muttrc
     echo 'set sidebar_visible=yes' >> /etc/Muttrc
-    echo "set sidebar_delim='|'" >> /etc/Muttrc
-    echo 'set sidebar_sort=yes' >> /etc/Muttrc
     echo '' >> /etc/Muttrc
     echo 'set rfc2047_parameters' >> /etc/Muttrc
     echo '' >> /etc/Muttrc
@@ -652,8 +650,6 @@ function create_private_mailing_list {
     if [ ! -d /etc/exim4 ]; then
         return
     fi
-    # This installation doesn't work, results in ruby errors
-    # There is currently no schleuder package for Debian jessie
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
     fi
@@ -715,6 +711,14 @@ function create_private_mailing_list {
 function split_gpg_key_into_fragments {
     # split the gpg key into fragments if social key management is enabled
     if [[ $ENABLE_SOCIAL_KEY_MANAGEMENT == "yes" ]]; then
+
+        if [ $IMAGE_PASSWORD_FILE ]; then
+            if [ -f $IMAGE_PASSWORD_FILE ]; then
+                ${PROJECT_NAME}-splitkey -u $MY_USERNAME -e $MY_EMAIL_ADDRESS --fullname "$MY_NAME" --passwordfile $IMAGE_PASSWORD_FILE
+                return
+            fi
+        fi
+
         echo 'Splitting GPG key. You may need to enter your passphrase.'
         ${PROJECT_NAME}-splitkey -u $MY_USERNAME -e $MY_EMAIL_ADDRESS --fullname "$MY_NAME"
         if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
@@ -1155,7 +1159,7 @@ function spam_filtering {
     echo '#!/bin/bash' > /usr/bin/filterspam
     echo 'for d in /home/*/ ; do' >> /usr/bin/filterspam
     echo '    USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/filterspam
-    echo '    if [[ $USERNAME != "git" && $USERNAME != "go" && $USERNAME != "gogs" && $USERNAME != "mirrors" && $USERNAME != "sync" && $USERNAME != "tahoelafs" ]]; then' >> /usr/bin/filterspam
+    echo '    if [[ $USERNAME != "git" && $USERNAME != "go" && $USERNAME != "gogs" && $USERNAME != "sync" && $USERNAME != "tahoelafs" ]]; then' >> /usr/bin/filterspam
     echo '        MAILDIR=/home/$USERNAME/Maildir/.learn-spam' >> /usr/bin/filterspam
     echo '        if [ ! -d "$MAILDIR" ]; then' >> /usr/bin/filterspam
     echo '           exit' >> /usr/bin/filterspam
@@ -1177,7 +1181,7 @@ function spam_filtering {
     echo '#!/bin/bash' > /usr/bin/filterham
     echo 'for d in /home/*/ ; do' >> /usr/bin/filterham
     echo '    USERNAME=$(echo "$d" | awk -F '"'"'/'"'"' '"'"'{print $3}'"'"')' >> /usr/bin/filterham
-    echo '    if [[ $USERNAME != "git" && $USERNAME != "go" && $USERNAME != "gogs" && $USERNAME != "mirrors" && $USERNAME != "sync" && $USERNAME != "tahoelafs" ]]; then' >> /usr/bin/filterham
+    echo '    if [[ $USERNAME != "git" && $USERNAME != "go" && $USERNAME != "gogs" && $USERNAME != "sync" && $USERNAME != "tahoelafs" ]]; then' >> /usr/bin/filterham
     echo '        MAILDIR=/home/$USERNAME/Maildir/.learn-ham' >> /usr/bin/filterham
     echo '        if [ ! -d "$MAILDIR" ]; then' >> /usr/bin/filterham
     echo '            exit' >> /usr/bin/filterham
@@ -1271,8 +1275,6 @@ function configure_imap {
         return
     fi
 
-    dpkg -P dovecot-imapd
-    dpkg -P dovecot-core
     apt-get -yq install dovecot-imapd
 
     if [ ! -d /etc/dovecot ]; then
@@ -1280,19 +1282,9 @@ function configure_imap {
         exit 48
     fi
 
-    if [[ $ONION_ONLY == 'no' ]]; then
-        # obtain a cert for the default domain
-        if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
-            echo $'Obtaining certificate for the main domain'
-            create_site_certificate ${DEFAULT_DOMAIN_NAME} 'yes'
-        fi
-    fi
-
-    if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "0" ]]; then
-        if [[ "$(cert_exists dovecot)" == "0" ]]; then
-            ${PROJECT_NAME}-addcert -h dovecot --dhkey $DH_KEYLENGTH
-            check_certificates dovecot
-        fi
+    if [[ "$(cert_exists dovecot)" == "0" ]]; then
+        ${PROJECT_NAME}-addcert -h dovecot --dhkey $DH_KEYLENGTH
+        check_certificates dovecot
     fi
 
     chmod 600 /etc/shadow
@@ -1313,18 +1305,11 @@ function configure_imap {
     fi
     sed -i 's|#ssl =.*|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
     sed -i 's|ssl =.*|ssl = required|g' /etc/dovecot/conf.d/10-ssl.conf
-    if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME} pem)" == "1" ]]; then
-        sed -i "s|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
-        sed -i "s|ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
-    else
-        sed -i "s|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt|g" /etc/dovecot/conf.d/10-ssl.conf
-        sed -i "s|ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt|g" /etc/dovecot/conf.d/10-ssl.conf
-    fi
-    sed -i "s|#ssl_key =.*|ssl_key = </etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/dovecot/conf.d/10-ssl.conf
-    sed -i "s|ssl_key =.*|ssl_key = </etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/dovecot/conf.d/10-ssl.conf
-    if [[ "$(cert_exists ${DEFAULT_DOMAIN_NAME})" == "1" ]]; then
-        sed -i "s|#ssl_dh_parameters_length.*|ssl_dh_parameters_length = ${DH_KEYLENGTH}|g" /etc/dovecot/conf.d/10-ssl.conf
-    fi
+    sed -i "s|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/dovecot.crt|g" /etc/dovecot/conf.d/10-ssl.conf
+    sed -i "s|ssl_cert =.*|ssl_cert = </etc/ssl/certs/dovecot.crt|g" /etc/dovecot/conf.d/10-ssl.conf
+    sed -i "s|#ssl_key =.*|ssl_key = </etc/ssl/private/dovecot.key|g" /etc/dovecot/conf.d/10-ssl.conf
+    sed -i "s|ssl_key =.*|ssl_key = </etc/ssl/private/dovecot.key|g" /etc/dovecot/conf.d/10-ssl.conf
+    sed -i "s|#ssl_dh_parameters_length.*|ssl_dh_parameters_length = ${DH_KEYLENGTH}|g" /etc/dovecot/conf.d/10-ssl.conf
     sed -i 's/#ssl_prefer_server_ciphers.*/ssl_prefer_server_ciphers = yes/g' /etc/dovecot/conf.d/10-ssl.conf
     sed -i "s|#ssl_protocols =.*|ssl_protocols = '$SSL_PROTOCOLS'|g" /etc/dovecot/conf.d/10-ssl.conf
     sed -i "s|ssl_protocols =.*|ssl_protocols = '$SSL_PROTOCOLS'|g" /etc/dovecot/conf.d/10-ssl.conf
@@ -1374,7 +1359,7 @@ function configure_imap {
     fi
 
     # Separate logging, otherwise syslog is used
-    if ! grep "# logging" /etc/dovecot/dovecot.conf; then
+    if ! grep -q "# logging" /etc/dovecot/dovecot.conf; then
         echo '' >> /etc/dovecot/dovecot.conf
         echo '# logging' >> /etc/dovecot/dovecot.conf
         echo 'log_path = /var/log/dovecot.log' >> /etc/dovecot/dovecot.conf
@@ -1437,7 +1422,7 @@ function configure_imap_client_certs {
     echo 'serial = sslserial' >> /etc/ssl/dovecot-ca.cnf
     echo 'default_days = 3650' >> /etc/ssl/dovecot-ca.cnf
     echo 'default_md = sha256' >> /etc/ssl/dovecot-ca.cnf
-    echo 'default_bits = 4096' >> /etc/ssl/dovecot-ca.cnf
+    echo 'default_bits = 2048' >> /etc/ssl/dovecot-ca.cnf
     echo 'policy = dovecot-ca_policy' >> /etc/ssl/dovecot-ca.cnf
     echo 'x509_extensions = dovecot-ca_extensions' >> /etc/ssl/dovecot-ca.cnf
     echo '' >> /etc/ssl/dovecot-ca.cnf
@@ -1469,6 +1454,7 @@ function configure_imap_client_certs {
 }
 
 function create_gpg_subkey {
+    # Note: currently not used
     if [ ! -d /etc/exim4 ]; then
         return
     fi
@@ -1487,20 +1473,23 @@ function create_gpg_subkey {
     KEYGRIP=$(gpg --fingerprint --fingerprint $MY_EMAIL_ADDRESS | grep fingerprint | tail -1 | cut -d= -f2 | sed -e 's/ //g')
 
     # Generate a GPG subkey
-    # Here a 2048bit length is used to be compatible with yubikey
-    echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
-    echo "Key-Grip: $KEYGRIP" > /home/$MY_USERNAME/gpg-genkey.conf
-    echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
-    echo 'Subkey-Length: 2048' >> /home/$MY_USERNAME/gpg-genkey.conf
+    echo 'Key-Type: eddsa' > /home/$MY_USERNAME/gpg-genkey.conf
+    echo 'Key-Curve: Ed25519' >> /home/$MY_USERNAME/gpg-genkey.conf
+    echo "Key-Grip: $KEYGRIP" >> /home/$MY_USERNAME/gpg-genkey.conf
+    echo 'Subkey-Type: eddsa' >> /home/$MY_USERNAME/gpg-genkey.conf
     echo "subkey-Usage: $GPG_KEY_USAGE" > /home/$MY_USERNAME/gpg-genkey.conf
     echo "Name-Real:  $MY_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
     echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
     echo "Name-Comment: $GPG_KEY_USAGE" >> /home/$MY_USERNAME/gpg-genkey.conf
     echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
+    echo "Passphrase: $PROJECT_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
     chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
-    su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+    su -m root -c "gpg --homedir /home/$MY_USERNAME/.gnupg --batch --full-gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
+    chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
+
     shred -zu /home/$MY_USERNAME/gpg-genkey.conf
-    MY_GPG_SUBKEY_ID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS | grep 'pub '" - $MY_USERNAME | awk -F ' ' '{print $2}' | awk -F '/' '{print $2}')
+
+    MY_GPG_SUBKEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
 
     mark_completed $FUNCNAME
 }
@@ -1538,7 +1527,12 @@ function configure_gpg {
     gpg_dir=/home/$MY_USERNAME/.gnupg
 
     # if gpg keys directory was previously imported from usb
-    if [[ $GPG_KEYS_IMPORTED == "yes" && -d $gpg_dir ]]; then
+    if [ -d $gpg_dir ]; then
+        echo $'GPG directory exists'
+    else
+        echo $"GPG directory $gpg_dir was not found"
+    fi
+    if [ -d $gpg_dir ]; then
         echo $'GPG keys were imported'
         sed -i "s|keyserver hkp://keys.gnupg.net|keyserver $GPG_KEYSERVER|g" $gpg_dir/gpg.conf
         MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
@@ -1582,12 +1576,15 @@ function configure_gpg {
             echo $"GPG public key file $MY_GPG_PUBLIC_KEY was not found"
             exit 2483
         fi
+
         if [ ! -f $MY_GPG_PRIVATE_KEY ]; then
             echo $"GPG private key file $MY_GPG_PRIVATE_KEY was not found"
             exit 5383
         fi
-        su -c "gpg --import $MY_GPG_PUBLIC_KEY" - $MY_USERNAME
-        su -c "gpg --allow-secret-key-import --import $MY_GPG_PRIVATE_KEY" - $MY_USERNAME
+
+        gpg_import_public_key $MY_USERNAME $MY_GPG_PUBLIC_KEY
+        gpg_import_private_key $MY_USERNAME $MY_GPG_PRIVATE_KEY
+
         KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
         if [[ $KEY_EXISTS == "no" ]]; then
             echo $"The GPG key for $MY_EMAIL_ADDRESS could not be imported"
@@ -1602,57 +1599,23 @@ function configure_gpg {
         fi
     else
         # Generate a GPG key
-        echo 'Key-Type: 1' > /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Key-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Subkey-Type: 1' >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Subkey-Length: 4096' >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo "Name-Real:  $MY_NAME" >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo "Name-Email: $MY_EMAIL_ADDRESS" >> /home/$MY_USERNAME/gpg-genkey.conf
-        echo 'Expire-Date: 0' >> /home/$MY_USERNAME/gpg-genkey.conf
-        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/gpg-genkey.conf
-        echo $'Generating a new GPG key'
-        su -c "gpg --batch --gen-key /home/$MY_USERNAME/gpg-genkey.conf" - $MY_USERNAME
-        KEY_EXISTS=$(gpg_key_exists "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
-        if [[ $KEY_EXISTS == "no" ]]; then
-            echo $"A GPG key for $MY_EMAIL_ADDRESS could not be created"
-            exit 6362
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            gpg_create_key $MY_USERNAME $(printf `cat $IMAGE_PASSWORD_FILE`)
+        else
+            gpg_create_key $MY_USERNAME $PROJECT_NAME
         fi
-        shred -zu /home/$MY_USERNAME/gpg-genkey.conf
         MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$MY_USERNAME" "$MY_EMAIL_ADDRESS")
-        if [ ${#MY_GPG_PUBLIC_KEY_ID} -lt 4 ]; then
-            echo $'GPG public key ID could not be obtained'
-        fi
         MY_GPG_PUBLIC_KEY=/tmp/public_key.gpg
-        su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $MY_USERNAME
-
-        if grep -q "install_email" $COMPLETION_FILE; then
-            if ! grep -q $"Change your GPG password" /home/$MY_USERNAME/README; then
-                echo '' >> /home/$MY_USERNAME/README
-                echo '' >> /home/$MY_USERNAME/README
-                echo $'# Change your GPG password' >> /home/$MY_USERNAME/README
-                echo $"It's very important to add a password to your GPG key so that" >> /home/$MY_USERNAME/README
-                echo $"if anyone does get access to your email they still won't be able" >> /home/$MY_USERNAME/README
-                echo $'to read them without knowning the GPG password.' >> /home/$MY_USERNAME/README
-                echo $'You can change the it with:' >> /home/$MY_USERNAME/README
-                echo '' >> /home/$MY_USERNAME/README
-                echo "  gpg --edit-key $MY_GPG_PUBLIC_KEY_ID" >> /home/$MY_USERNAME/README
-                echo '  passwd' >> /home/$MY_USERNAME/README
-                echo '  save' >> /home/$MY_USERNAME/README
-                echo '  quit' >> /home/$MY_USERNAME/README
-            fi
-            if ! grep -q $"Publish your GPG public key" /home/$MY_USERNAME/README; then
-                echo '' >> /home/$MY_USERNAME/README
-                echo '' >> /home/$MY_USERNAME/README
-                echo $'# Publish your GPG public key' >> /home/$MY_USERNAME/README
-                echo $'So that others can send emails to you securely you should' >> /home/$MY_USERNAME/README
-                echo $'publish your GPG public key with the command:' >> /home/$MY_USERNAME/README
-                echo '' >> /home/$MY_USERNAME/README
-                echo "  gpg --send-keys $MY_GPG_PUBLIC_KEY_ID" >> /home/$MY_USERNAME/README
-            fi
-            chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/README
-            chmod 600 /home/$MY_USERNAME/README
-        fi
+        gpg_export_public_key $MY_USERNAME $MY_GPG_PUBLIC_KEY_ID $MY_GPG_PUBLIC_KEY
     fi
+
+    if [ ! -d /root/.gnupg ]; then
+        cp -r /home/$MY_USERNAME/.gnupg /root/
+        chmod 700 /root/.gnupg
+        chmod 600 /root/.gnupg/*
+    fi
+    gpg_agent_setup root
+    gpg_agent_setup $MY_USERNAME
 
     mark_completed $FUNCNAME
 }

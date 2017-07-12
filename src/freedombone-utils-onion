@@ -28,6 +28,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# The maximum amount of traffic per day in gigabytes
+TOR_MAX_TRAFFIC_PER_DAY_GB=3
+
+HIDDEN_SERVICE_PATH='/var/lib/tor/hidden_service_'
+
 function add_email_hostname {
     extra_email_hostname="$1"
     email_hostnames=$(cat /etc/exim4/update-exim4.conf.conf | grep "dc_other_hostnames" | awk -F "'" '{print $2}')
@@ -41,24 +46,14 @@ function add_email_hostname {
 
 function onion_update {
     # update so that new onion services appear
-    systemctl reload tor
-}
-
-function onion_service_exists {
-    onion_service_name="$1"
-
-    if [ -f /var/lib/tor/hidden_service_${onion_service_name}/hostname ]; then
-        echo "1"
-    else
-        echo "0"
-    fi
+    systemctl restart tor
 }
 
 function wait_for_onion_service_base {
     onion_service_name="$1"
 
     sleep_ctr=0
-    while [[ $(onion_service_exists ${onion_service_name}) == "0" ]]; do
+    while [ ! -f ${HIDDEN_SERVICE_PATH}${onion_service_name}/hostname ]; do
         sleep 1
         sleep_ctr=$((sleep_ctr + 1))
         if [ $sleep_ctr -gt 10 ]; then
@@ -72,11 +67,12 @@ function wait_for_onion_service {
 
     wait_for_onion_service_base ${onion_service_name}
 
-    if [[ $(onion_service_exists ${onion_service_name}) == "0" ]]; then
+    if [ ! -f ${HIDDEN_SERVICE_PATH}${onion_service_name}/hostname ]; then
         # try a second time
         onion_update
         wait_for_onion_service_base ${onion_service_name}
     fi
+    sync
 }
 
 function remove_onion_service {
@@ -99,13 +95,13 @@ function remove_onion_service {
             fi
         fi
     fi
-    if [ -d /var/lib/tor/hidden_service_${onion_service_name} ]; then
-        shred -zu /var/lib/tor/hidden_service_${onion_service_name}/*
-        rm -rf /var/lib/tor/hidden_service_${onion_service_name}
+    if [ -d ${HIDDEN_SERVICE_PATH}${onion_service_name} ]; then
+        shred -zu ${HIDDEN_SERVICE_PATH}${onion_service_name}/*
+        rm -rf ${HIDDEN_SERVICE_PATH}${onion_service_name}
     fi
-    if [ -d /var/lib/tor/hidden_service_${onion_service_name}_mobile ]; then
-        shred -zu /var/lib/tor/hidden_service_${onion_service_name}_mobile/*
-        rm -rf /var/lib/tor/hidden_service_${onion_service_name}_mobile
+    if [ -d ${HIDDEN_SERVICE_PATH}${onion_service_name}_mobile ]; then
+        shred -zu ${HIDDEN_SERVICE_PATH}${onion_service_name}_mobile/*
+        rm -rf ${HIDDEN_SERVICE_PATH}${onion_service_name}_mobile
     fi
     remove_completion_param "${onion_service_name} onion domain"
     onion_update
@@ -117,8 +113,8 @@ function add_onion_service {
     onion_service_port_to=$3
     onion_stealth_name="$4"
 
-    if [[ $(onion_service_exists ${onion_service_name}) == "1" ]]; then
-        echo $(cat /var/lib/tor/hidden_service_${onion_service_name}/hostname)
+    if [ -f ${HIDDEN_SERVICE_PATH}${onion_service_name}/hostname ]; then
+        echo $(cat ${HIDDEN_SERVICE_PATH}${onion_service_name}/hostname)
         return
     fi
 
@@ -127,7 +123,7 @@ function add_onion_service {
         exit 877367
     fi
     if ! grep -q "hidden_service_${onion_service_name}" /etc/tor/torrc; then
-        echo "HiddenServiceDir /var/lib/tor/hidden_service_${onion_service_name}/" >> /etc/tor/torrc
+        echo "HiddenServiceDir ${HIDDEN_SERVICE_PATH}${onion_service_name}/" >> /etc/tor/torrc
         echo "HiddenServicePort ${onion_service_port_from} 127.0.0.1:${onion_service_port_to}" >> /etc/tor/torrc
         if [ ${#onion_stealth_name} -gt 0 ]; then
             echo "HiddenServiceAuthorizeClient stealth ${onion_stealth_name}" >> /etc/tor/torrc
@@ -139,12 +135,13 @@ function add_onion_service {
     function_check wait_for_onion_service
     wait_for_onion_service ${onion_service_name}
 
-    if [[ $(onion_service_exists ${onion_service_name}) == "0" ]]; then
+    if [ ! -f ${HIDDEN_SERVICE_PATH}${onion_service_name}/hostname ]; then
+        ls -lh ${HIDDEN_SERVICE_PATH}${onion_service_name}/hostname
         echo $"${onion_service_name} onion site hostname not found"
-        exit 76362
+        exit 763624
     fi
 
-    onion_address=$(cat /var/lib/tor/hidden_service_${onion_service_name}/hostname)
+    onion_address=$(cat ${HIDDEN_SERVICE_PATH}${onion_service_name}/hostname)
 
     # Record the domain in the completion file
     set_completion_param "${onion_service_name} onion domain" "${onion_address}"
@@ -164,7 +161,7 @@ function set_default_onion_domains {
     HTMLY_DOMAIN_NAME='htmly.local'
     GHOST_DOMAIN_NAME='ghost.local'
     DOKUWIKI_DOMAIN_NAME='dokuwiki.local'
-    DEFAULT_DOMAIN_NAME="${PROJECT_NAME}.local"
+    DEFAULT_DOMAIN_NAME="${LOCAL_NAME}.local"
     GIT_DOMAIN_NAME='gogs.local'
 }
 
@@ -253,6 +250,10 @@ function configure_ssh_onion {
     fi
 
     SSH_ONION_HOSTNAME=$(add_onion_service ssh ${SSH_PORT} ${SSH_PORT})
+    if [[ "$SSH_ONION_HOSTNAME" != *'.onion' ]]; then
+        echo $'ssh onion site not generated'
+        exit 624128
+    fi
 
     set_completion_param "ssh onion domain" "${SSH_ONION_HOSTNAME}"
     add_email_hostname "${SSH_ONION_HOSTNAME}"
@@ -267,6 +268,7 @@ function install_tor {
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
     fi
+
     apt-get -yq install tor
     if [ ! -f /etc/tor/torrc ]; then
         echo 'Tor failed to install'
@@ -276,6 +278,10 @@ function install_tor {
     # turn off logging
     sed -i 's|#Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
     sed -i 's|Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
+
+    # Restrict traffic
+    sed -i "s|#AccountingMax.*|AccountingMax $TOR_MAX_TRAFFIC_PER_DAY_GB GBytes|g" /etc/tor/torrc
+    sed -i "s|AccountingMax.*|AccountingMax $TOR_MAX_TRAFFIC_PER_DAY_GB GBytes|g" /etc/tor/torrc
 
     mark_completed $FUNCNAME
 }
@@ -293,7 +299,7 @@ function resolve_dns_via_tor {
     fi
 
     # resolve DNS via tor
-    if ! grep 'DNSPort 53' /etc/tor/torrc; then
+    if ! grep -q 'DNSPort 53' /etc/tor/torrc; then
         echo 'DNSPort 53' >> /etc/tor/torrc
         echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
         echo 'AutomapHostsSuffixes .exit,.onion' >> /etc/tor/torrc
@@ -304,10 +310,9 @@ function resolve_dns_via_tor {
     sed -i 's|, domain-name-servers||g' /etc/dhcp/dhclient.conf
 
     # point resolv.conf to tor
-    echo 'nameserver 127.0.0.1:53' > /etc/resolv.conf
-
-    # prevent resolv.conf from changing
-    chattr +i /etc/resolv.conf
+    resolvconf=/etc/resolvconf/resolv.conf.d/head
+    echo 'nameserver 127.0.0.1:53' > $resolvconf
+    resolvconf -u
 
     mark_completed $FUNCNAME
 }
@@ -372,9 +377,11 @@ function route_outgoing_traffic_through_tor {
         /sbin/sysctl -p -q
     fi
 
-    echo 'domain localdomain' > /etc/resolv.conf
-    echo 'search localdomain' >> /etc/resolv.conf
-    echo 'nameserver 127.0.0.1' >> /etc/resolv.conf
+    resolvconf=/etc/resolvconf/resolv.conf.d/head
+    echo 'domain localdomain' > $resolvconf
+    echo 'search localdomain' >> $resolvconf
+    echo 'nameserver 127.0.0.1' >> $resolvconf
+    resolvconf -u
 
     if ! grep -q "VirtualAddrNetworkIPv4" /etc/tor/torrc; then
         echo 'VirtualAddrNetworkIPv4 10.192.0.0/10' >> /etc/tor/torrc

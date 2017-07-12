@@ -34,10 +34,13 @@ IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
 
 DOKUWIKI_DOMAIN_NAME=
-DOKUWIKI_ADMIN_PASSWORD=
-DOKUWIKI_TITLE="${PROJECT_NAME} Dokuwiki"
 DOKUWIKI_CODE=
 DOKUWIKI_ONION_PORT=8089
+DOKUWIKI_ADMIN_PASSWORD=
+DOKUWIKI_TITLE="${PROJECT_NAME} Dokuwiki"
+
+DOKUWIKI_REPO="https://github.com/splitbrain/dokuwiki"
+DOKUWIKI_COMMIT='be15c01c0b982cf1a75b5af031bf077143c63f39'
 
 dokuwiki_variables=(ONION_ONLY
                     MY_USERNAME
@@ -45,6 +48,14 @@ dokuwiki_variables=(ONION_ONLY
                     DOKUWIKI_DOMAIN_NAME
                     DOKUWIKI_CODE
                     DDNS_PROVIDER)
+
+function logging_on_dokuwiki {
+    echo -n ''
+}
+
+function logging_off_dokuwiki {
+    echo -n ''
+}
 
 function install_interactive_dokuwiki {
     if [[ $ONION_ONLY != "no" ]]; then
@@ -63,15 +74,18 @@ function change_password_dokuwiki {
     curr_username="$1"
     new_user_password="$2"
 
-    if grep "$curr_username:" /var/lib/dokuwiki/acl/users.auth.php; then
+    DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
+    if grep -q "$curr_username:" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php; then
         HASHED_DOKUWIKI_PASSWORD=$(echo -n "$new_user_password" | md5sum | awk -F ' ' '{print $1}')
-        existing_user=$(cat /var/lib/dokuwiki/acl/users.auth.php | grep "$curr_username:" | hean -n 1)
+        existing_user=$(cat /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php | grep "$curr_username:" | hean -n 1)
         if [[ "$existing_user" == *":admin,"* ]]; then
-            sed -i "s|$curr_username:.*|$curr_username:$HASHED_DOKUWIKI_PASSWORD:$curr_username:$curr_username@$HOSTNAME:admin,user,upload|g" /var/lib/dokuwiki/acl/users.auth.php
+            sed -i "s|$curr_username:.*|$curr_username:$HASHED_DOKUWIKI_PASSWORD:$curr_username:$curr_username@$HOSTNAME:admin,user,upload|g" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
         else
-            sed -i "s|$curr_username:.*|$curr_username:$HASHED_DOKUWIKI_PASSWORD:$curr_username:$curr_username@$HOSTNAME:user,upload|g" /var/lib/dokuwiki/acl/users.auth.php
+            sed -i "s|$curr_username:.*|$curr_username:$HASHED_DOKUWIKI_PASSWORD:$curr_username:$curr_username@$HOSTNAME:user,upload|g" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
         fi
-        chmod 640 /var/lib/dokuwiki/acl/users.auth.php
+        cp /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
+        chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
+        chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
         ${PROJECT_NAME}-pass -u $curr_username -a dokuwiki -p "$new_user_password"
     fi
 }
@@ -80,17 +94,22 @@ function add_user_dokuwiki {
     new_username="$1"
     new_user_password="$2"
 
+    DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
     HASHED_DOKUWIKI_PASSWORD=$(echo -n "$new_user_password" | md5sum | awk -F ' ' '{print $1}')
-    echo "$new_username:$HASHED_DOKUWIKI_PASSWORD:$new_username:$new_username@$HOSTNAME:user,upload" >> /var/lib/dokuwiki/acl/users.auth.php
-    chmod 640 /var/lib/dokuwiki/acl/users.auth.php
+    echo "$new_username:$HASHED_DOKUWIKI_PASSWORD:$new_username:$new_username@$HOSTNAME:user,upload" >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
+    cp /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
+    chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
+    chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
     ${PROJECT_NAME}-pass -u "$new_username" -a dokuwiki -p "$new_user_password"
 }
 
 function remove_user_dokuwiki {
     remove_username="$1"
 
-    if grep "$remove_username:" /var/lib/dokuwiki/acl/users.auth.php; then
-        sed -i "/$remove_username:/d" /var/lib/dokuwiki/acl/users.auth.php
+    read_config_param "DOKUWIKI_DOMAIN_NAME"
+    if grep -q "$remove_username:" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php; then
+        sed -i "/$remove_username:/d" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
+        sed -i "/$remove_username:/d" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
         ${PROJECT_NAME}-pass -u "$remove_username" --rmapp dokuwiki
     fi
 }
@@ -100,24 +119,37 @@ function reconfigure_dokuwiki {
 }
 
 function upgrade_dokuwiki {
-    echo -n ''
+    function_check set_repo_commit
+    set_repo_commit /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs "dokuwiki commit" "$DOKUWIKI_COMMIT" $DOKUWIKI_REPO
 }
 
 function backup_local_dokuwiki {
-    source_directory=/var/lib/dokuwiki
+    DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
+
+    function_check backup_directory_to_usb
+
+    # backup the data
+    source_directory=/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
     if [ -d $source_directory ]; then
-        dest_directory=dokuwiki
-        function_check backup_directory_to_usb
+        dest_directory=dokuwikidat
         backup_directory_to_usb $source_directory $dest_directory
-        backup_directory_to_usb /etc/dokuwiki dokuwiki2
+    fi
+
+    # backup the users
+    source_directory=/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl
+    if [ -d $source_directory ]; then
+        dest_directory=dokuwikiacl
+        cp /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users*.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        backup_directory_to_usb $source_directory $dest_directory
     fi
 }
 
-function restore_local_dokuwiki {
+function restore_local_dokuwiki_legacy {
     if [ -d /var/lib/dokuwiki ]; then
-        echo $"Restoring Dokuwiki installation"
+        echo $"Restoring Legacy Dokuwiki installation"
         function_check get_completion_param
         DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
+
         temp_restore_dir=/root/tempdokuwiki
         function_check restore_directory_from_usb
         if [ -d ${USB_MOUNT}/backup/dokuwiki ]; then
@@ -125,87 +157,133 @@ function restore_local_dokuwiki {
         else
             restore_directory_from_usb ${temp_restore_dir} wiki
         fi
-        cp -r ${temp_restore_dir}/var/lib/dokuwiki/* /var/lib/dokuwiki/
+
+        # restore the data
+        cp -r ${temp_restore_dir}/var/lib/dokuwiki/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
         if [ ! "$?" = "0" ]; then
             function_check restore_directory_from_usb
             set_user_permissions
             function_check backup_unmount_drive
             backup_unmount_drive
-            exit 868
+            rm -rf ${temp_restore_dir}
+            exit 73562
         fi
-        if [ -d ${USB_MOUNT}/backup/wiki2 ]; then
-            restore_directory_from_usb ${temp_restore_dir}2 wiki2
-        else
-            restore_directory_from_usb ${temp_restore_dir}2 dokuwiki2
-        fi
-        cp -r ${temp_restore_dir}2/etc/dokuwiki/* /etc/dokuwiki/
+
+        # restore the users
+        cp -r ${temp_restore_dir}/var/lib/dokuwiki/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl
+        cp -r ${temp_restore_dir}/var/lib/dokuwiki/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf
         if [ ! "$?" = "0" ]; then
-            function_check set_user_permissions
+            function_check restore_directory_from_usb
             set_user_permissions
             function_check backup_unmount_drive
             backup_unmount_drive
-            exit 869
+            rm -rf ${temp_restore_dir}
+            exit 23985
         fi
         rm -rf ${temp_restore_dir}
-        rm -rf ${temp_restore_dir}2
-        #rm -rf /var/lib/dokuwiki/data/cache/*
-        #rm -rf /var/lib/dokuwiki/data/meta/*
-        chmod -R 755 /var/lib/dokuwiki/data
-        chown -R www-data:www-data /var/lib/dokuwiki/data
-        chown -R www-data:www-data /var/lib/dokuwiki/*
-        # Ensure that the bundled SSL cert is being used
-        if [ -f /etc/ssl/certs/${DOKUWIKI_DOMAIN_NAME}.bundle.crt ]; then
-            sed -i "s|${DOKUWIKI_DOMAIN_NAME}.crt|${DOKUWIKI_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${DOKUWIKI_DOMAIN_NAME}
-        fi
-        if [ -d /etc/letsencrypt/live/${DOKUWIKI_DOMAIN_NAME} ]; then
-            ln -s /etc/letsencrypt/live/${DOKUWIKI_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${DOKUWIKI_DOMAIN_NAME}.key
-            ln -s /etc/letsencrypt/live/${DOKUWIKI_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${DOKUWIKI_DOMAIN_NAME}.pem
-        fi
-        echo $"Restore of Dokuwiki complete"
+
+        chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
+        chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib
+        chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
+        chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
+        chown -R www-data:www-data /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+        echo $"Restore of Legacy Dokuwiki complete"
     fi
 }
 
+function restore_local_dokuwiki {
+    if [ -d ${USB_MOUNT}/backup/dokuwiki ]; then
+        restore_local_dokuwiki_legacy
+        return
+    fi
+
+    echo $"Restoring Dokuwiki installation"
+    function_check get_completion_param
+    DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
+
+    # restore the data
+    temp_restore_dir=/root/tempdokuwikidat
+    function_check restore_directory_from_usb
+    restore_directory_from_usb ${temp_restore_dir} dokuwikidat
+    cp -r ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
+    if [ ! "$?" = "0" ]; then
+        function_check restore_directory_from_usb
+        set_user_permissions
+        function_check backup_unmount_drive
+        backup_unmount_drive
+        rm -rf ${temp_restore_dir}
+        exit 683352
+    fi
+    rm -rf ${temp_restore_dir}
+
+    # restore the users
+    temp_restore_dir=/root/tempdokuwikiacl
+    function_check restore_directory_from_usb
+    restore_directory_from_usb ${temp_restore_dir} dokuwikiacl
+    cp ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+    cp ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/
+    if [ ! "$?" = "0" ]; then
+        function_check restore_directory_from_usb
+        set_user_permissions
+        function_check backup_unmount_drive
+        backup_unmount_drive
+        rm -rf ${temp_restore_dir}
+        exit 456495
+    fi
+    rm -rf ${temp_restore_dir}
+
+    chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
+    chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
+    chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
+    chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib
+    chown -R www-data:www-data /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+    echo $"Restore of Dokuwiki complete"
+}
+
 function backup_remote_dokuwiki {
-    if [ -d /etc/dokuwiki ]; then
+    DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
+    if [ -d /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs ]; then
         echo $"Backing up dokuwiki"
-        backup_directory_to_friend /var/lib/dokuwiki dokuwiki
-        backup_directory_to_friend /etc/dokuwiki dokuwiki2
+        backup_directory_to_friend /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data dokuwikidat
+        cp /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users*.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        backup_directory_to_friend /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl dokuwikiacl
     fi
 }
 
 function restore_remote_dokuwiki {
-    if [ -d $SERVER_DIRECTORY/backup/dokuwiki ]; then
-        function_check get_completion_param
-        DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
-        echo $"Restoring Dokuwiki installation $DOKUWIKI_DOMAIN_NAME"
-        function_check restore_directory_from_friend
-        restore_directory_from_friend /root/tempdokuwiki dokuwiki
-        cp -r /root/tempdokuwiki/var/lib/dokuwiki/* /var/lib/dokuwiki/
+    DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
+    function_check get_completion_param
+    function_check restore_directory_from_friend
+
+    if [ -d $SERVER_DIRECTORY/backup/dokuwikidat ]; then
+        echo $"Restoring Dokuwiki data for $DOKUWIKI_DOMAIN_NAME"
+        restore_directory_from_friend /root/tempdokuwikidat dokuwikidat
+        cp -r /root/tempdokuwikidat/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/
         if [ ! "$?" = "0" ]; then
-            exit 868
+            exit 92634
         fi
-        restore_directory_from_friend /root/tempdokuwiki2 dokuwiki2
-        cp -r /root/tempdokuwiki2/etc/dokuwiki/* /etc/dokuwiki/
-        if [ ! "$?" = "0" ]; then
-            exit 869
-        fi
-        rm -rf /root/tempdokuwiki
-        rm -rf /root/tempdokuwiki2
-        #rm -rf /var/lib/dokuwiki/data/cache/*
-        #rm -rf /var/lib/dokuwiki/data/meta/*
-        chmod -R 755 /var/lib/dokuwiki/data
-        chown -R www-data:www-data /var/lib/dokuwiki/data
-        chown -R www-data:www-data /var/lib/dokuwiki/*
-        # Ensure that the bundled SSL cert is being used
-        if [ -f /etc/ssl/certs/${DOKUWIKI_DOMAIN_NAME}.bundle.crt ]; then
-            sed -i "s|${DOKUWIKI_DOMAIN_NAME}.crt|${DOKUWIKI_DOMAIN_NAME}.bundle.crt|g" /etc/nginx/sites-available/${DOKUWIKI_DOMAIN_NAME}
-        fi
-        if [ -d /etc/letsencrypt/live/${DOKUWIKI_DOMAIN_NAME} ]; then
-            ln -s /etc/letsencrypt/live/${DOKUWIKI_DOMAIN_NAME}/privkey.pem /etc/ssl/private/${DOKUWIKI_DOMAIN_NAME}.key
-            ln -s /etc/letsencrypt/live/${DOKUWIKI_DOMAIN_NAME}/fullchain.pem /etc/ssl/certs/${DOKUWIKI_DOMAIN_NAME}.pem
-        fi
-        echo $"Restore of Dokuwiki complete"
+        rm -rf /root/tempdokuwikidat
+
+        echo $"Restore of Dokuwiki data complete"
     fi
+
+    if [ -d $SERVER_DIRECTORY/backup/dokuwikiacl ]; then
+        echo $"Restoring Dokuwiki users for $DOKUWIKI_DOMAIN_NAME"
+        restore_directory_from_friend /root/tempdokuwikiacl dokuwikiacl
+        cp -r /root/tempdokuwikidat/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        if [ ! "$?" = "0" ]; then
+            exit 735287
+        fi
+        rm -rf /root/tempdokuwikiacl
+
+        echo $"Restore of Dokuwiki users complete"
+    fi
+
+    chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
+    chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
+    chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/data
+    chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/lib
+    chown -R www-data:www-data /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
 }
 
 function remove_dokuwiki {
@@ -219,7 +297,6 @@ function remove_dokuwiki {
     if [ -f /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME ]; then
         rm /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
     fi
-    apt-get -yq remove --purge dokuwiki
     if [ ! -d /var/www/$DOKUWIKI_DOMAIN_NAME ]; then
         rm -rf /var/www/$DOKUWIKI_DOMAIN_NAME
     fi
@@ -244,60 +321,53 @@ function install_dokuwiki {
     if [ ! $DOKUWIKI_DOMAIN_NAME ]; then
         return
     fi
-    apt-get -yq install dokuwiki
-    apt-get -yq remove --purge apache*
+
+    apt-get -yq install php-common php-cli php-curl php-gd php-mcrypt git
+    apt-get -yq install php-dev imagemagick php-imagick libfcgi0ldbl
+    apt-get -yq install php-memcached memcached
+
+    if [ ! -d /var/www/$DOKUWIKI_DOMAIN_NAME ]; then
+        mkdir /var/www/$DOKUWIKI_DOMAIN_NAME
+    fi
+
+    if [ ! -f /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/install.php ]; then
+        cd /var/www/$DOKUWIKI_DOMAIN_NAME
+
+        if [ -d /repos/dokuwiki ]; then
+            mkdir /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+            cp -r -p /repos/dokuwiki/. /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+            cd /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+            git pull
+        else
+            function_check git_clone
+            git_clone $DOKUWIKI_REPO /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+        fi
+
+        cd /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+        git checkout $DOKUWIKI_COMMIT -b $DOKUWIKI_COMMIT
+        set_completion_param "dokuwiki commit" "$DOKUWIKI_COMMIT"
+
+    fi
+
+    apt-get -yq remove --purge apache2-bin*
     if [ -d /etc/apache2 ]; then
         rm -rf /etc/apache2
         echo $'Removed Apache installation after Dokuwiki install'
     fi
 
-    if [ ! -d /var/www/$DOKUWIKI_DOMAIN_NAME ]; then
-        mkdir /var/www/$DOKUWIKI_DOMAIN_NAME
-    fi
-    if [ -d /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs ]; then
-        rm -rf /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
-    fi
+    echo '<?php' > /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    echo "\$conf['title'] = '${DOKUWIKI_TITLE}';" >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    echo "\$conf['lang'] = 'en';" >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    echo "\$conf['license'] = 'cc-by-sa';" >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    echo "\$conf['useacl'] = 1;" >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    echo "\$conf['superuser'] = '@admin';" >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    echo "\$conf['disableactions'] = 'register';" >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    ln -s /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/local.php
 
-    ln -s /usr/share/dokuwiki /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
-
-    if [ ! -d /var/lib/dokuwiki/custom ]; then
-        mkdir /var/lib/dokuwiki/custom
-    fi
-    cp /etc/dokuwiki/local.php.dist /var/lib/dokuwiki/custom/local.php
-    if [ ! -f /etc/dokuwiki/local.php ]; then
-        ln -s /var/lib/dokuwiki/custom/local.php /etc/dokuwiki/local.php
-    fi
-
-    chown www-data /var/lib/dokuwiki/custom
-    chown www-data /var/lib/dokuwiki/custom/local.php
-    chown -R www-data /etc/dokuwiki
-    chown -R www-data /usr/share/dokuwiki/lib/
-    chmod 600 /var/lib/dokuwiki/custom/local.php
-    chmod -R 755 /usr/share/dokuwiki/lib
-
-    sed -i 's|//$conf|$conf|g' /var/lib/dokuwiki/custom/local.php
-    sed -i "s|joe|$MY_USERNAME|g" /var/lib/dokuwiki/custom/local.php
-
-    sed -i "s|Debian Dokuwiki|$DOKUWIKI_TITLE|g" /etc/dokuwiki/local.php
-    sed -i "s|Debian DokuWiki|$DOKUWIKI_TITLE|g" /etc/dokuwiki/local.php
-
-    # set the admin user
-    sed -i "s/@admin/$MY_USERNAME/g" /etc/dokuwiki/local.php
-
-    # disallow registration of new users
-    if ! grep -q "disableactions" /etc/dokuwiki/local.php; then
-        echo "\$conf['disableactions'] = 'register';" >> /etc/dokuwiki/local.php
-    fi
-    if ! grep -q "disableactions" /var/lib/dokuwiki/custom/local.php; then
-        echo "\$conf['disableactions'] = 'register';" >> /var/lib/dokuwiki/custom/local.php
-    fi
-
-    if ! grep -q "authtype" /var/lib/dokuwiki/custom/local.php; then
-        echo "\$conf['authtype'] = 'authplain';" >> /var/lib/dokuwiki/custom/local.php
-    fi
-    if ! grep -q "authtype" /etc/dokuwiki/local.php; then
-        echo "\$conf['authtype'] = 'authplain';" >> /etc/dokuwiki/local.php
-    fi
+    chmod 600 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/local.php
+    chown -R www-data:www-data /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
+    chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib
+    chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
 
     if [ -f $IMAGE_PASSWORD_FILE ]; then
         DOKUWIKI_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
@@ -307,17 +377,18 @@ function install_dokuwiki {
         fi
     fi
     HASHED_DOKUWIKI_PASSWORD=$(echo -n "$DOKUWIKI_ADMIN_PASSWORD" | md5sum | awk -F ' ' '{print $1}')
-    echo -n "$MY_USERNAME:$HASHED_DOKUWIKI_PASSWORD:$MY_NAME:$MY_EMAIL:admin,user,upload" > /var/lib/dokuwiki/acl/users.auth.php
-    chmod 640 /var/lib/dokuwiki/acl/users.auth.php
+    echo -n "$MY_USERNAME:$HASHED_DOKUWIKI_PASSWORD:$MY_NAME:$MY_EMAIL:admin,user,upload" > /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
+    cp /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
+    chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
 
-    if ! grep -q "video/ogg" /etc/dokuwiki/mime.conf; then
-        echo 'ogv     video/ogg' >> /etc/dokuwiki/mime.conf
+    if ! grep -q "video/ogg" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
+        echo 'ogv     video/ogg' >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/mime.conf
     fi
-    if ! grep -q "video/mp4" /etc/dokuwiki/mime.conf; then
-        echo 'mp4     video/mp4' >> /etc/dokuwiki/mime.conf
+    if ! grep -q "video/mp4" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
+        echo 'mp4     video/mp4' >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/mime.conf
     fi
-    if ! grep -q "video/webm" /etc/dokuwiki/mime.conf; then
-        echo 'webm    video/webm' >> /etc/dokuwiki/mime.conf
+    if ! grep -q "video/webm" /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/mime.conf; then
+        echo 'webm    video/webm' >> /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/mime.conf
     fi
 
     DOKUWIKI_ONION_HOSTNAME=$(add_onion_service dokuwiki 80 ${DOKUWIKI_ONION_PORT})
@@ -379,10 +450,11 @@ function install_dokuwiki {
         echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
         echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
         echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
-        echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+        echo '        # With php-cgi alone:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
         echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
-        echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
-        echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+        echo '        # With php-fpm:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+        echo '        fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+        echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
         echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
         echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
         echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
@@ -457,10 +529,11 @@ function install_dokuwiki {
     echo '        try_files $uri $uri/ /index.php;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
     echo '        # NOTE: You should have "cgi.fix_pathinfo = 0;" in php.ini' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
     echo '        fastcgi_split_path_info ^(.+\.php)(/.+)$;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
-    echo '        # With php5-cgi alone:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+    echo '        # With php-cgi alone:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
     echo '        # fastcgi_pass 127.0.0.1:9000;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
-    echo '        # With php5-fpm:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
-    echo '        fastcgi_pass unix:/var/run/php5-fpm.sock;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+    echo '        # With php-fpm:' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+    echo '        fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
+    echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
     echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
     echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
     echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$DOKUWIKI_DOMAIN_NAME
@@ -491,7 +564,7 @@ function install_dokuwiki {
 
     nginx_ensite $DOKUWIKI_DOMAIN_NAME
 
-    systemctl restart php5-fpm
+    systemctl restart php7.0-fpm
     systemctl restart nginx
 
     function_check add_ddns_domain

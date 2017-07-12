@@ -46,7 +46,16 @@ riot_variables=(MY_USERNAME
                 RIOT_DOMAIN_NAME
                 MATRIX_DOMAIN_NAME
                 SYSTEM_TYPE
+                ONION_ONLY
                 DDNS_PROVIDER)
+
+function logging_on_riot {
+    echo -n ''
+}
+
+function logging_off_riot {
+    echo -n ''
+}
 
 function remove_user_riot {
     echo -n ''
@@ -206,6 +215,10 @@ function remove_riot {
 }
 
 function install_riot {
+    if [[ $ONION_ONLY != 'no' ]]; then
+        return
+    fi
+
     # check that matrix has been installed
     if [ ! $MATRIX_DOMAIN_NAME ]; then
         exit 687292
@@ -216,6 +229,9 @@ function install_riot {
     if [ ! -d /var/lib/matrix ]; then
         exit 827334
     fi
+
+    function_check get_completion_param
+    MATRIX_ONION_DOMAIN_NAME=$(get_completion_param "matrix onion domain")
 
     apt-get -yq install wget
 
@@ -232,12 +248,21 @@ function install_riot {
     cd /var/www/$RIOT_DOMAIN_NAME/htdocs
     cp config.sample.json config.json
 
-    sed -i "s|\"default_hs_url\":.*|\"default_hs_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" config.json
-    sed -i "s|\"default_is_url\":.*|\"default_is_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" config.json
-    sed -i "s|\"integrations_ui_url\":.*|\"integrations_ui_url\": \"https://${MATRIX_DOMAIN_NAME}/\",|g" config.json
-    sed -i "s|\"integrations_rest_url\":.*|\"integrations_rest_url\": \"https://${MATRIX_DOMAIN_NAME}/api\",|g" config.json
-    sed -i "s|\"bug_report_endpoint_url\":.*|\"bug_report_endpoint_url\": \"https://${MATRIX_DOMAIN_NAME}/bugs\",|g" config.json
-    sed -i "/\"servers\":/a \"matrix.freedombone.net\"," config.json
+    if [[ $ONION_ONLY == 'no' ]]; then
+        sed -i "s|\"default_hs_url\":.*|\"default_hs_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" config.json
+        sed -i "s|\"default_is_url\":.*|\"default_is_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" config.json
+        sed -i "s|\"integrations_ui_url\":.*|\"integrations_ui_url\": \"https://${MATRIX_DOMAIN_NAME}/\",|g" config.json
+        sed -i "s|\"integrations_rest_url\":.*|\"integrations_rest_url\": \"https://${MATRIX_DOMAIN_NAME}/api\",|g" config.json
+        sed -i "s|\"bug_report_endpoint_url\":.*|\"bug_report_endpoint_url\": \"https://${MATRIX_DOMAIN_NAME}/bugs\",|g" config.json
+        sed -i "/\"servers\":/a \"${MATRIX_DOMAIN_NAME}\"," config.json
+    else
+        sed -i "s|\"default_hs_url\":.*|\"default_hs_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}\",|g" config.json
+        sed -i "s|\"default_is_url\":.*|\"default_is_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}\",|g" config.json
+        sed -i "s|\"integrations_ui_url\":.*|\"integrations_ui_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}/\",|g" config.json
+        sed -i "s|\"integrations_rest_url\":.*|\"integrations_rest_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}/api\",|g" config.json
+        sed -i "s|\"bug_report_endpoint_url\":.*|\"bug_report_endpoint_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}/bugs\",|g" config.json
+        sed -i "/\"servers\":/a \"${MATRIX_ONION_DOMAIN_NAME}\"," config.json
+    fi
 
     RIOT_ONION_HOSTNAME=$(add_onion_service riot 80 ${RIOT_ONION_PORT})
 

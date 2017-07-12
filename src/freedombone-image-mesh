@@ -42,8 +42,6 @@ INSTALL_LOG=/var/log/${PROJECT_NAME}.log
 
 DEFAULT_USERNAME=fbone
 
-GO_VERSION=1.7
-
 TOX_NODES=
 #TOX_NODES=(
 #  '192.254.75.102,2607:5600:284::2,33445,951C88B7E75C867418ACDB5D273821372BB5BD652740BCDF623A4FA293E75D2F,Tox RELENG,US'
@@ -73,6 +71,14 @@ MESH_INSTALL_DIR=/var/lib
 IPFS_PORT=4001
 
 CURRENT_BLOG_INDEX=/home/$MY_USERNAME/.blog-index
+
+# Debian stretch has a problem where the formerly predictable wlan0 and eth0
+# device names get assigned random names. This is a hacky workaround.
+# Also adding net.ifnames=0 to kernel options on bootloader may work.
+function enable_predictable_device_names {
+    ln -s /dev/null /etc/udev/rules.d/80-net-setup-link.rules
+    update-initramfs -u
+}
 
 function create_avahi_mesh_service {
     service_name=$1
@@ -112,7 +118,7 @@ function create_ram_disk {
 
 function make_root_read_only {
     if [ ! -d /home/$MY_USERNAME/Desktop ]; then
-        if ! grep 'ro,subvol=@' /etc/fstab; then
+        if ! grep -q 'ro,subvol=@' /etc/fstab; then
             sed -i 's|subvol=@|ro,subvol=@|g' /etc/fstab
             echo $'Root filesystem set to read only' >> $INSTALL_LOG
         fi
@@ -591,6 +597,7 @@ if [ -f $MESH_INSTALL_SETUP ]; then
 
     #tomb slam all
     tmp_ram_disk 100
+    enable_predictable_device_names
     enable_batman_daemon
     #create_ram_disk 1
     #setup_amnesic_data
@@ -625,7 +632,10 @@ if [ -f $MESH_INSTALL_SETUP ]; then
             rm /usr/share/images/desktop-base/desktop-background
             ln -s /usr/share/images/desktop-base/${PROJECT_NAME}_mesh_background.png /usr/share/images/desktop-base/desktop-background
         fi
-        reboot
+        if [ -f /etc/default/grub ]; then
+            update-grub
+        fi
+        systemctl reboot -i
     fi
 fi
 

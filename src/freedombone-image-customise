@@ -30,6 +30,7 @@ set -e
 set -x
 
 PROJECT_NAME='freedombone'
+LOCAL_NAME=${PROJECT_NAME}
 INSTALL_DIR=/root/build
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 
@@ -106,6 +107,9 @@ MESH_INSTALL_DIR=/var/lib
 # a new identity at every shutdown/boot
 AMNESIC='no'
 
+# Whether this is a dedicated gnusocial or postactiv instance
+SOCIALINSTANCE=
+
 # defines the initial keyboard layout
 KEYBOARD_MAP='gb'
 
@@ -174,17 +178,21 @@ EOF
 }
 
 configure_networking() {
+    chroot "$rootdir" apt-get -yq install resolvconf
+
     if [[ "$MACHINE" == "beaglebonewifi" ]]; then
         # Allow networking over USB in order to configure the
         # wifi login settings
-        echo 'auto lo' > $rootdir/etc/network/interfaces
-        echo 'iface lo inet loopback' >> $rootdir/etc/network/interfaces
-        echo '' >> $rootdir/etc/network/interfaces
-        echo 'iface usb0 inet static' >> $rootdir/etc/network/interfaces
-        echo '    address 192.168.7.2' >> $rootdir/etc/network/interfaces
-        echo '    netmask 255.255.255.252' >> $rootdir/etc/network/interfaces
-        echo '    network 192.168.7.0' >> $rootdir/etc/network/interfaces
-        echo '    gateway 192.168.7.1' >> $rootdir/etc/network/interfaces
+
+        echo '# This file describes the network interfaces available on your system' > $rootdir/etc/network/interfaces
+        echo '# and how to activate them. For more information, see interfaces(5).' >> $rootdir/etc/network/interfaces
+        echo 'source /etc/network/interfaces.d/*' >> $rootdir/etc/network/interfaces
+
+        echo 'iface usb0 inet static' >> $rootdir/etc/network/interfaces.d/usb
+        echo '    address 192.168.7.2' >> $rootdir/etc/network/interfaces.d/usb
+        echo '    netmask 255.255.255.252' >> $rootdir/etc/network/interfaces.d/usb
+        echo '    network 192.168.7.0' >> $rootdir/etc/network/interfaces.d/usb
+        echo '    gateway 192.168.7.1' >> $rootdir/etc/network/interfaces.d/usb
         return
     fi
 
@@ -193,41 +201,15 @@ configure_networking() {
     fi
 
     if [[ $GENERIC_IMAGE == "no" ]]; then
-        echo "# This file describes the network interfaces available on your system
-# and how to activate them. For more information, see interfaces(5).
+        echo '# This file describes the network interfaces available on your system' > $rootdir/etc/network/interfaces
+        echo '# and how to activate them. For more information, see interfaces(5).' >> $rootdir/etc/network/interfaces
+        echo 'source /etc/network/interfaces.d/*' >> $rootdir/etc/network/interfaces
 
-# The loopback network interface
-auto lo
-iface lo inet loopback
-
-# The primary network interface
-auto eth0
+        echo "auto eth0
 iface eth0 inet static
     address $BOX_IP_ADDRESS
     netmask 255.255.255.0
-    gateway $ROUTER_IP_ADDRESS
-    dns-nameservers $NAMESERVER1 $NAMESERVER2
-        # Example to keep MAC address between reboots
-        #hwaddress ether B5:A2:BE:3F:1A:FE
-
-        # The secondary network interface
-        #auto eth1
-        #iface eth1 inet dhcp
-
-        # WiFi Example
-        #auto wlan0
-        #iface wlan0 inet dhcp
-        #    wpa-ssid \"essid\"
-        #    wpa-psk  \"password\"
-
-        # Ethernet/RNDIS gadget (g_ether)
-        # ... or on host side, usbnet and random hwaddr
-        # Note on some boards, usb0 is automaticly setup with an init script
-        #iface usb0 inet static
-        #    address 192.168.7.2
-        #    netmask 255.255.255.0
-        #    network 192.168.7.0
-        #    gateway 192.168.7.1" > $rootdir/etc/network/interfaces
+    gateway $ROUTER_IP_ADDRESS" > $rootdir/etc/network/interfaces.d/static
 
         hexarray=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )
         a=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
@@ -235,12 +217,20 @@ iface eth0 inet static
         c=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
         d=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
         e=${hexarray[$RANDOM%16]}${hexarray[$RANDOM%16]}
-        sed -i "s|#hwaddress ether.*|hwaddress ether de:$a:$b:$c:$d:$e|g" \
-            $rootdir/etc/network/interfaces
+        echo "hwaddress ether de:$a:$b:$c:$d:$e" > $rootdir/etc/network/interfaces.d/macaddress
     fi
 
-    sed -i "s/nameserver.*/nameserver $NAMESERVER1/g" $rootdir/etc/resolv.conf
-    sed -i "/nameserver $NAMESERVER1/a\nameserver $NAMESERVER2" $rootdir/etc/resolv.conf
+    # configure DNS
+    resolvconf=$rootdir/etc/resolvconf/resolv.conf.d/head
+    echo 'domain localdomain' > $resolvconf
+    echo 'search localdomain' >> $resolvconf
+    echo "nameserver $NAMESERVER1" >> $resolvconf
+    echo "nameserver $NAMESERVER2" >> $resolvconf
+    echo "nameserver $NAMESERVER3" >> $resolvconf
+    echo "nameserver $NAMESERVER4" >> $resolvconf
+    echo "nameserver $NAMESERVER5" >> $resolvconf
+    echo "nameserver $NAMESERVER6" >> $resolvconf
+    chroot "$rootdir" resolvconf -u
 
     if [[ $VARIANT != "meshclient" && $VARIANT != "meshusb" ]]; then
         # change the motd to show further install instructions
@@ -274,11 +264,12 @@ following commands, then enter your details.
 }
 
 configure_ssh() {
-    if [[ $VARIANT == "mesh" || $VARIANT == "meshclient" || $VARIANT == "meshusb" ]]; then
+    if [[ $VARIANT == "mesh"* ]]; then
         return
     fi
 
     sed -i "s/Port .*/Port ${SSH_PORT}/g" $rootdir/etc/ssh/sshd_config
+    sed -i "s/#Port ${SSH_PORT}/Port ${SSH_PORT}/g" $rootdir/etc/ssh/sshd_config
 
     if [[ "$SSH_PUBKEY" != "no" ]]; then
         if [ ! -d $rootdir/home/$MY_USERNAME/.ssh ]; then
@@ -287,6 +278,7 @@ configure_ssh() {
         echo "$SSH_PUBKEY" > $rootdir/home/$MY_USERNAME/.ssh/authorized_keys
         chroot $rootdir /bin/chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.ssh
         sed -i 's|PasswordAuthentication.*|PasswordAuthentication no|g' $rootdir/etc/ssh/sshd_config
+        sed -i 's|#PasswordAuthentication no|PasswordAuthentication no|g' $rootdir/etc/ssh/sshd_config
         echo $"Using ssh public key:"
         echo $SSH_PUBKEY
         echo $'Password ssh authentication turned off'
@@ -307,7 +299,7 @@ create_generic_image() {
     fi
 
     # Don't install any configuration. This will be a base system
-    if [[ $VARIANT != "mesh" && $VARIANT != "meshclient" && $VARIANT != "meshusb" ]]; then
+    if [[ $VARIANT != "mesh"* ]]; then
         CONFIG_FILENAME=
     else
         touch $rootdir/root/.initial_mesh_setup
@@ -387,56 +379,67 @@ EOF
     echo "    cd /root/${PROJECT_NAME}" >> $rootdir/root/.bashrc
     echo "    git stash" >> $rootdir/root/.bashrc
     echo "    git pull" >> $rootdir/root/.bashrc
-    echo "    git checkout jessie" >> $rootdir/root/.bashrc
+    echo "    git checkout stretch" >> $rootdir/root/.bashrc
     echo "    make install" >> $rootdir/root/.bashrc
 
-    if [[ $VARIANT != "mesh" && $VARIANT != "meshclient" && $VARIANT != "meshusb" && $VARIANT != "usb" ]]; then
-        if [[ $ONION_ONLY == "no" ]]; then
-            if [[ $MINIMAL_INSTALL == "no" ]]; then
-                echo "    ${PROJECT_NAME} menuconfig-full" >> $rootdir/root/.bashrc
-            else
-                echo "    ${PROJECT_NAME} menuconfig" >> $rootdir/root/.bashrc
-            fi
+    if [[ $VARIANT != "mesh"* && $VARIANT != "usb" ]]; then
+        if [[ "$SOCIALINSTANCE" == "gnusocial" ]]; then
+            echo "    ${PROJECT_NAME} menuconfig-gnusocial" >> $rootdir/root/.bashrc
         else
-            echo "    ${PROJECT_NAME} menuconfig-onion" >> $rootdir/root/.bashrc
+            if [[ "$SOCIALINSTANCE" == "postactiv" ]]; then
+                echo "    ${PROJECT_NAME} menuconfig-postactiv" >> $rootdir/root/.bashrc
+            else
+                if [[ $ONION_ONLY == "no" ]]; then
+                    if [[ $MINIMAL_INSTALL == "no" ]]; then
+                        echo "    ${PROJECT_NAME} menuconfig-full" >> $rootdir/root/.bashrc
+                    else
+                        echo "    ${PROJECT_NAME} menuconfig" >> $rootdir/root/.bashrc
+                    fi
+                else
+                    echo "    ${PROJECT_NAME} menuconfig-onion" >> $rootdir/root/.bashrc
+                fi
+            fi
         fi
     else
         echo "    echo ''" >> $rootdir/root/.bashrc
     fi
     echo '    if [ "$?" = "0" ]; then' >> $rootdir/root/.bashrc
     echo "        if [ -f ~/${PROJECT_NAME}-completed.txt ]; then" >> $rootdir/root/.bashrc
+    echo "            # Check that the initial setup really did complete" >> $rootdir/root/.bashrc
+    echo "            if grep -q 'tripwire' ~/${PROJECT_NAME}-completed.txt; then" >> $rootdir/root/.bashrc
     # Remove the initial setup files
-    echo '            rm /root/.initial_setup' >> $rootdir/root/.bashrc
-    echo '            rm /home/fbone/.initial_setup' >> $rootdir/root/.bashrc
-    echo "            touch /root/.remove_${GENERIC_IMAGE_USERNAME}" >> $rootdir/root/.bashrc
-    echo '            shred -zu ~/login.txt' >> $rootdir/root/.bashrc
-    if [[ $VARIANT != "mesh" && $VARIANT != "meshclient" && $VARIANT != "meshusb" && $VARIANT != "usb" ]]; then
-        echo '            SSH_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_ssh/hostname)' >> $rootdir/root/.bashrc
+    echo '                rm /root/.initial_setup' >> $rootdir/root/.bashrc
+    echo '                rm /home/fbone/.initial_setup' >> $rootdir/root/.bashrc
+    echo "                touch /root/.remove_${GENERIC_IMAGE_USERNAME}" >> $rootdir/root/.bashrc
+    echo '                shred -zu ~/login.txt' >> $rootdir/root/.bashrc
+    if [[ $VARIANT != "mesh"* && $VARIANT != "usb" ]]; then
+        echo '                SSH_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_ssh/hostname)' >> $rootdir/root/.bashrc
 
-        echo '            if [ ${#SSH_ONION_HOSTNAME} -lt 2 ]; then' >> $rootdir/root/.bashrc
-        echo '                exit 62392' >> $rootdir/root/.bashrc
-        echo '            fi' >> $rootdir/root/.bashrc
+        echo '                if [ ${#SSH_ONION_HOSTNAME} -lt 2 ]; then' >> $rootdir/root/.bashrc
+        echo '                    exit 62392' >> $rootdir/root/.bashrc
+        echo '                fi' >> $rootdir/root/.bashrc
     fi
-    echo "            if [ -f /root/${PROJECT_NAME}-wifi.cfg ]; then" >> $rootdir/root/.bashrc
-    echo "                echo '[Unit]' > /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'Description=WifiStartup (Start wifi networking)' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'After=syslog.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'After=network.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'After=remote-fs.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo '' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo '[Service]' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'Type=simple' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'User=root' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'Group=root' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'WorkingDirectory=/root' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'ExecStart=/usr/local/bin/freedombone-wifi --wait 5 2> /dev/null' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo '' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo '[Install]' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                echo 'WantedBy=multi-user.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
-    echo "                systemctl enable wifistart" >> $rootdir/root/.bashrc
-    echo "                systemctl daemon-reload" >> $rootdir/root/.bashrc
+    echo "                if [ -f /root/${PROJECT_NAME}-wifi.cfg ]; then" >> $rootdir/root/.bashrc
+    echo "                    echo '[Unit]' > /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'Description=WifiStartup (Start wifi networking)' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'After=syslog.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'After=network.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'After=remote-fs.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo '' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo '[Service]' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'Type=simple' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'User=root' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'Group=root' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'WorkingDirectory=/root' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'ExecStart=/usr/local/bin/freedombone-wifi --wait 5 2> /dev/null' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo '' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo '[Install]' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/wifistart.service" >> $rootdir/root/.bashrc
+    echo "                    systemctl enable wifistart" >> $rootdir/root/.bashrc
+    echo "                    systemctl daemon-reload" >> $rootdir/root/.bashrc
+    echo '                fi' >> $rootdir/root/.bashrc
+    echo '                systemctl reboot -i' >> $rootdir/root/.bashrc
     echo '            fi' >> $rootdir/root/.bashrc
-    echo '            reboot' >> $rootdir/root/.bashrc
     echo '        fi' >> $rootdir/root/.bashrc
     echo '    else' >> $rootdir/root/.bashrc
     echo '        key=' >> $rootdir/root/.bashrc
@@ -526,15 +529,15 @@ BATMAN_CELLID='02:BA:00:00:03:01'
 WIFI_SSID='mesh'
 
 # To avoid confusions these are obtained from the main project file
-TOXID_REPO=
-TOX_PORT=
-TOXCORE_REPO=
-TOXIC_REPO=
-TOXCORE_COMMIT=
-TOXIC_COMMIT=
+#TOXID_REPO=
+#TOX_PORT=
+#TOXCORE_REPO=
+#TOXIC_REPO=
+#TOXCORE_COMMIT=
+#TOXIC_COMMIT=
 # These are some default nodes, but you can replace them with trusted nodes
 # as you prefer. See https://wiki.tox.im/Nodes
-TOX_NODES=
+#TOX_NODES=
 #TOX_NODES=(
 #  '192.254.75.102,2607:5600:284::2,33445,951C88B7E75C867418ACDB5D273821372BB5BD652740BCDF623A4FA293E75D2F,Tox RELENG,US'
 #  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
@@ -559,7 +562,7 @@ INSTALL_DIR=$HOME/build
 INSTALLING_MESH=
 
 initialise_mesh() {
-    if [[ $VARIANT != "mesh" && $VARIANT != "meshclient" && $VARIANT != "meshusb" ]]; then
+    if [[ $VARIANT != "mesh"* ]]; then
         return
     fi
     if [[ $DEBIAN_INSTALL_ONLY != "no" ]]; then
@@ -581,10 +584,12 @@ initialise_mesh() {
 
         # install proprietary wifi drivers
         # see https://wiki.debian.org/iwlwifi
-        chroot "$rootdir" apt-get -yq install firmware-iwlwifi firmware-b43-installer firmware-brcm80211
+        chroot "$rootdir" apt-get -yq install firmware-iwlwifi firmware-b43-installer firmware-brcm80211 firmware-realtek
     fi
 
     INSTALLING_MESH=1
+
+    chroot "$rootdir" apt-get -yq install apt-transport-https
 
     configure_firewall
     install_avahi
@@ -767,13 +772,13 @@ function configure_user_interface {
     chroot "$rootdir" apt-get -yq install libtheora-bin libvorbis-dev v4l-utils
 
     # a sane editor
-    chroot "$rootdir" apt-get -yq install emacs24
+    chroot "$rootdir" apt-get -yq install emacs
 
     # for wifi monitoring
     chroot "$rootdir" apt-get -yq install horst
 
     # for sound level control
-    chroot "$rootdir" apt-get -yq install alsa-utils
+    chroot "$rootdir" apt-get -yq install alsa-utils pavucontrol
 
     # to play various media types
     chroot "$rootdir" apt-get -yq install vlc
@@ -941,7 +946,7 @@ EOF
 
     if [[ $VARIANT == "usb" ]]; then
         # tor
-        chroot "$rootdir" apt-get -y install tor
+        chroot "$rootdir" apt-get -yq install tor
 
         # xmpp client
         chroot "$rootdir" echo "deb ftp://ftp.gajim.org/debian unstable main" > /etc/apt/sources.list.d/gajim.list
@@ -970,7 +975,16 @@ function image_install_inadyn {
         mkdir -p $rootdir/root/build
     fi
     chroot "$rootdir" apt-get -yq install build-essential curl libgnutls28-dev automake1.11 libconfuse-dev
-    git clone $INADYN_REPO $rootdir/root/build/inadyn
+
+    if [ -d /repos/inadyn ]; then
+        mkdir $rootdir/root/build/inadyn
+        cp -r -p /repos/inadyn/. $rootdir/root/build/inadyn
+        cd $rootdir/root/build/inadyn
+        git pull
+    else
+        git clone $INADYN_REPO $rootdir/root/build/inadyn
+    fi
+
     if [ ! -d $rootdir/root/build/inadyn ]; then
         echo 'Failed to clone inadyn'
         exit 728252
@@ -1020,14 +1034,18 @@ function image_setup_utils {
     if [ $INSTALLING_MESH ]; then
         return
     fi
-    chroot "$rootdir" apt-get -yq install nfs-kernel-server
+    chroot "$rootdir" apt-get -yq install apt-transport-https
+    chroot "$rootdir" apt-get -yq remove --purge apache2-bin*
+    chroot "$rootdir" apt-get -yq dist-upgrade
+    chroot "$rootdir" apt-get -yq install ca-certificates
+    chroot "$rootdir" apt-get -yq install apt-utils
 
     if [[ $ARCHITECTURE == 'amd64' ]]; then
-        chroot "$rootdir" apt-get -yq install linux-image-amd64 -t jessie-backports
+        chroot "$rootdir" apt-get -yq install linux-image-amd64
     fi
 
     if [[ $ARCHITECTURE == 'qemu'* || $ARCHITECTURE == 'amd64' || $ARCHITECTURE == 'x86_64' || $ARCHITECTURE == 'i686' || $ARCHITECTURE == 'i386' ]]; then
-        chroot "$rootdir" apt-get -yq install grub2
+        chroot "$rootdir" apt-get -yq install grub2 lvm2 initramfs-tools
     fi
 
     chroot "$rootdir" apt-get -yq install locales locales-all debconf
@@ -1047,11 +1065,6 @@ function image_setup_utils {
     rm $rootdir/root/sysctl.conf
 
     # all the packages
-    chroot "$rootdir" apt-get -yq install apt-transport-https
-    chroot "$rootdir" apt-get -yq remove --purge apache*
-    chroot "$rootdir" apt-get -yq dist-upgrade
-    chroot "$rootdir" apt-get -yq install ca-certificates
-    chroot "$rootdir" apt-get -yq install apt-utils
     chroot "$rootdir" apt-get -yq install cryptsetup libgfshare-bin obnam sshpass wget avahi-daemon
     chroot "$rootdir" apt-get -yq install avahi-utils avahi-discover connect-proxy openssh-server
     chroot "$rootdir" apt-get -yq install sudo git dialog build-essential avahi-daemon avahi-utils
@@ -1065,8 +1078,11 @@ function image_setup_utils {
 
     # Tor and ssh over tor
     chroot "$rootdir" apt-get -yq install tor connect-proxy
+    chroot "$rootdir" connect-proxy
     sed -i 's|#Log notice file.*|Log notice file /dev/null|g' $rootdir/etc/tor/torrc
     sed -i 's|Log notice file.*|Log notice file /dev/null|g' $rootdir/etc/tor/torrc
+    sed -i "s|#AccountingMax.*|AccountingMax $TOR_MAX_TRAFFIC_PER_DAY_GB GBytes|g" $rootdir/etc/tor/torrc
+    sed -i "s|AccountingMax.*|AccountingMax $TOR_MAX_TRAFFIC_PER_DAY_GB GBytes|g" $rootdir/etc/tor/torrc
     if ! grep -q 'Host *.onion' $rootdir/root/.ssh/config; then
         if [ ! -d $rootdir/root/.ssh ]; then
             mkdir $rootdir/root/.ssh
@@ -1130,14 +1146,14 @@ function image_setup_utils {
     chroot "$rootdir" cd /root/build/tomb && make install
     echo "tomb commit:$TOMB_COMMIT" >> $rootdir/root/freedombone-completed.txt
 
-    if ! grep '* hard maxsyslogins' $rootdir/etc/security/limits.conf; then
+    if ! grep -q '* hard maxsyslogins' $rootdir/etc/security/limits.conf; then
         echo '* hard maxsyslogins 10' >> $rootdir/etc/security/limits.conf
     else
         sed -i 's|hard maxsyslogins.*|hard maxsyslogins 10|g' $rootdir/etc/security/limits.conf
     fi
 
     # Max logins for each user
-    if ! grep '* hard maxlogins' $rootdir/etc/security/limits.conf; then
+    if ! grep -q '* hard maxlogins' $rootdir/etc/security/limits.conf; then
         echo '* hard maxlogins 2' >> $rootdir/etc/security/limits.conf
     else
         sed -i 's|hard maxlogins.*|hard maxlogins 2|g' $rootdir/etc/security/limits.conf
@@ -1147,9 +1163,7 @@ function image_setup_utils {
     chroot "$rootdir" apt-get -yq remove postfix
     chroot "$rootdir" apt-get -yq install exim4 exim4-daemon-heavy sasl2-bin swaks libnet-ssleay-perl procmail
     chroot "$rootdir" apt-get -yq install spamassassin
-    #chroot "$rootdir" apt-get -yq install dovecot-core dovecot-imapd
-
-    # TODO generate certs for exim and dovecot if needed on first boot
+    chroot "$rootdir" apt-get -yq install dovecot-imapd
 
     #backup
     chroot "$rootdir" apt-get -yq install obnam gnupg
@@ -1166,7 +1180,7 @@ function image_setup_utils {
     echo "gpgit commit:$GPGIT_COMMIT" >> $rootdir/root/freedombone-completed.txt
 
     # email client
-    chroot "$rootdir" apt-get -yq install mutt-patched lynx abook urlview
+    chroot "$rootdir" apt-get -yq install lynx abook urlview mutt
 
     git clone $CLEANUP_MAILDIR_REPO $rootdir/root/build/cleanup-maildir
     cd $rootdir/root/build/cleanup-maildir
@@ -1176,7 +1190,7 @@ function image_setup_utils {
 
     # web server
     chroot "$rootdir" apt-get -yq remove --purge apache2
-    chroot "$rootdir" apt-get -yq install nginx php5-fpm
+    chroot "$rootdir" apt-get -yq install nginx php-fpm
     git clone $NGINX_ENSITE_REPO $rootdir/root/build/nginx_ensite
     cd $rootdir/root/build/nginx_ensite
     git checkout $NGINX_ENSITE_COMMIT -b $NGINX_ENSITE_COMMIT
@@ -1190,24 +1204,79 @@ function image_setup_utils {
     fi
     chroot "$rootdir" apt-get -yq install tripwire
 
-    # mirroring
-    # cmake
+    # filesystem optimisations
+    #sed -i 's|btrfs subvol=@|btrfs defaults,subvol=@,compress=lzo,ssd|g' $rootdir/etc/fstab
 }
 
 function image_install_nodejs {
-    if [ $INSTALLING_MESH ]; then
+    mesh_install_nodejs
+    #echo 'install_nodejs' >> ${rootdir}/root/${PROJECT_NAME}-completed.txt
+}
+
+function image_preinstall_repos {
+    if [[ $VARIANT == "mesh"* ]]; then
         return
     fi
 
-    chroot "$rootdir" apt-get -yq install nodejs
-    chroot "$rootdir" apt-get -yq install npm curl
-
-    if [ ! -f $rootdir/usr/bin/nodejs ]; then
-        echo $'nodejs was not installed'
-        exit 63962
+    if [ ! -d $rootdir/repos ]; then
+        mkdir $rootdir/repos
     fi
-}
 
+    git clone $CMAKE_REPO $rootdir/repos/cmake
+    git clone $INADYN_REPO $rootdir/repos/inadyn
+    git clone $TOMB_REPO $rootdir/repos/tomb
+
+    if [[ $SOCIALINSTANCE == "gnusocial" ]]; then
+        git clone $GNUSOCIAL_REPO $rootdir/repos/gnusocial
+        git clone $GNUSOCIAL_MARKDOWN_REPO $rootdir/repos/gnusocial-markdown
+        git clone $QVITTER_THEME_REPO $rootdir/repos/qvitter
+        git clone $PLEROMA_REPO $rootdir/repos/pleroma
+        return
+    fi
+
+    if [[ $SOCIALINSTANCE == "postactiv" ]]; then
+        git clone $GNUSOCIAL_MARKDOWN_REPO $rootdir/repos/gnusocial-markdown
+        git clone $QVITTER_THEME_REPO $rootdir/repos/qvitter
+        git clone $PLEROMA_REPO $rootdir/repos/pleroma
+        git clone $POSTACTIV_REPO $rootdir/repos/postactiv
+        return
+    fi
+
+    git clone $CRYPTPAD_REPO $rootdir/repos/cryptpad
+    git clone $DOKUWIKI_REPO $rootdir/repos/dokuwiki
+    git clone $ETHERPAD_REPO $rootdir/repos/etherpad
+    git clone $FRIENDICA_REPO $rootdir/repos/friendica
+    git clone $GNUSOCIAL_REPO $rootdir/repos/gnusocial
+    git clone $GNUSOCIAL_MARKDOWN_REPO $rootdir/repos/gnusocial-markdown
+    git clone $QVITTER_THEME_REPO $rootdir/repos/qvitter
+    git clone $PLEROMA_REPO $rootdir/repos/pleroma
+    git clone $POSTACTIV_REPO $rootdir/repos/postactiv
+    git clone $SHARINGS_REPO $rootdir/repos/sharings
+    git clone $HTMLY_REPO $rootdir/repos/htmly
+    git clone $HUBZILLA_REPO $rootdir/repos/hubzilla
+    git clone $HUBZILLA_ADDONS_REPO $rootdir/repos/hubzilla-addons
+    git clone $KOEL_REPO $rootdir/repos/koel
+    #git clone $LIBREVAULT_REPO $rootdir/repos/librevault
+    git clone $LYCHEE_REPO $rootdir/repos/lychee
+    git clone $MAILPILE_REPO $rootdir/repos/mailpile
+    git clone $MATRIX_REPO $rootdir/repos/matrix
+    git clone $MEDIAGOBLIN_REPO $rootdir/repos/mediagoblin
+    #git clone $MOVIM_REPO $rootdir/repos/movim
+    git clone $NEXTCLOUD_REPO $rootdir/repos/nextcloud
+    git clone $PIHOLE_REPO $rootdir/repos/pihole
+    git clone $PROFANITY_REPO $rootdir/repos/profanity
+    git clone $LIBMESODE_REPO $rootdir/repos/libmesode
+    git clone $PROFANITY_OMEMO_PLUGIN_REPO $rootdir/repos/profanity-omemo
+    git clone $RSS_READER_REPO $rootdir/repos/rss
+    git clone $RSS_MOBILE_READER_REPO $rootdir/repos/rss-mobile
+    git clone $SEARX_REPO $rootdir/repos/searx
+    git clone $TOXCORE_REPO $rootdir/repos/toxcore
+    git clone $TOXID_REPO $rootdir/repos/toxid
+    git clone $TOXIC_REPO $rootdir/repos/toxic
+    git clone $TURTL_REPO $rootdir/repos/turtl
+    #git clone $ZERONET_REPO $rootdir/repos/zeronet
+    #git clone $QTOX_REPO $rootdir/repos/qtox
+}
 
 ##############################################################################
 
@@ -1248,7 +1317,7 @@ if [ ! $DEBIAN_REPO ]; then
     DEBIAN_REPO='ftp.de.debian.org'
 fi
 if [ ! $DEBIAN_VERSION ]; then
-    DEBIAN_VERSION='jessie'
+    DEBIAN_VERSION='stretch'
 fi
 
 set_apt_sources $BUILD_MIRROR
@@ -1277,7 +1346,7 @@ if [ -n "$CUSTOM_SETUP" ]; then
     chroot "$rootdir" gdebi -n /tmp/"$(basename $CUSTOM_SETUP)"
 fi
 
-if [[ $VARIANT != "meshclient" && $VARIANT != "meshusb" && $VARIANT != "mesh" ]]; then
+if [[ $VARIANT != "mesh"* ]]; then
     chroot "$rootdir" apt-get install -y openssh-server
 fi
 chroot "$rootdir" apt-get install -y sudo git dialog build-essential
@@ -1287,17 +1356,50 @@ chroot "$rootdir" apt-get install -y libnss-mdns libnss-myhostname libnss-gw-nam
 chroot "$rootdir" apt-get install -y locales locales-all debconf wireless-tools wpasupplicant usbutils
 if [[ $ARCHITECTURE == 'qemu'* || $ARCHITECTURE == 'i386' || $ARCHITECTURE == 'i686' || $ARCHITECTURE == 'amd64' || $ARCHITECTURE == 'x86_64' ]]; then
     chroot "$rootdir" apt-get install -y cryptsetup zsh pinentry-curses iotop bc
-    chroot "$rootdir" apt-get install -y grub2 hostapd
+    chroot "$rootdir" apt-get install -y grub2 hostapd lvm2 initramfs-tools
 fi
 
-sed -i "s|#host-name=.*|host-name=${PROJECT_NAME}|g" $rootdir/etc/avahi/avahi-daemon.conf
-sed -i "s|host-name=.*|host-name=${PROJECT_NAME}|g" $rootdir/etc/avahi/avahi-daemon.conf
+sed -i "s|#host-name=.*|host-name=${LOCAL_NAME}|g" $rootdir/etc/avahi/avahi-daemon.conf
+sed -i "s|host-name=.*|host-name=${LOCAL_NAME}|g" $rootdir/etc/avahi/avahi-daemon.conf
+sed -i "s|use-ipv4=.*|use-ipv4=yes|g" $rootdir/etc/avahi/avahi-daemon.conf
+sed -i "s|use-ipv6=.*|use-ipv6=no|g" $rootdir/etc/avahi/avahi-daemon.conf
+sed -i "s|#disallow-other-stacks=.*|disallow-other-stacks=yes|g" $rootdir/etc/avahi/avahi-daemon.conf
+sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" $rootdir/etc/nsswitch.conf
+
+# Add an ssh avahi service
+echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > $rootdir/etc/avahi/services/ssh.service
+echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> $rootdir/etc/avahi/services/ssh.service
+echo '<service-group>' >> $rootdir/etc/avahi/services/ssh.service
+echo '  <name replace-wildcards="yes">%h SSH</name>' >> $rootdir/etc/avahi/services/ssh.service
+echo '  <service>' >> $rootdir/etc/avahi/services/ssh.service
+echo '    <type>_ssh._tcp</type>' >> $rootdir/etc/avahi/services/ssh.service
+echo "    <port>$SSH_PORT</port>" >> $rootdir/etc/avahi/services/ssh.service
+echo '  </service>' >> $rootdir/etc/avahi/services/ssh.service
+echo '</service-group>' >> $rootdir/etc/avahi/services/ssh.service
+
+# Ensure that the avahi daemon keeps running
+WATCHDOG_SCRIPT_NAME="keepon"
+echo '#!/bin/bash' > $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo 'LOGFILE=/var/log/keepon.log' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo 'CURRENT_DATE=$(date)' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo '' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo "# keep avahi-daemon daemon running" >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo "RUNNING=$(pgrep avahi-daemon > /dev/null && echo Running)" >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo 'if [ ! $RUNNING ]; then' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo "  systemctl start avahi-daemon" >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo '  echo -n $CURRENT_DATE >> $LOGFILE' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo "  echo \"avahi-daemon daemon restarted\" >> \$LOGFILE" >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo 'fi' >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo "# End of avahi-daemon" >> $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+chmod +x $rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME
+echo "*/1            * *   *   *   root /usr/bin/$WATCHDOG_SCRIPT_NAME" >> $rootdir/etc/crontab
 
 chroot "$rootdir" /bin/bash -x <<EOF
 git clone $PROJECT_REPO /root/$PROJECT_NAME
 cd /root/$PROJECT_NAME
-git checkout jessie
+git checkout stretch
 make install
+cp image_build/bbb-4.9.0.tar.gz /boot/bbb.tar.gz
 EOF
 
 chroot "$rootdir" ${PROJECT_NAME}-image-hardware-setup 2>&1 | \
@@ -1308,7 +1410,11 @@ rm $rootdir/usr/sbin/policy-rc.d
 # Set up HRNG for systems known to have one
 # Otherwise install haveged
 if [[ "$MACHINE" != "beaglebone"* ]]; then
-    chroot $rootdir apt-get -yq install haveged
+    # With some VMs, the hardware cycles counter is emulated and deterministic,
+    # and thus predictible, so havege should not be used
+    if [[ "$MACHINE" != "qemu"* ]]; then
+        chroot $rootdir apt-get -yq install haveged
+    fi
 else
     chroot $rootdir apt-get -yq install rng-tools
     sed -i 's|#HRNGDEVICE=/dev/hwrng|HRNGDEVICE=/dev/hwrng|g' $rootdir/etc/default/rng-tools
@@ -1356,6 +1462,7 @@ configure_user_interface
 image_setup_utils
 image_install_inadyn
 image_install_nodejs
+image_preinstall_repos
 
 # remove downloaded packages
 chroot $rootdir apt-get -y autoremove

@@ -56,14 +56,9 @@ beaglebone_setup_boot() {
     initRd=initrd.img-$version
     vmlinuz=vmlinuz-$version
 
-    bbb_loadaddr='0x80200000'
-    bbb_initrd_addr='0x81000000'
-    bbb_fdtaddr='0x80F80000'
-    if [[ "$bbb_version" == "wireless" ]]; then
-        bbb_loadaddr='0x82000000'
-        bbb_initrd_addr='0x88080000'
-        bbb_fdtaddr='0x88000000'
-    fi
+    bbb_loadaddr='0x82000000'
+    bbb_initrd_addr='0x88080000'
+    bbb_fdtaddr='0x88000000'
 
     # uEnv.txt for Beaglebone
     # based on https://github.com/beagleboard/image-builder/blob/master/target/boot/beagleboard.org.txt
@@ -89,7 +84,7 @@ loadinitrd=load mmc \${mmcdev}:\${mmcpart} \${initrd_addr} \${initrd_file}; sete
 loadfdt=load mmc \${mmcdev}:\${mmcpart} \${fdtaddr} /dtbs/\${fdtfile}
 
 loadfiles=run loadkernel; run loadinitrd; run loadfdt
-mmcargs=setenv bootargs console=tty0 console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags}
+mmcargs=setenv bootargs init=/lib/systemd/systemd console=tty0 console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags} ifnames=0 slub_debug=FZP slab_nomerge page_poison=1
 
 uenvcmd=run loadfiles; run mmcargs; bootz \${loadaddr} \${initrd_addr}:\${initrd_size} \${fdtaddr}
 EOF
@@ -123,14 +118,28 @@ beaglebone_repack_kernel() {
 
     echo "info: repacking beaglebone kernel and initrd"
 
-    if [ ! $bbb_version ]; then
-        kernelVersion=$(ls /usr/lib/*/am335x-boneblack.dtb | head -1 | cut -d/ -f4)
-    else
-        kernelVersion=$(ls /usr/lib/*/am335x-boneblack-${1}.dtb | head -1 | cut -d/ -f4)
+    bbb_dtb='am335x-boneblack'
+    if [ $bbb_version ]; then
+        bbb_dtb="am335x-boneblack-${bbb_version}"
     fi
+
+    kernelVersion=$(ls /usr/lib/*/${bbb_dtb}.dtb | head -1 | cut -d/ -f4)
     version=$(echo $kernelVersion | sed 's/linux-image-\(.*\)/\1/')
     initRd=initrd.img-$version
     vmlinuz=vmlinuz-$version
+
+    # optionally use a separately compiled kernel
+    bbb_dtb_file=/usr/lib/$kernelVersion/${bbb_dtb}.dtb
+    #if [ -f /boot/bbb.tar.gz ]; then
+    #    cd /boot
+    #    tar -xzvf /boot/bbb.tar.gz
+    #    if [ -f /boot/bbb/dtbs/${bbb_dtb}.dtb ]; then
+    #        if [ -f /boot/bbb/zImage ]; then
+    #            bbb_dtb_file=/boot/bbb/dtbs/${bbb_dtb}.dtb
+    #            vmlinuz=/boot/bbb/zImage
+    #        fi
+    #    fi
+    #fi
 
     mkdir /tmp/initrd-repack
 
@@ -142,27 +151,15 @@ beaglebone_repack_kernel() {
 
     rm -rf /tmp/initrd-repack
 
-    if [ ! $bbb_version ]; then
-        (cd /boot ; \
-         cp /usr/lib/$kernelVersion/am335x-boneblack.dtb dtb ; \
-         cat $vmlinuz dtb >> temp-kernel ; \
-         mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
-                 -C none -a 0x80200000 -e 0x80200000 -d temp-kernel uImage ; \
-         rm -f temp-kernel ; \
-         mkimage -A arm -O linux -T ramdisk -C gzip -a 0x81000000 -e 0x81000000 \
-                 -n "Debian ramdisk ${version}" \
-                 -d $initRd uInitrd )
-    else
-        (cd /boot ; \
-         cp /usr/lib/$kernelVersion/am335x-boneblack-${bbb_version}.dtb dtb ; \
-         cat $vmlinuz dtb >> temp-kernel ; \
-         mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
-                 -C none -a 0x82000000 -e 0x82000000 -d temp-kernel uImage ; \
-         rm -f temp-kernel ; \
-         mkimage -A arm -O linux -T ramdisk -C gzip -a 0x88080000 -e 0x88080000 \
-                 -n "Debian ramdisk ${version}" \
-                 -d $initRd uInitrd )
-    fi
+    (cd /boot ; \
+     cp ${bbb_dtb_file} dtb ; \
+     cat $vmlinuz dtb >> temp-kernel ; \
+     mkimage -A arm -O linux -T kernel -n "Debian kernel ${version}" \
+             -C none -a 0x82000000 -e 0x82000000 -d temp-kernel uImage ; \
+     rm -f temp-kernel ; \
+     mkimage -A arm -O linux -T ramdisk -C gzip -a 0x88080000 -e 0x88080000 \
+             -n "Debian ramdisk ${version}" \
+             -d $initRd uInitrd )
 }
 
 a20_setup_boot() {
@@ -206,7 +203,7 @@ setenv loadinitrd load mmc \${mmcdev}:\${mmcpart} \${initrd_addr} \${initrd_file
 setenv loadfdt load mmc \${mmcdev}:\${mmcpart} \${fdtaddr} /dtbs/\${fdtfile}
 
 setenv loadfiles run loadkernel\\; run loadinitrd\\; run loadfdt
-setenv mmcargs setenv bootargs console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags}
+setenv mmcargs setenv bootargs init=/lib/systemd/systemd console=\${console} root=\${mmcroot} rootfstype=\${mmcrootfstype} rootflags=\${mmcrootflags} ifnames=0 slub_debug=FZP slab_nomerge page_poison=1
 
 run loadfiles; run mmcargs; bootz \${loadaddr} \${initrd_addr}:\${initrd_size} \${fdtaddr}
 EOF

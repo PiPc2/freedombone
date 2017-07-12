@@ -14,7 +14,7 @@
 # License
 # =======
 #
-# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2015-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -95,12 +95,7 @@ MINIMAL_INSTALL="yes"
 DEFAULT_LANGUAGE='en_GB.UTF-8'
 ONION_ONLY="no"
 SELECTED_USERNAME=
-
-# Mirrors settings
-FRIENDS_MIRRORS_SERVER=
-FRIENDS_MIRRORS_SSH_PORT=2222
-FRIENDS_MIRRORS_PASSWORD=
-MY_MIRRORS_PASSWORD=
+SOCIALINSTANCE=
 
 VALID_CODE=
 
@@ -108,6 +103,20 @@ PROJECT_INSTALL_DIR=/usr/local/bin
 if [ -f /usr/bin/${PROJECT_NAME} ]; then
     PROJECT_INSTALL_DIR=/usr/bin
 fi
+
+function please_wait {
+        local str width height length
+
+        width=$(tput cols)
+        height=$(tput lines)
+        str=$"Please wait"
+        length=${#str}
+        clear
+        tput cup $((height / 2)) $(((width / 2) - (length / 2)))
+        echo "$str"
+        tput cup $((height * 3 / 5)) $(((width / 2)))
+        echo -n ''
+}
 
 source $PROJECT_INSTALL_DIR/${PROJECT_NAME}-vars
 
@@ -130,13 +139,14 @@ function show_help {
     echo $'Creates an inventory of remote backup locations'
     echo ''
     echo ''
-    echo $'  -h --help             Show help'
-    echo $'  -f --filename         Configuration file (usually freedombone.cfg)'
-    echo $'  -m --min              Minimum password length (characters)'
-    echo $'  -w --www              Freedombone web site'
-    echo $'  -b --bm               Freedombone support Bitmessage address'
-    echo $'  -o --onion [yes|no]   Whether to only create .onion sites'
-    echo $'     --minimal [yes|no] For minimalistic "consumer grade" installs'
+    echo $'  -h --help                         Show help'
+    echo $'  -f --filename                     Configuration file (usually freedombone.cfg)'
+    echo $'  -m --min                          Minimum password length (characters)'
+    echo $'  -w --www                          Freedombone web site'
+    echo $'  -b --bm                           Freedombone support Bitmessage address'
+    echo $'  -o --onion [yes|no]               Whether to only create .onion sites'
+    echo $'     --minimal [yes|no]             For minimalistic "consumer grade" installs'
+    echo $'     --social [gnusocial|postactiv] Create gnusocial/postactiv instance'
     echo ''
     exit 0
 }
@@ -170,9 +180,65 @@ function choose_email_address {
     save_configuration_values
 }
 
+function choose_social_instance_domain_name {
+    DEFAULT_DOMAIN_DETAILS_COMPLETE=
+    while [ ! $DEFAULT_DOMAIN_DETAILS_COMPLETE ]
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+            dialog --backtitle $"Freedombone Configuration" \
+                   --title $"Instance domain" \
+                   --form $"\nEnter your instance domain name and its FreeDNS code:" 11 55 3 \
+                   $"Domain:" 1 1 "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 24 33 40 \
+                   $"Code:" 2 1 "$(grep 'DEFAULT_DOMAIN_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 24 33 255 \
+                   2> $data
+            sel=$?
+            case $sel in
+                1) exit 1;;
+                255) exit 1;;
+            esac
+            DEFAULT_DOMAIN_NAME=$(cat $data | sed -n 1p)
+            DEFAULT_DOMAIN_CODE=$(cat $data | sed -n 2p)
+            if [ $DEFAULT_DOMAIN_NAME ]; then
+                validate_freedns_code "$DEFAULT_DOMAIN_CODE"
+                if [ ! $VALID_CODE ]; then
+                    DEFAULT_DOMAIN_NAME=
+                fi
+            fi
+        else
+            dialog --backtitle $"Freedombone Configuration" \
+                   --inputbox $"Enter your instance domain name:" 10 45 \
+                   "$(grep 'DEFAULT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 2> $data
+            sel=$?
+            case $sel in
+                0) DEFAULT_DOMAIN_NAME=$(cat $data);;
+                1) exit 1;;
+                255) exit 1;;
+            esac
+        fi
+        if [ $DEFAULT_DOMAIN_NAME ]; then
+            TEST_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME
+            validate_domain_name
+            if [[ $TEST_DOMAIN_NAME != $DEFAULT_DOMAIN_NAME ]]; then
+                DEFAULT_DOMAIN_NAME=
+                dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
+            else
+                DEFAULT_DOMAIN_DETAILS_COMPLETE="yes"
+            fi
+        fi
+    done
+    save_configuration_values
+}
+
 function choose_default_domain_name {
+    if [ $SOCIALINSTANCE ]; then
+        choose_social_instance_domain_name
+        return
+    fi
+
     if [[ $ONION_ONLY != "no" ]]; then
-        DEFAULT_DOMAIN_NAME="${PROJECT_NAME}.local"
+        DEFAULT_DOMAIN_NAME="${LOCAL_NAME}.local"
     else
         DEFAULT_DOMAIN_DETAILS_COMPLETE=
         while [ ! $DEFAULT_DOMAIN_DETAILS_COMPLETE ]
@@ -608,6 +674,9 @@ function choose_username {
                            if [ ${#possible_username} -gt 1 ]; then
                                if [[ $possible_username != $GENERIC_IMAGE_USERNAME ]]; then
                                    MY_USERNAME=$(cat $data)
+                                   please_wait
+                                   echo ''
+                                   echo $'Creating user account'
                                    chmod 600 /etc/shadow
                                    chmod 600 /etc/gshadow
                                    useradd -m -s /bin/bash $MY_USERNAME
@@ -665,6 +734,8 @@ function choose_username {
         exit 6437
     fi
     save_configuration_values
+    please_wait
+    echo ''
 }
 
 function choose_full_name {
@@ -691,6 +762,8 @@ function choose_full_name {
         esac
     done
     save_configuration_values
+    please_wait
+    echo ''
 }
 
 function choose_system_variant {
@@ -761,6 +834,12 @@ do
             shift
             FREEDOMBONE_WEBSITE="$1"
             ;;
+        --social)
+            shift
+            if [[ "$1" == 'gnusocial' || "$1" == 'postactiv' ]]; then
+                SOCIALINSTANCE="$1"
+            fi
+            ;;
         --minimal)
             shift
             MINIMAL_INSTALL="$1"
@@ -775,48 +854,6 @@ do
     esac
     shift
 done
-
-function set_main_repo {
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --backtitle $"Freedombone Control Panel" \
-           --title $"Main Repository (Mirrors)" \
-           --form $"If you don't know what this means then just select Ok.\n\nIf you don't wish to use the default repositories they can be obtained from mirrored repos on another ${PROJECT_NAME} system.\n\nThe repositories are for applications which are not yet packaged for Debian." 18 65 4 \
-           $"URL:" 1 1 "$FRIENDS_MIRRORS_SERVER" 1 18 40 18 \
-           $"SSH Port:" 2 1 "$FRIENDS_MIRRORS_SSH_PORT" 2 18 10 10000 \
-           $"Password:" 3 1 "$FRIENDS_MIRRORS_PASSWORD" 3 18 40 10000 \
-           2> $data
-    sel=$?
-    case $sel in
-        1) return;;
-        255) return;;
-    esac
-    new_mirrors_url=$(cat $data | sed -n 1p)
-    new_mirrors_ssh_port=$(cat $data | sed -n 2p)
-    new_mirrors_password=$(cat $data | sed -n 3p)
-
-    if [ ${#new_mirrors_url} -lt 2 ]; then
-        return
-    fi
-    if [ ${#new_mirrors_ssh_port} -lt 1 ]; then
-        return
-    fi
-    if [ ${#new_mirrors_password} -lt 10 ]; then
-        dialog --title $"Main Repository" \
-               --msgbox $'Mirrors password was too short. Should be at least 10 characters.' 6 40
-        return
-    fi
-
-    if [[ $new_mirrors_url == *"."* ]]; then
-        FRIENDS_MIRRORS_SERVER=$new_mirrors_url
-        FRIENDS_MIRRORS_SSH_PORT=$new_mirrors_ssh_port
-        FRIENDS_MIRRORS_PASSWORD=$new_mirrors_password
-
-        dialog --title $"Main Repository" \
-               --msgbox $"Main repository set to $FRIENDS_MIRRORS_SERVER" 6 60
-    fi
-    save_configuration_values
-}
 
 function interactive_select_language {
     data=$(tempfile 2>/dev/null)
@@ -968,12 +1005,18 @@ function interactive_select_language {
     esac
     save_configuration_values
 
+    please_wait
+    echo ''
+    echo 'Setting locale'
+
     locale-gen "${DEFAULT_LANGUAGE}"
     update-locale LANG=${DEFAULT_LANGUAGE}
     update-locale LANGUAGE=${DEFAULT_LANGUAGE}
     update-locale LC_MESSAGES=${DEFAULT_LANGUAGE}
     update-locale LC_ALL=${DEFAULT_LANGUAGE}
     update-locale LC_CTYPE=${DEFAULT_LANGUAGE}
+    please_wait
+    echo ''
 }
 
 function select_user {
@@ -981,7 +1024,7 @@ function select_user {
 
     users_array=($(ls /home))
 
-    delete=(mirrors git)
+    delete=(git)
     for del in ${delete[@]}
     do
         users_array=(${users_array[@]/$del})
@@ -1019,16 +1062,19 @@ function interactive_config {
 
     interactive_select_language
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nEnsure that you have your domain and dynamic DNS settings ready.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+    if [ $SOCIALINSTANCE ]; then
+        INITIAL_MESSAGE=$"Welcome to your Freedombone $SOCIALINSTANCE instance.\n\nEnsure that you have your domain and dynamic DNS settings ready.\n\nFor more information please visit ${FREEDOMBONE_WEBSITE}/socialinstance.html."
     else
-        INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nWeb sites created will only be viewable within a Tor browser.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+        if [[ $ONION_ONLY == "no" ]]; then
+            INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nEnsure that you have your domain and dynamic DNS settings ready.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+        else
+            INITIAL_MESSAGE=$"Welcome to the Freedombone interactive installer. Communications freedom is only a short time away.\n\nWeb sites created will only be viewable within a Tor browser.\n\nFor more information please visit $FREEDOMBONE_WEBSITE."
+        fi
     fi
 
     dialog --title $"Freedombone" --msgbox "$INITIAL_MESSAGE" 15 50
 
     #choose_system_variant
-    set_main_repo
     choose_username
     choose_full_name
     choose_social_key_management
@@ -1039,6 +1085,24 @@ function interactive_config {
     choose_default_domain_name
     choose_email_address
     interactive_key_recovery
+
+    if [[ "$SOCIALINSTANCE" == 'gnusocial' ]]; then
+        GNUSOCIAL_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME
+        GNUSOCIAL_CODE=$DEFAULT_DOMAIN_CODE
+        write_config_param "GNUSOCIAL_DOMAIN_NAME" "$GNUSOCIAL_DOMAIN_NAME"
+        write_config_param "GNUSOCIAL_CODE" "$GNUSOCIAL_CODE"
+        write_config_param "SOCIALINSTANCE" "$SOCIALINSTANCE"
+        install_gnusocial
+    fi
+
+    if [[ "$SOCIALINSTANCE" == 'postactiv' ]]; then
+        POSTACTIV_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME
+        POSTACTIV_CODE=$DEFAULT_DOMAIN_CODE
+        write_config_param "POSTACTIV_DOMAIN_NAME" "$POSTACTIV_DOMAIN_NAME"
+        write_config_param "POSTACTIV_CODE" "$POSTACTIV_CODE"
+        write_config_param "SOCIALINSTANCE" "$SOCIALINSTANCE"
+        install_postactiv
+    fi
 
     # delete the temporary configuration file
     if [ -f temp.cfg ]; then

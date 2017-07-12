@@ -59,6 +59,14 @@ turtl_variables=(ONION_ONLY
                  MY_EMAIL_ADDRESS
                  MY_USERNAME)
 
+function logging_on_turtl {
+    echo -n ''
+}
+
+function logging_off_turtl {
+    echo -n ''
+}
+
 function change_password_turtl {
     change_username="$1"
     new_user_password="$2"
@@ -90,7 +98,7 @@ function install_interactive_turtl {
 }
 
 function turtl_disable_registrations {
-    if grep "$TURTL_SIGNUP_STRING" $turtl_users_file; then
+    if grep -q "$TURTL_SIGNUP_STRING" $turtl_users_file; then
         if [ -f $turtl_users_file ]; then
             cp $turtl_users_file $TURTL_BASE_DIR/.users.lisp
             sed -i '/(route (:post "\/users") (req res)/,/(send-json res user))))/{//!d}' $turtl_users_file
@@ -102,7 +110,7 @@ function turtl_disable_registrations {
 }
 
 function turtl_enable_registrations {
-    if ! grep "$TURTL_SIGNUP_STRING" $turtl_users_file; then
+    if ! grep -q "$TURTL_SIGNUP_STRING" $turtl_users_file; then
         if [ -f $TURTL_BASE_DIR/.users.lisp ]; then
             cp $TURTL_BASE_DIR/.users.lisp $turtl_users_file
             rm $TURTL_BASE_DIR/.users.lisp
@@ -186,6 +194,11 @@ function reconfigure_turtl {
 }
 
 function upgrade_turtl {
+    CURR_TURTL_COMMIT=$(get_completion_param "turtl commit")
+    if [[ "$CURR_TURTL_COMMIT" == "$TURTL_COMMIT" ]]; then
+        return
+    fi
+
     read_config_param "TURTL_DOMAIN_NAME"
 
     function_check set_repo_commit
@@ -351,11 +364,12 @@ function remove_turtl {
     systemctl stop turtl
     systemctl disable turtl
     rm /etc/systemd/system/turtl.service
+    systemctl daemon-reload
+
     remove_rethinkdb
     remove_app turtl
     remove_completion_param install_turtl
     sed -i '/turtl/d' $COMPLETION_FILE
-    deluser turtl
     nginx_dissite $TURTL_DOMAIN_NAME
     if [ -f /etc/nginx/sites-available/$TURTL_DOMAIN_NAME ]; then
         rm /etc/nginx/sites-available/$TURTL_DOMAIN_NAME
@@ -368,6 +382,9 @@ function remove_turtl {
     rm -rf /etc/rethinkdb
     rm -rf /var/lib/rethinkdb
     rm -rf $TURTL_BASE_DIR
+
+    groupdel -f turtl
+    userdel -r turtl
 }
 
 
@@ -433,6 +450,11 @@ __ENDCONFIG__
     # start the turtl server
     systemctl restart rethinkdb
 
+    if [ ! -f $TURTL_BASE_DIR/quicklisp/setup.lisp ]; then
+        echo $"$TURTL_BASE_DIR/quicklisp/setup.lisp was not found"
+        exit 6238234
+    fi
+
     echo '[Unit]' > /etc/systemd/system/turtl.service
     echo 'Description=Note taking service' >> /etc/systemd/system/turtl.service
     echo 'Documentation=http://turtl.it' >> /etc/systemd/system/turtl.service
@@ -452,7 +474,7 @@ __ENDCONFIG__
         if [[ "$check_architecture" != *"arm"* ]]; then
             echo "ExecStart=$TURTL_BASE_DIR/ccl/lx86cl -l $TURTL_BASE_DIR/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
         else
-            echo "ExecStart=$TURTL_BASE_DIR/ccl/larmcl -l $TURTL_BASE_DIR/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
+            echo "ExecStart=$TURTL_BASE_DIR/ccl/armcl -l $TURTL_BASE_DIR/quicklisp/setup.lisp -l launch.lisp" >> /etc/systemd/system/turtl.service
         fi
     fi
     echo '' >> /etc/systemd/system/turtl.service
@@ -561,7 +583,16 @@ __ENDCONFIG__
         wget https://beta.quicklisp.org/quicklisp.lisp
     fi
 
+    if [ -d $TURTL_BASE_DIR ]; then
+        chown -R turtl:turtl $TURTL_BASE_DIR
+    fi
     adduser --disabled-login --home=$TURTL_BASE_DIR --gecos 'turtl' turtl
+    if [ ! -d $TURTL_BASE_DIR ]; then
+        echo $"$TURTL_BASE_DIR directory not created"
+        exit 263493
+    fi
+
+    groupadd turtl
     chown -R turtl:turtl $TURTL_BASE_DIR
 
     if [[ "$check_architecture" != *"arm"* ]]; then
@@ -581,7 +612,16 @@ __ENDCONFIG__
 
     # install turtl API
     cd $TURTL_BASE_DIR/
-    git clone $TURTL_REPO $TURTL_BASE_DIR/api
+
+    if [ -d /repos/turtl ]; then
+        mkdir $TURTL_BASE_DIR/api
+        cp -r -p /repos/turtl/. $TURTL_BASE_DIR/api
+        cd $TURTL_BASE_DIR/api
+        git pull
+    else
+        git clone $TURTL_REPO $TURTL_BASE_DIR/api
+    fi
+
     cd $TURTL_BASE_DIR/api
     git checkout $TURTL_COMMIT -b $TURTL_COMMIT
     set_completion_param "turtl commit" "$TURTL_COMMIT"

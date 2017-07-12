@@ -62,6 +62,30 @@ matrix_variables=(ONION_ONLY
                   MATRIX_DOMAIN_NAME
                   MATRIX_CODE)
 
+function logging_on_matrix {
+    if [ -f /var/lib/matrix/homeserver.yaml ]; then
+        sed -i 's|log_file:.*|log_file: /etc/matrix/homeserver.log|g' /var/lib/matrix/homeserver.yaml
+        if ! grep -q "#log_config:" /var/lib/matrix/homeserver.yaml; then
+            sed -i 's|log_config:|#log_config:|g' /var/lib/matrix/homeserver.yaml
+        fi
+    fi
+}
+
+function logging_off_matrix {
+    if [ -f /var/lib/matrix/homeserver.yaml ]; then
+        sed -i 's|log_file:.*|log_file: /dev/null|g' /var/lib/matrix/homeserver.yaml
+        if ! grep -q "#log_config:" /var/lib/matrix/homeserver.yaml; then
+            sed -i 's|log_config:|#log_config:|g' /var/lib/matrix/homeserver.yaml
+        fi
+        if [ -f /etc/matrix/homeserver.log ]; then
+            $REMOVE_FILES_COMMAND /etc/matrix/homeserver.log
+        fi
+        if [ -f /etc/matrix/homeserver.log.1 ]; then
+            $REMOVE_FILES_COMMAND /etc/matrix/homeserver.log.1
+        fi
+    fi
+}
+
 function matrix_nginx {
     matrix_nginx_site=/etc/nginx/sites-available/$MATRIX_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
@@ -329,6 +353,12 @@ function upgrade_matrix {
     if [ ! -d /etc/matrix ]; then
        return
     fi
+
+    CURR_MATRIX_COMMIT=$(get_completion_param "matrix commit")
+    if [[ "$CURR_MATRIX_COMMIT" == "$MATRIX_COMMIT" ]]; then
+        return
+    fi
+
     systemctl stop turn
     systemctl stop matrix
 
@@ -478,13 +508,16 @@ function remove_matrix {
     if [ -f /etc/systemd/system/matrix.service ]; then
         rm /etc/systemd/system/matrix.service
     fi
+    systemctl daemon-reload
     apt-get -y remove --purge coturn
     cd /etc/matrix
     pip uninstall .
     rm -rf $MATRIX_DATA_DIR
     rm -rf /etc/matrix
-    deluser matrix
-    delgroup matrix
+
+    groupdel -f matrix
+    userdel -r matrix
+
     remove_onion_service matrix ${MATRIX_ONION_PORT}
     remove_onion_service matrix ${MATRIX_FEDERATION_ONION_PORT}
 
@@ -497,8 +530,17 @@ function remove_matrix {
 
 function install_home_server {
     if [ ! -d /etc/matrix ]; then
-        function_check git_clone
-        git_clone $MATRIX_REPO /etc/matrix
+
+        if [ -d /repos/matrix ]; then
+            mkdir /etc/matrix
+            cp -r -p /repos/matrix/. /etc/matrix
+            cd /etc/matrix
+            git pull
+        else
+            function_check git_clone
+            git_clone $MATRIX_REPO /etc/matrix
+        fi
+
         if [ ! -d /etc/matrix ]; then
             echo $'Unable to clone matrix repo'
             exit 6724683
@@ -575,14 +617,19 @@ function install_home_server {
     sleep 5
 
     if [ ! -f $MATRIX_DATA_DIR/homeserver.db ]; then
-        echo $'No matrix home server database was created'
-        exit 23782
+        # On low power systems more sleeping may be needed
+        sleep 10
+
+        if [ ! -f $MATRIX_DATA_DIR/homeserver.db ]; then
+            echo $'No matrix home server database was created'
+            exit 23782
+        fi
     fi
     chmod -R 700 $MATRIX_DATA_DIR/homeserver.db
 
     MATRIX_ONION_HOSTNAME=$(add_onion_service matrix ${MATRIX_PORT} ${MATRIX_ONION_PORT})
     echo "HiddenServicePort ${MATRIX_HTTP_PORT} 127.0.0.1:${MATRIX_FEDERATION_ONION_PORT}" >> /etc/tor/torrc
-    systemctl reload tor
+    systemctl restart tor
 
     if [ ! ${MATRIX_PASSWORD} ]; then
         if [ -f ${IMAGE_PASSWORD_FILE} ]; then
@@ -603,6 +650,12 @@ function install_home_server {
 }
 
 function install_matrix {
+    if [[ $ONION_ONLY != 'no' ]]; then
+        return
+    fi
+
+    check_ram_availability 1500
+
     if [ ! -d $INSTALL_DIR ]; then
         mkdir -p $INSTALL_DIR
     fi
@@ -637,7 +690,7 @@ function install_matrix {
             libjpeg62-turbo-dev libldap-2.4-2 \
             libldap2-dev libsasl2-dev \
             libsqlite3-dev libssl-dev \
-            libssl1.0.0 libtool libxml2 \
+            libssl1.1 libtool libxml2 \
             libxml2-dev libxslt1-dev libxslt1.1 \
             make python python-dev \
             python-pip python-psycopg2 \

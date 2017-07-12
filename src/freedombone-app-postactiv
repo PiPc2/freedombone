@@ -37,7 +37,7 @@ POSTACTIV_DOMAIN_NAME=
 POSTACTIV_CODE=
 POSTACTIV_ONION_PORT=8100
 POSTACTIV_REPO="https://git.postactiv.com/postActiv/postActiv.git"
-POSTACTIV_COMMIT='65fcc4eb440380f2373d428e8dde23fcc73c9f08'
+POSTACTIV_COMMIT='0531c469b44aab6a71230778ab4492eca889bb2c'
 POSTACTIV_ADMIN_PASSWORD=
 
 POSTACTIV_BACKGROUND_IMAGE_URL=
@@ -54,6 +54,14 @@ postactiv_variables=(ONION_ONLY
                      POSTACTIV_BACKGROUND_IMAGE_URL
                      POSTACTIV_EXPIRE_MONTHS
                      POSTACTIV_TITLE)
+
+function logging_on_postactiv {
+    echo -n ''
+}
+
+function logging_off_postactiv {
+    echo -n ''
+}
 
 function postactiv_customise_logo {
     domain_name=$1
@@ -313,15 +321,14 @@ function configure_interactive_postactiv {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"PostActiv" \
-               --radiolist $"Choose an operation:" 17 70 8 \
+               --radiolist $"Choose an operation:" 16 70 7 \
                1 $"Set a background image" off \
                2 $"Set the title" off \
                3 $"Set post expiry period (currently $POSTACTIV_EXPIRE_MONTHS months)" off \
                4 $"Select Qvitter user interface" off \
                5 $"Select Pleroma user interface" off \
                6 $"Select Classic user interface" off \
-               7 $"Select Armadillo user interface" off \
-               8 $"Exit" on 2> $data
+               7 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
@@ -334,8 +341,7 @@ function configure_interactive_postactiv {
             4) gnusocial_use_qvitter postactiv;;
             5) gnusocial_use_pleroma postactiv;;
             6) gnusocial_use_classic postactiv;;
-            7) gnusocial_use_armadillo postactiv;;
-            8) break;;
+            7) break;;
         esac
     done
 }
@@ -375,6 +381,7 @@ function upgrade_postactiv {
     postactiv_customise_logo
     install_gnusocial_default_background "postactiv" "$POSTACTIV_DOMAIN_NAME"
     chown -R www-data:www-data /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
+    systemctl restart mariadb
 }
 
 
@@ -384,21 +391,34 @@ function backup_local_postactiv {
         POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
     fi
 
-    source_directory=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
-    if [ -d $source_directory ]; then
-        dest_directory=postactiv
-        function_check suspend_site
-        suspend_site ${POSTACTIV_DOMAIN_NAME}
+    # don't backup more data than we need to
+    postactiv-expire
 
-        function_check backup_directory_to_usb
-        backup_directory_to_usb $source_directory $dest_directory
-
-        function_check backup_database_to_usb
-        backup_database_to_usb postactiv
-
-        function_check restart_site
-        restart_site
+    source_directory=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/backup
+    if [ ! -d $source_directory ]; then
+        mkdir $source_directory
     fi
+    cp -p /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/config.php $source_directory
+    if [ -d /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/static ]; then
+        cp -rp /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/static $source_directory
+    fi
+
+    function_check suspend_site
+    suspend_site ${POSTACTIV_DOMAIN_NAME}
+
+    function_check backup_directory_to_usb
+    dest_directory=postactivconfig
+    backup_directory_to_usb $source_directory $dest_directory
+
+    source_directory=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/file
+    dest_directory=postactivfile
+    backup_directory_to_usb $source_directory $dest_directory
+
+    function_check backup_database_to_usb
+    backup_database_to_usb postactiv
+
+    function_check restart_site
+    restart_site
 }
 
 function restore_local_postactiv {
@@ -407,68 +427,122 @@ function restore_local_postactiv {
     fi
     POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
     if [ $POSTACTIV_DOMAIN_NAME ]; then
+        echo $"Restoring postactiv"
         temp_restore_dir=/root/temppostactiv
         postactiv_dir=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
         # stop the daemons
         cd $postactiv_dir
-        su -c "sh scripts/stopdaemons.sh" -s /bin/sh www-data
+        scripts/stopdaemons.sh
 
         function_check postactiv_create_database
         postactiv_create_database
 
-        restore_database postactiv ${POSTACTIV_DOMAIN_NAME}
+        restore_database postactiv
         if [ -d $temp_restore_dir ]; then
             rm -rf $temp_restore_dir
         fi
 
-        # start the daemons
-        cd $postactiv_dir
-        su -c "sh scripts/startdaemons.sh" -s /bin/sh www-data
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir postactivconfig
+        if [ -d $temp_restore_dir ]; then
+            cp $temp_restore_dir$postactiv_dir/backup/config.php $postactiv_dir/
+            chown www-data:www-data $postactiv_dir/config.php
+            cp -rp $temp_restore_dir$postactiv_dir/static $postactiv_dir/
+            chown -R www-data:www-data $postactiv_dir/static
+            rm -rf $temp_restore_dir
+        fi
+
+        restore_directory_from_usb $temp_restore_dir postactivfile
+        if [ -d $temp_restore_dir ]; then
+            cp -rp $temp_restore_dir$postactiv_dir/file $postactiv_dir/
+            chown -R www-data:www-data $postactiv_dir/file
+            rm -rf $temp_restore_dir
+        fi
+
+        gnusocial_update_after_restore postactiv ${POSTACTIV_DOMAIN_NAME}
+
+        echo $"Restore of postactiv complete"
     fi
 }
 
 function backup_remote_postactiv {
+    POSTACTIV_DOMAIN_NAME='postactiv'
     if grep -q "postactiv domain" $COMPLETION_FILE; then
         POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
-        temp_backup_dir=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
-        if [ -d $temp_backup_dir ]; then
-            function_check suspend_site
-            suspend_site ${POSTACTIV_DOMAIN_NAME}
-
-            function_check backup_database_to_friend
-            backup_database_to_friend postactiv
-
-            function_check backup_directory_to_friend
-            backup_directory_to_friend $temp_backup_dir postactiv
-
-            function_check restart_site
-            restart_site
-        else
-            echo $"postactiv domain specified but not found in ${temp_backup_dir}"
-        fi
     fi
+
+    # don't backup more data than we need to
+    postactiv-expire
+
+    source_directory=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/backup
+    if [ ! -d $source_directory ]; then
+        mkdir $source_directory
+    fi
+    cp -p /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/config.php $source_directory
+    if [ -d /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/static ]; then
+        cp -rp /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/static $source_directory
+    fi
+
+    function_check suspend_site
+    suspend_site ${POSTACTIV_DOMAIN_NAME}
+
+    function_check backup_directory_to_friend
+    dest_directory=postactivconfig
+    backup_directory_to_friend $source_directory $dest_directory
+
+    source_directory=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs/file
+    dest_directory=postactivfile
+    backup_directory_to_friend $source_directory $dest_directory
+
+    function_check backup_database_to_friend
+    backup_database_to_friend postactiv
+
+    function_check restart_site
+    restart_site
 }
 
 function restore_remote_postactiv {
-    if grep -q "postactiv domain" $COMPLETION_FILE; then
-        POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
-
+    if ! grep -q "postactiv domain" $COMPLETION_FILE; then
+        return
+    fi
+    POSTACTIV_DOMAIN_NAME=$(get_completion_param "postactiv domain")
+    if [ $POSTACTIV_DOMAIN_NAME ]; then
+        echo $"Restoring postactiv"
+        temp_restore_dir=/root/temppostactiv
+        postactiv_dir=/var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
         # stop the daemons
-        cd /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
-        su -c "sh scripts/stopdaemons.sh" -s /bin/sh www-data
+        cd $postactiv_dir
+        scripts/stopdaemons.sh
 
         function_check postactiv_create_database
         postactiv_create_database
 
         function_check restore_database_from_friend
-        restore_database_from_friend postactiv ${POSTACTIV_DOMAIN_NAME}
-        if [ -d /root/temppostactiv ]; then
-            rm -rf /root/temppostactiv
+        restore_database_from_friend postactiv
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
         fi
 
-        # start the daemons
-        cd /var/www/${POSTACTIV_DOMAIN_NAME}/htdocs
-        su -c "sh scripts/startdaemons.sh" -s /bin/sh www-data
+        function_check restore_directory_from_friend
+        restore_directory_from_friend $temp_restore_dir postactivconfig
+        if [ -d $temp_restore_dir ]; then
+            cp $temp_restore_dir$postactiv_dir/backup/config.php $postactiv_dir/
+            chown www-data:www-data $postactiv_dir/config.php
+            cp -rp $temp_restore_dir$postactiv_dir/static $postactiv_dir/
+            chown -R www-data:www-data $postactiv_dir/static
+            rm -rf $temp_restore_dir
+        fi
+
+        restore_directory_from_friend $temp_restore_dir postactivfile
+        if [ -d $temp_restore_dir ]; then
+            cp -rp $temp_restore_dir$postactiv_dir/file $postactiv_dir/
+            chown -R www-data:www-data $postactiv_dir/file
+            rm -rf $temp_restore_dir
+        fi
+
+        gnusocial_update_after_restore postactiv ${POSTACTIV_DOMAIN_NAME}
+
+        echo $"Restore of postactiv complete"
     fi
 }
 
@@ -488,8 +562,8 @@ function remove_postactiv {
         rm /etc/cron.hourly/postactiv-daemons
     fi
     if [ -f /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts/stopdaemons.sh ]; then
-        cd /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts
-        su -c "sh scripts/stopdaemons.sh" -s /bin/sh www-data
+        cd /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+        scripts/stopdaemons.sh
     fi
     kill_pid=$(ps aux | grep /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts/queuedaemon.php | awk -F ' ' '{print $2}' | head -n 1)
     kill -9 $kill_pid
@@ -540,15 +614,24 @@ function install_postactiv_main {
     function_check repair_databases_script
     repair_databases_script
 
-    apt-get -yq install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
-    apt-get -yq install php5-memcached php5-intl exiftool
+    apt-get -yq install php-gettext php-curl php-gd php-mysql git curl
+    apt-get -yq install memcached php-memcached php-intl exiftool libfcgi0ldbl
 
     if [ ! -d /var/www/$POSTACTIV_DOMAIN_NAME ]; then
         mkdir /var/www/$POSTACTIV_DOMAIN_NAME
     fi
     if [ ! -d /var/www/$POSTACTIV_DOMAIN_NAME/htdocs ]; then
-        function_check git_clone
-        git_clone $POSTACTIV_REPO /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+
+        if [ -d /repos/postactiv ]; then
+            mkdir /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+            cp -r -p /repos/postactiv/. /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+            cd /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+            git pull
+        else
+            function_check git_clone
+            git_clone $POSTACTIV_REPO /var/www/$POSTACTIV_DOMAIN_NAME/htdocs
+        fi
+
         if [ ! -d /var/www/$POSTACTIV_DOMAIN_NAME/htdocs ]; then
             echo $'Unable to clone postactiv repo'
             exit 87525
@@ -582,6 +665,8 @@ function install_postactiv_main {
 
     function_check add_ddns_domain
     add_ddns_domain $POSTACTIV_DOMAIN_NAME
+
+    POSTACTIV_ONION_HOSTNAME=$(add_onion_service postactiv 80 ${POSTACTIV_ONION_PORT})
 
     postactiv_nginx_site=/etc/nginx/sites-available/$POSTACTIV_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
@@ -617,7 +702,8 @@ function install_postactiv_main {
         echo '  # PHP' >> $postactiv_nginx_site
         echo '  location ~ \.php {' >> $postactiv_nginx_site
         echo '    include snippets/fastcgi-php.conf;' >> $postactiv_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $postactiv_nginx_site
+        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $postactiv_nginx_site
+        echo '    fastcgi_read_timeout 30;' >> $postactiv_nginx_site
         echo '  }' >> $postactiv_nginx_site
         echo '' >> $postactiv_nginx_site
         echo '  # Location' >> $postactiv_nginx_site
@@ -644,7 +730,7 @@ function install_postactiv_main {
     fi
     echo 'server {' >> $postactiv_nginx_site
     echo "    listen 127.0.0.1:$POSTACTIV_ONION_PORT default_server;" >> $postactiv_nginx_site
-    echo "    server_name $POSTACTIV_DOMAIN_NAME;" >> $postactiv_nginx_site
+    echo "    server_name $POSTACTIV_ONION_HOSTNAME;" >> $postactiv_nginx_site
     echo '' >> $postactiv_nginx_site
     function_check nginx_disable_sniffing
     nginx_disable_sniffing $POSTACTIV_DOMAIN_NAME
@@ -665,7 +751,8 @@ function install_postactiv_main {
     echo '  # PHP' >> $postactiv_nginx_site
     echo '  location ~ \.php {' >> $postactiv_nginx_site
     echo '    include snippets/fastcgi-php.conf;' >> $postactiv_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $postactiv_nginx_site
+    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $postactiv_nginx_site
+    echo '    fastcgi_read_timeout 30;' >> $postactiv_nginx_site
     echo '  }' >> $postactiv_nginx_site
     echo '' >> $postactiv_nginx_site
     echo '  # Location' >> $postactiv_nginx_site
@@ -712,8 +799,6 @@ function install_postactiv_main {
     if [[ $ONION_ONLY != 'no' ]]; then
         postactiv_ssl='never'
     fi
-
-    POSTACTIV_ONION_HOSTNAME=$(add_onion_service postactiv 80 ${POSTACTIV_ONION_PORT})
 
     POSTACTIV_SERVER=${POSTACTIV_DOMAIN_NAME}
     if [[ $ONION_ONLY != 'no' ]]; then
@@ -776,7 +861,8 @@ function install_postactiv_main {
         rm /var/www/$POSTACTIV_DOMAIN_NAME/htdocs/install.php
     fi
 
-    systemctl restart php5-fpm
+    systemctl restart mariadb
+    systemctl restart php7.0-fpm
     systemctl restart nginx
 
     ${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$POSTACTIV_DOMAIN_NAME" -g postactiv --public no
@@ -798,11 +884,9 @@ function install_postactiv {
 
     install_postactiv_main
     install_qvitter "$POSTACTIV_DOMAIN_NAME" "postactiv"
-
-    #function_check install_nodejs
-    #install_nodejs pleroma-postactiv
-
-    install_armadillo_front_end "postactiv" "$POSTACTIV_DOMAIN_NAME" "$POSTACTIV_BACKGROUND_IMAGE_URL"
+    install_gnusocial_markdown "$POSTACTIV_DOMAIN_NAME" "postactiv"
+    install_gnusocial_plugin_sharings "$POSTACTIV_DOMAIN_NAME" "postactiv"
+    install_gnusocial_plugin_sharings_theme "$POSTACTIV_DOMAIN_NAME" "postactiv"
 
     # Currently Pleroma won't install on ARM systems
     # because it uses node-sass which doesn't support ARM
@@ -824,6 +908,14 @@ function install_postactiv {
     /etc/cron.hourly/postactiv-daemons
 
     systemctl restart nginx
+
+    # Set qvitter to be the default UI. It's probably the most stable.
+    # And doesn't forget logins
+    gnusocial_use_qvitter postactiv
+
+    if [ $POSTACTIV_BACKGROUND_IMAGE_URL ]; then
+        pleroma_set_background_image_from_url "$POSTACTIV_DOMAIN_NAME" "$POSTACTIV_BACKGROUND_IMAGE_URL" "$POSTACTIV_TITLE"
+    fi
 
     APP_INSTALLED=1
 }

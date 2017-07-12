@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2016-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -52,6 +52,14 @@ etherpad_variables=(ONION_ONLY
                     DDNS_PROVIDER
                     MY_USERNAME)
 
+function logging_on_etherpad {
+    echo -n ''
+}
+
+function logging_off_etherpad {
+    echo -n ''
+}
+
 function etherpad_password_hash {
     echo $(python -c "from passlib.hash import bcrypt;print(bcrypt.encrypt(\"$1\", rounds=10))")
 }
@@ -62,7 +70,7 @@ function change_password_etherpad {
 
     read_config_param ETHERPAD_DOMAIN_NAME
 
-    if grep "\"$change_username\": {" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json; then
+    if grep -q "\"$change_username\": {" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json; then
         user_line=$(cat /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json | grep "\"$change_username\": {")
         if [[ "$user_line" == *"\"is_admin\": true"* ]]; then
             sed -i "s|\"$change_username\": {.*|\"$change_username\": { \"hash\": \"$new_user_password\", \"is_admin\": true }|g" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
@@ -302,6 +310,11 @@ function reconfigure_etherpad {
 }
 
 function upgrade_etherpad {
+    CURR_ETHERPAD_COMMIT=$(get_completion_param "etherpad commit")
+    if [[ "$CURR_ETHERPAD_COMMIT" == "$ETHERPAD_COMMIT" ]]; then
+        return
+    fi
+
     read_config_param "ETHERPAD_DOMAIN_NAME"
 
     function_check set_repo_commit
@@ -355,6 +368,11 @@ function restore_local_etherpad {
         if [ -f /etc/ssl/private/${ETHERPAD_DOMAIN_NAME}.key ]; then
             chown etherpad: /etc/ssl/private/${ETHERPAD_DOMAIN_NAME}.key
         fi
+
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        settings_file=/var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
+        sed -i "s|\"password\":.*|\"password\": \"${MARIADB_PASSWORD}\",|g" $settings_file
+        MARIADB_PASSWORD=
     fi
 }
 
@@ -400,6 +418,11 @@ function restore_remote_etherpad {
         if [ -f /etc/ssl/private/${ETHERPAD_DOMAIN_NAME}.key ]; then
             chown etherpad: /etc/ssl/private/${ETHERPAD_DOMAIN_NAME}.key
         fi
+
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        settings_file=/var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
+        sed -i "s|\"password\":.*|\"password\": \"${MARIADB_PASSWORD}\",|g" $settings_file
+        MARIADB_PASSWORD=
     fi
 }
 
@@ -415,6 +438,7 @@ function remove_etherpad {
         systemctl disable etherpad
         rm /etc/systemd/system/etherpad.service
     fi
+    systemctl daemon-reload
     nginx_dissite $ETHERPAD_DOMAIN_NAME
     remove_certs $ETHERPAD_DOMAIN_NAME
     if [ -d /var/www/$ETHERPAD_DOMAIN_NAME ]; then
@@ -431,8 +455,10 @@ function remove_etherpad {
     remove_completion_param install_etherpad
     sed -i '/etherpad/d' $COMPLETION_FILE
     remove_backup_database_local etherpad
-    deluser --remove-all-files etherpad
     remove_nodejs etherpad
+
+    groupdel -f etherpad
+    userdel -r etherpad
 
     function_check remove_ddns_domain
     remove_ddns_domain $ETHERPAD_DOMAIN_NAME
@@ -443,6 +469,8 @@ function install_etherpad {
         echo $'No domain name was given for etherpad'
         exit 7359
     fi
+
+    check_ram_availability 2000
 
     if [ -f $IMAGE_PASSWORD_FILE ]; then
         ETHERPAD_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
@@ -472,8 +500,17 @@ function install_etherpad {
         mkdir /var/www/$ETHERPAD_DOMAIN_NAME
     fi
     if [ ! -d /var/www/$ETHERPAD_DOMAIN_NAME/htdocs ]; then
-        function_check git_clone
-        git_clone $ETHERPAD_REPO /var/www/$ETHERPAD_DOMAIN_NAME/htdocs
+
+        if [ -d /repos/etherpad ]; then
+            mkdir /var/www/$ETHERPAD_DOMAIN_NAME/htdocs
+            cp -r -p /repos/etherpad/. /var/www/$ETHERPAD_DOMAIN_NAME/htdocs
+            cd /var/www/$ETHERPAD_DOMAIN_NAME/htdocs
+            git pull
+        else
+            function_check git_clone
+            git_clone $ETHERPAD_REPO /var/www/$ETHERPAD_DOMAIN_NAME/htdocs
+        fi
+
         if [ ! -d /var/www/$ETHERPAD_DOMAIN_NAME/htdocs ]; then
             echo $'Unable to clone etherpad repo'
             exit 56382
@@ -612,6 +649,7 @@ function install_etherpad {
 
     set_completion_param "etherpad domain" "$ETHERPAD_DOMAIN_NAME"
 
+    systemctl restart mariadb
     systemctl enable etherpad
     systemctl daemon-reload
     systemctl start etherpad

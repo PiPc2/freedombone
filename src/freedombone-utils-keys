@@ -28,40 +28,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-function reconstruct_key {
-    if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
-        return
-    fi
-    cd /home/$MY_USERNAME/.gnupg_fragments
-    no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
-    if (( no_of_shares < 4 )); then
-        dialog --title $"Recover Encryption Keys" --msgbox $'Not enough fragments to reconstruct the key' 6 70
-        exit 7348
-    fi
-    apt-get -yq install libgfshare-bin gnupg
-    gfcombine /home/$MY_USERNAME/.gnupg_fragments/keyshare*
-    if [ ! "$?" = "0" ]; then
-        dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
-        exit 7348
-    fi
-
-    KEYS_FILE=/home/$MY_USERNAME/.gnupg_fragments/keyshare.asc
-    if [ ! -f $KEYS_FILE ]; then
-        dialog --title $"Recover Encryption Keys" --msgbox $'Unable to reconstruct the key' 6 70
-    fi
-
-    su -c "gpg --allow-secret-key-import --import $KEYS_FILE" - $MY_USERNAME
-    if [ ! "$?" = "0" ]; then
-        echo $'Unable to import gpg key'
-        shred -zu $KEYS_FILE
-        rm -rf /home/$MY_USERNAME/.tempgnupg
-        exit 9654
-    fi
-    shred -zu $KEYS_FILE
-
-    dialog --title $"Recover Encryption Keys" --msgbox $'Key has been reconstructed' 6 70
-}
-
 function interactive_gpg_from_usb {
     dialog --title $"Recover Encryption Keys" \
            --msgbox $'Plug in a USB keydrive containing a copy of your full key or key fragment' 6 70
@@ -70,13 +36,15 @@ function interactive_gpg_from_usb {
     GPG_LOADING="yes"
     SSH_IMPORTED="no"
     GPG_CTR=0
+
     while [[ $GPG_LOADING == "yes" ]]
     do
         detect_usb_drive
 
         if [ ! -b $USB_DRIVE ]; then
             if (( GPG_CTR > 0 )); then
-                reconstruct_key
+                gpg_reconstruct_key $MY_USERNAME interactive
+                gpg_update_mutt $MY_USERNAME
                 return 0
             fi
             dialog --title $"Recover Encryption Keys" --msgbox $'No USB drive found' 6 30
@@ -88,7 +56,7 @@ function interactive_gpg_from_usb {
         if [ ! -d $USB_MOUNT ]; then
             if (( GPG_CTR > 0 )); then
                 backup_unmount_drive ${USB_DRIVE}
-                reconstruct_key
+                gpg_reconstruct_key $MY_USERNAME interactive
                 return 0
             fi
             dialog --title $"Recover Encryption Keys" \
@@ -101,7 +69,8 @@ function interactive_gpg_from_usb {
             if [ ! -d $USB_MOUNT/.gnupg_fragments ]; then
                 if (( GPG_CTR > 0 )); then
                     backup_unmount_drive ${USB_DRIVE}
-                    reconstruct_key
+                    gpg_reconstruct_key $MY_USERNAME interactive
+                    gpg_update_mutt $MY_USERNAME
                     return 0
                 fi
                 dialog --title $"Recover Encryption Keys" \
@@ -117,22 +86,63 @@ function interactive_gpg_from_usb {
             fi
             echo $'Recovering LetsEncrypt keys'
             cp -r $USB_MOUNT/letsencrypt/* /etc/letsencrypt
+            addgroup ssl-cert
+            chown -R root:ssl-cert /etc/letsencrypt
         fi
 
-        if [ -d $USB_MOUNT/.gnupg ]; then
-            if [ ! -d $HOME_DIR/.gnupg ]; then
-                mkdir $HOME_DIR/.gnupg
+        if [ -f $USB_MOUNT/.mastergpgkey ]; then
+            # Recovering keys from file rather than just copying the gnupg
+            # directory may help to avoid problems during upgrades/reinstalls
+            if [ ! -f $USB_MOUNT/.backupgpgkey ]; then
+                echo $'No backup key file found on USB drive'
+                exit 725729
             fi
-            echo $'Recovering GPG keys'
-            cp -r $USB_MOUNT/.gnupg/* $HOME_DIR/.gnupg
+            CURR_EMAIL_ADDRESS=$MY_USERNAME@$HOSTNAME
+            CURR_GPG_ID=$(gpg --homedir=$HOME_DIR/.gnupg --list-keys $CURR_EMAIL_ADDRESS | sed -n '2p' | sed 's/^[ \t]*//')
+            CURR_GPG_BACKUP_ID=$(gpg --homedir=$HOME_DIR/.gnupg --list-keys "(backup key)" | sed -n '2p' | sed 's/^[ \t]*//')
+
+            echo $'Making backup copy of existing gpg keys'
+            if [ -d $HOME_DIR/.gnupg ]; then
+                if [ -d $HOME_DIR/.gnupg_old ]; then
+                    rm -rf $HOME_DIR/.gnupg_old
+                fi
+                cp -r $HOME_DIR/.gnupg $HOME_DIR/.gnupg_old
+                chmod 700 $HOME_DIR/.gnupg_old
+                chmod -R 600 $HOME_DIR/.gnupg_old/*
+                chown -R $MY_USERNAME:$MY_USERNAME $HOME_DIR/.gnupg_old
+            fi
+            echo $'Removing old gpg keys'
+            gpg_delete_key $MY_USERNAME $CURR_GPG_BACKUP_ID
+            gpg_delete_key $MY_USERNAME $CURR_GPG_ID
+            echo $'Importing master keys'
+            gpg --homedir=$HOME_DIR/.gnupg --allow-secret-key-import --import $USB_MOUNT/.mastergpgkey
+            echo "$BACKUP_DUMMY_PASSWORD" | gpg --batch --passphrase-fd 0 --homedir=$HOME_DIR/.gnupg --allow-secret-key-import --import $USB_MOUNT/.backupgpgkey
+            if [ -d $HOME_DIR/.gnupg ]; then
+                echo $'Setting permissions'
+                gpg_set_permissions $MY_USERNAME
+                echo $"Updating muttrc for $MY_USERNAME"
+                gpg_update_mutt $MY_USERNAME
+            fi
             GPG_LOADING="no"
             dialog --title $"Recover Encryption Keys" \
-                   --msgbox $"GPG Keyring loaded to $HOME_DIR" 6 70
+                   --msgbox $"GPG Keyring loaded to $HOME_DIR from master keydrive" 6 70
         else
-            if [ ! -d $HOME_DIR/.gnupg_fragments ]; then
-                mkdir $HOME_DIR/.gnupg_fragments
+            if [ -d $USB_MOUNT/.gnupg ]; then
+                if [ ! -d $HOME_DIR/.gnupg ]; then
+                    mkdir $HOME_DIR/.gnupg
+                fi
+                echo $'Recovering GPG keys'
+                cp -r $USB_MOUNT/.gnupg/* $HOME_DIR/.gnupg
+                GPG_LOADING="no"
+                dialog --title $"Recover Encryption Keys" \
+                       --msgbox $"GPG Keyring directory loaded to $HOME_DIR" 6 70
+            else
+                # Collect fragments from the USB drive
+                if [ ! -d $HOME_DIR/.gnupg_fragments ]; then
+                    mkdir $HOME_DIR/.gnupg_fragments
+                fi
+                cp -r $USB_MOUNT/.gnupg_fragments/* $HOME_DIR/.gnupg_fragments
             fi
-            cp -r $USB_MOUNT/.gnupg_fragments/* $HOME_DIR/.gnupg_fragments
         fi
 
         if [[ $SSH_IMPORTED == "no" ]]; then
@@ -178,7 +188,6 @@ function interactive_gpg_from_remote {
     fi
 
     # try to recover the key from the servers
-    apt-get -yq install libgfshare-bin gnupg
     ${PROJECT_NAME}-recoverkey -u $MY_USERNAME -l $REMOTE_SERVERS_LIST
     if [ ! "$?" = "0" ]; then
         dialog --title $"Encryption Keys Recovery" --msgbox $'Your key could not be recovered' 6 70
@@ -235,10 +244,13 @@ function interactive_key_recovery {
         1) return;;
         255) return;;
     esac
+    clear
     apt-get -yq install cryptsetup
     ${PROJECT_NAME}-recoverkey -u $MY_USERNAME
     if [ -d /home/$MY_USERNAME/.gnupg ]; then
         cp -rf /home/$MY_USERNAME/.gnupg /root
+        chmod 700 /root/.gnupg
+        chmod 600 /root/.gnupg/*
     fi
 }
 

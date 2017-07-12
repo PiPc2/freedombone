@@ -136,25 +136,27 @@ chmod 700 /home/$ADD_USERNAME/.gnupg
 chmod 600 /home/$ADD_USERNAME/.gnupg/*
 
 # Generate a GPG key
-echo 'Key-Type: 1' > /home/$ADD_USERNAME/gpg-genkey.conf
-echo 'Key-Length: 4096' >> /home/$ADD_USERNAME/gpg-genkey.conf
-echo 'Subkey-Type: 1' >> /home/$ADD_USERNAME/gpg-genkey.conf
-echo 'Subkey-Length: 4096' >> /home/$ADD_USERNAME/gpg-genkey.conf
+echo 'Key-Type: eddsa' > /home/$ADD_USERNAME/gpg-genkey.conf
+echo 'Key-Curve: Ed25519' >> /home/$ADD_USERNAME/gpg-genkey.conf
+echo 'Subkey-Type: eddsa' >> /home/$ADD_USERNAME/gpg-genkey.conf
 echo "Name-Real:  $ADD_USERNAME" >> /home/$ADD_USERNAME/gpg-genkey.conf
 echo "Name-Email: $ADD_USERNAME@$HOSTNAME" >> /home/$ADD_USERNAME/gpg-genkey.conf
 echo 'Expire-Date: 0' >> /home/$ADD_USERNAME/gpg-genkey.conf
+echo "Passphrase: $NEW_USER_PASSWORD" >> /home/$ADD_USERNAME/gpg-genkey.conf
 chown $ADD_USERNAME:$ADD_USERNAME /home/$ADD_USERNAME/gpg-genkey.conf
-su -c "gpg --batch --gen-key /home/$ADD_USERNAME/gpg-genkey.conf" - $ADD_USERNAME
+su -m root -c "gpg --homedir /home/$ADD_USERNAME/.gnupg --batch --full-gen-key /home/$ADD_USERNAME/gpg-genkey.conf" - $ADD_USERNAME
+chown -R $ADD_USERNAME:$ADD_USERNAME /home/$ADD_USERNAME/.gnupg
 shred -zu /home/$ADD_USERNAME/gpg-genkey.conf
 MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$ADD_USERNAME" "$ADD_USERNAME@$HOSTNAME")
 MY_GPG_PUBLIC_KEY=/home/$ADD_USERNAME/public_key.gpg
-su -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $ADD_USERNAME
+su -m root -c "gpg --output $MY_GPG_PUBLIC_KEY --armor --export $MY_GPG_PUBLIC_KEY_ID" - $ADD_USERNAME
 
 if [ ! -f $MY_GPG_PUBLIC_KEY ]; then
     echo "GPG public key was not generated for $ADD_USERNAME@$HOSTNAME $MY_GPG_PUBLIC_KEY_ID"
     userdel -r $ADD_USERNAME
     exit 7
 fi
+gpg_agent_setup $ADD_USERNAME
 
 # add a monkeysphere subkey
 #echo $'Adding monkeysphere subkey'
@@ -162,28 +164,28 @@ fi
 #echo $'Adding monkeysphere subkey to ssh-agent'
 #su -c "monkeysphere s" - $ADD_USERNAME
 # add authorized GPG email address
-mkdir /home/$ADD_USERNAME/.monkeysphere
-chmod 755 /home/$ADD_USERNAME/.monkeysphere
-echo "$ADD_USERNAME <$ADD_USERNAME@$HOSTNAME>" > /home/$ADD_USERNAME/.monkeysphere/authorized_user_ids
-chmod 644 /home/$ADD_USERNAME/.monkeysphere/authorized_user_ids
-chown -R $ADD_USERNAME:$ADD_USERNAME /home/$ADD_USERNAME/.monkeysphere
-echo $'Updating monkeysphere users'
-monkeysphere-authentication update-users
+#mkdir /home/$ADD_USERNAME/.monkeysphere
+#chmod 755 /home/$ADD_USERNAME/.monkeysphere
+#echo "$ADD_USERNAME <$ADD_USERNAME@$HOSTNAME>" > /home/$ADD_USERNAME/.monkeysphere/authorized_user_ids
+#chmod 644 /home/$ADD_USERNAME/.monkeysphere/authorized_user_ids
+#chown -R $ADD_USERNAME:$ADD_USERNAME /home/$ADD_USERNAME/.monkeysphere
+#echo $'Updating monkeysphere users'
+#monkeysphere-authentication update-users
 
 if [ -f /home/$ADD_USERNAME/.muttrc ]; then
     # encrypt outgoing mail to the "sent" folder
     if ! grep -q "pgp_encrypt_only_command" /home/$ADD_USERNAME/.muttrc; then
         echo '' >> /home/$ADD_USERNAME/.muttrc
         echo $'# Encrypt items in the Sent folder' >> /home/$ADD_USERNAME/.muttrc
-        echo "set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$ADD_USERNAME/.muttrc
+        echo "set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$ADD_USERNAME/.muttrc
     else
-        sed -i "s|set pgp_encrypt_only_command.*|set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$ADD_USERNAME/.muttrc
+        sed -i "s|set pgp_encrypt_only_command.*|set pgp_encrypt_only_command=\"/usr/lib/mutt/pgpewrap gpg --batch --quiet --no-verbose --output - --encrypt --textmode --armor --always-trust --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$ADD_USERNAME/.muttrc
     fi
 
     if ! grep -q "pgp_encrypt_sign_command" /home/$ADD_USERNAME/.muttrc; then
-        echo "set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$ADD_USERNAME/.muttrc
+        echo "set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"" >> /home/$ADD_USERNAME/.muttrc
     else
-        sed -i "s|set pgp_encrypt_sign_command.*|set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to 0x$MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$ADD_USERNAME/.muttrc
+        sed -i "s|set pgp_encrypt_sign_command.*|set pgp_encrypt_sign_command=\"/usr/lib/mutt/pgpewrap gpg %?p?--passphrase-fd 0? --batch --quiet --no-verbose --textmode --output - --encrypt --sign %?a?-u %a? --armor --always-trust --encrypt-to $MY_GPG_PUBLIC_KEY_ID -- -r %r -- %f\"|g" /home/$ADD_USERNAME/.muttrc
     fi
 fi
 
@@ -227,14 +229,14 @@ do
 done
 
 if [ -f /etc/nginx/.htpasswd ]; then
-    if ! grep "${ADD_USERNAME}:" /etc/nginx/.htpasswd; then
+    if ! grep -q "${ADD_USERNAME}:" /etc/nginx/.htpasswd; then
         echo "$NEW_USER_PASSWORD" | htpasswd -i -s /etc/nginx/.htpasswd $ADD_USERNAME
     fi
 fi
 
 # add user menu on ssh login
-if ! grep -q 'control' /home/$ADD_USERNAME/.bashrc; then
-    echo 'control' >> /home/$ADD_USERNAME/.bashrc
+if ! grep -q 'controluser' /home/$ADD_USERNAME/.bashrc; then
+    echo 'controluser' >> /home/$ADD_USERNAME/.bashrc
 fi
 
 ${PROJECT_NAME}-pass -u $ADD_USERNAME -a login -p "$NEW_USER_PASSWORD"

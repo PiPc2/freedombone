@@ -33,6 +33,33 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-controlpanel
 export TEXTDOMAINDIR="/usr/share/locale"
 
+if [[ $USER != 'root' ]]; then
+    # show the user version of the control panel
+    #${PROJECT_NAME}-controlpanel-user
+    controluser
+    exit 0
+fi
+
+function please_wait {
+        local str width height length
+
+        width=$(tput cols)
+        height=$(tput lines)
+        str=$"Please wait"
+        length=${#str}
+        clear
+        tput cup $((height / 2)) $(((width / 2) - (length / 2)))
+        echo "$str"
+        tput cup $((height * 3 / 5)) $(((width / 2)))
+        echo -n ''
+}
+
+please_wait
+
+# Start including files
+
+source /usr/local/bin/${PROJECT_NAME}-vars
+
 UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
 for f in $UTILS_FILES
 do
@@ -44,6 +71,8 @@ for f in $APP_FILES
 do
     source $f
 done
+
+# End including files
 
 COMPLETION_FILE=$HOME/${PROJECT_NAME}-completed.txt
 SELECTED_USERNAME=
@@ -94,15 +123,10 @@ read_config_param SMTP_PROXY_USERNAME
 read_config_param SMTP_PROXY_PASSWORD
 read_config_param USB_DRIVE
 read_config_param MY_USERNAME
+read_config_param ONION_ONLY
 if [[ $USB_DRIVE == *"dev"* ]]; then
     USB_DRIVE=$(echo ${USB_DRIVE} | awk -F '/' '{print $3}' | sed 's|1||g' | sed 's|2||g')
 fi
-
-# Mirrors settings
-FRIENDS_MIRRORS_SERVER=
-FRIENDS_MIRRORS_SSH_PORT=2222
-FRIENDS_MIRRORS_PASSWORD=
-MY_MIRRORS_PASSWORD=
 
 function any_key {
     echo ' '
@@ -123,7 +147,7 @@ function passwords_select_user {
 
     users_array=($(ls /home))
 
-    delete=(mirrors git)
+    delete=(git)
     for del in ${delete[@]}
     do
         users_array=(${users_array[@]/$del})
@@ -165,6 +189,9 @@ function passwords_show_apps {
             name+=("$a")
         fi
     done
+    i=$((i+1))
+    W+=($i "mariadb")
+    name+=("mariadb")
 
     selected_app_index=$(dialog --backtitle $"Freedombone Control Panel" --title $"Select App" --menu $"Select one of the following:" 24 40 17 "${W[@]}" 3>&2 2>&1 1>&3)
 
@@ -215,6 +242,13 @@ function view_or_change_passwords {
         fi
     fi
 
+    if [[ "${SELECTED_APP}" == 'mariadb' ]]; then
+        CURR_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        dialog --title $"MariaDB database password" \
+               --msgbox "\n            ${CURR_PASSWORD}" 7 40
+        return
+    fi
+
     data=$(tempfile 2>/dev/null)
     trap "rm -f $data" 0 1 2 5 15
     dialog --title "$titlestr" \
@@ -248,54 +282,6 @@ function check_for_updates {
     clear
     . /etc/cron.weekly/$UPGRADE_SCRIPT_NAME
     any_key
-}
-
-function set_main_repo {
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --backtitle $"Freedombone Control Panel" \
-           --title $"Main Repository (Mirrors)" \
-           --form $"If you do not wish to use the default repositories they can be obtained from mirrors on another ${PROJECT_NAME} server." 14 60 3 \
-           $"URL:" 1 1 "$FRIENDS_MIRRORS_SERVER" 1 14 40 15 \
-           $"SSH Port:" 2 1 "$FRIENDS_MIRRORS_SSH_PORT" 2 14 40 10000 \
-           $"Password:" 3 1 "$FRIENDS_MIRRORS_PASSWORD" 3 14 40 10000 \
-           2> $data
-    sel=$?
-    case $sel in
-        1) return;;
-        255) return;;
-    esac
-    new_mirrors_url=$(cat $data | sed -n 1p)
-    new_mirrors_ssh_port=$(cat $data | sed -n 2p)
-    new_mirrors_password=$(cat $data | sed -n 3p)
-
-    if [ ${#new_mirrors_url} -lt 2 ]; then
-        return
-    fi
-    if [ ${#new_mirrors_ssh_port} -lt 1 ]; then
-        return
-    fi
-    if [ ${#new_mirrors_password} -lt 10 ]; then
-        dialog --title $"Main Repository" \
-               --msgbox $'Mirrors password was too short. Should be at least 10 characters.' 6 40
-        return
-    fi
-
-    if [[ $new_mirrors_url == *"."* ]]; then
-        FRIENDS_MIRRORS_SERVER=$new_mirrors_url
-        FRIENDS_MIRRORS_SSH_PORT=$new_mirrors_ssh_port
-        FRIENDS_MIRRORS_PASSWORD=$new_mirrors_password
-
-        write_config_param "FRIENDS_MIRRORS_SERVER" "$FRIENDS_MIRRORS_SERVER"
-        write_config_param "FRIENDS_MIRRORS_SSH_PORT" "$FRIENDS_MIRRORS_SSH_PORT"
-        write_config_param "FRIENDS_MIRRORS_PASSWORD" "$FRIENDS_MIRRORS_PASSWORD"
-
-        # re-read the repos
-        read_repo_servers
-
-        dialog --title $"Main Repository" \
-               --msgbox $"Main repository set to $FRIENDS_MIRRORS_SERVER" 6 60
-    fi
 }
 
 function add_user {
@@ -390,6 +376,11 @@ function show_domains {
             if grep -q "SHOW_ICANN_ADDRESS_ON_ABOUT=0" /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}; then
                 icann_address='-'
             fi
+            if [[ $ONION_ONLY != 'no' ]]; then
+                if [[ ${icann_address} != ${LOCAL_NAME}.local ]]; then
+                    icann_address='-'
+                fi
+            fi
             onion_address=$(get_app_onion_address "$app_name")
             if [ ${#onion_address} -eq 0 ]; then
                 onion_address="-"
@@ -466,20 +457,6 @@ function show_users {
             echo "$(du -s -h /home/${USRNAME} | awk -F ' ' '{print $1}')"
         fi
     done
-    echo ''
-}
-
-function show_mirrors_password {
-    if [ ! /home/mirrors ]; then
-        return
-    fi
-    read_config_param "MY_MIRRORS_PASSWORD"
-    echo 'Local Mirrors'
-    echo '============='
-    echo ''
-    echo -n "URL:      "
-    echo "$(cat ${COMPLETION_FILE} | grep 'ssh onion domain' | awk -F ':' '{print $2}')    SSH Port: $SSH_PORT"
-    echo "Password: $MY_MIRRORS_PASSWORD"
     echo ''
 }
 
@@ -561,19 +538,17 @@ function show_tahoelafs_introducer {
 }
 
 function show_about {
-    clear
-    echo ''
-    echo $'  Detecting installed apps...'
     detect_apps
     get_apps_installed_names
 
     clear
+    echo "==== ${PROJECT_NAME} version ${VERSION} ($DEBIAN_VERSION) ===="
+    echo ''
     show_ip_addresses
     show_tor_bridges
     show_ssh_public_key
     show_domains
     show_tahoelafs
-    show_mirrors_password
     show_users
     any_key
 }
@@ -583,7 +558,7 @@ function select_user {
 
     users_array=($(ls /home))
 
-    delete=(mirrors git)
+    delete=(git)
     for del in ${delete[@]}
     do
         users_array=(${users_array[@]/$del})
@@ -1018,7 +993,8 @@ function create_keydrive_master {
     dialog --title $"USB Master Keydrive" \
            --msgbox $"Plug in a LUKS encrypted USB drive" 6 40
     clear
-    ${PROJECT_NAME}-keydrive -u $SELECTED_USERNAME --master 'yes'
+    detect_usb_drive
+    ${PROJECT_NAME}-keydrive -u $SELECTED_USERNAME --master 'yes' -d $USB_DRIVE
     any_key
 }
 
@@ -1030,7 +1006,8 @@ function create_keydrive_fragment {
     dialog --title $"USB Fragment Keydrive" \
            --msgbox $"Plug in a LUKS encrypted USB drive" 6 40
     clear
-    ${PROJECT_NAME}-keydrive -u $SELECTED_USERNAME
+    detect_usb_drive
+    ${PROJECT_NAME}-keydrive -u $SELECTED_USERNAME -d $USB_DRIVE
     any_key
 }
 
@@ -1064,6 +1041,7 @@ function restore_data_from_storage {
     fi
 
     utils_installed=(configfiles
+                     blocklist
                      mariadb
                      letsencrypt
                      passwords
@@ -1137,6 +1115,7 @@ function restore_data_from_storage {
             $restore_command
             retcode="$?"
             if [[ "$retcode" != "0" ]]; then
+                any_key
                 if [[ "$1" == "local" ]]; then
                     dialog --title $"Restore all apps from USB" \
                            --msgbox $"Restore failed with code $retcode" 6 60
@@ -1161,6 +1140,7 @@ function restore_data_from_storage {
         $restore_command "${app_name}"
         retcode="$?"
         if [[ "$retcode" != "0" ]]; then
+            any_key
             dialog --title $"Restore apps from USB" \
                    --msgbox $"Restore of ${app_name} failed with code $retcode" 6 60
             return
@@ -1346,7 +1326,7 @@ function shut_down_system {
         1) return;;
         255) return;;
     esac
-    shutdown now
+    systemctl poweroff
 }
 
 function restart_system {
@@ -1359,7 +1339,7 @@ function restart_system {
         1) return;;
         255) return;;
     esac
-    reboot
+    systemctl reboot -i
 }
 
 function change_system_name {
@@ -1404,7 +1384,7 @@ function set_dynamic_IP {
         echo $'Changing to a dynamic IP address.'
         echo ''
         echo $"System is rebooting. You may need to close this terminal and log in from a new one."
-        reboot
+        systemctl reboot -i
     fi
 }
 
@@ -1416,9 +1396,9 @@ function set_static_IP {
 
     NEW_STATIC_IP=
     NEW_STATIC_GATEWAY=
-    if grep -q 'iface eth0 inet static' /etc/network/interfaces; then
-        STATIC_IP=$(cat /etc/network/interfaces | grep "address " | head -n 1 | awk -F ' ' '{print $2}')
-        STATIC_GATEWAY=$(cat /etc/network/interfaces | grep "gateway " | head -n 1 | awk -F ' ' '{print $2}')
+    if [ -f /etc/network/interfaces.d/static ]; then
+        STATIC_IP=$(cat /etc/network/interfaces.d/static | grep "address " | head -n 1 | awk -F ' ' '{print $2}')
+        STATIC_GATEWAY=$(cat /etc/network/interfaces.d/static | grep "gateway " | head -n 1 | awk -F ' ' '{print $2}')
     fi
 
     # get the IP for the box
@@ -1456,12 +1436,15 @@ Enter a static local IP address for this system.\n\nIt will typically be ${IPv4_
     esac
 
     if [[ "$NEW_STATIC_GATEWAY" == *"."* && "$NEW_STATIC_IP" == *"."* ]]; then
-        ip_addresses_have_changed=
-        if ! grep -q "address ${NEW_STATIC_IP}" /etc/network/interfaces; then
-            ip_addresses_have_changed=1
-        fi
-        if ! grep -q "gateway ${NEW_STATIC_GATEWAY}" /etc/network/interfaces; then
-            ip_addresses_have_changed=1
+        ip_addresses_have_changed=1
+        if [ -f /etc/network/interfaces.d/static ]; then
+            ip_addresses_have_changed=
+            if ! grep -q "address ${NEW_STATIC_IP}" /etc/network/interfaces.d/static; then
+                ip_addresses_have_changed=1
+            fi
+            if ! grep -q "gateway ${NEW_STATIC_GATEWAY}" /etc/network/interfaces.d/static; then
+                ip_addresses_have_changed=1
+            fi
         fi
         if [ $ip_addresses_have_changed ]; then
             write_config_param "NETWORK_IS_STATIC" "1"
@@ -1483,44 +1466,19 @@ Enter a static local IP address for this system.\n\nIt will typically be ${IPv4_
                 esac
             fi
 
+            echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
+            echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
+            echo 'source /etc/network/interfaces.d/*' >> /etc/network/interfaces
+
             if [ ! $static_wifi_address ]; then
                 # wired network
                 remove_wifi_startup_script
-                echo '# This file describes the network interfaces available on your system' > /etc/network/interfaces
-                echo '# and how to activate them. For more information, see interfaces(5).' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# The loopback network interface' >> /etc/network/interfaces
-                echo 'auto lo' >> /etc/network/interfaces
-                echo 'iface lo inet loopback' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# The primary network interface' >> /etc/network/interfaces
-                echo 'auto eth0' >> /etc/network/interfaces
-                echo 'iface eth0 inet static' >> /etc/network/interfaces
-                echo "    address ${NEW_STATIC_IP}" >> /etc/network/interfaces
-                echo '    netmask 255.255.255.0' >> /etc/network/interfaces
-                echo "    gateway ${NEW_STATIC_GATEWAY}" >> /etc/network/interfaces
-                echo "    dns-nameservers 213.73.91.35 85.214.20.141" >> /etc/network/interfaces
-                echo '# Example to keep MAC address between reboots' >> /etc/network/interfaces
-                echo '#hwaddress ether DE:AD:BE:EF:CA:FE' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# The secondary network interface' >> /etc/network/interfaces
-                echo '#auto eth1' >> /etc/network/interfaces
-                echo '#iface eth1 inet dhcp' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# WiFi Example' >> /etc/network/interfaces
-                echo "#auto $WIFI_INTERFACE" >> /etc/network/interfaces
-                echo "#iface $WIFI_INTERFACE inet dhcp" >> /etc/network/interfaces
-                echo '#    wpa-ssid "essid"' >> /etc/network/interfaces
-                echo '#    wpa-psk  "password"' >> /etc/network/interfaces
-                echo '' >> /etc/network/interfaces
-                echo '# Ethernet/RNDIS gadget (g_ether)' >> /etc/network/interfaces
-                echo '# ... or on host side, usbnet and random hwaddr' >> /etc/network/interfaces
-                echo '# Note on some boards, usb0 is automaticly setup with an init script' >> /etc/network/interfaces
-                echo '#iface usb0 inet static' >> /etc/network/interfaces
-                echo '#    address 192.168.7.2' >> /etc/network/interfaces
-                echo '#    netmask 255.255.255.0' >> /etc/network/interfaces
-                echo '#    network 192.168.7.0' >> /etc/network/interfaces
-                echo '#    gateway 192.168.7.1' >> /etc/network/interfaces
+
+                echo 'auto eth0' > /etc/network/interfaces.d/static
+                echo 'iface eth0 inet static' >> /etc/network/interfaces.d/static
+                echo "    address ${NEW_STATIC_IP}" >> /etc/network/interfaces.d/static
+                echo '    netmask 255.255.255.0' >> /etc/network/interfaces.d/static
+                echo "    gateway ${NEW_STATIC_GATEWAY}" >> /etc/network/interfaces.d/static
             else
                 # wifi network
                 wifi_settings
@@ -1540,7 +1498,7 @@ Enter a static local IP address for this system.\n\nIt will typically be ${IPv4_
                    --yesno $"\nFor the change to take effect your system will now need to reboot. Do this now?" 8 60
             sel=$?
             case $sel in
-                0) reboot;;
+                0) systemctl reboot -i;;
             esac
         fi
     fi
@@ -1645,6 +1603,10 @@ function hotspot_settings {
         WIFI_PASSPHRASE=$TEMP_WIFI_PASSPHRASE
 
         ${PROJECT_NAME}-wifi -i $WIFI_INTERFACE -s $WIFI_SSID -t $WIFI_TYPE -p $WIFI_PASSPHRASE --hotspot $WIFI_HOTSPOT $WIFI_EXTRA
+        if [ ! "$?" = "0" ]; then
+            echo $"Can't enable wifi hotspot"
+            any_key
+        fi
     else
         WIFI_HOTSPOT=$TEMP_WIFI_HOTSPOT
         WIFI_SSID=$TEMP_WIFI_SSID
@@ -1762,14 +1724,14 @@ function email_smtp_proxy {
 
     # change muttrc
     if [ $SMTP_PROXY_ENABLE != $'no' ]; then
-        if ! grep "set smtp_url" $MUTTRC_FILE; then
+        if ! grep -q "set smtp_url" $MUTTRC_FILE; then
             echo "set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"" >> $MUTTRC_FILE
         else
             sed -i "s|set smtp_url=.*|set smtp_url=\"${SMTP_PROXY_PROTOCOL}://${SMTP_PROXY_USERNAME}:${SMTP_PROXY_PASSWORD}@${SMTP_PROXY_SERVER}:${SMTP_PROXY_PORT}/\"|g" $MUTTRC_FILE
         fi
         sed -i 's|#set smtp_url|set smtp_url|g' $MUTTRC_FILE
     else
-        if grep "set smtp_url" $MUTTRC_FILE; then
+        if grep -q "set smtp_url" $MUTTRC_FILE; then
             sed -i 's|set smtp_url|#set smtp_url|g' $MUTTRC_FILE
         fi
     fi
@@ -1883,6 +1845,29 @@ function domain_blocking_add {
     esac
 }
 
+function ip_blocking_add {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Block an IP address" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Enter the IP address that you wish to block" 8 60 "" 2>$data
+    sel=$?
+    case $sel in
+        0)
+            blocked_ip=$(<$data)
+            if [ ${#blocked_ip} -gt 2 ]; then
+                if [[ "${blocked_ip}" == *'.'* ]]; then
+                    firewall_block_ip $blocked_ip
+                    if [[ "${blocked_ip}" != *'@'* ]]; then
+                        dialog --title $"Block an IP address" \
+                               --msgbox $"The IP address $blocked_ip has been blocked" 6 40
+                    fi
+                fi
+            fi
+            ;;
+    esac
+}
+
 function domain_blocking_remove {
     data=$(tempfile 2>/dev/null)
     trap "rm -f $data" 0 1 2 5 15
@@ -1902,6 +1887,29 @@ function domain_blocking_remove {
                     else
                         dialog --title $"Unblock a GNU Social/postActiv nickname" \
                                --msgbox $"$unblocked_domain has been unblocked" 6 40
+                    fi
+                fi
+            fi
+            ;;
+    esac
+}
+
+function ip_blocking_remove {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Unblock an IP address" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Enter the IP address that you wish to unblock" 8 60 "" 2>$data
+    sel=$?
+    case $sel in
+        0)
+            unblocked_ip=$(<$data)
+            if [ ${#unblocked_ip} -gt 2 ]; then
+                if [[ "${unblocked_ip}" == *'.'* ]]; then
+                    firewall_unblock_ip $unblocked_ip
+                    if [[ "${unblocked_ip}" != *'@'* ]]; then
+                        dialog --title $"Unblock an IP address" \
+                               --msgbox $"The IP address $unblocked_ip has been unblocked" 6 40
                     fi
                 fi
             fi
@@ -1930,11 +1938,13 @@ function domain_blocking {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Domain or User Blocking" \
-               --radiolist $"Choose an operation:" 12 60 4 \
+               --radiolist $"Choose an operation:" 14 60 6 \
                1 $"Block a domain or user" off \
                2 $"Unblock a domain or user" off \
-               3 $"Show blocked domains and users" off \
-               4 $"Back to main menu" on 2> $data
+               3 $"Block an IP address" off \
+               4 $"Unblock an IP address" off \
+               5 $"Show blocked domains and users" off \
+               6 $"Back to main menu" on 2> $data
         sel=$?
         case $sel in
             1) break;;
@@ -1943,8 +1953,10 @@ function domain_blocking {
         case $(cat $data) in
             1) domain_blocking_add;;
             2) domain_blocking_remove;;
-            3) domain_blocking_show;;
-            4) break;;
+            3) ip_blocking_add;;
+            4) ip_blocking_remove;;
+            5) domain_blocking_show;;
+            6) break;;
         esac
     done
 }
@@ -2007,7 +2019,7 @@ function menu_wifi {
         if [ -f /etc/hostapd/hostapd.conf ]; then
             status_str=$'Hotspot ON'
         else
-            if grep -q "# wifi enabled" /etc/network/interfaces; then
+            if [ -f /etc/network/interfaces.d/wifi ]; then
                 status_str=$'Wifi ON'
             fi
         fi
@@ -2083,7 +2095,7 @@ function menu_top_level {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Control Panel" \
-               --radiolist $"Choose an operation:" 29 70 21 \
+               --radiolist $"Choose an operation:" 28 70 20 \
                1 $"About this system" off \
                2 $"Passwords" off \
                3 $"Backup and Restore" off \
@@ -2097,19 +2109,19 @@ function menu_top_level {
                11 $"Email Menu" off \
                12 $"Domain or User Blocking" off \
                13 $"Security Settings" off \
-               14 $"Set the main repository (repo mirrors)" off \
-               15 $"Change the name of this system" off \
-               16 $"Set a static local IP address" off \
-               17 $"Wifi menu" off \
-               18 $"Check for updates" off \
-               19 $"Power off the system" off \
-               20 $"Restart the system" off \
-               21 $"Exit" on 2> $data
+               14 $"Change the name of this system" off \
+               15 $"Set a static local IP address" off \
+               16 $"Wifi menu" off \
+               17 $"Check for updates" off \
+               18 $"Power off the system" off \
+               19 $"Restart the system" off \
+               20 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) exit 1;;
             255) exit 1;;
         esac
+        please_wait
         case $(cat $data) in
             1) show_about;;
             2) view_or_change_passwords;;
@@ -2117,7 +2129,7 @@ function menu_top_level {
             4) show_firewall;;
             5) reset_tripwire;;
             6) menu_app_settings;;
-            7) ${PROJECT_NAME}-addremove
+            7) /usr/local/bin/addremove
                if [ ! "$?" = "0" ]; then
                    any_key
                fi
@@ -2128,23 +2140,16 @@ function menu_top_level {
             11) menu_email;;
             12) domain_blocking;;
             13) security_settings;;
-            14) set_main_repo;;
-            15) change_system_name;;
-            16) set_static_IP;;
-            17) menu_wifi;;
-            18) check_for_updates;;
-            19) shut_down_system;;
-            20) restart_system;;
-            21) break;;
+            14) change_system_name;;
+            15) set_static_IP;;
+            16) menu_wifi;;
+            17) check_for_updates;;
+            18) shut_down_system;;
+            19) restart_system;;
+            20) break;;
         esac
     done
 }
-
-if [[ $USER != 'root' ]]; then
-    # show the user version of the control panel
-    ${PROJECT_NAME}-controlpanel-user
-    exit 0
-fi
 
 if [ ! -f $COMPLETION_FILE ]; then
     echo $'This command should only be run on an installed Freedombone system'
@@ -2152,7 +2157,6 @@ if [ ! -f $COMPLETION_FILE ]; then
 fi
 
 ADMIN_USER=$(get_completion_param "Admin user")
-read_repo_servers
 menu_top_level
 clear
 cat /etc/motd

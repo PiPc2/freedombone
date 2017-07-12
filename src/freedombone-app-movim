@@ -47,6 +47,14 @@ movim_variables=(ONION_ONLY
                  DDNS_PROVIDER
                  MY_USERNAME)
 
+function logging_on_movim {
+    echo -n ''
+}
+
+function logging_off_movim {
+    echo -n ''
+}
+
 function remove_user_movim {
     remove_username="$1"
 
@@ -152,6 +160,11 @@ function reconfigure_movim {
 }
 
 function upgrade_movim {
+    CURR_MOVIM_COMMIT=$(get_completion_param "movim commit")
+    if [[ "$CURR_MOVIM_COMMIT" == "$MOVIM_COMMIT" ]]; then
+        return
+    fi
+
     if grep -q "movim domain" $COMPLETION_FILE; then
         MOVIM_DOMAIN_NAME=$(get_completion_param "movim domain")
     fi
@@ -211,6 +224,11 @@ function restore_local_movim {
             rm -rf $temp_restore_dir
         fi
 
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        cd /var/www/$MOVIM_DOMAIN_NAME/htdocs/config
+        sed -i "s|'password'.*|'password'    => '$MARIADB_PASSWORD',|g" db.inc.php
+        MARIADB_PASSWORD=
+
         echo $"Restore of movim complete"
     fi
 }
@@ -254,6 +272,12 @@ function restore_remote_movim {
         if [ -d /root/tempmovim ]; then
             rm -rf /root/tempmovim
         fi
+
+        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+        cd /var/www/$MOVIM_DOMAIN_NAME/htdocs/config
+        sed -i "s|'password'.*|'password'    => '$MARIADB_PASSWORD',|g" db.inc.php
+        MARIADB_PASSWORD=
+
         echo $"Restore of movim complete"
     fi
 }
@@ -270,6 +294,7 @@ function remove_movim {
     systemctl stop movim
     systemctl disable movim
     rm /etc/systemd/system/movim.service
+    systemctl daemon-reload
 
     read_config_param "MY_USERNAME"
     echo "Removing $MOVIM_DOMAIN_NAME"
@@ -319,15 +344,24 @@ function install_movim {
     function_check repair_databases_script
     repair_databases_script
 
-    apt-get -yq install php-gettext php5-curl php5-gd php5-mysql git curl php-xml-parser
-    apt-get -yq install php5-memcached php5-intl exiftool php5-imagick
+    apt-get -yq install php-gettext php-curl php-gd php-mysql git curl
+    apt-get -yq install php-memcached php-intl exiftool php-imagick libfcgi0ldbl
 
     if [ ! -d /var/www/$MOVIM_DOMAIN_NAME ]; then
         mkdir /var/www/$MOVIM_DOMAIN_NAME
     fi
     if [ ! -d /var/www/$MOVIM_DOMAIN_NAME/htdocs ]; then
-        function_check git_clone
-        git_clone $MOVIM_REPO /var/www/$MOVIM_DOMAIN_NAME/htdocs
+
+        if [ -d /repos/movim ]; then
+            mkdir /var/www/$MOVIM_DOMAIN_NAME/htdocs
+            cp -r -p /repos/movim/. /var/www/$MOVIM_DOMAIN_NAME/htdocs
+            cd /var/www/$MOVIM_DOMAIN_NAME/htdocs
+            git pull
+        else
+            function_check git_clone
+            git_clone $MOVIM_REPO /var/www/$MOVIM_DOMAIN_NAME/htdocs
+        fi
+
         if [ ! -d /var/www/$MOVIM_DOMAIN_NAME/htdocs ]; then
             echo $'Unable to clone movim repo'
             exit 76285
@@ -435,7 +469,8 @@ function install_movim {
         echo '  # PHP' >> $movim_nginx_site
         echo '  location ~ \.php {' >> $movim_nginx_site
         echo '    include snippets/fastcgi-php.conf;' >> $movim_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $movim_nginx_site
+        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $movim_nginx_site
+        echo '    fastcgi_read_timeout 30;' >> $movim_nginx_site
         echo '  }' >> $movim_nginx_site
         echo '' >> $movim_nginx_site
         echo '  # Location' >> $movim_nginx_site
@@ -494,7 +529,8 @@ function install_movim {
     echo '  # PHP' >> $movim_nginx_site
     echo '  location ~ \.php {' >> $movim_nginx_site
     echo '    include snippets/fastcgi-php.conf;' >> $movim_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php5-fpm.sock;' >> $movim_nginx_site
+    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $movim_nginx_site
+    echo '    fastcgi_read_timeout 30;' >> $movim_nginx_site
     echo '  }' >> $movim_nginx_site
     echo '' >> $movim_nginx_site
     echo '  # Location' >> $movim_nginx_site
@@ -549,8 +585,9 @@ function install_movim {
 
     set_completion_param "movim domain" "$MOVIM_DOMAIN_NAME"
 
+    systemctl restart mariadb
     systemctl start movim
-    systemctl restart php5-fpm
+    systemctl restart php7.0-fpm
     systemctl restart nginx
     APP_INSTALLED=1
 }
