@@ -52,23 +52,47 @@ function install_tripwire {
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
     fi
+
+    echo '*** Installing intrusion detection ***'
+
+    debconf-set-selections <<< "tripwire tripwire/use-sitekey boolean false"
+    debconf-set-selections <<< "tripwire tripwire/use-localkey boolean false"
+
     apt-get -yq install tripwire
     apt-get -yq autoremove
     cd /etc/tripwire
-    cp site.key $DEFAULT_DOMAIN_NAME-site.key
-    echo '*** Installing intrusion detection ***'
+
+    echo 'ROOT          =/usr/sbin' > /etc/tripwire/twcfg.txt
+    echo 'POLFILE       =/etc/tripwire/tw.pol' >> /etc/tripwire/twcfg.txt
+    echo 'DBFILE        =/var/lib/tripwire/$(HOSTNAME).twd' >> /etc/tripwire/twcfg.txt
+    echo 'REPORTFILE    =/var/lib/tripwire/report/$(HOSTNAME)-$(DATE).twr' >> /etc/tripwire/twcfg.txt
+    echo 'SITEKEYFILE   =/etc/tripwire/$(HOSTNAME)-site.key' >> /etc/tripwire/twcfg.txt
+    echo 'LOCALKEYFILE  =/etc/tripwire/$(HOSTNAME)-local.key' >> /etc/tripwire/twcfg.txt
+    echo 'EDITOR        =/usr/bin/editor' >> /etc/tripwire/twcfg.txt
+    echo 'LATEPROMPTING =false' >> /etc/tripwire/twcfg.txt
+    echo 'LOOSEDIRECTORYCHECKING =false' >> /etc/tripwire/twcfg.txt
+    echo 'MAILNOVIOLATIONS =false' >> /etc/tripwire/twcfg.txt
+    echo 'EMAILREPORTLEVEL =3' >> /etc/tripwire/twcfg.txt
+    echo 'REPORTLEVEL   =3' >> /etc/tripwire/twcfg.txt
+    echo 'SYSLOGREPORTING =false' >> /etc/tripwire/twcfg.txt
+    echo 'MAILMETHOD    =SMTP' >> /etc/tripwire/twcfg.txt
+    echo 'SMTPHOST      =localhost' >> /etc/tripwire/twcfg.txt
+    echo 'SMTPPORT      =25' >> /etc/tripwire/twcfg.txt
+    echo 'TEMPDIRECTORY =/tmp' >> /etc/tripwire/twcfg.txt
+
     echo '
 
-' | tripwire --init
+       ' | twadmin --generate-keys -L /etc/tripwire/${HOSTNAME}-local.key -S /etc/tripwire/${HOSTNAME}-site.key
+
+    echo '
+
+       ' | twadmin --create-cfgfile -S /etc/tripwire/${HOSTNAME}-site.key /etc/tripwire/twcfg.txt
 
     # make a script for easy resetting of the tripwire
     echo '#!/bin/sh' > /usr/bin/reset-tripwire
     echo 'tripwire --update-policy --secure-mode low /etc/tripwire/twpol.txt' >> /usr/bin/reset-tripwire
     chmod +x /usr/bin/reset-tripwire
 
-    sed -i 's/SYSLOGREPORTING.*/SYSLOGREPORTING =false/g' /etc/tripwire/twcfg.txt
-    # only send emails if something has changed
-    sed -i 's|MAILNOVIOLATIONS.*|MAILNOVIOLATIONS = false|g' /etc/tripwire/twcfg.txt
     sed -i '/# These files change the behavior of the root account/,/}/ s/.*//g' /etc/tripwire/twpol.txt
     sed -i 's|/etc/rc.boot.*||g' /etc/tripwire/twpol.txt
     # Don't show any changes to /proc
@@ -91,11 +115,20 @@ function install_tripwire {
     fi
     # Avoid logging the changed database
     sed -i 's|$(TWETC)/tw.pol.*||g' /etc/tripwire/twpol.txt
-    # recreate the configuration
+    # create the policy
     echo '
 
-       ' | twadmin --create-cfgfile -S /etc/tripwire/site.key /etc/tripwire/twcfg.txt
-    # reset
+       ' | twadmin --create-polfile -S /etc/tripwire/${HOSTNAME}-site.key /etc/tripwire/twpol.txt
+
+    # create the database
+    echo '
+
+' | tripwire --init --cfgfile /etc/tripwire/tw.cfg --polfile /etc/tripwire/tw.pol --dbfile /var/lib/tripwire/${HOSTNAME}.twd
+    if [ ! -f /var/lib/tripwire/$(HOSTNAME).twd ]; then
+        echo $'tripwire database was not created'
+        exit 72925
+    fi
+    # recreate the configuration
     echo '
 
 
