@@ -259,7 +259,7 @@ an administrator.\n\n######################\n\n' >> $LOG
                   log_msg $2 '必须创建文件完整性基线。'
               fi
               if [ $2 -ne 0 ];then
-                  printf '\n######################\n\nSTIG-ID:RHEL-06-000018\n\nVulnerability Discussion: For AIDE to be effective, an initial database of "known-good" information about files must be captured and it should be able to be verified against the installed files.\n\nFix text: Run the following command to generate a new database:\n\n#aideinit\n\nBy default, the database will be written to the file "/var/lib/aide/aide.db.new.gz". Storing the database, the configuration file "/etc/aide.conf", and the binary "/usr/sbin/aide" (or hashes of these files), in a secure location (such as on read-only media) provides additional assurance about their integrity.\n\nThe newlygenerated database can be installed as follows:\n\n#cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db\n\nTo initiate a manual check, run the following command:\n\n#/usr/sbin/aide --check\n\nIf this check produces any unexpected output, investigate.\n\n######################\n\n' >> $LOG
+                  printf '\n######################\n\nSTIG-ID:RHEL-06-000018\n\nVulnerability Discussion: For tripwire to be effective, an initial database of "known-good" information about files must be captured and it should be able to be verified against the installed files.\n\nFix text: Run "reset tripwire" from the administrator control panel.\n\n######################\n\n' >> $LOG
               fi
               ;;
     V-38491)  if [ "$3" = "en" ]; then
