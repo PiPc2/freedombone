@@ -8,7 +8,7 @@ Currently there isn't any CI system and with the increasing number of apps there
 Reporting any failures, either as issues or by any other method is very useful.
 
 # Physical Testing
-Testing of the mesh system in various environments. What's the maximum range for a given wifi adapter? What type of cantennas or reflectors work best on an ultra-low budget? What are the simplest antenna designs which are quickest to make? Perhaps antenna advice or example deployment descriptions could be part of the documentation.
+Testing of the mesh system in various environments. What's the maximum range for a given wifi adapter? What type of cantennas or reflectors work best on an ultra-low budget? Which wifi adapters have free software drivers? What are the simplest antenna designs which are quickest to make? Perhaps antenna advice or example deployment descriptions could be part of the documentation.
 
 # Documentation
  * Improving descriptions of processes or apps
