@@ -15,14 +15,14 @@ Testing of the mesh system in various environments. What's the maximum range for
  * Fixing spelling or typos
  * Adding any documentation which might be missing
  * Better screenshots for apps
- * Translations for the website, within the /doc/ subdirectory.
- * Translations of the manpages with the /man/ subdirectory.
+ * Translations for the website, within the *doc* subdirectory.
+ * Translations of the manpages with the *man* subdirectory.
 
 # Artwork
-The project doesn't have much of this. There are some desktop backgrounds within the /backgrounds/ subdirectory which could be improved. Cute mascots and things like that can also help to attract interest. The mesh variant of the system has desktop icons which could also be better.
+The project doesn't have much of this. There are some desktop backgrounds within the *img/backgrounds* subdirectory which could be improved. Cute mascots and things like that can also help to attract interest. The mesh variant of the system has desktop icons which could also be better.
 
 # Security Auditing
-Looking for any obvious security mistakes, doing pentesting on an installed test system and reporting the results would be useful. There are already many STIG tests in the /tests/ subdirectory, but having more wouldn't hurt.
+Looking for any obvious security mistakes, doing pentesting on an installed test system and reporting the results would be useful. There are already many STIG tests in the *tests* subdirectory, but having more wouldn't hurt.
 
 # Campaigning
 Ensuring that the internet doesn't become far less neutral than it already is. Encouraging ISPs not to have policies which ban people from running servers. Promoting and raising awareness that self-hosting is a thing which is actually useful. All of these activities are incredibly important to allow self-hosting to remain a viable possibility. ISPs are the bottleneck, and if they implement bad government mandated policies then it may become no longer practical or legal to run your own internet systems on your own hardware in your own home.
