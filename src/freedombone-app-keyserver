@@ -1,0 +1,435 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# SKS Keyserver
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+KEYSERVER_SKS_REPO="https://bitbucket.org/skskeyserver/sks-keyserver"
+KEYSERVER_SKS_COMMIT='0106ba2'
+KEYSERVER_WEB_REPO="https://github.com/mattrude/pgpkeyserver-lite"
+KEYSERVER_WEB_COMMIT='a038cb79b927c99bf7da62f20d2c6a2f20374339'
+KEYSERVER_PORT=11371
+KEYSERVER_ONION_PORT=8122
+KEYSERVER_DOMAIN_NAME=
+KEYSERVER_CODE=
+KEYSERVER_DUMP_URL="https://keyserver.mattrude.com/dump/current/"
+
+vim_variables=(MY_USERNAME
+               KEYSERVER_DOMAIN_NAME
+               KEYSERVER_CODE)
+
+function logging_on_keyserver {
+    echo -n ''
+}
+
+function logging_off_keyserver {
+    echo -n ''
+}
+
+function reconfigure_keyserver {
+    echo -n ''
+}
+
+function upgrade_keyserver_sks {
+    CURR_KEYSERVER_SKS_COMMIT=$(get_completion_param "keyserver commit")
+    if [[ "$CURR_KEYSERVER_SKS_COMMIT" == "$KEYSERVER_SKS_COMMIT" ]]; then
+        return
+    fi
+
+    if grep -q "keyserver domain" $COMPLETION_FILE; then
+        KEYSERVER_DOMAIN_NAME=$(get_completion_param "keyserver domain")
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit $INSTALL_DIR/keyserver "keyserver commit" "$KEYSERVER_SKS_COMMIT" $KEYSERVER_SKS_REPO
+
+    cd $INSTALL_DIR/keyserver
+    make dep
+    make all
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to build sks-keyserver'
+        exit 836252
+    fi
+    make install
+
+    chown -R keyserver:keyserver /var/lib/sks
+}
+
+function upgrade_keyserver_web {
+    CURR_KEYSERVER_WEB_COMMIT=$(get_completion_param "keyserver web commit")
+    if [[ "$CURR_KEYSERVER_WEB_COMMIT" == "$KEYSERVER_WEB_COMMIT" ]]; then
+        return
+    fi
+
+    if grep -q "keyserver domain" $COMPLETION_FILE; then
+        KEYSERVER_DOMAIN_NAME=$(get_completion_param "keyserver domain")
+    fi
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$KEYSERVER_DOMAIN_NAME/htdocs "keyserver web commit" "$KEYSERVER_WEB_COMMIT" $KEYSERVER_WEB_REPO
+
+    chown -R www-data:www-data /var/www/$KEYSERVER_DOMAIN_NAME/htdocs
+}
+
+function upgrade_keyserver {
+    upgrade_keyserver_sks
+    upgrade_keyserver_web
+}
+
+function backup_local_keyserver {
+    echo -n ''
+}
+
+function restore_local_vim {
+    echo -n ''
+}
+
+function backup_remote_keyserver {
+    echo -n ''
+}
+
+function restore_remote_keyserver {
+    echo -n ''
+}
+
+function remove_keyserver {
+    systemctl stop keyserver
+    systemctl disable keyserver
+    rm /etc/systemd/system/keyserver.service
+    systemctl daemon-reload
+
+    read_config_param "KEYSERVER_DOMAIN_NAME"
+    nginx_dissite $KEYSERVER_DOMAIN_NAME
+    remove_certs ${KEYSERVER_DOMAIN_NAME}
+    if [ -f /etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME ]; then
+        rm -f /etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME
+    fi
+    if [ -d /var/www/$KEYSERVER_DOMAIN_NAME ]; then
+        rm -rf /var/www/$KEYSERVER_DOMAIN_NAME
+    fi
+    function_check remove_ddns_domain
+    remove_ddns_domain $KEYSERVER_DOMAIN_NAME
+
+    groupdel -f keyserver
+    userdel -r keyserver
+
+    remove_config_param KEYSERVER_DOMAIN_NAME
+    remove_config_param KEYSERVER_CODE
+    function_check remove_onion_service
+    remove_onion_service keyserver ${KEYSERVER_ONION_PORT}
+    remove_completion_param "install_keyserver"
+
+    sed -i '/keyserver/d' $COMPLETION_FILE
+    if [ -f /usr/bin/keyserver-start ]; then
+        rm /usr/bin/keyserver-start
+    fi
+    if [ -f /usr/bin/keyserver-stop ]; then
+        rm /usr/bin/keyserver-stop
+    fi
+    groupdel -f keyserver
+    userdel -r keyserver
+}
+
+function install_interactive_keyserver {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        KEYSERVER_DOMAIN_NAME='keyserver.local'
+        write_config_param "KEYSERVER_DOMAIN_NAME" "$KEYSERVER_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "keyserver" "KEYSERVER_DOMAIN_NAME" "KEYSERVER_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function install_keyserver {
+    apt-get -qy install build-essential gcc ocaml libdb-dev wget
+
+    if [ ! -d /var/www/$KEYSERVER_DOMAIN_NAME ]; then
+        mkdir /var/www/$KEYSERVER_DOMAIN_NAME
+    fi
+
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir -p $INSTALL_DIR
+    fi
+    cd $INSTALL_DIR
+    if [ -d /repos/keyserver ]; then
+        mkdir $INSTALL_DIR/keyserver
+        cp -r -p /repos/keyserver/. $INSTALL_DIR/keyserver
+        cd $INSTALL_DIR/keyserver
+        git pull
+    else
+        if [ -d $INSTALL_DIR/keyserver ]; then
+            cd $INSTALL_DIR/keyserver
+            pull
+        else
+            git_clone $KEYSERVER_SKS_REPO $INSTALL_DIR/keyserver
+        fi
+    fi
+
+    cd $INSTALL_DIR/keyserver
+    git checkout $KEYSERVER_SKS_COMMIT -b $KEYSERVER_SKS_COMMIT
+    set_completion_param "keyserver commit" "$KEYSERVER_SKS_COMMIT"
+
+    cd /var/www/$KEYSERVER_DOMAIN_NAME
+    if [ -d /var/www/$KEYSERVER_DOMAIN_NAME/htdocs ]; then
+        rm -rf /var/www/$KEYSERVER_DOMAIN_NAME/htdocs
+    fi
+
+    if [ -d /repos/keyserverweb ]; then
+        mkdir htdocs
+        cp -r -p /repos/keyserverweb/. htdocs
+        cd htdocs
+        git pull
+    else
+        git_clone $KEYSERVER_WEB_REPO htdocs
+    fi
+
+    cd /var/www/$KEYSERVER_DOMAIN_NAME/htdocs
+    git checkout $KEYSERVER_WEB_COMMIT -b $KEYSERVER_WEB_COMMIT
+    set_completion_param "keyserver web commit" "$KEYSERVER_WEB_COMMIT"
+
+    cd $INSTALL_DIR/keyserver
+    if [ ! -f Makefile.local.unused ]; then
+        echo $'Unused makefile not found'
+        exit 72398
+    fi
+    cp Makefile.local.unused Makefile.local
+    sed -i 's|LIBDB=.*|LIBDB=-ldb-5.3.1|g' Makefile.local
+
+    make dep
+    make all
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to build sks-keyserver'
+        exit 8356328
+    fi
+    make install
+
+    if [ ! -f /usr/local/bin/sks_build.sh ]; then
+        echo $'/usr/local/bin/sks_build.sh not found'
+        exit 238460
+    fi
+
+    USER_EMAIL_ADDRESS=$MY_USERNAME@$HOSTNAME
+    GPG_ID=$(su -m root -c "gpg --list-keys $USER_EMAIL_ADDRESS | sed -n '2p' | sed 's/^[ \t]*//'" - $MY_USERNAME)
+    if [ ! $GPG_ID ]; then
+        echo $'No GPG ID for admin user'
+        exit 846336
+    fi
+    if [ ${#GPG_ID} -lt 5 ]; then
+        echo $'GPG ID not retrieved for admin user'
+        exit 835292
+    fi
+    if [[ "$GPG_ID" == *"error"* ]]; then
+        echo $'GPG ID not retrieved for admin user due to error'
+        exit 74825
+    fi
+
+    sksconf_file=/var/lib/sks/sksconf
+    echo 'debuglevel: 3' > $sksconf_file
+    echo '' >> $sksconf_file
+    echo "hostname:                       $KEYSERVER_DOMAIN_NAME" >> $sksconf_file
+    echo '' >> $sksconf_file
+    echo 'hkp_address:                    127.0.0.1' >> $sksconf_file
+    echo "hkp_port:                       $KEYSERVER_PORT" >> $sksconf_file
+    echo 'recon_port:                     11370' >> $sksconf_file
+    echo '' >> $sksconf_file
+    echo "server_contact:                 $GPG_ID" >> $sksconf_file
+    echo '' >> $sksconf_file
+    echo 'initial_stat:' >> $sksconf_file
+    echo 'disable_mailsync:' >> $sksconf_file
+    echo 'membership_reload_interval:     1' >> $sksconf_file
+    echo 'stat_hour:                      12' >> $sksconf_file
+    echo '' >> $sksconf_file
+    echo 'max_matches:                    500' >> $sksconf_file
+
+    if [ ! -d /var/lib/sks/dump ]; then
+        mkdir -p /var/lib/sks/dump
+    fi
+    cd /var/lib/sks/dump
+    echo $'Getting keyserver dump. This may take a few hours, so be patient.'
+    wget -crp -e robots=off --level=1 --cut-dirs=3 -nH \
+         -A pgp,txt $KEYSERVER_DUMP_URL
+
+    cd /var/lib/sks
+    echo $'Building the keyserver database from the downloaded dump'
+    echo '2' | /usr/local/bin/sks_build.sh
+
+    KEYSERVER_ONION_HOSTNAME=$(add_onion_service keyserver 80 ${KEYSERVER_ONION_PORT})
+
+    echo '#!/bin/sh' > /usr/bin/keyserver-start
+    echo 'cd /var/lib/sks' >> /usr/bin/keyserver-start
+    echo 'echo -n \ sks_db' >> /usr/bin/keyserver-start
+    echo '$DAEMON db &' >> /usr/bin/keyserver-start
+    echo 'echo -n \ sks_recon' >> /usr/bin/keyserver-start
+    echo '$DAEMON recon &' >> /usr/bin/keyserver-start
+    chmod +x /usr/bin/keyserver-start
+
+    echo '#!/bin/sh' > /usr/bin/keyserver-stop
+    echo 'killall sks' >> /usr/bin/keyserver-stop
+    echo 'sleep 5' >> /usr/bin/keyserver-stop
+    chmod +x /usr/bin/keyserver-stop
+
+    echo '[Unit]' > /etc/systemd/system/keyserver.service
+    echo 'Description=SKS Keyserver' >> /etc/systemd/system/keyserver.service
+    echo 'After=syslog.target network.target nginx.target' >> /etc/systemd/system/keyserver.service
+    echo '' >> /etc/systemd/system/keyserver.service
+    echo '[Service]' >> /etc/systemd/system/keyserver.service
+    echo 'User=keyserver' >> /etc/systemd/system/keyserver.service
+    echo 'Group=keyserver' >> /etc/systemd/system/keyserver.service
+    echo "WorkingDirectory=/var/lib/sks" >> /etc/systemd/system/keyserver.service
+    echo "ExecStart=/usr/bin/keyserver-start" >> /etc/systemd/system/keyserver.service
+    echo "ExecStop=/usr/bin/keyserver-stop" >> /etc/systemd/system/keyserver.service
+    echo 'Restart=always' >> /etc/systemd/system/keyserver.service
+    echo 'RestartSec=10' >> /etc/systemd/system/keyserver.service
+    echo '' >> /etc/systemd/system/keyserver.service
+    echo '[Install]' >> /etc/systemd/system/keyserver.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/keyserver.service
+    chmod +x /etc/systemd/system/keyserver.service
+
+    keyserver_nginx_site=/etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $KEYSERVER_DOMAIN_NAME
+        echo 'server {' >> $keyserver_nginx_site
+        echo '  listen 443 ssl;' >> $keyserver_nginx_site
+        echo '  listen [::]:443 ssl;' >> $keyserver_nginx_site
+        echo "  server_name $KEYSERVER_DOMAIN_NAME;" >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  # Security' >> $keyserver_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $KEYSERVER_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $KEYSERVER_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  # Logs' >> $keyserver_nginx_site
+        echo '  access_log /dev/null;' >> $keyserver_nginx_site
+        echo '  error_log /dev/null;' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  # Root' >> $keyserver_nginx_site
+        echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/htdocs;" >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+
+        echo '  rewrite ^/stats /pks/lookup?op=stats;' >> $keyserver_nginx_site
+        echo '  rewrite ^/s/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/search/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/g/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/get/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  location /pks {' >> $keyserver_nginx_site
+        echo "    proxy_pass         http://127.0.0.1:$KEYSERVER_PORT;" >> $keyserver_nginx_site
+        echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
+        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:$KEYSERVER_PORT (nginx)\";" >> $keyserver_nginx_site
+        echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
+        echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
+        echo '  }' >> $keyserver_nginx_site
+        echo '}' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+    else
+        echo -n '' > $keyserver_nginx_site
+    fi
+    echo 'server {' >> $keyserver_nginx_site
+    echo "    listen 127.0.0.1:$KEYSERVER_ONION_PORT default_server;" >> $keyserver_nginx_site
+    echo "    server_name $KEYSERVER_ONION_HOSTNAME;" >> $keyserver_nginx_site
+    echo '' >> $keyserver_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $KEYSERVER_DOMAIN_NAME
+    echo '' >> $keyserver_nginx_site
+    echo '  # Logs' >> $keyserver_nginx_site
+    echo '  access_log /dev/null;' >> $keyserver_nginx_site
+    echo '  error_log /dev/null;' >> $keyserver_nginx_site
+    echo '' >> $keyserver_nginx_site
+    echo '  # Root' >> $keyserver_nginx_site
+    echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/mail;" >> $keyserver_nginx_site
+    echo '' >> $keyserver_nginx_site
+    echo '  rewrite ^/stats /pks/lookup?op=stats;' >> $keyserver_nginx_site
+    echo '  rewrite ^/s/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
+    echo '  rewrite ^/search/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
+    echo '  rewrite ^/g/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
+    echo '  rewrite ^/get/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
+    echo '  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
+    echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
+    echo '' >> $keyserver_nginx_site
+    echo '  location /pks {' >> $keyserver_nginx_site
+    echo "    proxy_pass         http://127.0.0.1:$KEYSERVER_PORT;" >> $keyserver_nginx_site
+    echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
+    echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:$KEYSERVER_PORT (nginx)\";" >> $keyserver_nginx_site
+    echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
+    echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
+    echo '  }' >> $keyserver_nginx_site
+    echo '}' >> $keyserver_nginx_site
+
+    function_check create_site_certificate
+    if [ ! -f /etc/ssl/certs/${KEYSERVER_DOMAIN_NAME}.pem ]; then
+        create_site_certificate $KEYSERVER_DOMAIN_NAME 'yes'
+    fi
+
+    if [ -f /etc/ssl/certs/${KEYSERVER_DOMAIN_NAME}.crt ]; then
+        mv /etc/ssl/certs/${KEYSERVER_DOMAIN_NAME}.crt /etc/ssl/certs/${KEYSERVER_DOMAIN_NAME}.pem
+    fi
+    if [ -f /etc/ssl/certs/${KEYSERVER_DOMAIN_NAME}.pem ]; then
+        chown root:root /etc/ssl/certs/${KEYSERVER_DOMAIN_NAME}.pem
+        sed -i "s|.crt|.pem|g" /etc/nginx/sites-available/${KEYSERVER_DOMAIN_NAME}
+    fi
+    if [ -f /etc/ssl/private/${KEYSERVER_DOMAIN_NAME}.key ]; then
+        chown root:root /etc/ssl/private/${KEYSERVER_DOMAIN_NAME}.key
+    fi
+
+    groupadd keyserver
+    useradd -c "SKS Keyserver system account" -d /var/lib/sks -m -r -g keyserver keyserver
+    chown -R keyserver:keyserver /var/lib/sks
+    chown -R www-data:www-data /var/www/$KEYSERVER_DOMAIN_NAME/htdocs
+
+    function_check nginx_ensite
+    nginx_ensite $KEYSERVER_DOMAIN_NAME
+
+    systemctl enable keyserver
+    systemctl daemon-reload
+    systemctl start keyserver
+    systemctl restart nginx
+
+    set_completion_param "keyserver domain" "$KEYSERVER_DOMAIN_NAME"
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
