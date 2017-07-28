@@ -143,9 +143,6 @@ function remove_keyserver {
     function_check remove_ddns_domain
     remove_ddns_domain $KEYSERVER_DOMAIN_NAME
 
-    groupdel -f keyserver
-    userdel -r keyserver
-
     remove_config_param KEYSERVER_DOMAIN_NAME
     remove_config_param KEYSERVER_CODE
     function_check remove_onion_service
@@ -159,6 +156,12 @@ function remove_keyserver {
     if [ -f /usr/bin/keyserver-stop ]; then
         rm /usr/bin/keyserver-stop
     fi
+    cd $INSTALL_DIR/keyserver
+    make uninstall
+    if [ -d /var/lib/sks ]; then
+        rm -rf /var/lib/sks
+    fi
+    rm -rf $INSTALL_DIR/keyserver
     groupdel -f keyserver
     userdel -r keyserver
 }
@@ -176,6 +179,42 @@ function install_interactive_keyserver {
         interactive_site_details "keyserver" "KEYSERVER_DOMAIN_NAME" "KEYSERVER_CODE"
     fi
     APP_INSTALLED=1
+}
+
+function keyserver_import_keys {
+    if [ ! -d /var/lib/sks/dump ]; then
+        mkdir -p /var/lib/sks/dump
+    fi
+    cd /var/lib/sks/dump
+    echo $'Getting keyserver dump. This may take a few hours, so be patient.'
+    wget -crp -e robots=off --level=1 --cut-dirs=3 -nH \
+         -A pgp,txt $KEYSERVER_DUMP_URL
+
+    cd /var/lib/sks
+    echo $'Building the keyserver database from the downloaded dump'
+    echo '2' | /usr/local/bin/sks_build.sh
+}
+
+function configure_interactive_keyserver {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"SKS Keyserver" \
+               --radiolist $"Choose an operation:" 10 70 2 \
+               1 $"Import keys database" off \
+               2 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+        case $(cat $data) in
+            1) keyserver_import_keys;;
+            2) break;;
+        esac
+    done
 }
 
 function install_keyserver {
@@ -278,18 +317,6 @@ function install_keyserver {
     echo 'stat_hour:                      12' >> $sksconf_file
     echo '' >> $sksconf_file
     echo 'max_matches:                    500' >> $sksconf_file
-
-    if [ ! -d /var/lib/sks/dump ]; then
-        mkdir -p /var/lib/sks/dump
-    fi
-    cd /var/lib/sks/dump
-    echo $'Getting keyserver dump. This may take a few hours, so be patient.'
-    wget -crp -e robots=off --level=1 --cut-dirs=3 -nH \
-         -A pgp,txt $KEYSERVER_DUMP_URL
-
-    cd /var/lib/sks
-    echo $'Building the keyserver database from the downloaded dump'
-    echo '2' | /usr/local/bin/sks_build.sh
 
     KEYSERVER_ONION_HOSTNAME=$(add_onion_service keyserver 80 ${KEYSERVER_ONION_PORT})
 
