@@ -38,9 +38,6 @@ GHOST_DOMAIN_NAME=
 GHOST_CODE=
 GHOST_ONION_PORT=8104
 GHOST_PORT=2368
-GHOST_VERSION='1.0.2'
-GHOST_HASH='c703ffe27539ec4d369631db18720574ca963b5449ace1f255c3f90739ff9a99'
-GHOST_DOWNLOAD_URL="https://github.com/TryGhost/Ghost/releases/download/${GHOST_VERSION}/Ghost-${GHOST_VERSION}.zip"
 
 ghost_variables=(GHOST_DOMAIN_NAME
                  GHOST_CODE
@@ -58,18 +55,29 @@ function logging_off_ghost {
 }
 
 function ghost_replace_jquery {
-    sed -i "s|code.jquery.com/jquery-${previous_jquery_version}.min.js|$GHOST_DOMAIN_NAME/jquery-${jquery_version}.js|g" content/themes/casper/default.hbs
-    sed -i "s|code.jquery.com/jquery-${previous_jquery_version}.min.js|$GHOST_DOMAIN_NAME/jquery-${jquery_version}.js|g" core/server/data/migration/fixtures/004/01-move-jquery-with-alert.js
-    sed -i "s|code.jquery.com/jquery-${previous_jquery_version}.min.js|$GHOST_DOMAIN_NAME/jquery-${jquery_version}.js|g" node_modules/gscan/app/tpl/layouts/default.hbs
+    curr_domain="https://$GHOST_DOMAIN_NAME"
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        curr_domain="http://$GHOST_ONION_HOSTNAME"
+    fi
+
+    sed -i "s|src=\"https://code.jquery.com/jquery-.*|src=\"$curr_domain/jquery-${jquery_version}.js\"|g" current/content/themes/casper/default.hbs
+    sed -i "s|src=\"https://code.jquery.com/jquery-.*|src=\"$curr_domain/jquery-${jquery_version}.js\"></script>|g" current/node_modules/gscan/app/tpl/layouts/default.hbs
+    sed -i "s|http://code.jquery.com/jquery.js|$curr_domain/jquery-${jquery_version}.js|g" current/node_modules/jsdom/README.md
+    sed -i "s|https://code.jquery.com/jquery.js|$curr_domain/jquery-${jquery_version}.js|g" current/node_modules/jsdom/README.md
+
+    find ./ -type f -exec sed -i -e 's|https://code.jquery.com|$curr_domain|g' {} \;
+    find ./ -type f -exec sed -i -e 's|http://code.jquery.com|$curr_domain|g' {} \;
 }
 
 function ghost_remove_offsite_links {
-    cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+    curr_domain="$GHOST_DOMAIN_NAME"
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        curr_domain="$GHOST_ONION_HOSTNAME"
+    fi
 
     # remove google font links
-    # Note that the privacy options in config.js aren't sufficient to remove Google's tentacles
-    sed -i "s/fonts.googleapis.com/$GHOST_DOMAIN_NAME/g" content/themes/casper/default.hbs
-    sed -i "s/fonts.googleapis.com/$GHOST_DOMAIN_NAME/g" core/server/apps/amp/lib/views/amp.hbs
+    cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+    find ./ -type f -exec sed -i -e 's/fonts.googleapis.com/$curr_domain/g' {} \;
 
     # copy jquery locally
     previous_jquery_version='1.12.0'
@@ -166,52 +174,11 @@ function upgrade_ghost {
     if [ ! -d /var/www/$GHOST_DOMAIN_NAME/htdocs ]; then
         return
     fi
-
-    if ! grep -q "ghost version:" $COMPLETION_FILE; then
-        CURR_GHOST_VERSION=${GHOST_VERSION}b
-    else
-        CURR_GHOST_VERSION=$(get_completion_param "ghost version")
-    fi
-
-    if [[ "$GHOST_VERSION" == "$CURR_GHOST_VERSION" ]]; then
-        return
-    fi
-
-    read_config_param "GHOST_DOMAIN_NAME"
-
-    GHOST_PATH=/var/www/$GHOST_DOMAIN_NAME/htdocs
-
-    cd $GHOST_PATH
-    if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
-        wget ${GHOST_DOWNLOAD_URL}
-    fi
-    if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
-        echo $'Unable to download ghost'
-        exit 367245
-    fi
-
-    # check the hash
-    hash=$(sha256sum Ghost-${GHOST_VERSION}.zip | awk -F ' ' '{print $1}')
-    if [[ "$hash" != "$GHOST_HASH" ]]; then
-        echo $'ghost hash does not match'
-        exit 729856
-    fi
-
-    unzip -o Ghost-${GHOST_VERSION}.zip
-    if [ ! -f $GHOST_PATH/index.js ]; then
-        echo $'ghost failed to unzip'
-        exit 63835
-    fi
-
-    sed -i "/sqlite/d" $GHOST_PATH/package.json
-    npm install --production
-
-    chown -R ghost: $GHOST_PATH/
+    cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+    /usr/local/bin/ghost update
     ghost_replace_services
-    chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
-
     ghost_remove_offsite_links
-    sed -i "s|ghost version.*|ghost version:${GHOST_VERSION}|g" ${COMPLETION_FILE}
+    chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
     systemctl restart ghost
 }
 
@@ -223,10 +190,10 @@ function backup_local_ghost {
 
     ghost_path=/var/www/${GHOST_DOMAIN_NAME}/htdocs/content
     if [ -d $ghost_path ]; then
-        function_check backup_database_to_usb
-        backup_database_to_usb ghost
-
+        suspend_site ${GHOST_DOMAIN_NAME}
+        systemctl stop ghost
         backup_directory_to_usb $ghost_path ghostcontent
+        systemctl start ghost
         restart_site
     fi
 }
@@ -237,13 +204,8 @@ function restore_local_ghost {
         GHOST_DOMAIN_NAME=$(get_completion_param "ghost domain")
     fi
     if [ $GHOST_DOMAIN_NAME ]; then
+        suspend_site ${GHOST_DOMAIN_NAME}
         systemctl stop ghost
-
-        function_check ghost_create_database
-        ghost_create_database
-
-        function_check restore_database
-        restore_database ghost ${GHOST_DOMAIN_NAME}
 
         temp_restore_dir=/root/tempghostcontent
         function_check restore_directory_from_usb
@@ -252,32 +214,6 @@ function restore_local_ghost {
             cp -r $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/content/* /var/www/$GHOST_DOMAIN_NAME/htdocs/content/
             chown -R ghost:ghost /var/www/$GHOST_DOMAIN_NAME/htdocs/content
             rm -rf $temp_restore_dir
-        fi
-
-        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
-        ghost_config=/var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
-        sed -i "s|password :.*|password : '${MARIADB_PASSWORD}',|g" $ghost_config
-        MARIADB_PASSWORD=
-
-        # install any missing packages
-        cd /var/www/${GHOST_DOMAIN_NAME}/htdocs
-        if [ ! -d /var/www/${GHOST_DOMAIN_NAME}/htdocs/node_modules/intl ]; then
-            npm install passport-http-bearer@1.0.1
-            npm install amperize@0.3.4
-            npm install bcryptjs@2.4.3
-            npm install knex@0.12.9
-            npm install bookshelf@0.10.2
-            npm install cookie-session@1.2.0
-            npm install ghost-gql@0.0.6
-            npm install intl@1.2.5
-            npm install sanitize-html@1.14.1
-            npm install showdown-ghost@0.3.6
-            npm install superagent@3.5.2
-            npm install mysql@2.1.1
-        fi
-        if [ ! -d /var/www/${GHOST_DOMAIN_NAME}/htdocs/node_modules/debug ]; then
-            npm install debug@2.6.8
-            npm install nconf@0.8.4
         fi
 
         systemctl start ghost
@@ -294,7 +230,6 @@ function backup_remote_ghost {
     temp_backup_dir=/var/www/${GHOST_DOMAIN_NAME}/htdocs/content
     if [ -d $temp_backup_dir ]; then
         suspend_site ${GHOST_DOMAIN_NAME}
-        backup_database_to_friend ghost
         backup_directory_to_friend $temp_backup_dir ghostcontent
         restart_site
     else
@@ -308,53 +243,21 @@ function restore_remote_ghost {
     if grep -q "ghost domain" $COMPLETION_FILE; then
         GHOST_DOMAIN_NAME=$(get_completion_param "ghost domain")
     fi
+    suspend_site ${GHOST_DOMAIN_NAME}
 
     systemctl stop ghost
-
-    function_check get_mariadb_password
-    get_mariadb_password
-
-    function_check restore_database_from_friend
-
-    function_check ghost_create_database
-    ghost_create_database
-
-    restore_database_from_friend ghost
 
     temp_restore_dir=/root/tempghostcontent
     function_check restore_directory_from_friend
     restore_directory_from_friend $temp_restore_dir ghostcontent
     if [ -d $temp_restore_dir ]; then
         cp -r $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/content/* /var/www/$GHOST_DOMAIN_NAME/htdocs/content/
-        chown -R ghost:ghost /var/www/$GHOST_DOMAIN_NAME/htdocs/content
+        chown -R ghost: /var/www/$GHOST_DOMAIN_NAME/htdocs
         rm -rf $temp_restore_dir
-    fi
-
-    MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
-    ghost_config=/var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
-    sed -i "s|password :.*|password : '${MARIADB_PASSWORD}',|g" $ghost_config
-    MARIADB_PASSWORD=
-
-    # install any missing packages
-    if [ ! -d /var/www/${GHOST_DOMAIN_NAME}/htdocs/node_modules/intl ]; then
-        cd /var/www/${GHOST_DOMAIN_NAME}/htdocs
-        npm install passport-http-bearer@1.0.1
-        npm install amperize@0.3.4
-        npm install bcryptjs@2.4.3
-        npm install knex@0.12.9
-        npm install bookshelf@0.10.2
-        npm install cookie-session@1.2.0
-        npm install ghost-gql@0.0.6
-        npm install intl@1.2.5
-        npm install sanitize-html@1.14.1
-        npm install showdown-ghost@0.3.6
-        npm install superagent@3.5.2
-        npm install mysql@2.1.1
     fi
 
     systemctl start ghost
     restart_site
-    chown -R ghost: /var/www/$GHOST_DOMAIN_NAME/htdocs/
 }
 
 function remove_ghost {
@@ -369,9 +272,6 @@ function remove_ghost {
 
     function_check remove_nodejs
     remove_nodejs ghost
-
-    drop_database ghost
-    remove_backup_database_local ghost
 
     read_config_param "GHOST_DOMAIN_NAME"
     nginx_dissite $GHOST_DOMAIN_NAME
@@ -397,70 +297,6 @@ function remove_ghost {
     remove_ddns_domain $GHOST_DOMAIN_NAME
 }
 
-function ghost_create_config {
-    ghost_config=/var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
-
-    function_check get_mariadb_password
-    get_mariadb_password
-
-    echo "var path = require('path')," > $ghost_config
-    echo '    config;' >> $ghost_config
-    echo '' >> $ghost_config
-    echo 'config = {' >> $ghost_config
-    echo '    production: {' >> $ghost_config
-    echo '        // This needs to be http and NOT https' >> $ghost_config
-    echo "        url: 'http://${GHOST_DOMAIN_NAME}'," >> $ghost_config
-    echo '        mail: {' >> $ghost_config
-    echo "            transport: 'SMTP'," >> $ghost_config
-    echo '            options: {' >> $ghost_config
-    echo "                service: 'Sendmail'," >> $ghost_config
-    echo '            }' >> $ghost_config
-    echo '        },' >> $ghost_config
-    echo '        database: {' >> $ghost_config
-    echo "            client: 'mysql'," >> $ghost_config
-    echo '            connection: {' >> $ghost_config
-    echo "                host     : '127.0.0.1'," >> $ghost_config
-    echo "                user     : 'root'," >> $ghost_config
-    echo "                password : '${MARIADB_PASSWORD}'," >> $ghost_config
-    echo "                database : 'ghost'," >> $ghost_config
-    echo "                charset  : 'utf8'" >> $ghost_config
-    echo '            }' >> $ghost_config
-    echo '        },' >> $ghost_config
-    echo '' >> $ghost_config
-    echo '        server: {' >> $ghost_config
-    echo "            host: '127.0.0.1'," >> $ghost_config
-    echo "            port: '${GHOST_PORT}'" >> $ghost_config
-    echo '        },' >> $ghost_config
-    echo '        privacy: {' >> $ghost_config
-    echo '            useTinfoil: true,' >> $ghost_config
-    echo '        },' >> $ghost_config
-    echo '        logging: false' >> $ghost_config
-    echo '    }' >> $ghost_config
-    echo '};' >> $ghost_config
-    echo '' >> $ghost_config
-    echo 'module.exports = config;' >> $ghost_config
-    chmod 700 $ghost_config
-}
-
-function ghost_create_database {
-    if [ -f ${IMAGE_PASSWORD_FILE} ]; then
-        GIT_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
-    else
-        if [ ! ${GIT_ADMIN_PASSWORD} ]; then
-            GIT_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-        fi
-    fi
-    if [ ! $GIT_ADMIN_PASSWORD ]; then
-        return
-    fi
-
-    function_check get_mariadb_password
-    get_mariadb_password
-
-    function_check create_database
-    create_database ghost "$GHOST_ADMIN_PASSWORD"
-}
-
 function install_ghost {
     if [ ! $ONION_ONLY ]; then
         ONION_ONLY='no'
@@ -478,35 +314,11 @@ function install_ghost {
         mkdir -p /var/www/$GHOST_DOMAIN_NAME/htdocs
     fi
     cd /var/www/$GHOST_DOMAIN_NAME/htdocs
-    if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
-        wget ${GHOST_DOWNLOAD_URL}
-    fi
-    if [ ! -f Ghost-${GHOST_VERSION}.zip ]; then
-        echo $'Unable to download ghost'
-        rm -rf /var/www/$GHOST_DOMAIN_NAME
-        exit 63892
-    fi
-
-    # check the hash
-    hash=$(sha256sum Ghost-${GHOST_VERSION}.zip | awk -F ' ' '{print $1}')
-    if [[ "$hash" != "$GHOST_HASH" ]]; then
-        echo $'ghost hash does not match'
-        exit 729856
-    fi
-
-    unzip -o Ghost-${GHOST_VERSION}.zip
-    if [ ! -f /var/www/${GHOST_DOMAIN_NAME}/htdocs/index.js ]; then
-        echo $'ghost failed to unzip'
-        rm -rf /var/www/$GHOST_DOMAIN_NAME
-        exit 63835
-    fi
 
     function_check install_nodejs
     install_nodejs ghost
 
-    sed -i "/sqlite/d" /var/www/${GHOST_DOMAIN_NAME}/htdocs/package.json
-
-    cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+    # Some dependencies of ghost
     npm install -g jison@0.4.13 --save
     npm install moment-timezone@0.5.13
     npm install express@4.15.3
@@ -561,42 +373,38 @@ function install_ghost {
     npm install debug@2.6.8
     npm install nconf@0.8.4
 
-    npm install --production
+    npm install -g knex-migrator
+    knex-migrator init
 
-    function_check install_mariadb
-    install_mariadb
-
-    function_check get_mariadb_password
-    get_mariadb_password
-
-    function_check ghost_create_database
-    ghost_create_database
-
-    ghost_create_config
+    # now install ghost itself
+    npm install -g ghost-cli
+    ghost install local
 
     adduser --system --home=/var/www/${GHOST_DOMAIN_NAME}/htdocs/ --group ghost
-    chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
 
     echo '[Unit]' > /etc/systemd/system/ghost.service
     echo 'Description=Ghost Blog' >> /etc/systemd/system/ghost.service
     echo 'After=syslog.target' >> /etc/systemd/system/ghost.service
     echo 'After=network.target' >> /etc/systemd/system/ghost.service
-    echo 'After=mysqld.service' >> /etc/systemd/system/ghost.service
     echo '' >> /etc/systemd/system/ghost.service
     echo '[Service]' >> /etc/systemd/system/ghost.service
     echo 'Type=simple' >> /etc/systemd/system/ghost.service
     echo 'User=ghost' >> /etc/systemd/system/ghost.service
     echo 'Group=ghost' >> /etc/systemd/system/ghost.service
     echo "WorkingDirectory=/var/www/${GHOST_DOMAIN_NAME}/htdocs" >> /etc/systemd/system/ghost.service
-    echo "ExecStart=/usr/local/bin/node /var/www/${GHOST_DOMAIN_NAME}/htdocs/index.js" >> /etc/systemd/system/ghost.service
+    echo "ExecStart=/usr/local/bin/ghost run" >> /etc/systemd/system/ghost.service
+    echo "ExecStop=/usr/local/bin/ghost stop" >> /etc/systemd/system/ghost.service
+    echo "ExecRestart=/usr/local/bin/ghost restart" >> /etc/systemd/system/ghost.service
     echo 'Restart=always' >> /etc/systemd/system/ghost.service
     echo 'RestartSec=60' >> /etc/systemd/system/ghost.service
-    echo "Environment=NODE_ENV=production PORT=${GHOST_PORT}" >> /etc/systemd/system/ghost.service
+    echo "Environment=NODE_ENV=development PORT=${GHOST_PORT}" >> /etc/systemd/system/ghost.service
     echo '' >> /etc/systemd/system/ghost.service
     echo '[Install]' >> /etc/systemd/system/ghost.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ghost.service
 
     ghost_remove_offsite_links
+
+    chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
 
     systemctl enable ghost
     systemctl daemon-reload
@@ -677,15 +485,6 @@ function install_ghost {
 
     function_check create_site_certificate
     create_site_certificate $GHOST_DOMAIN_NAME 'yes'
-
-    function_check configure_php
-    configure_php
-
-    if [[ $ONION_ONLY != 'no' ]]; then
-        sed -i "s|url: .*|url: 'http://${GHOST_ONION_HOSTNAME}',|g" /var/www/${GHOST_DOMAIN_NAME}/htdocs/config.js
-        systemctl restart mariadb
-        systemctl restart ghost
-    fi
 
     ghost_replace_services
 
