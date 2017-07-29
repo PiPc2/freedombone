@@ -123,7 +123,7 @@ function restore_remote_keyserver {
 
 function remove_keyserver {
     systemctl stop sks
-    apt-get -qy remove sks
+    apt-get -qy remove sks dirmngr
 
     read_config_param "KEYSERVER_DOMAIN_NAME"
     nginx_dissite $KEYSERVER_DOMAIN_NAME
@@ -195,6 +195,54 @@ function keyserver_import_keys {
     sks build
 }
 
+function keyserver_sync {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Sync with other keyserver" \
+           --form "\nDetails for the other server:" 10 50 3 \
+           $"Domain:" 1 1 "" 1 18 32 32 \
+           $"Port:" 2 1 "11370" 2 18 8 8 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    other_keyserver_domain=$(cat $data | sed -n 1p)
+    other_keyserver_port=$(cat $data | sed -n 2p)
+    if [[ "$other_keyserver_domain" != *'.'* ]]; then
+        return
+    fi
+    if [[ "$other_keyserver_domain" == *' '* ]]; then
+        return
+    fi
+    if [[ "$other_keyserver_port" == *'.'* ]]; then
+        return
+    fi
+    if [[ "$other_keyserver_port" == *' '* ]]; then
+        return
+    fi
+    if [ ${#other_keyserver_domain} -lt 4 ]; then
+        return
+    fi
+    if [ ${#other_keyserver_port} -lt 4 ]; then
+        return
+    fi
+    if grep -q "$other_keyserver_domain $other_keyserver_port" /etc/sks/membership; then
+        return
+    fi
+    if grep -q "$other_keyserver_domain " /etc/sks/membership; then
+        sed -i "s|$other_keyserver_domain .*|$other_keyserver_domain $other_keyserver_port|g" /etc/sks/membership
+    else
+        echo "$other_keyserver_domain $other_keyserver_port" >> /etc/sks/membership
+    fi
+    chown -Rc debian-sks: /etc/sks/membership
+    systemctl restart sks
+    dialog --title $"Sync with other keyserver" \
+           --msgbox $"Keyserver added" 6 40
+}
+
 function configure_interactive_keyserver {
     while true
     do
@@ -202,26 +250,37 @@ function configure_interactive_keyserver {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"SKS Keyserver" \
-               --radiolist $"Choose an operation:" 10 70 2 \
-               1 $"Import public keys database" off \
-               2 $"Exit" on 2> $data
+               --radiolist $"Choose an operation:" 11 70 3 \
+               1 $"Sync with other keyserver" off \
+               2 $"Import public keys database" off \
+               3 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
             255) return;;
         esac
         case $(cat $data) in
-            1) keyserver_import_keys;;
-            2) break;;
+            1) keyserver_sync;;
+            2) keyserver_import_keys;;
+            3) break;;
         esac
     done
 }
 
+function keyserver_reset_database {
+    if [ -d /var/lib/sks/DB ]; then
+        rm -rf /var/lib/sks/DB
+    fi
+    sks build
+    chown -Rc debian-sks: /var/lib/sks
+    systemctl restart sks
+}
+
 function install_keyserver {
     apt-get -qy install build-essential gcc ocaml libdb-dev wget sks
-    sks build
-    chown -Rc debian-sks: /var/lib/sks/DB
+    keyserver_reset_database
     sed -i 's|initstart=.*|initstart=yes|g' /etc/default/sks
+    apt-get -qy install dirmngr
     systemctl restart sks
 
     if [ ! -d /var/www/$KEYSERVER_DOMAIN_NAME ]; then
@@ -270,29 +329,23 @@ function install_keyserver {
     sed -i "s|###ENTERNAMEHERE###|$USER_EMAIL_ADDRESS|g" /var/www/$KEYSERVER_DOMAIN_NAME/htdocs/404.html
     sed -i "s|###ENTERNAMEHERE###|$USER_EMAIL_ADDRESS|g" /var/www/$KEYSERVER_DOMAIN_NAME/htdocs/index.html
 
-    sksconf_file=/var/lib/sks/sksconf
-    echo 'debuglevel: 3' > $sksconf_file
-    echo '' >> $sksconf_file
-    echo "hostname:                       $KEYSERVER_DOMAIN_NAME" >> $sksconf_file
-    echo '' >> $sksconf_file
-    echo 'hkp_address:                    127.0.0.1' >> $sksconf_file
-    echo "hkp_port:                       $KEYSERVER_PORT" >> $sksconf_file
-    echo 'recon_port:                     11370' >> $sksconf_file
-    echo '' >> $sksconf_file
-    echo "server_contact:                 $GPG_ID" >> $sksconf_file
-    echo '' >> $sksconf_file
-    echo 'initial_stat:' >> $sksconf_file
-    echo 'disable_mailsync:' >> $sksconf_file
-    echo 'membership_reload_interval:     1' >> $sksconf_file
-    echo 'stat_hour:                      12' >> $sksconf_file
-    echo '' >> $sksconf_file
-    echo 'max_matches:                    500' >> $sksconf_file
+    sksconf_file=/etc/sks/sksconf
+    sed -i "s|#hostname:.*|hostname: $KEYSERVER_DOMAIN_NAME|g" $sksconf_file
+    sed -i "s|hostname:.*|hostname: $KEYSERVER_DOMAIN_NAME|g" $sksconf_file
+    sed -i "s|#hkp_port:.*|hkp_port: 11373|g" $sksconf_file
+    sed -i "s|hkp_port:.*|hkp_port: 11373|g" $sksconf_file
+    sed -i "s|#recon_port:.*|recon_port: 11370|g" $sksconf_file
+    sed -i "s|recon_port:.*|recon_port: 11370|g" $sksconf_file
+    sed -i "s|#recon_address:.*|recon_address: 0.0.0.0|g" $sksconf_file
+    sed -i "s|recon_address:.*|recon_address: 0.0.0.0|g" $sksconf_file
+    sed -i 's|#hkp_address:.*|hkp_address: 0.0.0.0|g' $sksconf_file
+    sed -i 's|hkp_address:.*|hkp_address: 0.0.0.0|g' $sksconf_file
     chown debian-sks: $sksconf_file
 
     if ! grep -q "hidden_service_sks" /etc/tor/torrc; then
         echo 'HiddenServiceDir /var/lib/tor/hidden_service_sks/' >> /etc/tor/torrc
         echo "HiddenServicePort 11370 127.0.0.1:11370" >> /etc/tor/torrc
-        echo "HiddenServicePort 11371 127.0.0.1:11371" >> /etc/tor/torrc
+        echo "HiddenServicePort 11371 127.0.0.1:11373" >> /etc/tor/torrc
         echo "HiddenServicePort 11372 127.0.0.1:11372" >> /etc/tor/torrc
         echo $'Added onion site for sks'
     fi
@@ -344,9 +397,9 @@ function install_keyserver {
         echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
         echo '' >> $keyserver_nginx_site
         echo '  location /pks {' >> $keyserver_nginx_site
-        echo "    proxy_pass         http://127.0.0.1:$KEYSERVER_PORT;" >> $keyserver_nginx_site
+        echo "    proxy_pass         http://127.0.0.1:11373;" >> $keyserver_nginx_site
         echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
-        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:$KEYSERVER_PORT (nginx)\";" >> $keyserver_nginx_site
+        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11373 (nginx)\";" >> $keyserver_nginx_site
         echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
         echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
         echo '  }' >> $keyserver_nginx_site
@@ -378,9 +431,9 @@ function install_keyserver {
     echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
     echo '' >> $keyserver_nginx_site
     echo '  location /pks {' >> $keyserver_nginx_site
-    echo "    proxy_pass         http://127.0.0.1:$KEYSERVER_PORT;" >> $keyserver_nginx_site
+    echo "    proxy_pass         http://127.0.0.1:11373;" >> $keyserver_nginx_site
     echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
-    echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:$KEYSERVER_PORT (nginx)\";" >> $keyserver_nginx_site
+    echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11373 (nginx)\";" >> $keyserver_nginx_site
     echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
     echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
     echo '  }' >> $keyserver_nginx_site
@@ -409,6 +462,13 @@ function install_keyserver {
 
     configure_firewall_for_keyserver
 
+    # remove membership file - don't try to sync with other keyservers
+    if [ -f /etc/sks/membership ]; then
+        rm /etc/sks/membership
+    fi
+
+    systemctl enable sks
+    systemctl restart sks
     systemctl restart nginx
 
     set_completion_param "keyserver domain" "$KEYSERVER_DOMAIN_NAME"
