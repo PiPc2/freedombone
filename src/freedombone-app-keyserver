@@ -383,8 +383,38 @@ function install_keyserver {
 
     keyserver_nginx_site=/etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
-        function_check nginx_http_redirect
-        nginx_http_redirect $KEYSERVER_DOMAIN_NAME
+        # NOTE: without http active on port 80 the keyserver doesn't work
+        #       from the commandline
+        echo 'server {' > $keyserver_nginx_site
+        echo '  listen 80;' >> $keyserver_nginx_site
+        echo '  listen 0.0.0.0:11371;' >> $keyserver_nginx_site
+        echo '  listen [::]:80;' >> $keyserver_nginx_site
+        echo "  server_name $KEYSERVER_DOMAIN_NAME;" >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  # Logs' >> $keyserver_nginx_site
+        echo '  access_log /dev/null;' >> $keyserver_nginx_site
+        echo '  error_log /dev/null;' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  # Root' >> $keyserver_nginx_site
+        echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/htdocs;" >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  rewrite ^/stats /pks/lookup?op=stats;' >> $keyserver_nginx_site
+        echo '  rewrite ^/s/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/search/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/g/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/get/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
+        echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  location /pks {' >> $keyserver_nginx_site
+        echo '    proxy_pass         http://127.0.0.1:11373;' >> $keyserver_nginx_site
+        echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
+        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11371 (nginx)\";" >> $keyserver_nginx_site
+        echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
+        echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
+        echo '  }' >> $keyserver_nginx_site
+        echo '}' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
         echo 'server {' >> $keyserver_nginx_site
         echo '  listen 443 ssl;' >> $keyserver_nginx_site
         echo '  listen 0.0.0.0:11372 ssl;' >> $keyserver_nginx_site
