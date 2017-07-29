@@ -346,14 +346,26 @@ function install_keyserver {
     sed -i "s|recon_port:.*|recon_port: 11370|g" $sksconf_file
     sed -i "s|#recon_address:.*|recon_address: 0.0.0.0|g" $sksconf_file
     sed -i "s|recon_address:.*|recon_address: 0.0.0.0|g" $sksconf_file
-    sed -i 's|#hkp_address:.*|hkp_address: 0.0.0.0|g' $sksconf_file
-    sed -i 's|hkp_address:.*|hkp_address: 0.0.0.0|g' $sksconf_file
+    sed -i 's|#hkp_address:.*|hkp_address: 127.0.0.1|g' $sksconf_file
+    sed -i 's|hkp_address:.*|hkp_address: 127.0.0.1|g' $sksconf_file
+
+    if ! grep -q "disable_mailsync" $sksconf_file; then
+        echo 'disable_mailsync:' >> $sksconf_file
+    else
+        sed -i 's|#disable_mailsync:|disable_mailsync:|g' $sksconf_file
+    fi
+    if ! grep -q "membership_reload_interval:" $sksconf_file; then
+        echo 'membership_reload_interval:     1' >> $sksconf_file
+    else
+        sed -i 's|#membership_reload_interval:.*|membership_reload_interval:     1|g' $sksconf_file
+        sed -i 's|membership_reload_interval:.*|membership_reload_interval:     1|g' $sksconf_file
+    fi
     chown debian-sks: $sksconf_file
 
     if ! grep -q "hidden_service_sks" /etc/tor/torrc; then
         echo 'HiddenServiceDir /var/lib/tor/hidden_service_sks/' >> /etc/tor/torrc
         echo "HiddenServicePort 11370 127.0.0.1:11370" >> /etc/tor/torrc
-        echo "HiddenServicePort 11371 127.0.0.1:11373" >> /etc/tor/torrc
+        echo "HiddenServicePort 11373 127.0.0.1:11371" >> /etc/tor/torrc
         echo "HiddenServicePort 11372 127.0.0.1:11372" >> /etc/tor/torrc
         echo $'Added onion site for sks'
     fi
@@ -375,9 +387,16 @@ function install_keyserver {
         nginx_http_redirect $KEYSERVER_DOMAIN_NAME
         echo 'server {' >> $keyserver_nginx_site
         echo '  listen 443 ssl;' >> $keyserver_nginx_site
-        echo '  listen 11372 ssl;' >> $keyserver_nginx_site
+        echo '  listen 0.0.0.0:11372 ssl;' >> $keyserver_nginx_site
         echo '  listen [::]:443 ssl;' >> $keyserver_nginx_site
         echo "  server_name $KEYSERVER_DOMAIN_NAME;" >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  error_page 404 /404.html;' >> $keyserver_nginx_site
+        echo '' >> $keyserver_nginx_site
+        echo '  location ~ (.git|LICENSE|readme.md) {' >> $keyserver_nginx_site
+        echo '    deny all;' >> $keyserver_nginx_site
+        echo '    return 404;' >> $keyserver_nginx_site
+        echo '  }' >> $keyserver_nginx_site
         echo '' >> $keyserver_nginx_site
         echo '  # Security' >> $keyserver_nginx_site
         function_check nginx_ssl
@@ -407,7 +426,7 @@ function install_keyserver {
         echo '  location /pks {' >> $keyserver_nginx_site
         echo "    proxy_pass         http://127.0.0.1:11373;" >> $keyserver_nginx_site
         echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
-        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11373 (nginx)\";" >> $keyserver_nginx_site
+        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11372 (nginx)\";" >> $keyserver_nginx_site
         echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
         echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
         echo '  }' >> $keyserver_nginx_site
@@ -417,8 +436,15 @@ function install_keyserver {
         echo -n '' > $keyserver_nginx_site
     fi
     echo 'server {' >> $keyserver_nginx_site
-    echo "    listen 127.0.0.1:$KEYSERVER_ONION_PORT default_server;" >> $keyserver_nginx_site
-    echo "    server_name $KEYSERVER_ONION_HOSTNAME;" >> $keyserver_nginx_site
+    echo "  listen 127.0.0.1:$KEYSERVER_ONION_PORT default_server;" >> $keyserver_nginx_site
+    echo "  server_name $KEYSERVER_ONION_HOSTNAME;" >> $keyserver_nginx_site
+    echo '' >> $keyserver_nginx_site
+    echo '  error_page 404 /404.html;' >> $keyserver_nginx_site
+    echo '' >> $keyserver_nginx_site
+    echo '  location ~ (.git|LICENSE|readme.md) {' >> $keyserver_nginx_site
+    echo '    deny all;' >> $keyserver_nginx_site
+    echo '    return 404;' >> $keyserver_nginx_site
+    echo '  }' >> $keyserver_nginx_site
     echo '' >> $keyserver_nginx_site
     function_check nginx_disable_sniffing
     nginx_disable_sniffing $KEYSERVER_DOMAIN_NAME
@@ -441,7 +467,7 @@ function install_keyserver {
     echo '  location /pks {' >> $keyserver_nginx_site
     echo "    proxy_pass         http://127.0.0.1:11373;" >> $keyserver_nginx_site
     echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
-    echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11373 (nginx)\";" >> $keyserver_nginx_site
+    echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:$KEYSERVER_ONION_PORT (nginx)\";" >> $keyserver_nginx_site
     echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
     echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
     echo '  }' >> $keyserver_nginx_site
