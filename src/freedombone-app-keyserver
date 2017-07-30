@@ -46,6 +46,16 @@ keyserver_variables=(ONION_ONLY
                      KEYSERVER_DOMAIN_NAME
                      KEYSERVER_CODE)
 
+function check_keyserver_directory_size {
+    dirsize=$(du /var/lib/sks/DB | awk -F ' ' '{print $1}')
+    # 500M
+    if [ $dirsize -gt 500000 ]; then
+        echo "1"
+        return
+    fi
+    echo "0"
+}
+
 function configure_firewall_for_keyserver {
     if [[ $ONION_ONLY != "no" ]]; then
         return
@@ -115,6 +125,10 @@ function upgrade_keyserver {
 }
 
 function backup_local_keyserver {
+    if [[ "$(check_keyserver_directory_size)" != "0" ]]; then
+        echo $'WARNING: Keyserver database size is too large to backup'
+        return
+    fi
     source_directory=/var/lib/sks/DB
     if [ -d $source_directory ]; then
         systemctl stop sks
@@ -158,6 +172,10 @@ function restore_local_keyserver {
 }
 
 function backup_remote_keyserver {
+    if [[ "$(check_keyserver_directory_size)" != "0" ]]; then
+        echo $'WARNING: Keyserver database size is too large to backup'
+        return
+    fi
     source_directory=/var/lib/sks/DB
     if [ -d $source_directory ]; then
         systemctl stop sks
@@ -247,7 +265,23 @@ function install_interactive_keyserver {
     APP_INSTALLED=1
 }
 
+function keyserver_create_membership {
+    if [ -f /etc/sks/membership ]; then
+        return
+    fi
+    systemctl stop sks
+    echo $"# List of other $PROJECT_NAME SKS Keyservers to sync with." > /etc/sks/membership
+    echo '#' >> /etc/sks/membership
+    echo $"# Don't add major keyservers here, because it will take an" >> /etc/sks/membership
+    echo $'# Infeasible amount of time to sync and backups will become' >> /etc/sks/membership
+    echo $'# absurdly long and probably break your system. You have been warned.' >> /etc/sks/membership
+    echo '' >> /etc/sks/membership
+    chown -Rc debian-sks: /etc/sks/membership
+    systemctl start sks
+}
+
 function keyserver_import_keys {
+    # NOTE: this function isn't used, but kept for reference
     dialog --title $"Import public keys database" \
            --backtitle $"Freedombone Control Panel" \
            --defaultno \
@@ -277,7 +311,7 @@ function keyserver_sync {
     trap "rm -f $data" 0 1 2 5 15
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Sync with other keyserver" \
-           --form "\nDetails for the other server:" 10 50 3 \
+           --form $"\nEnter details for the other server. Please be aware that it's not a good idea to sync with major keyservers which have exceptionally large databases. This is intended to sync with other $PROJECT_NAME systems each having a small database for a particular community." 15 60 2 \
            $"Domain:" 1 1 "" 1 18 32 32 \
            $"Port:" 2 1 "11370" 2 18 8 8 \
            2> $data
@@ -306,6 +340,7 @@ function keyserver_sync {
     if [ ${#other_keyserver_port} -lt 4 ]; then
         return
     fi
+    keyserver_create_membership
     if grep -q "$other_keyserver_domain $other_keyserver_port" /etc/sks/membership; then
         return
     fi
@@ -321,6 +356,9 @@ function keyserver_sync {
 }
 
 function keyserver_edit {
+    if [ ! -f /etc/sks/membership ]; then
+        return
+    fi
     editor /etc/sks/membership
     chown -Rc debian-sks: /etc/sks/membership
     systemctl restart sks
@@ -333,11 +371,10 @@ function configure_interactive_keyserver {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"SKS Keyserver" \
-               --radiolist $"Choose an operation:" 12 70 4 \
+               --radiolist $"Choose an operation:" 11 70 3 \
                1 $"Sync with other keyserver" off \
                2 $"Edit sync keyservers" off \
-               3 $"Import public keys database" off \
-               4 $"Exit" on 2> $data
+               3 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
@@ -346,8 +383,7 @@ function configure_interactive_keyserver {
         case $(cat $data) in
             1) keyserver_sync;;
             2) keyserver_edit;;
-            3) keyserver_import_keys;;
-            4) break;;
+            3) break;;
         esac
     done
 }
