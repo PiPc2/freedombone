@@ -160,6 +160,7 @@ function restore_local_keyserver {
     cp -r $temp_restore_dir/etc/sks/* /etc/sks/
     rm -rf $temp_restore_dir
     chown -Rc debian-sks: /etc/sks/sksconf
+    chown -Rc debian-sks: /etc/sks/mailsync
 
     temp_restore_dir=/root/tempkeyserver
     function_check restore_directory_from_usb
@@ -223,6 +224,7 @@ function restore_remote_keyserver {
     cp -r $temp_restore_dir/etc/sks/* /etc/sks/
     rm -rf $temp_restore_dir
     chown -Rc debian-sks: /etc/sks/sksconf
+    chown -Rc debian-sks: /etc/sks/mailsync
 
     temp_restore_dir=/root/tempkeyserver
     function_check restore_directory_from_friend
@@ -297,6 +299,12 @@ function install_interactive_keyserver {
     APP_INSTALLED=1
 }
 
+function keyserver_create_mailsync {
+    echo $"# List of email addresses which submitted keys will be forwarded to" > /etc/sks/mailsync
+    echo '' >> /etc/sks/mailsync
+    chown -Rc debian-sks: /etc/sks/mailsync
+}
+
 function keyserver_create_membership {
     if [ -f /etc/sks/membership ]; then
         return
@@ -343,9 +351,10 @@ function keyserver_sync {
     trap "rm -f $data" 0 1 2 5 15
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Sync with other keyserver" \
-           --form $"\nEnter details for the other server. Please be aware that it's not a good idea to sync with major keyservers which have exceptionally large databases. This is intended to sync with other $PROJECT_NAME systems each having a small database for a particular community." 15 60 2 \
-           $"Domain:" 1 1 "" 1 18 32 32 \
-           $"Port:" 2 1 "11370" 2 18 8 8 \
+           --form $"\nEnter details for the other server. Please be aware that it's not a good idea to sync with major keyservers which have exceptionally large databases. This is intended to sync with other $PROJECT_NAME systems each having a small database for a particular community." 16 60 3 \
+           $"Domain:" 1 1 "" 1 25 32 64 \
+           $"Port:" 2 1 "11370" 2 25 6 6 \
+           $"Sync Email (optional):" 3 1 "pgp-public-keys@" 3 25 32 64 \
            2> $data
     sel=$?
     case $sel in
@@ -354,6 +363,7 @@ function keyserver_sync {
     esac
     other_keyserver_domain=$(cat $data | sed -n 1p)
     other_keyserver_port=$(cat $data | sed -n 2p)
+    other_keyserver_email=$(cat $data | sed -n 3p)
     if [[ "$other_keyserver_domain" != *'.'* ]]; then
         return
     fi
@@ -371,6 +381,15 @@ function keyserver_sync {
     fi
     if [ ${#other_keyserver_port} -lt 4 ]; then
         return
+    fi
+    if [[ "$other_keyserver_email" != "pgp-public-keys@" ]]; then
+        if [[ "$other_keyserver_email" == *"@"* ]]; then
+            keyserver_create_mailsync
+            if ! grep -q "$other_keyserver_email" /etc/sks/mailsync; then
+                echo "$other_keyserver_email" >> /etc/sks/mailsync
+                chown -Rc debian-sks: /etc/sks/mailsync
+            fi
+        fi
     fi
     keyserver_create_membership
     if grep -q "$other_keyserver_domain $other_keyserver_port" /etc/sks/membership; then
@@ -686,6 +705,7 @@ function install_keyserver {
     if ! grep -q "pgp-public-keys" /etc/aliases; then
         echo 'pgp-public-keys:      "|/usr/lib/sks/sks_add_mail /etc/sks"' >> /etc/aliases
     fi
+    chown -Rc debian-sks: /etc/sks/mailsync
 
     systemctl enable sks
     systemctl restart sks
