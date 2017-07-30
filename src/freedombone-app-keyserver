@@ -56,6 +56,33 @@ function check_keyserver_directory_size {
     echo "0"
 }
 
+function keyserver_watchdog {
+    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    ADMIN_EMAIL_ADDRESS=${ADMIN_USERNAME}@${HOSTNAME}
+    keyserver_size_warning=$"The SKS keyserver database is getting large. Check that you aren't being spammed"
+    keyserver_disabled_warning=$"The SKS keyserver has been disabled because it is getting too large. This is to prevent flooding attacks from crashing the server."
+    keyserver_mail_subject_line=$"${PROJECT_NAME} keyserver warning"
+    keyserver_mail_subject_line_disabled=$"${PROJECT_NAME} keyserver disabled"
+    read_config_param KEYSERVER_DOMAIN_NAME
+    keyserver_watchdog_script=/etc/cron.hourly/keyserver-watchdog
+    echo '#!/bin/bash' > $keyserver_watchdog_script
+    echo "dirsize=\$(du /var/lib/sks/DB | awk -F ' ' '{print \$1}')" >> $keyserver_watchdog_script
+    echo 'if [ $dirsize -gt 450000 ]; then' >> $keyserver_watchdog_script
+
+    echo "  echo \"$keyserver_size_warning\" | mail -s \"$keyserver_mail_subject_line\" $ADMIN_EMAIL_ADDRESS" >> $keyserver_watchdog_script
+
+    echo '  if [ $dirsize -gt 500000 ]; then' >> $keyserver_watchdog_script
+    echo "    nginx_dissite $KEYSERVER_DOMAIN_NAME" >> $keyserver_watchdog_script
+    echo '    systemctl stop sks' >> $keyserver_watchdog_script
+    echo '    systemctl disable sks' >> $keyserver_watchdog_script
+    echo "    echo \"$keyserver_disabled_warning\" | mail -s \"$keyserver_mail_subject_line_disabled\" $ADMIN_EMAIL_ADDRESS" >> $keyserver_watchdog_script
+    echo '  fi' >> $keyserver_watchdog_script
+    echo 'fi' >> $keyserver_watchdog_script
+
+    chmod +x $keyserver_watchdog_script
+}
+
+
 function configure_firewall_for_keyserver {
     if [[ $ONION_ONLY != "no" ]]; then
         return
@@ -88,6 +115,8 @@ function reconfigure_keyserver {
 }
 
 function upgrade_keyserver {
+    keyserver_watchdog
+
     CURR_KEYSERVER_WEB_COMMIT=$(get_completion_param "keyserver web commit")
     if [[ "$CURR_KEYSERVER_WEB_COMMIT" == "$KEYSERVER_WEB_COMMIT" ]]; then
         return
@@ -260,6 +289,9 @@ function restore_remote_keyserver {
 
 function remove_keyserver {
     systemctl stop sks
+    if [ -f /etc/cron.hourly/keyserver-watchdog ]; then
+        rm /etc/cron.hourly/keyserver-watchdog
+    fi
     apt-get -qy remove sks dirmngr
 
     read_config_param "KEYSERVER_DOMAIN_NAME"
@@ -769,6 +801,8 @@ function install_keyserver {
     set_completion_param "keyserver domain" "$KEYSERVER_DOMAIN_NAME"
     set_completion_param "keyserver onion domain" "$KEYSERVER_ONION_HOSTNAME"
     set_completion_param "sks onion domain" "$SKS_ONION_HOSTNAME"
+
+    keyserver_watchdog
 
     APP_INSTALLED=1
 }
