@@ -1,4 +1,4 @@
-#!/bin/bash
+emacs#!/bin/bash
 #
 # .---.                  .              .
 # |                      |              |
@@ -175,9 +175,13 @@ function upgrade_ghost {
         return
     fi
     cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+
+    npm i -g ghost-cli
     /usr/local/bin/ghost update
+
     ghost_replace_services
     ghost_remove_offsite_links
+
     chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
     systemctl restart ghost
 }
@@ -378,7 +382,17 @@ function install_ghost {
 
     # now install ghost itself
     npm install -g ghost-cli
-    ghost install local
+
+    GHOST_ONION_HOSTNAME=$(add_onion_service ghost 80 ${GHOST_ONION_PORT})
+
+    ghost install local --port ${GHOST_PORT}
+
+    # kill the started ghost process
+    kill_pid=$(ps aux | grep "ghost run" | awk -F ' ' '{print $2}' | head -n 1)
+    kill $kill_pid
+
+    # NOTE: this has to be http, not https
+    sed -i "s|\"url\":|\"url\": \"http://${GHOST_DOMAIN_NAME}/\",|g" /var/www/${GHOST_DOMAIN_NAME}/htdocs/config.development.json
 
     adduser --system --home=/var/www/${GHOST_DOMAIN_NAME}/htdocs/ --group ghost
 
@@ -392,7 +406,7 @@ function install_ghost {
     echo 'User=ghost' >> /etc/systemd/system/ghost.service
     echo 'Group=ghost' >> /etc/systemd/system/ghost.service
     echo "WorkingDirectory=/var/www/${GHOST_DOMAIN_NAME}/htdocs" >> /etc/systemd/system/ghost.service
-    echo "ExecStart=/usr/local/bin/ghost run" >> /etc/systemd/system/ghost.service
+    echo "ExecStart=/usr/local/bin/ghost run -D" >> /etc/systemd/system/ghost.service
     echo "ExecStop=/usr/local/bin/ghost stop" >> /etc/systemd/system/ghost.service
     echo "ExecRestart=/usr/local/bin/ghost restart" >> /etc/systemd/system/ghost.service
     echo 'Restart=always' >> /etc/systemd/system/ghost.service
@@ -409,8 +423,6 @@ function install_ghost {
     systemctl enable ghost
     systemctl daemon-reload
     systemctl start ghost
-
-    GHOST_ONION_HOSTNAME=$(add_onion_service ghost 80 ${GHOST_ONION_PORT})
 
     if [[ ${ONION_ONLY} == "no" ]]; then
         function_check nginx_http_redirect
