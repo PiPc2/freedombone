@@ -27,7 +27,6 @@ install:
 	cp img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
 	cp img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
 	cp src/* ${DESTDIR}${PREFIX}/bin
-#	cp src/${APP}-controlpanel ${DESTDIR}${PREFIX}/bin/control
 	cp src/${APP}-mesh-batman ${DESTDIR}${PREFIX}/bin/batman
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
