@@ -326,11 +326,26 @@ function encrypt_all_email {
     fi
 
     if [ -f /usr/local/bin/${PROJECT_NAME}-encrypt-mail ]; then
-        cp /usr/local/bin/${PROJECT_NAME}-encrypt-mail /usr/bin/encmaildir
+        if [ ! -f /usr/bin/encmaildir ]; then
+            cp /usr/local/bin/${PROJECT_NAME}-encrypt-mail /usr/bin/encmaildir
+        else
+            HASH1=$(sha256sum /usr/local/bin/${PROJECT_NAME}-encrypt-mail | awk -F ' ' '{print $1}')
+            HASH2=$(sha256sum /usr/bin/encmaildir | awk -F ' ' '{print $1}')
+            if [[ "$HASH1" != "$HASH2" ]]; then
+                cp /usr/local/bin/${PROJECT_NAME}-encrypt-mail /usr/bin/encmaildir
+            fi
+        fi
     else
-        cp /usr/bin/${PROJECT_NAME}-encrypt-mail /usr/bin/encmaildir
+        if [ ! -f /usr/bin/encmaildir ]; then
+            cp /usr/bin/${PROJECT_NAME}-encrypt-mail /usr/bin/encmaildir
+        else
+            HASH1=$(sha256sum /usr/bin/${PROJECT_NAME}-encrypt-mail | awk -F ' ' '{print $1}')
+            HASH2=$(sha256sum /usr/bin/encmaildir | awk -F ' ' '{print $1}')
+            if [[ "$HASH1" != "$HASH2" ]]; then
+                cp /usr/bin/${PROJECT_NAME}-encrypt-mail /usr/bin/encmaildir
+            fi
+        fi
     fi
-    chmod +x /usr/bin/encmaildir
 
     if [[ $(is_completed $FUNCNAME) == "1" ]]; then
         return
@@ -497,16 +512,35 @@ function email_archiving {
 
     # ensure that the mail archive script is up to date
     if [ -f /usr/local/bin/${PROJECT_NAME}-archive-mail ]; then
-        cp /usr/local/bin/${PROJECT_NAME}-archive-mail /etc/cron.daily/archivemail
+        if [ ! -f /etc/cron.daily/archivemail ]; then
+            cp /usr/local/bin/${PROJECT_NAME}-archive-mail /etc/cron.daily/archivemail
+            chmod +x /etc/cron.daily/archivemail
+        else
+            HASH1=$(sha256sum /usr/local/bin/${PROJECT_NAME}-archive-mail | awk -F ' ' '{print $1}')
+            HASH2=$(sha256sum /etc/cron.daily/archivemail | awk -F ' ' '{print $1}')
+            if [[ "$HASH1" != "$HASH2" ]]; then
+                cp /usr/local/bin/${PROJECT_NAME}-archive-mail /etc/cron.daily/archivemail
+                chmod +x /etc/cron.daily/archivemail
+            fi
+        fi
     else
         if [ -f /usr/bin/${PROJECT_NAME}-archive-mail ]; then
-            cp /usr/bin/${PROJECT_NAME}-archive-mail /etc/cron.daily/archivemail
+            if [ ! -f /etc/cron.daily/archivemail ]; then
+                cp /usr/bin/${PROJECT_NAME}-archive-mail /etc/cron.daily/archivemail
+                chmod +x /etc/cron.daily/archivemail
+            else
+                HASH1=$(sha256sum /usr/local/bin/${PROJECT_NAME}-archive-mail | awk -F ' ' '{print $1}')
+                HASH2=$(sha256sum /etc/cron.daily/archivemail | awk -F ' ' '{print $1}')
+                if [[ "$HASH1" != "$HASH2" ]]; then
+                    cp /usr/local/bin/${PROJECT_NAME}-archive-mail /etc/cron.daily/archivemail
+                    chmod +x /etc/cron.daily/archivemail
+                fi
+            fi
         else
             echo "/usr/bin/${PROJECT_NAME}-archive-mail was not found. ${PROJECT_NAME} might not have fully installed."
             exit 62379
         fi
     fi
-    chmod +x /etc/cron.daily/archivemail
 
     # update to the next commit
     function_check set_repo_commit
@@ -526,7 +560,15 @@ function email_archiving {
     git checkout $CLEANUP_MAILDIR_COMMIT -b $CLEANUP_MAILDIR_COMMIT
     set_completion_param "cleanup-maildir commit" "$CLEANUP_MAILDIR_COMMIT"
 
-    cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
+    if [ ! -f /usr/bin/cleanup-maildir ]; then
+        cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
+    else
+        HASH1=$(sha256sum $INSTALL_DIR/cleanup-maildir/cleanup-maildir | awk -F ' ' '{print $1}')
+        HASH2=$(sha256sum /usr/bin/cleanup-maildir | awk -F ' ' '{print $1}')
+        if [[ "$HASH1" != "$HASH2" ]]; then
+            cp $INSTALL_DIR/cleanup-maildir/cleanup-maildir /usr/bin
+        fi
+    fi
 
     mark_completed $FUNCNAME
 }
@@ -1621,7 +1663,7 @@ function configure_gpg {
 }
 
 function refresh_gpg_keys {
-    REFRESH_GPG_KEYS_SCRIPT=/usr/bin/update-gpg-keys
+    REFRESH_GPG_KEYS_SCRIPT=/tmp/update-gpg-keys
     echo '#!/bin/bash' > $REFRESH_GPG_KEYS_SCRIPT
     echo "if [ -f /usr/local/bin/${PROJECT_NAME}-sec ]; then" >> $REFRESH_GPG_KEYS_SCRIPT
     echo "    /usr/bin/timeout 600 /usr/local/bin/${PROJECT_NAME}-sec --refresh yes" >> $REFRESH_GPG_KEYS_SCRIPT
@@ -1631,6 +1673,18 @@ function refresh_gpg_keys {
     echo 'exit 0' >> $REFRESH_GPG_KEYS_SCRIPT
     chmod +x $REFRESH_GPG_KEYS_SCRIPT
 
+    if [ ! -f /usr/bin/update-gpg-keys ]; then
+        cp $REFRESH_GPG_KEYS_SCRIPT /usr/bin/update-gpg-keys
+    else
+        HASH1=$(sha256sum $REFRESH_GPG_KEYS_SCRIPT | awk -F ' ' '{print $1}')
+        HASH2=$(sha256sum /usr/bin/update-gpg-keys | awk -F ' ' '{print $1}')
+        if [[ "$HASH1" != "$HASH2" ]]; then
+            cp $REFRESH_GPG_KEYS_SCRIPT /usr/bin/update-gpg-keys
+        fi
+        rm $REFRESH_GPG_KEYS_SCRIPT
+    fi
+
+    REFRESH_GPG_KEYS_SCRIPT=/usr/bin/update-gpg-keys
     if grep -q "${PROJECT_NAME}-sec" /etc/crontab; then
         sed -i "/${PROJECT_NAME}-sec /d" /etc/crontab
     fi
@@ -1639,7 +1693,9 @@ function refresh_gpg_keys {
         echo "$GPG_REFRESH_TIME            */$REFRESH_GPG_KEYS_HOURS *   *   *   root cronic $REFRESH_GPG_KEYS_SCRIPT" >> /etc/crontab
         systemctl restart cron
     else
-        sed -i "s|root $REFRESH_GPG_KEYS_SCRIPT.*|root cronic $REFRESH_GPG_KEYS_SCRIPT|g" /etc/crontab
+        if ! grep "root cronic $REFRESH_GPG_KEYS_SCRIPT" /etc/crontab; then
+            sed -i "s|root $REFRESH_GPG_KEYS_SCRIPT.*|root cronic $REFRESH_GPG_KEYS_SCRIPT|g" /etc/crontab
+        fi
     fi
 }
 

@@ -495,7 +495,13 @@ time, are stored in the following directories by default:\n\n/lib\n/lib64\n/usr/
                   printf '\n######################\n\nSTIG-ID:RHEL-06-000047\n\nVulnerability Discussion: System binaries are executed by privileged users, as well as system services, and restrictive permissions are necessary to ensure execution of these programs cannot be co-opted.\n\nFix text: System executables are stored in the following directories by default:\n\n/bin\n/usr/bin\n/usr/local/bin\n/sbin\n/usr/sbin\n/usr/local/sbin\n\nIf any file in these directories is found to be group-writable or world-writable, correct its permission with the following command:\n\n#chmod go-w [FILE]\n\n######################\n\n' >> $LOG
               fi
               ;;
-    V-38472)  if [ "$3" = "en" ]; then
+    V-38472)  find -L /bin  \! -user root  -exec ls -l {} \;
+              find -L /usr/bin  \! -user root  -exec ls -l {} \;
+              find -L /usr/local/bin  \! -user root  -exec ls -l {} \;
+              find -L /sbin  \! -user root  -exec ls -l {} \;
+              find -L /usr/sbin  \! -user root  -exec ls -l {} \;
+              find -L /usr/local/sbin  \! -user root  -exec ls -l {} \;
+              if [ "$3" = "en" ]; then
                   log_msg $2 'All system command files must be owned by root.'
               else
                   log_msg $2 '所有系统命令文件的属主必须为root用户。'

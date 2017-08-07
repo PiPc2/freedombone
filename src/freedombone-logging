@@ -40,6 +40,14 @@ WEBSERVER_LOG_LEVEL='warn'
 # Also the shred command can be very slow on Beaglebone Black
 REMOVE_FILES_COMMAND='rm -rf'
 
+source /usr/local/bin/${PROJECT_NAME}-vars
+
+UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+for f in $UTILS_FILES
+do
+    source $f
+done
+
 APP_FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
 for f in $APP_FILES
 do
@@ -83,6 +91,9 @@ function turn_logging_off {
 }
 
 function turn_off_rsys_logging {
+    if ! grep -q '/var/log/auth.log' /etc/rsyslog.conf; then
+        return
+    fi
     sed -i 's|mail,news.none.*|mail,news.none      /dev/null|g' /etc/rsyslog.conf
     sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /dev/null|g' /etc/rsyslog.conf
     sed -i 's|mail.info.*|mail.info            /dev/null|g' /etc/rsyslog.conf
@@ -106,6 +117,9 @@ function turn_off_rsys_logging {
 }
 
 function turn_on_rsys_logging {
+    if grep -q '/var/log/auth.log' /etc/rsyslog.conf; then
+        return
+    fi
     sed -i 's|mail,news.none.*|mail,news.none      -/var/log/messages|g' /etc/rsyslog.conf
     sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /var/log/auth.log|g' /etc/rsyslog.conf
     sed -i 's|mail.info.*|mail.info            -/var/log/mail.info|g' /etc/rsyslog.conf
@@ -127,10 +141,6 @@ fi
 if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
     turn_logging_on
 
-    if [ -f /etc/fail2ban/fail2ban.conf ]; then
-        sed -i 's|loglevel.*|loglevel = 3|g' /etc/fail2ban/fail2ban.conf
-        sed -i 's|logtarget.*|logtarget = /var/log/fail2ban.log|g' /etc/fail2ban/fail2ban.conf
-    fi
     if [ -d /etc/tor ]; then
         if [ ! -d /var/log/tor ]; then
             mkdir /var/log/tor
@@ -238,11 +248,6 @@ else
             sed -i 's|log_error =.*|log_error = /dev/null|g' /etc/mysql/my.cnf
         fi
     fi
-    if [ -f /etc/fail2ban/fail2ban.conf ]; then
-        sed -i 's|loglevel.*|loglevel = 1|g' /etc/fail2ban/fail2ban.conf
-        sed -i 's|logtarget.*|logtarget = /dev/null|g' /etc/fail2ban/fail2ban.conf
-        $REMOVE_FILES_COMMAND /var/log/fail2ban.*
-    fi
     turn_off_rsys_logging
 fi
 
@@ -285,9 +290,6 @@ if [ -f /etc/mumble-server.ini ]; then
 fi
 if [ -d /var/www/radicale ]; then
     systemctl restart radicale
-fi
-if [ -d /etc/fail2ban ]; then
-    systemctl restart fail2ban
 fi
 if [ -d /etc/matrix ]; then
     systemctl restart matrix

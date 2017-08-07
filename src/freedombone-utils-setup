@@ -145,30 +145,47 @@ function separate_tmp_filesystem {
 }
 
 function proc_filesystem_settings {
-    sed -i 's|proc /proc proc defaults |proc /proc proc defaults,nodev,nosuid |g' /etc/fstab
+    if ! grep -q "proc proc defaults,nodev,nosuid " /etc/fstab; then
+       sed -i 's|proc /proc proc defaults |proc /proc proc defaults,nodev,nosuid |g' /etc/fstab
+    fi
 }
 
 function remove_bluetooth {
-    rmmod -f bnep
-    rmmod -f bluetooth
+    bluetooth_changed=
+    bnep_exists=$(lsmod | grep bnep)
+    if [[ "$bnep_exists" == "bnep"* ]]; then
+        rmmod -f bnep
+        bluetooth_changed=1
+    fi
+    bluetooth_exists=$(lsmod | grep bluetooth)
+    if [[ "$bluetooth_exists" == "bluetooth"* ]]; then
+        rmmod -f bluetooth
+        bluetooth_changed=1
+    fi
     if [ -f /etc/default/bluetooth ]; then
         if grep -q "BLUETOOTH_ENABLED=" /etc/default/bluetooth; then
             sed -i 's|BLUETOOTH_ENABLED=.*|BLUETOOTH_ENABLED=0|g' /etc/default/bluetooth
         else
             echo "BLUETOOTH_ENABLED=0" >> /etc/default/bluetooth
         fi
+        bluetooth_changed=1
     fi
     if ! grep -q 'blacklist bnep' /etc/modprobe.d/bluetooth.conf; then
         echo 'blacklist bnep' >> /etc/modprobe.d/bluetooth.conf
+        bluetooth_changed=1
     fi
     if ! grep -q 'blacklist btusb' /etc/modprobe.d/bluetooth.conf; then
         echo 'blacklist btusb' >> /etc/modprobe.d/bluetooth.conf
+        bluetooth_changed=1
     fi
     if ! grep -q 'blacklist bluetooth' /etc/modprobe.d/bluetooth.conf; then
         echo 'blacklist bluetooth' >> /etc/modprobe.d/bluetooth.conf
+        bluetooth_changed=1
     fi
-    update-initramfs -u -k `uname -r` -v
-    update-rc.d bluetooth remove
+    if [ $bluetooth_changed ]; then
+        update-initramfs -u -k `uname -r` -v
+        update-rc.d bluetooth remove
+    fi
 }
 
 function running_as_root {
@@ -201,11 +218,17 @@ function install_backports_kernel {
     architecture_type=$(uname -a)
 
     if [[ "$architecture_type" == *"amd64"* ]]; then
-        apt-get -yq install linux-image-amd64
+        package_installed=$(dpkg-query -W -f='${Package}\n' linux-image-amd64 2>/dev/null)
+        if [ ! $package_installed ]; then
+            apt-get -yq install linux-image-amd64
+        fi
     fi
 }
 
 function turn_off_rsys_logging {
+    if grep -q '/dev/null' /etc/rsyslog.conf; then
+        return
+    fi
     sed -i 's|mail,news.none.*|mail,news.none      /dev/null|g' /etc/rsyslog.conf
     sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /dev/null|g' /etc/rsyslog.conf
     sed -i 's|mail.info.*|mail.info            /dev/null|g' /etc/rsyslog.conf
@@ -265,7 +288,7 @@ function initial_setup {
 
 function setup_grub {
     if [[ $ARCHITECTURE == 'qemu'* || $ARCHITECTURE == 'amd64' || $ARCHITECTURE == 'x86_64' || $ARCHITECTURE == 'i686' || $ARCHITECTURE == 'i386' ]]; then
-        if ! grep -q 'iframes=0' /etc/default/grub; then
+        if ! grep -q 'ifnames=0' /etc/default/grub; then
             sed -i 's|GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT="quiet ifnames=0 slub_debug=FZP slab_nomerge page_poison=1"|g' /etc/default/grub
             update-grub
         fi
@@ -377,7 +400,9 @@ function mark_admin_user_account {
 }
 
 function remove_instructions_from_motd {
-    sed -i '/## /d' /etc/motd
+    if grep -q "## " /etc/motd; then
+        sed -i '/## /d' /etc/motd
+    fi
 }
 
 function remove_default_user {
@@ -430,7 +455,10 @@ function remove_management_engine_interface {
 }
 
 function set_login_umask {
-    sed -i 's|UMASK\t.*|UMASK\t\t077|g' /etc/login.defs
+    logindefs_umask=$(cat /etc/login.defs | grep UMASK | grep -v '#')
+    if [[ "$logindefs_umask" != *'077' ]]; then
+        sed -i 's|UMASK\t.*|UMASK\t\t077|g' /etc/login.defs
+    fi
 }
 
 function disable_deferred_execution {
@@ -451,13 +479,13 @@ function set_max_login_tries {
     if ! grep -q ' deny=' /etc/pam.d/common-auth; then
         sed -i "/pam_deny.so/a auth    required\t\t\tpam_tally.so    onerr=fail no_lock_time per_user deny=$max_tries" /etc/pam.d/common-auth
     else
-        sed -i "s| deny=.*| deny=$max_tries|g" /etc/pam.d/common-auth
+        if ! grep -q " deny=$max_tries" /etc/pam.d/common-auth; then
+            sed -i "s| deny=.*| deny=$max_tries|g" /etc/pam.d/common-auth
+        fi
     fi
 
-    if ! grep -q ' deny=' /etc/pam.d/common-account; then
+    if ! grep -q 'pam_tally.so' /etc/pam.d/common-account; then
         sed -i '/pam_deny.so/a account required\t\t\tpam_tally.so' /etc/pam.d/common-account
-    else
-        sed -i "s| deny=.*| deny=$max_tries|g" /etc/pam.d/common-account
     fi
 }
 
@@ -466,14 +494,18 @@ function limit_user_logins {
     if ! grep -q '* hard maxsyslogins' /etc/security/limits.conf; then
         echo '* hard maxsyslogins 10' >> /etc/security/limits.conf
     else
-        sed -i 's|hard maxsyslogins.*|hard maxsyslogins 10|g' /etc/security/limits.conf
+        if ! grep -q '* hard maxsyslogins 10' /etc/security/limits.conf; then
+            sed -i 's|hard maxsyslogins.*|hard maxsyslogins 10|g' /etc/security/limits.conf
+        fi
     fi
 
     # Max logins for each user
     if ! grep -q '* hard maxlogins' /etc/security/limits.conf; then
         echo '* hard maxlogins 2' >> /etc/security/limits.conf
     else
-        sed -i 's|hard maxlogins.*|hard maxlogins 2|g' /etc/security/limits.conf
+        if ! grep -q '* hard maxlogins 2' /etc/security/limits.conf; then
+            sed -i 's|hard maxlogins.*|hard maxlogins 2|g' /etc/security/limits.conf
+        fi
     fi
 }
 
@@ -493,7 +525,10 @@ function set_sticky_bits {
 }
 
 function disable_ctrl_alt_del {
-    ln -sf /dev/null /etc/systemd/system/ctrl-alt-del.target
+    ctrl_alt_del=$(ls -l /etc/systemd/system/ctrl-alt-del.target)
+    if [[ "$ctrl_alt_del" !=  *'/dev/null' ]]; then
+        ln -sf /dev/null /etc/systemd/system/ctrl-alt-del.target
+    fi
 }
 
 function lockdown_permissions {
@@ -599,10 +634,12 @@ function lockdown_permissions {
 }
 
 function disable_core_dumps {
-    if ! grep -q '* hard core 0' /etc/security/limits.conf; then
+    if ! grep -q '* hard core' /etc/security/limits.conf; then
         echo '* hard core 0' >> /etc/security/limits.conf
     else
-        sed -i 's|hard core.*|hard core 0|g' /etc/security/limits.conf
+        if ! grep -q '* hard core 0' /etc/security/limits.conf; then
+            sed -i 's|hard core.*|hard core 0|g' /etc/security/limits.conf
+        fi
     fi
 }
 
@@ -614,7 +651,9 @@ function dummy_nologin_command {
 }
 
 function disable_null_passwords {
-    sed -i 's| nullok_secure||g' /etc/pam.d/common-auth
+    if grep -q ' nullok_secure' /etc/pam.d/common-auth; then
+        sed -i 's| nullok_secure||g' /etc/pam.d/common-auth
+    fi
 }
 
 function create_usb_canary {
@@ -665,12 +704,45 @@ function setup_firewall {
 
 function setup_powerline {
     if [ -f ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ]; then
-        cp ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ~/.powerline.bash
-        cp ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline /etc/skel/.powerline.bash
+        if [ ! -f ~/.powerline.bash ]; then
+            cp ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ~/.powerline.bash
+        else
+            HASH1=$(sha256sum ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline | awk -F ' ' '{print $1}')
+            HASH2=$(sha256sum ~/.powerline.bash | awk -F ' ' '{print $1}')
+            if [[ "$HASH1" != "$HASH2" ]]; then
+                cp ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ~/.powerline.bash
+            fi
+        fi
+        if [ ! -f /etc/skel/.powerline.bash ]; then
+            cp ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline /etc/skel/.powerline.bash
+        else
+            HASH1=$(sha256sum ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline | awk -F ' ' '{print $1}')
+            HASH2=$(sha256sum /etc/skel/.powerline.bash | awk -F ' ' '{print $1}')
+            if [[ "$HASH1" != "$HASH2" ]]; then
+                cp ~/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline /etc/skel/.powerline.bash
+            fi
+        fi
     else
         if [ -f /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ]; then
-            cp /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ~/.powerline.bash
-            cp /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline /etc/skel/.powerline.bash
+            if [ ! -f ~/.powerline.bash ]; then
+                cp /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ~/.powerline.bash
+            else
+                HASH1=$(sha256sum /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline | awk -F ' ' '{print $1}')
+                HASH2=$(sha256sum ~/.powerline.bash | awk -F ' ' '{print $1}')
+                if [[ "$HASH1" != "$HASH2" ]]; then
+                    cp /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline ~/.powerline.bash
+                fi
+            fi
+
+            if [ ! -f /etc/skel/.powerline.bash ]; then
+                cp /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline /etc/skel/.powerline.bash
+            else
+                HASH1=$(sha256sum /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline | awk -F ' ' '{print $1}')
+                HASH2=$(sha256sum /etc/skel/.powerline.bash | awk -F ' ' '{print $1}')
+                if [[ "$HASH1" != "$HASH2" ]]; then
+                    cp /home/${MY_USERNAME}/${PROJECT_NAME}/src/${PROJECT_NAME}-powerline /etc/skel/.powerline.bash
+                fi
+            fi
         fi
     fi
     if ! grep -q "powerline" ~/.bashrc; then
@@ -687,9 +759,11 @@ function setup_powerline {
 
 function congestion_control {
     # see /proc/sys/net/ipv4/tcp_congestion_control
-    echo 'net.core.default_qdisc=fq' > /etc/sysctl.d/10-custom-kernel-bbr.conf
-    echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.d/10-custom-kernel-bbr.conf
-    sysctl --system
+    if [ ! -f /etc/sysctl.d/10-custom-kernel-bbr.conf ]; then
+        echo 'net.core.default_qdisc=fq' > /etc/sysctl.d/10-custom-kernel-bbr.conf
+        echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.d/10-custom-kernel-bbr.conf
+        sysctl --system
+    fi
 }
 
 function setup_utils {
