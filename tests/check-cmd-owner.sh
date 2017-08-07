@@ -7,7 +7,6 @@ if [ -d "/bin" ];then
     if [ $COUNT -eq 0 ];then
         :
     else
-        find -L /bin  \! -user root  -exec ls -l {} \;
         exit 1
     fi
 fi
@@ -18,7 +17,6 @@ if [ -d "/usr/bin" ];then
     if [ $COUNT -eq 0 ];then
         :
     else
-        find -L /usr/bin  \! -user root  -exec ls -l {} \;
         exit 1
     fi
 fi
@@ -29,7 +27,6 @@ if [ -d "/usr/local/bin" ];then
     if [ $COUNT -eq 0 ];then
         :
     else
-        find -L /usr/local/bin  \! -user root  -exec ls -l {} \;
         exit 1
     fi
 fi
@@ -40,7 +37,6 @@ if [ -d "/sbin" ];then
     if [ $COUNT -eq 0 ];then
         :
     else
-        find -L /sbin  \! -user root  -exec ls -l {} \;
         exit 1
     fi
 fi
@@ -51,7 +47,6 @@ if [ -d "/usr/sbin" ];then
     if [ $COUNT -eq 0 ];then
         :
     else
-        find -L /usr/sbin  \! -user root  -exec ls -l {} \;
         exit 1
     fi
 fi
@@ -62,7 +57,6 @@ if [ -d "/usr/local/sbin" ];then
     if [ $COUNT -eq 0 ];then
         :
     else
-        find -L /usr/local/sbin  \! -user root  -exec ls -l {} \;
         exit 1
     fi
 fi
