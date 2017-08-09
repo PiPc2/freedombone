@@ -129,8 +129,43 @@ if [[ $USB_DRIVE == *"dev"* ]]; then
 fi
 
 function any_key {
-    echo ' '
-    read -n1 -r -p $"Press any key to continue..." key
+    echo ''
+    read -n1 -rsp $"Press any key to continue..." key
+}
+
+function any_key_verify {
+    echo ''
+    read -n1 -rsp $"Press any key to continue or C to check a hash..." key
+    if [[ "$key" != 'c' && "$key" != 'C' ]]; then
+        return
+    fi
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Check tripwire hash" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Paste your tripwire hash below and it will be checked against the current database" 12 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            GIVEN_HASH=$(<$data)
+            if [ ${#GIVEN_HASH} -gt 8 ]; then
+                if [[ "$GIVEN_HASH" == *' '* ]]; then
+                    dialog --title $"Check tripwire" \
+                           --msgbox $"\nThe hash should not contain any spaces" 10 40
+                else
+                    DBHASH=$(sha512sum  /var/lib/tripwire/${HOSTNAME}.twd | awk -F ' ' '{print $1}')
+                    if [[ "$DBHASH" == "$GIVEN_HASH" ]]; then
+                        dialog --title $"Check tripwire" \
+                               --msgbox $"\nSuccess\n\nThe hash you gave matches the current tripwire database" 10 40
+                    else
+                        dialog --title $"Check tripwire" \
+                               --msgbox $"\nFailed\n\nThe hash you gave does not match the current tripwire database. This might be because you reset the tripwire, or there could have been an unauthorised modification of the system" 12 50
+                    fi
+                fi
+            fi
+            ;;
+    esac
 }
 
 function get_app_icann_address {
@@ -1325,7 +1360,7 @@ function reset_tripwire {
     else
         echo $'ERROR: tripwire database was not created'
     fi
-    any_key
+    any_key_verify
 }
 
 function format_drive {
