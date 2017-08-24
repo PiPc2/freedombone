@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -33,6 +33,20 @@ SUSPENDED_SITE=
 
 # Dummy password used for the backup key
 BACKUP_DUMMY_PASSWORD='backup'
+
+BACKUP_TEMP_DIRECTORY=/root/.backuptemp
+
+function create_backups_temp_directory {
+    if [ ! -d $BACKUP_TEMP_DIRECTORY ]; then
+        mkdir $BACKUP_TEMP_DIRECTORY
+    fi
+}
+
+function remove_backups_temp_directory {
+    if [ -d $BACKUP_TEMP_DIRECTORY ]; then
+        rm -rf $BACKUP_TEMP_DIRECTORY
+    fi
+}
 
 function suspend_site {
     # suspends a given website
@@ -248,9 +262,10 @@ function set_obnam_client_name {
 }
 
 function backup_directory_to_usb_duplicity {
-    echo "$BACKUP_DUMMY_PASSWORD" | duplicity full --encrypt-key $MY_BACKUP_KEY_ID --full-if-older-than 4W --exclude-other-filesystems ${1} file://$USB_MOUNT/backup/${2}
+    create_backups_temp_directory
+    echo "$BACKUP_DUMMY_PASSWORD" | duplicity full --tempdir $BACKUP_TEMP_DIRECTORY --encrypt-key $MY_BACKUP_KEY_ID --full-if-older-than 4W --exclude-other-filesystems ${1} file://$USB_MOUNT/backup/${2}
     if [[ $ENABLE_BACKUP_VERIFICATION == "yes" ]]; then
-        echo "$BACKUP_DUMMY_PASSWORD" | duplicity verify --encrypt-key $MY_BACKUP_KEY_ID --full-if-older-than 4W --exclude-other-filesystems ${1} file://$USB_MOUNT/backup/${2}
+        echo "$BACKUP_DUMMY_PASSWORD" | duplicity verify --tempdir $BACKUP_TEMP_DIRECTORY --encrypt-key $MY_BACKUP_KEY_ID --full-if-older-than 4W --exclude-other-filesystems ${1} file://$USB_MOUNT/backup/${2}
         if [ ! "$?" = "0" ]; then
             umount $USB_MOUNT
             rm -rf $USB_MOUNT
@@ -260,9 +275,11 @@ function backup_directory_to_usb_duplicity {
             fi
             function_check restart_site
             restart_site
+            remove_backups_temp_directory
             exit 683252
         fi
     fi
+    remove_backups_temp_directory
 }
 
 function backup_directory_to_usb_obnam {
@@ -330,7 +347,9 @@ function restore_directory_from_usb_obnam {
 }
 
 function restore_directory_from_usb_duplicity {
-    echo "$BACKUP_DUMMY_PASSWORD" | duplicity restore --force file://$USB_MOUNT/backup/${2} ${1}
+    create_backups_temp_directory
+    echo "$BACKUP_DUMMY_PASSWORD" | duplicity restore --tempdir $BACKUP_TEMP_DIRECTORY --force file://$USB_MOUNT/backup/${2} ${1}
+    remove_backups_temp_directory
 }
 
 function restore_directory_from_usb {
@@ -357,7 +376,9 @@ function restore_directory_from_friend_obnam {
 }
 
 function restore_directory_from_friend_duplicity {
-    echo "$BACKUP_DUMMY_PASSWORD" | duplicity restore --force file://$SERVER_DIRECTORY/backup/${2} ${1}
+    create_backups_temp_directory
+    echo "$BACKUP_DUMMY_PASSWORD" | duplicity restore --tempdir $BACKUP_TEMP_DIRECTORY --force file://$SERVER_DIRECTORY/backup/${2} ${1}
+    remove_backups_temp_directory
 }
 
 function restore_directory_from_friend {
@@ -401,9 +422,10 @@ function set_user_permissions {
 }
 
 function backup_directory_to_friend_duplicity {
-    echo "$BACKUP_DUMMY_PASSWORD" | duplicity full --ssh-askpass --encrypt-key ${ADMIN_BACKUP_KEY_ID} --full-if-older-than 4W --exclude-other-filesystems ${1} $SERVER_DIRECTORY/backup/${2}
+    create_backups_temp_directory
+    echo "$BACKUP_DUMMY_PASSWORD" | duplicity full --tempdir $BACKUP_TEMP_DIRECTORY --ssh-askpass --encrypt-key ${ADMIN_BACKUP_KEY_ID} --full-if-older-than 4W --exclude-other-filesystems ${1} $SERVER_DIRECTORY/backup/${2}
     if [[ $ENABLE_BACKUP_VERIFICATION == "yes" ]]; then
-        echo "$BACKUP_DUMMY_PASSWORD" | duplicity verify --ssh-askpass --encrypt-key ${ADMIN_BACKUP_KEY_ID} --full-if-older-than 4W --exclude-other-filesystems ${1} $SERVER_DIRECTORY/backup/${2}
+        echo "$BACKUP_DUMMY_PASSWORD" | duplicity verify --tempdir $BACKUP_TEMP_DIRECTORY --ssh-askpass --encrypt-key ${ADMIN_BACKUP_KEY_ID} --full-if-older-than 4W --exclude-other-filesystems ${1} $SERVER_DIRECTORY/backup/${2}
         if [ ! "$?" = "0" ]; then
             if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
                 shred -zu ${1}/*
@@ -411,9 +433,11 @@ function backup_directory_to_friend_duplicity {
             fi
             function_check restart_site
             restart_site
+            remove_backups_temp_directory
             exit 683252
         fi
     fi
+    remove_backups_temp_directory
 }
 
 function backup_directory_to_friend_obnam {
