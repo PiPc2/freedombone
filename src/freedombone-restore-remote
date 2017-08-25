@@ -113,10 +113,11 @@ function restore_blocklist {
         echo $"Restoring blocklist"
         temp_restore_dir=/root/tempblocklist
         restore_directory_from_friend $temp_restore_dir blocklist
-        restore_directory_from_usb $temp_restore_dir blocklist
 
-        if [ -f $temp_restore_dir/root/tempbackupblocklist/${PROJECT_NAME}-firewall-domains.cfg ]; then
+        if [ -d $temp_restore_dir/root/tempbackupblocklist ]; then
             cp -f $temp_restore_dir/root/tempbackupblocklist/${PROJECT_NAME}-firewall-domains.cfg /root/${PROJECT_NAME}-firewall-domains.cfg
+        else
+            cp -f $temp_restore_dir/${PROJECT_NAME}-firewall-domains.cfg /root/${PROJECT_NAME}-firewall-domains.cfg
         fi
 
         rm -rf $temp_restore_dir
@@ -136,13 +137,25 @@ function restore_configfiles {
         temp_restore_dir=/root/tempconfigfiles
         restore_directory_from_friend $temp_restore_dir configfiles
 
-        if [ -f $temp_restore_dir/root/.nostore ]; then
-            if [ ! -f /root/.nostore ]; then
-                touch /root/.nostore
+        if [ -d $temp_restore_dir/root ]; then
+            if [ -f $temp_restore_dir/root/.nostore ]; then
+                if [ ! -f /root/.nostore ]; then
+                    touch /root/.nostore
+                fi
+            else
+                if [ -f /root/.nostore ]; then
+                    rm /root/.nostore
+                fi
             fi
         else
-            if [ -f /root/.nostore ]; then
-                rm /root/.nostore
+            if [ -f $temp_restore_dir/.nostore ]; then
+                if [ ! -f /root/.nostore ]; then
+                    touch /root/.nostore
+                fi
+            else
+                if [ -f /root/.nostore ]; then
+                    rm /root/.nostore
+                fi
             fi
         fi
 
@@ -214,11 +227,19 @@ function restore_mariadb {
         db_pass=$(cat /root/.mariadboriginal)
         if [ ${#db_pass} -gt 0 ]; then
             echo $"Restore the MariaDB user table"
-            mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+            if [ -d ${temp_restore_dir}${temp_restore_dir} ]; then
+                mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+            else
+                mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}/mysql.sql)
+            fi
             if [ ! "$?" = "0" ]; then
                 echo $"Try again using the password obtained from backup"
                 db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
-                mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+                if [ -d ${temp_restore_dir}${temp_restore_dir} ]; then
+                    mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}${temp_restore_dir}/mysql.sql)
+                else
+                    mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}/mysql.sql)
+                fi
             fi
             if [ ! "$?" = "0" ]; then
                 echo "$mysqlsuccess"
@@ -242,7 +263,7 @@ function restore_letsencrypt {
     fi
     if [ -d $SERVER_DIRECTORY/backup/letsencrypt ]; then
         echo $"Restoring Lets Encrypt settings"
-        restore_directory_from_friend / letsencrypt
+        restore_directory_from_friend /etc/letsencrypt letsencrypt
     fi
 }
 
@@ -255,7 +276,7 @@ function restore_passwordstore {
     if [ -d $SERVER_DIRECTORY/backup/passwordstore ]; then
         store_original_mariadb_password
         echo $"Restoring password store"
-        restore_directory_from_friend / passwordstore
+        restore_directory_from_friend /root/.passwords passwordstore
     fi
 }
 
@@ -267,7 +288,7 @@ function restore_tor {
     fi
     if [ -d $SERVER_DIRECTORY/backup/tor ]; then
         echo $"Restoring Tor settings"
-        restore_directory_from_friend / tor
+        restore_directory_from_friend /var/lib/tor tor
     fi
 }
 
@@ -287,15 +308,28 @@ function restore_mutt_settings {
                 echo $"Restoring Mutt settings for $USERNAME"
                 temp_restore_dir=/root/tempmutt
                 restore_directory_from_friend ${temp_restore_dir} mutt/$USERNAME
-                if [ -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc ]; then
-                    cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc /home/$USERNAME/.muttrc
-                    sed -i '/set sidebar_delim/d' /home/$USERNAME/.muttrc
-                    sed -i '/set sidebar_sort/d' /home/$USERNAME/.muttrc
-                fi
-                if [ -f ${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc ]; then
-                    cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc /etc/Muttrc
-                    sed -i '/set sidebar_delim/d' /etc/Muttrc
-                    sed -i '/set sidebar_sort/d' /etc/Muttrc
+                if [ -d ${temp_restore_dir}/home/$USERNAME/tempbackup ]; then
+                    if [ -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc ]; then
+                        cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc /home/$USERNAME/.muttrc
+                        sed -i '/set sidebar_delim/d' /home/$USERNAME/.muttrc
+                        sed -i '/set sidebar_sort/d' /home/$USERNAME/.muttrc
+                    fi
+                    if [ -f ${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc ]; then
+                        cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc /etc/Muttrc
+                        sed -i '/set sidebar_delim/d' /etc/Muttrc
+                        sed -i '/set sidebar_sort/d' /etc/Muttrc
+                    fi
+                else
+                    if [ -f ${temp_restore_dir}/.muttrc ]; then
+                        cp -f ${temp_restore_dir}/.muttrc /home/$USERNAME/.muttrc
+                        sed -i '/set sidebar_delim/d' /home/$USERNAME/.muttrc
+                        sed -i '/set sidebar_sort/d' /home/$USERNAME/.muttrc
+                    fi
+                    if [ -f ${temp_restore_dir}/Muttrc ]; then
+                        cp -f ${temp_restore_dir}/Muttrc /etc/Muttrc
+                        sed -i '/set sidebar_delim/d' /etc/Muttrc
+                        sed -i '/set sidebar_sort/d' /etc/Muttrc
+                    fi
                 fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf ${temp_restore_dir}
@@ -322,7 +356,11 @@ function restore_gpg {
                 echo $"Restoring gnupg settings for $USERNAME"
                 temp_restore_dir=/root/tempgnupg
                 restore_directory_from_friend ${temp_restore_dir} gnupg/$USERNAME
-                cp -r ${temp_restore_dir}/home/$USERNAME/.gnupg /home/$USERNAME/
+                if [ -d ${temp_restore_dir}/home/$USERNAME/.gnupg ]; then
+                    cp -r ${temp_restore_dir}/home/$USERNAME/.gnupg /home/$USERNAME/
+                else
+                    cp -r ${temp_restore_dir}/* /home/$USERNAME/.gnupg/
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf ${temp_restore_dir}
                     exit 276
@@ -356,7 +394,11 @@ function restore_procmail {
                 echo $"Restoring procmail settings for $USERNAME"
                 temp_restore_dir=/root/tempprocmail
                 restore_directory_from_friend ${temp_restore_dir} procmail/$USERNAME
-                cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.procmailrc /home/$USERNAME/
+                if [ -d ${temp_restore_dir}/home/$USERNAME/tempbackup ]; then
+                    cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.procmailrc /home/$USERNAME/
+                else
+                    cp -f ${temp_restore_dir}/.procmailrc /home/$USERNAME/.procmailrc
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf ${temp_restore_dir}
                     exit 276
@@ -383,7 +425,11 @@ function restore_spamassassin {
                 echo $"Restoring spamassassin settings for $USERNAME"
                 temp_restore_dir=/root/tempspamassassin
                 restore_directory_from_friend $temp_restore_dir spamassassin/$USERNAME
-                cp -rf $temp_restore_dir/home/$USERNAME/.spamassassin /home/$USERNAME/
+                if [ -d $temp_restore_dir/home/$USERNAME ]; then
+                    cp -rf $temp_restore_dir/home/$USERNAME/.spamassassin /home/$USERNAME/
+                else
+                    cp -rf $temp_restore_dir/* /home/$USERNAME/.spamassassin/
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 276
@@ -404,7 +450,11 @@ function restore_admin_readme {
         echo $"Restoring README"
         temp_restore_dir=/root/tempreadme
         restore_directory_from_friend $temp_restore_dir readme
-        cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/README /home/$ADMIN_USERNAME/
+        if [ -d $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup ]; then
+            cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/README /home/$ADMIN_USERNAME/
+        else
+            cp -f $temp_restore_dir/README /home/$ADMIN_USERNAME/README
+        fi
         if [ ! "$?" = "0" ]; then
             rm -rf $temp_restore_dir
             exit 276
@@ -429,7 +479,11 @@ function restore_ssh_keys {
                 echo $"Restoring ssh keys for $USERNAME"
                 temp_restore_dir=/root/tempssh
                 restore_directory_from_friend $temp_restore_dir ssh/$USERNAME
-                cp -r $temp_restore_dir/home/$USERNAME/.ssh /home/$USERNAME/
+                if [ -d $temp_restore_dir/home/$USERNAME/.ssh ]; then
+                    cp -r $temp_restore_dir/home/$USERNAME/.ssh /home/$USERNAME/
+                else
+                    cp -r $temp_restore_dir/* /home/$USERNAME/.ssh/
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -456,7 +510,11 @@ function restore_user_config {
                 echo $"Restoring config files for $USERNAME"
                 temp_restore_dir=/root/tempconfig
                 restore_directory_from_friend $temp_restore_dir config/$USERNAME
-                cp -r $temp_restore_dir/home/$USERNAME/.config /home/$USERNAME/
+                if [ -d $temp_restore_dir/home/$USERNAME ]; then
+                    cp -r $temp_restore_dir/home/$USERNAME/.config /home/$USERNAME/
+                else
+                    cp -r $temp_restore_dir/* /home/$USERNAME/.config/
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -483,7 +541,11 @@ function restore_user_monkeysphere {
                 echo $"Restoring monkeysphere ids for $USERNAME"
                 temp_restore_dir=/root/tempmonkeysphere
                 restore_directory_from_friend $temp_restore_dir monkeysphere/$USERNAME
-                cp -r $temp_restore_dir/home/$USERNAME/.monkeysphere /home/$USERNAME/
+                if [ -d $temp_restore_dir/home/$USERNAME/.monkeysphere ]; then
+                    cp -r $temp_restore_dir/home/$USERNAME/.monkeysphere /home/$USERNAME/
+                else
+                    cp -r $temp_restore_dir/* /home/$USERNAME/.monkeysphere/
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -518,7 +580,11 @@ function restore_user_fin {
                 echo $"Restoring fin files for $USERNAME"
                 temp_restore_dir=/root/tempfin
                 restore_directory_from_friend $temp_restore_dir fin/$USERNAME
-                cp -r $temp_restore_dir/home/$USERNAME/.fin /home/$USERNAME/
+                if [ -d $temp_restore_dir/home/$USERNAME/.fin ]; then
+                    cp -r $temp_restore_dir/home/$USERNAME/.fin /home/$USERNAME/
+                else
+                    cp -r $temp_restore_dir/* /home/$USERNAME/.fin/
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -545,7 +611,11 @@ function restore_user_local {
                 echo $"Restoring local files for $USERNAME"
                 temp_restore_dir=/root/templocal
                 restore_directory_from_friend $temp_restore_dir local/$USERNAME
-                cp -r $temp_restore_dir/home/$USERNAME/.local /home/$USERNAME/
+                if [ -d $temp_restore_dir/home/$USERNAME/.local ]; then
+                    cp -r $temp_restore_dir/home/$USERNAME/.local /home/$USERNAME/
+                else
+                    cp -r $temp_restore_dir/* /home/$USERNAME/.local/
+                fi
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -565,7 +635,11 @@ function restore_certs {
     if [ -d $SERVER_DIRECTORY/backup/ssl ]; then
         echo $"Restoring certificates"
         restore_directory_from_friend /root/tempssl ssl
-        cp -r /root/tempssl/etc/ssl/* /etc/ssl
+        if [ -d /root/tempssl/etc/ssl ]; then
+            cp -r /root/tempssl/etc/ssl/* /etc/ssl
+        else
+            cp -r /root/tempssl/* /etc/ssl/
+        fi
         if [ ! "$?" = "0" ]; then
             exit 276
         fi
@@ -614,12 +688,16 @@ function restore_personal_settings {
                 echo $"Restoring personal settings for $USERNAME"
                 temp_restore_dir=/root/temppersonal
                 restore_directory_from_friend $temp_restore_dir personal/$USERNAME
-                if [ -d /home/$USERNAME/personal ]; then
-                    rm -rf /home/$USERNAME/personal
+                if [ -d $temp_restore_dir/home/$USERNAME/personal ]; then
+                    if [ -d /home/$USERNAME/personal ]; then
+                        rm -rf /home/$USERNAME/personal
+                    fi
+                    mv $temp_restore_dir/home/$USERNAME/personal /home/$USERNAME
+                else
+                    cp -r $temp_restore_dir/* /home/$USERNAME/personal/
                 fi
-                mv $temp_restore_dir/home/$USERNAME/personal /home/$USERNAME
                 if [ ! "$?" = "0" ]; then
-                    exit 184
+                    exit 18437643
                 fi
                 rm -rf $temp_restore_dir
             fi
@@ -637,7 +715,11 @@ function restore_mailing_list {
         echo $"Restoring public mailing list"
         temp_restore_dir=/root/tempmailinglist
         restore_directory_from_friend $temp_restore_dir mailinglist
-        cp -r $temp_restore_dir/root/spool/mlmmj/* /var/spool/mlmmj
+        if [ -d $temp_restore_dir/root/spool/mlmmj ]; then
+            cp -r $temp_restore_dir/root/spool/mlmmj/* /var/spool/mlmmj
+        else
+            cp -r $temp_restore_dir/* /var/spool/mlmmj/
+        fi
         if [ ! "$?" = "0" ]; then
             exit 526
         fi
@@ -664,7 +746,11 @@ function restore_email {
                 if [ ! -d /home/$USERNAME/Maildir ]; then
                     mkdir /home/$USERNAME/Maildir
                 fi
-                tar -xzvf $temp_restore_dir/root/tempbackupemail/$USERNAME/maildir.tar.gz -C /
+                if [ -d $temp_restore_dir/root/tempbackupemail/$USERNAME ]; then
+                    tar -xzvf $temp_restore_dir/root/tempbackupemail/$USERNAME/maildir.tar.gz -C /
+                else
+                    tar -xzvf $temp_restore_dir/maildir.tar.gz -C /
+                fi
                 if [ ! "$?" = "0" ]; then
                     exit 927
                 fi
