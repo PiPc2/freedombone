@@ -34,6 +34,9 @@ GUILE_HASH='c707b9cf6f97ecca3a4e3e704e62b83f95f1aec28ed1535f5d0a1d36af07a015'
 EIGHTSYNC_REPO="git://git.savannah.gnu.org/8sync.git"
 EIGHTSYNC_COMMIT='8cbb7f22227c0afdd3b0bd758ebec0efba2fa1e1'
 
+GUIX_VERSION='0.13.0'
+GUIX_DOWNLOAD_URL='ftp://alpha.gnu.org/gnu/guix'
+
 function install_8sync {
     apt-get -qy install flex libunistring-dev libgc-dev autoconf texinfo
 
@@ -90,6 +93,136 @@ function install_guile {
     fi
     echo "export GUILE_PATH=/opt/guile-${GUILE_VERSION}/bin" >> ~/.bashrc
     echo 'export PATH=$PATH:$GUILE_PATH' >> ~/.bashrc
+}
+
+function install_guix_get_architecture {
+    read_config_param ARCHITECTURE
+
+    if [[ ${ARCHITECTURE} == *"386" || ${ARCHITECTURE} == *"686" ]]; then
+        CURR_ARCH='i686'
+    fi
+    if [[ ${ARCHITECTURE} == *"amd64" || ${ARCHITECTURE} == "x86_64" ]]; then
+        CURR_ARCH='x86_64'
+    fi
+    if [[ ${ARCHITECTURE} == *"arm"* ]]; then
+        CURR_ARCH='armhf'
+    fi
+    if [ ! ${CURR_ARCH} ]; then
+        echo $'No architecture specified'
+        ARCHITECTURE=$(uname -m)
+        if [[ ${ARCHITECTURE} == "arm"* ]]; then
+            CURR_ARCH='armhf'
+            echo $"Using $CURR_ARCH"
+        fi
+        if [[ ${ARCHITECTURE} == "amd"* || ${ARCHITECTURE} == "x86_64" ]]; then
+            CURR_ARCH='x86_64'
+            echo $"Using $CURR_ARCH"
+        fi
+        if [[ ${ARCHITECTURE} == *"386" || ${ARCHITECTURE} == *"686" ]]; then
+            CURR_ARCH='i686'
+            echo $"Using $CURR_ARCH"
+        fi
+    fi
+}
+
+
+function install_guix {
+    if [[ $(app_is_installed install_guix) == "1" ]]; then
+        return
+    fi
+
+    apt-get -qy install wget xz-utils
+
+    read_config_param MY_USERNAME
+    install_guix_get_architecture
+
+    if [ ! -d $INSTALL_DIR/guix ]; then
+        mkdir -p $INSTALL_DIR/guix
+    fi
+    cd $INSTALL_DIR/guix
+    if [ ! -f guix-binary-${GUIX_VERSION}.${CURR_ARCH}-linux.tar.xz ]; then
+        wget $GUIX_DOWNLOAD_URL/guix-binary-${GUIX_VERSION}.${CURR_ARCH}-linux.tar.xz
+    fi
+    if [ ! -f guix-binary-${GUIX_VERSION}.${CURR_ARCH}-linux.tar.xz ]; then
+        echo $"Unable to download guix from $GUIX_DOWNLOAD_URL"
+        exit 73826
+    fi
+    tar --warning=no-timestamp -xf guix-binary-${GUIX_VERSION}.${CURR_ARCH}-linux.tar.xz
+    if [ ! -d var/guix ]; then
+        echo $'guix directory var/guix not found'
+        exit 8726325
+    fi
+    mv var/guix /var/
+    if [ ! -d gnu ]; then
+        echo $'guix gnu directory not found'
+        exit 743383235
+    fi
+    mv gnu /
+
+    ln -sf /var/guix/profiles/per-user/root/guix-profile /root/.guix-profile
+    export GUIX_PROFILE=$HOME/.guix-profile
+    source $GUIX_PROFILE/etc/profile
+
+    # add build users
+    groupadd --system guixbuild
+    for i in `seq -w 1 10`;
+    do
+        useradd -g guixbuild -G guixbuild           \
+                -d /var/empty -s `which nologin`    \
+                -c "Guix build user $i" --system    \
+                guixbuilder$i;
+    done
+
+    if [ ! -f /root/.guix-profile/lib/systemd/system/guix-daemon.service ]; then
+        echo $'No guix systemd daemon found'
+        exit 78225548
+    fi
+    cp /root/.guix-profile/lib/systemd/system/guix-daemon.service \
+       /etc/systemd/system/
+    systemctl enable guix-daemon
+    systemctl start guix-daemon
+
+    if [ ! -d /usr/local/bin ]; then
+        mkdir -p /usr/local/bin
+    fi
+    cd /usr/local/bin
+    ln -s /var/guix/profiles/per-user/root/guix-profile/bin/guix
+
+    if [ ! -d /usr/local/share/info ]; then
+        mkdir -p /usr/local/share/info
+    fi
+    cd /usr/local/share/info
+    if [ ! -d /var/guix/profiles/per-user/root/guix-profile/share/info ]; then
+        echo $'Directory not found /var/guix/profiles/per-user/root/guix-profile/share/info'
+        exit 7835202
+    fi
+    for i in /var/guix/profiles/per-user/root/guix-profile/share/info/* ;
+    do ln -s $i ; done
+
+    if ! grep -q 'GUIX_LOCPATH' /root/.bashrc; then
+        echo 'export GUIX_LOCPATH=$HOME/.guix-profile/lib/locale' >> /root/.bashrc
+    fi
+    if ! grep -q 'GUIX_LOCPATH' /etc/skel/.bashrc; then
+        echo 'export GUIX_LOCPATH=$HOME/.guix-profile/lib/locale' >> /etc/skel/.bashrc
+    fi
+    if ! grep -q 'GUIX_LOCPATH' /home/$MY_USERNAME/.bashrc; then
+        echo 'export GUIX_LOCPATH=$HOME/.guix-profile/lib/locale' >> /home/$MY_USERNAME/.bashrc
+    fi
+    if ! grep -q 'GUIX_PROFILE' /root/.bashrc; then
+        echo 'export GUIX_PROFILE=$HOME/.guix-profile' >> /root/.bashrc
+        echo 'source $GUIX_PROFILE/etc/profile' >> /root/.bashrc
+    fi
+    if ! grep -q 'GUIX_PROFILE' /etc/skel/.bashrc; then
+        echo 'export GUIX_PROFILE=$HOME/.guix-profile' >> /etc/skel/.bashrc
+        echo 'source $GUIX_PROFILE/etc/profile' >> /etc/skel/.bashrc
+    fi
+    if ! grep -q 'GUIX_PROFILE' /home/$MY_USERNAME/.bashrc; then
+        echo 'export GUIX_PROFILE=$HOME/.guix-profile' >> /home/$MY_USERNAME/.bashrc
+        echo 'source $GUIX_PROFILE/etc/profile' >> /home/$MY_USERNAME/.bashrc
+    fi
+    guix package -i glibc-locales
+
+    install_completed install_guix
 }
 
 # NOTE: deliberately no exit 0
