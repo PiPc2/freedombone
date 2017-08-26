@@ -54,13 +54,41 @@ MATRIX_REPO="https://github.com/matrix-org/synapse"
 MATRIX_COMMIT='c45dc6c62aa2a2e83a10d8116a709dfd8c144e3c'
 REPORT_STATS="no"
 MATRIX_SECRET=
+MATRIX_EXPIRE_MONTHS=1
 
 matrix_variables=(ONION_ONLY
                   MY_USERNAME
                   MATRIX_SECRET
                   DEFAULT_DOMAIN_NAME
                   MATRIX_DOMAIN_NAME
+                  MATRIX_EXPIRE_MONTHS
                   MATRIX_CODE)
+
+function matrix_expire_old_posts {
+    read_config_param MY_USERNAME
+    read_config_param MATRIX_DOMAIN_NAME
+    read_config_param MATRIX_EXPIRE_MONTHS
+    read_config_param MATRIX_PORT
+
+    matrix_remove_posts=/usr/bin/matrix-remove
+    echo '#!/bin/bash' > $matrix_remove_posts
+    echo "cd $MATRIX_DATA_DIR" >> $matrix_remove_posts
+    echo 'ROOM=$1' >> $matrix_remove_posts
+    echo "ADMIN=\"@${MY_USERNAME}:$MATRIX_DOMAIN_NAME\"" >> $matrix_remove_posts
+    echo "TIME='$MATRIX_EXPIRE_MONTHS months ago'" >> $matrix_remove_posts
+    echo "UNIX_TIMESTAMP=\$(date +%s%3N --date='TZ=\"UTC+0\" '\"\$TIME\")" >> $matrix_remove_posts
+    echo 'BUSY="pragma busy_timeout=20000"' >> $matrix_remove_posts
+    echo "BUFFER=\$(sqlite3 homeserver.db \"\$BUSY;select event_id from events where type='m.room.message' and received_ts<'\$UNIX_TIMESTAMP' and room_id='\$ROOM' order by received_ts desc limit 1;\")" >> $matrix_remove_posts
+    echo "EVENT_ID=\$(echo \$BUFFER|awk '{print \$2}')" >> $matrix_remove_posts
+
+    echo "BUFFER=\$(sqlite3 homeserver.db \"\$BUSY;select token from access_tokens where user_id like '\$ADMIN' order by id desc limit 1;\")" >> $matrix_remove_posts
+    echo "TOKEN=\$(echo \$BUFFER|awk '{print \$2}')" >> $matrix_remove_posts
+
+    echo 'set -x' >> $matrix_remove_posts
+    echo "curl -v -X POST 'https://$MATRIX_DOMAIN_NAME/_matrix/client/r0/admin/purge_history/'\$ROOM'/'\$EVENT_ID'?access_token='\$TOKEN" >> $matrix_remove_posts
+
+    chmod +x $matrix_remove_posts
+}
 
 function logging_on_matrix {
     if [ -f /var/lib/matrix/homeserver.yaml ]; then
@@ -650,6 +678,9 @@ function install_home_server {
         fi
     fi
     chmod -R 700 $MATRIX_DATA_DIR/homeserver.db
+
+    cd $MATRIX_DATA_DIR
+    sqlite3 homeserver.db "PRAGMA auto_vacuum = FULL;"
 
     MATRIX_ONION_HOSTNAME=$(add_onion_service matrix ${MATRIX_PORT} ${MATRIX_ONION_PORT})
     echo "HiddenServicePort ${MATRIX_HTTP_PORT} 127.0.0.1:${MATRIX_FEDERATION_ONION_PORT}" >> /etc/tor/torrc
