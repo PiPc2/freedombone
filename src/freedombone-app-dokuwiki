@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2014-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2014-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -144,59 +144,7 @@ function backup_local_dokuwiki {
     fi
 }
 
-function restore_local_dokuwiki_legacy {
-    if [ -d /var/lib/dokuwiki ]; then
-        echo $"Restoring Legacy Dokuwiki installation"
-        function_check get_completion_param
-        DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
-
-        temp_restore_dir=/root/tempdokuwiki
-        function_check restore_directory_from_usb
-        if [ -d ${USB_MOUNT}/backup/dokuwiki ]; then
-            restore_directory_from_usb ${temp_restore_dir} dokuwiki
-        else
-            restore_directory_from_usb ${temp_restore_dir} wiki
-        fi
-
-        # restore the data
-        cp -r ${temp_restore_dir}/var/lib/dokuwiki/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
-        if [ ! "$?" = "0" ]; then
-            function_check restore_directory_from_usb
-            set_user_permissions
-            function_check backup_unmount_drive
-            backup_unmount_drive
-            rm -rf ${temp_restore_dir}
-            exit 73562
-        fi
-
-        # restore the users
-        cp -r ${temp_restore_dir}/var/lib/dokuwiki/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl
-        cp -r ${temp_restore_dir}/var/lib/dokuwiki/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf
-        if [ ! "$?" = "0" ]; then
-            function_check restore_directory_from_usb
-            set_user_permissions
-            function_check backup_unmount_drive
-            backup_unmount_drive
-            rm -rf ${temp_restore_dir}
-            exit 23985
-        fi
-        rm -rf ${temp_restore_dir}
-
-        chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
-        chmod -R 755 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib
-        chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/users.auth.php
-        chmod 640 /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/users.auth.php
-        chown -R www-data:www-data /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs
-        echo $"Restore of Legacy Dokuwiki complete"
-    fi
-}
-
 function restore_local_dokuwiki {
-    if [ -d ${USB_MOUNT}/backup/dokuwiki ]; then
-        restore_local_dokuwiki_legacy
-        return
-    fi
-
     echo $"Restoring Dokuwiki installation"
     function_check get_completion_param
     DOKUWIKI_DOMAIN_NAME=$(get_completion_param "dokuwiki domain")
@@ -205,7 +153,11 @@ function restore_local_dokuwiki {
     temp_restore_dir=/root/tempdokuwikidat
     function_check restore_directory_from_usb
     restore_directory_from_usb ${temp_restore_dir} dokuwikidat
-    cp -r ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
+    if [ -d ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/data ]; then
+        cp -r ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
+    else
+        cp -r ${temp_restore_dir}/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data
+    fi
     if [ ! "$?" = "0" ]; then
         function_check restore_directory_from_usb
         set_user_permissions
@@ -220,8 +172,13 @@ function restore_local_dokuwiki {
     temp_restore_dir=/root/tempdokuwikiacl
     function_check restore_directory_from_usb
     restore_directory_from_usb ${temp_restore_dir} dokuwikiacl
-    cp ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
-    cp ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/
+    if [ -d ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/lib/plugins/acl ]; then
+        cp ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        cp ${temp_restore_dir}/var/www/${DOKUWIKI_DOMAIN_NAME}/htdocs/lib/plugins/acl/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/
+    else
+        cp ${temp_restore_dir}/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        cp ${temp_restore_dir}/users.auth.php /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/conf/
+    fi
     if [ ! "$?" = "0" ]; then
         function_check restore_directory_from_usb
         set_user_permissions
@@ -257,24 +214,34 @@ function restore_remote_dokuwiki {
 
     if [ -d $SERVER_DIRECTORY/backup/dokuwikidat ]; then
         echo $"Restoring Dokuwiki data for $DOKUWIKI_DOMAIN_NAME"
-        restore_directory_from_friend /root/tempdokuwikidat dokuwikidat
-        cp -r /root/tempdokuwikidat/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/
+        temp_restore_dir=/root/tempdokuwikidat
+        restore_directory_from_friend $temp_restore_dir dokuwikidat
+        if [ -d $temp_restore_dir/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data ]; then
+            cp -r $temp_restore_dir/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/
+        else
+            cp -r $temp_restore_dir/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/data/
+        fi
         if [ ! "$?" = "0" ]; then
             exit 92634
         fi
-        rm -rf /root/tempdokuwikidat
+        rm -rf $temp_restore_dir
 
         echo $"Restore of Dokuwiki data complete"
     fi
 
     if [ -d $SERVER_DIRECTORY/backup/dokuwikiacl ]; then
         echo $"Restoring Dokuwiki users for $DOKUWIKI_DOMAIN_NAME"
-        restore_directory_from_friend /root/tempdokuwikiacl dokuwikiacl
-        cp -r /root/tempdokuwikidat/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        temp_restore_dir=/root/tempdokuwikiacl
+        restore_directory_from_friend $temp_restore_dir dokuwikiacl
+        if [ -d $temp_restore_dir/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl ]; then
+            cp -r $temp_restore_dir/var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        else
+            cp -r $temp_restore_dir/* /var/www/$DOKUWIKI_DOMAIN_NAME/htdocs/lib/plugins/acl/
+        fi
         if [ ! "$?" = "0" ]; then
             exit 735287
         fi
-        rm -rf /root/tempdokuwikiacl
+        rm -rf $temp_restore_dir
 
         echo $"Restore of Dokuwiki users complete"
     fi
