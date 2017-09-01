@@ -968,4 +968,55 @@ function install_composer {
     fi
 }
 
+function email_install_tls {
+    tls_config_file=/etc/exim4/conf.d/main/03_exim4-config_tlsoptions
+    tls_auth_config_file=/etc/exim4/conf.d/auth/30_exim4-config_examples
+    email_config_changed=
+
+    if [ ! -f $tls_config_file ]; then
+        tls_config_file=/etc/exim4/exim4.conf.template
+        tls_auth_config_file=$tls_config_file
+    fi
+    if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
+        ${PROJECT_NAME}-addcert -h exim --dhkey $DH_KEYLENGTH
+        check_certificates exim
+        cp /etc/ssl/certs/exim.dhparam /etc/exim4
+        chown root:Debian-exim /etc/exim4/exim.dhparam
+        chmod 640 /etc/exim4/exim.key /etc/exim4/exim.crt /etc/exim4/exim.dhparam
+        email_config_changed=1
+    fi
+    if ! grep -q 'MAIN_TLS_ENABLE = true' $tls_config_file; then
+        sed -i "/.ifdef MAIN_HARDCODE_PRIMARY_HOSTNAME/i\MAIN_HARDCODE_PRIMARY_HOSTNAME =\nMAIN_TLS_ENABLE = true" $tls_config_file
+        email_config_changed=1
+    fi
+    if ! grep -q "tls_on_connect_ports=465" $tls_config_file; then
+        sed -i '/SSL configuration for exim/i\tls_on_connect_ports=465' $tls_config_file
+        email_config_changed=1
+    fi
+    if grep -q '# login_saslauthd_server' $tls_auth_config_file; then
+        sed -i '/login_saslauthd_server/,/.endif/ s/# *//' $tls_auth_config_file
+        email_config_changed=1
+    fi
+    if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        if ! grep -q "MAIN_TLS_CERTKEY = /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem" $tls_config_file; then
+            sed -i "/.ifdef MAIN_TLS_CERTKEY/i\MAIN_TLS_CERTKEY = /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem" $tls_config_file
+            email_config_changed=1
+        fi
+    fi
+    if [ -f /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key ]; then
+        if ! grep -q "MAIN_TLS_PRIVATEKEY = /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key" $tls_config_file; then
+            sed -i "/.ifndef MAIN_TLS_PRIVATEKEY/i\MAIN_TLS_PRIVATEKEY = /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key" $tls_config_file
+            email_config_changed=1
+        fi
+    fi
+    if ! grep -q "SMTPLISTENEROPTIONS='-oX 465:25:587" /etc/default/exim4; then
+        sed -i "s|SMTPLISTENEROPTIONS=.*|SMTPLISTENEROPTIONS='-oX 465:25:587 -oP /var/run/exim4/exim.pid'|g" /etc/default/exim4
+        email_config_changed=1
+    fi
+    if [ $email_config_changed ]; then
+        systemctl restart saslauthd
+        systemctl restart exim4
+    fi
+}
+
 # NOTE: deliberately no exit 0
