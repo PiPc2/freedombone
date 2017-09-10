@@ -7,7 +7,8 @@ if [ -d "/lib" ];then
         if [ $COUNT -eq 0 ];then
                 :
         else
-                exit 1
+            find -L /lib  -type f  -perm  /022  -exec ls -l {} \;
+            exit 1
         fi
 fi
 if [ -d "/lib64" ];then
@@ -17,7 +18,8 @@ if [ -d "/lib64" ];then
         if [ $COUNT -eq 0 ];then
                 :
         else
-                exit 1
+            find -L /lib64  -type f  -perm  /022  -exec ls -l {} \;
+            exit 1
         fi
 fi
 if [ -d "/usr/lib" ];then
@@ -27,7 +29,8 @@ if [ -d "/usr/lib" ];then
         if [ $COUNT -eq 0 ];then
                 :
         else
-                exit 1
+            find -L /usr/lib  -type f  -perm  /022  -exec ls -l {} \;
+            exit 1
         fi
 fi
 if [ -d "/usr/lib64" ];then
@@ -37,7 +40,8 @@ if [ -d "/usr/lib64" ];then
         if [ $COUNT -eq 0 ];then
                 :
         else
-                exit 1
+            find -L /usr/lib64  -type f  -perm  /022  -exec ls -l {} \;
+            exit 1
         fi
 fi
 
