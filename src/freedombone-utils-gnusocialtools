@@ -35,9 +35,6 @@ QVITTER_THEME_COMMIT='c6f09bda4e45be4290cf7409fa5efb4420538032'
 PLEROMA_REPO="https://gitgud.io/lambadalambda/pleroma-fe"
 PLEROMA_COMMIT='cbe652f2d94d81fa54a37378b7ff014c4391ca5e'
 
-ARMADILLO_REPO="https://git.postactiv.com/maiya/Armadillo"
-ARMADILLO_COMMIT='ec3938a678f373156c4cbf37926c9a5ab68222c4'
-
 SHARINGS_REPO="http://git.lasindias.club/bashrc/Sharings"
 SHARINGS_COMMIT='d5c6c7f855d9afff9086c09ea706f38c859bc0d4'
 SHARINGS_THEME_REPO="http://git.lasindias.club/manuel/SharingsTheme"
@@ -163,62 +160,6 @@ function pleroma_set_background_image_from_url {
     echo "0"
 }
 
-function armadillo_set_background_image_from_url {
-    domain_name="$1"
-    url="$2"
-
-    if [ ${#domain_name} -eq 0 ]; then
-        echo "1"
-        return
-    fi
-
-    ext=
-    if [ ${#url} -gt 0 ]; then
-        if [[ "$url" == *".jpeg" || "$url" == *".jpg" ]]; then
-            ext="jpg"
-        fi
-        if [[ "$url" == *".png" ]]; then
-            ext="png"
-        fi
-        if [[ "$url" == *".gif" ]]; then
-            ext="gif"
-        fi
-    fi
-
-    if [ ${#ext} -gt 0 ]; then
-        cd /var/www/${domain_name}/htdocs
-
-        # remove any existing image
-        if [ -f bg_custom.${ext} ]; then
-            rm bg_custom.${ext}
-        fi
-
-        # get the new image
-        wget "$url" -O bg_custom.${ext}
-        if [ ! -f bg_custom.${ext} ]; then
-            echo "$url"
-            echo $'Custom background image for armadillo could not be downloaded'
-            echo "1"
-            return
-        fi
-
-        if [ -d /var/www/${domain_name}/htdocs/armadillo ]; then
-            cd /var/www/${domain_name}/htdocs/armadillo
-            cp ../bg_custom.${ext} media/img/bg_custom.${ext}
-            sed -i "s|\"background\":.*|\"background\": \"armadillo/media/img/background.jpeg\"," config.json
-        fi
-
-        qvitter_update_background ${domain_name} ${ext}
-
-        rm bg_custom.${ext}
-    else
-        echo "2"
-        return
-    fi
-
-    echo "0"
-}
-
 function install_qvitter {
     domain_name=$1
     app_name=$2
@@ -334,48 +275,6 @@ function install_gnusocial_default_background {
     fi
 }
 
-function install_armadillo_front_end {
-    app_name="$1"
-    armadillo_domain="$2"
-    background_url="$3"
-
-    if [ ! -d $INSTALL_DIR/armadillo ]; then
-        function_check git_clone
-        git_clone $ARMADILLO_REPO $INSTALL_DIR/armadillo
-        if [ ! -d $INSTALL_DIR/armadillo ]; then
-            echo $'Unable to clone armadillo repo'
-            exit 35722
-        fi
-    fi
-
-    cd $INSTALL_DIR/armadillo
-    git checkout $ARMADILLO_COMMIT -b $ARMADILLO_COMMIT
-    set_completion_param "${app_name} armadillo commit" "$ARMADILLO_COMMIT"
-
-    cp armadillo/config.json.example armadillo/config.json
-    if [[ $ONION_ONLY == 'no' ]]; then
-        sed -i "s|\"server\".*|\"server\": \"https://${armadillo_domain}\",|g" armadillo/config.json
-    else
-        sed -i "s|\"server\".*|\"server\": \"http://${armadillo_domain}\",|g" armadillo/config.json
-    fi
-    owner='<a href=\\"'"https://${armadillo_domain}/$MY_USERNAME"'\\">@'"$MY_USERNAME@${armadillo_domain}"'</a>'
-    sed -i "s|\"owner\".*|\"owner\": \"$owner\",|g" armadillo/config.json
-    cp -r $INSTALL_DIR/armadillo/armadillo /var/www/${armadillo_domain}/htdocs/
-    cp $INSTALL_DIR/armadillo/armadillo.html /var/www/${armadillo_domain}/htdocs/index.html
-    cp $INSTALL_DIR/armadillo/dash.html /var/www/${armadillo_domain}/htdocs/dash.html
-
-    armadillo_set_background_image_from_url "$armadillo_domain" "$background_url"
-
-    nginx_site=/etc/nginx/sites-available/${armadillo_domain}
-    sed -i 's|index index.php;|index index.html;|g' $nginx_site
-
-    if [ -f /var/www/${armadillo_domain}/htdocs/index.php ]; then
-        mv /var/www/${armadillo_domain}/htdocs/index.php /var/www/${armadillo_domain}/htdocs/index_qvitter.php
-    fi
-    sed -i 's|index.php|index_qvitter.php|g' $nginx_site
-
-    chown -R www-data:www-data /var/www/${armadillo_domain}/htdocs
-}
 
 function install_pleroma_front_end {
     app_name="$1"
@@ -491,27 +390,6 @@ function upgrade_pleroma {
         chown -R www-data:www-data /var/www/${domain_name}/htdocs
     else
         install_pleroma_front_end "${app_name}" "${domain_name}" "${background_url}" "${title}"
-    fi
-}
-
-function upgrade_armadillo {
-    domain_name="$1"
-    app_name="$2"
-    background_url="$3"
-
-    if [ -d $INSTALL_DIR/armadillo ]; then
-        set_repo_commit $INSTALL_DIR/armadillo "${app_name} armadillo commit" "$ARMADILLO_COMMIT" $ARMADILLO_REPO
-        cd $INSTALL_DIR/armadillo
-
-        if [ -f $INSTALL_DIR/armadillo/armadillo/config.json ]; then
-            rm $INSTALL_DIR/armadillo/armadillo/config.json
-        fi
-        cp -r $INSTALL_DIR/armadillo/armadillo /var/www/${armadillo_domain}/htdocs/
-        cp $INSTALL_DIR/armadillo/armadillo.html /var/www/${armadillo_domain}/htdocs/index.html
-        cp $INSTALL_DIR/armadillo/dash.html /var/www/${armadillo_domain}/htdocs/dash.html
-        chown -R www-data:www-data /var/www/${domain_name}/htdocs
-    else
-        install_armadillo_front_end "${app_name}" "${domain_name}" "${background_url}"
     fi
 }
 
@@ -900,42 +778,6 @@ function gnusocial_use_pleroma {
     chmod +x static/font/font
     chmod +x static/js
     chmod +x static
-    chown -R www-data:www-data /var/www/${domain_name}/htdocs
-
-    systemctl restart nginx
-}
-
-function gnusocial_use_armadillo {
-    database_name=$1
-
-    domain_name=$(get_completion_param "$database_name domain")
-
-    if [ ! -d /var/www/$domain_name/htdocs/armadillo ]; then
-        return
-    fi
-
-    if [ -f /var/www/$domain_name/htdocs/index.php ]; then
-        mv /var/www/$domain_name/htdocs/index.php /var/www/$domain_name/htdocs/index_qvitter.php
-    fi
-
-    if [ -f /etc/nginx/sites-available/$domain_name ]; then
-        sed -i 's|index.php|index_qvitter.php|g' /etc/nginx/sites-available/$domain_name
-        sed -i 's|index index_qvitter.php|index index.html|g' /etc/nginx/sites-available/$domain_name
-    fi
-
-    if grep -q "//addPlugin('Qvitter')" /var/www/$domain_name/htdocs/config.php; then
-        sed -i "s|//addPlugin('Qvitter')|addPlugin('Qvitter')|g" /var/www/$domain_name/htdocs/config.php
-    fi
-    if grep -q "// addPlugin('Qvitter')" /var/www/$domain_name/htdocs/config.php; then
-        sed -i "s|// addPlugin('Qvitter')|addPlugin('Qvitter')|g" /var/www/$domain_name/htdocs/config.php
-    fi
-
-    if [ -f $INSTALL_DIR/armadillo/armadillo/config.json ]; then
-        rm $INSTALL_DIR/armadillo/armadillo/config.json
-    fi
-    cp -r $INSTALL_DIR/armadillo/armadillo/* /var/www/${domain_name}/htdocs/armadillo
-    cp $INSTALL_DIR/armadillo/armadillo.html /var/www/${domain_name}/htdocs/index.html
-    cp $INSTALL_DIR/armadillo/dash.html /var/www/${domain_name}/htdocs/dash.html
     chown -R www-data:www-data /var/www/${domain_name}/htdocs
 
     systemctl restart nginx
