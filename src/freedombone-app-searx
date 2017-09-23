@@ -147,6 +147,33 @@ function searx_set_background_image {
     esac
 }
 
+function searx_enable_login {
+    dialog --title $"Enable Searx login" \
+           --backtitle $"Freedombone Control Panel" \
+           --defaultno \
+           --yesno $"\nDo you want to add a login so that random web users can't use your metasearch engine?" 10 60
+    sel=$?
+    case $sel in
+        0) if grep -q '#auth_basic' /etc/nginx/sites-available/searx; then
+               sed -i 's|#auth_basic|auth_basic|g' /etc/nginx/sites-available/searx
+               systemctl restart nginx
+           fi
+           read_config_param $MY_USERNAME
+           SEARX_LOGIN_PASS=$(${PROJECT_NAME}-pass -u $MY_USERNAME -a searx)
+           dialog --title $"Enable Searx login" \
+                  --msgbox $"Searx logins are now enabled with the password $SEARX_LOGIN_PASS" 6 65
+           SEARX_LOGIN_PASS=
+           ;;
+        1) if ! grep -q '#auth_basic' /etc/nginx/sites-available/searx; then
+               sed -i 's|auth_basic|#auth_basic|g' /etc/nginx/sites-available/searx
+               systemctl restart nginx
+           fi
+           dialog --title $"Disable Searx login" \
+                  --msgbox $"Searx logins are now disabled. Anyone can access your metasearch engine." 6 65
+           ;;
+    esac
+}
+
 function configure_interactive_searx {
     while true
     do
@@ -154,9 +181,10 @@ function configure_interactive_searx {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"SearX Metasearch" \
-               --radiolist $"Choose an operation:" 11 70 2 \
+               --radiolist $"Choose an operation:" 12 70 3 \
                1 $"Set a background image" off \
-               2 $"Exit" on 2> $data
+               2 $"Enable login" off \
+               3 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
@@ -164,7 +192,8 @@ function configure_interactive_searx {
         esac
         case $(cat $data) in
             1) searx_set_background_image;;
-            2) break;;
+            2) searx_enable_login;;
+            3) break;;
         esac
     done
 }
@@ -942,8 +971,8 @@ function install_searx {
     function_check nginx_limits
     nginx_limits searx '1M'
     echo '        proxy_pass http://localhost:8888;' >> /etc/nginx/sites-available/searx
-    echo "        auth_basic \"${SEARX_LOGIN_TEXT}\";" >> /etc/nginx/sites-available/searx
-    echo '        auth_basic_user_file /etc/nginx/.htpasswd;' >> /etc/nginx/sites-available/searx
+    echo "        #auth_basic \"${SEARX_LOGIN_TEXT}\";" >> /etc/nginx/sites-available/searx
+    echo '        #auth_basic_user_file /etc/nginx/.htpasswd;' >> /etc/nginx/sites-available/searx
     echo '    }' >> /etc/nginx/sites-available/searx
     echo '' >> /etc/nginx/sites-available/searx
     echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/searx
