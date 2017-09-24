@@ -9,6 +9,8 @@
 #                    Freedom in the Cloud
 #
 # VPN functions
+# https://www.digitalocean.com/community/tutorials/how-to-set-up-an-openvpn-server-on-debian-8
+# https://jamielinux.com/blog/force-all-network-traffic-through-openvpn-using-iptables/
 #
 # License
 # =======
@@ -28,12 +30,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VARIANTS=''
+VARIANTS='full full-vim'
 
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=0
 
-vpn_variables=()
+OPENVPN_SERVER_NAME="${PROJECT_NAME}-vpn"
+
+vpn_variables=(MY_EMAIL_ADDRESS
+               LOCAL_NETWORK_STATIC_IP_ADDRESS
+               MY_USERNAME)
 
 function logging_on_vpn {
     echo -n ''
@@ -73,24 +79,143 @@ function restore_remote_vpn {
 }
 
 function remove_vpn {
-    apt-get -yq remove --purge fastd
+    apt-get -yq remove --purge fastd openvpn easy-rsa
+    if [ -d /etc/openvpn ]; then
+        rm -rf /etc/openvpn
+    fi
+    firewall_deny_forwarding
     remove_completion_param install_vpn
 }
 
-function install_vpn {
-    if ! grep -q "repo.universe-factory.net" /etc/apt/sources.list; then
-        echo 'deb http://repo.universe-factory.net/debian/ sid main' >> /etc/apt/sources.list
-        gpg --keyserver pgpkeys.mit.edu --recv-key 16EF3F64CB201D9C
-        if [ ! "$?" = "0" ]; then
-            exit 76272
-        fi
-        gpg -a --export 16EF3F64CB201D9C | sudo apt-key add -
-        apt-get update
-        apt-get -yq install fastd
-        if [ ! "$?" = "0" ]; then
-            exit 52026
-        fi
+function create_user_vpn_key {
+    username=$1
+
+    if [ ! -d /home/$username ]; then
+        return
     fi
+
+    echo $"Creating VPN key for $username"
+
+    cd /etc/openvpn/easy-rsa
+    echo '
+
+y
+y
+' | ./build-key "$username"
+
+    if [ ! -f /etc/openvpn/easy-rsa/keys/$username.crt ]; then
+        echo $'VPN user cert not generated'
+        exit 783528
+    fi
+    if [ ! -f /etc/openvpn/easy-rsa/keys/$username.key ]; then
+        echo $'VPN user key not generated'
+        exit 682523
+    fi
+
+    user_vpn_cert_file=/home/$username/vpn.ovpn
+
+    cp /usr/share/doc/openvpn/examples/sample-config-files/client.conf $user_vpn_cert_file
+    sed -i "s|remote .*|remote $DEFAULT_DOMAIN_NAME 1194|g" $user_vpn_cert_file
+    sed -i 's|;user nobody|user nobody|g' $user_vpn_cert_file
+    sed -i 's|;group nogroup|group nogroup|g' $user_vpn_cert_file
+
+    sed -i 's|ca ca.crt|;ca ca.crt|g' $user_vpn_cert_file
+    sed -i 's|cert client.crt|;cert client.crt|g' $user_vpn_cert_file
+    sed -i 's|key client.key|;key client.key|g' $user_vpn_cert_file
+
+    echo '<ca>' >> $user_vpn_cert_file
+    cat /etc/openvpn/ca.crt >> $user_vpn_cert_file
+    echo '</ca>' >> $user_vpn_cert_file
+
+    echo '<cert>' >> $user_vpn_cert_file
+    cat /etc/openvpn/easy-rsa/keys/$username.crt >> $user_vpn_cert_file
+    echo '</cert>' >> $user_vpn_cert_file
+
+    echo '<key>' >> $user_vpn_cert_file
+    cat /etc/openvpn/easy-rsa/keys/$username.key >> $user_vpn_cert_file
+    echo '</key>' >> $user_vpn_cert_file
+
+    chown $username:$username $user_vpn_cert_file
+
+    rm /etc/openvpn/easy-rsa/keys/$username.crt
+    shred -zu /etc/openvpn/easy-rsa/keys/$username.key
+
+    echo $"VPN key created at $user_vpn_cert_file"
+}
+
+function add_user_vpn {
+    new_username="$1"
+    new_user_password="$2"
+
+    create_user_vpn_key $new_username
+}
+
+function remove_user_vpn {
+    new_username="$1"
+}
+
+function install_vpn {
+    if [ ! $LOCAL_NETWORK_STATIC_IP_ADDRESS ]; then
+        return
+    fi
+
+    apt-get -yq install fastd openvpn easy-rsa
+
+    if [ ! -f /usr/share/doc/openvpn/examples/sample-config-files/server.conf.gz ]; then
+        echo $'Example openvpn server config not found'
+        exit 783953
+    fi
+    gunzip -c /usr/share/doc/openvpn/examples/sample-config-files/server.conf.gz > /etc/openvpn/server.conf
+    sed -i "s|;push \"redirect-gateway|push \"redirect-gateway|g" /etc/openvpn/server.conf
+    sed -i 's|;push "dhcp-option|push "dhcp-option|g' /etc/openvpn/server.conf
+    sed -i 's|;user nobody|user nobody|g' /etc/openvpn/server.conf
+    sed -i 's|;group nogroup|group nogroup|g' /etc/openvpn/server.conf
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+    sed -i 's|#net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+    sed -i 's|net.ipv4.ip_forward.*|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
+
+    cp -r /usr/share/easy-rsa/ /etc/openvpn
+    if [ ! -d /etc/openvpn/easy-rsa/keys ]; then
+        mkdir /etc/openvpn/easy-rsa/keys
+    fi
+
+    sed -i "s|export KEY_COUNTRY.*|export KEY_COUNTRY=\"US\"|g" /etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_PROVINCE.*|export KEY_PROVINCE=\"TX\"|g" /etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_CITY.*|export KEY_CITY=\"Dallas\"|g" /etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_ORG.*|export KEY_ORG=\"$PROJECT_NAME\"|g" /etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_EMAIL.*|export KEY_EMAIL=\"$MY_EMAIL_ADDRESS\"|g" /etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_OU=.*|export KEY_OU=\"MoonUnit\"|g" /etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_NAME.*|export KEY_NAME=\"$OPENVPN_SERVER_NAME\"|g" /etc/openvpn/easy-rsa/vars
+    openssl dhparam -out /etc/openvpn/dh2048.pem 2048
+    cd /etc/openvpn/easy-rsa
+    . ./vars
+    ./clean-all
+    ./build-ca
+    echo '
+
+y
+y
+' | ./build-key-server $OPENVPN_SERVER_NAME
+    if [ ! -f /etc/openvpn/easy-rsa/keys/$OPENVPN_SERVER_NAME.crt ]; then
+        echo $'OpenVPN crt not found'
+        exit 7823352
+    fi
+    if [ ! -f /etc/openvpn/easy-rsa/keys/$OPENVPN_SERVER_NAME.key ]; then
+        echo $'OpenVPN key not found'
+        exit 6839436
+    fi
+    if [ ! -f /etc/openvpn/easy-rsa/keys/ca.key ]; then
+        echo $'OpenVPN ca not found'
+        exit 7935203
+    fi
+    cp /etc/openvpn/easy-rsa/keys/{$OPENVPN_SERVER_NAME.crt,$OPENVPN_SERVER_NAME.key,ca.crt} /etc/openvpn
+
+    create_user_vpn_key $MY_USERNAME
+
+    firewall_allow_forwarding
+    systemctl openvpn start
+
     APP_INSTALLED=1
 }
 

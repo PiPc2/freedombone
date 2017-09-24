@@ -32,6 +32,7 @@
 
 FIREWALL_CONFIG=$HOME/${PROJECT_NAME}-firewall.cfg
 FIREWALL_DOMAINS=$HOME/${PROJECT_NAME}-firewall-domains.cfg
+FIREWALL_EIFACE=eth0
 
 function save_firewall_settings {
     iptables-save > /etc/firewall.conf
@@ -106,6 +107,28 @@ function enable_ipv6 {
     #sed -i "s/net.ipv6.conf.all.accept_source_route.*/net.ipv6.conf.all.accept_source_route = 1/g" /etc/sysctl.conf
     sed -i "s/net.ipv6.conf.all.forwarding.*/net.ipv6.conf.all.forwarding=1/g" /etc/sysctl.conf
     echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+}
+
+function firewall_deny_forwarding {
+    iptables -D INPUT -i $FIREWALL_EIFACE -m state --state NEW -p udp --dport 1194 -j ACCEPT
+    iptables -D INPUT -i tun+ -j ACCEPT
+    iptables -D FORWARD -i tun+ -j ACCEPT
+    iptables -D FORWARD -i tun+ -o $FIREWALL_EIFACE -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -D FORWARD -i $FIREWALL_EIFACE -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -t nat -D POSTROUTING -s $(get_ipv4_address)/24 -o $FIREWALL_EIFACE -j MASQUERADE
+    iptables -D OUTPUT -o tun+ -j ACCEPT
+    save_firewall_settings
+}
+
+function firewall_allow_forwarding {
+    iptables -A INPUT -i $FIREWALL_EIFACE -m state --state NEW -p udp --dport 1194 -j ACCEPT
+    iptables -A INPUT -i tun+ -j ACCEPT
+    iptables -A FORWARD -i tun+ -j ACCEPT
+    iptables -A FORWARD -i tun+ -o $FIREWALL_EIFACE -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -A FORWARD -i $FIREWALL_EIFACE -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -t nat -A POSTROUTING -s $(get_ipv4_address)/24 -o $FIREWALL_EIFACE -j MASQUERADE
+    iptables -A OUTPUT -o tun+ -j ACCEPT
+    save_firewall_settings
 }
 
 function configure_firewall {
