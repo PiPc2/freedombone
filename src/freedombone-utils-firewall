@@ -110,11 +110,27 @@ function enable_ipv6 {
     echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
 }
 
+function firewall_update_external_ip {
+    ip_update_script=/usr/bin/externalipupdate
+    echo '#!/bin/bash' >> $ip_update_script
+    echo "existing_ip=\$(cat $CONFIGURATION_FILE | grep \"EXTERNAL_IPV4_ADDRESS=\" | head -n 1 | awk -F '=' '{print \$2}')'" >> $ip_update_script
+    echo "curr_ip=\$(nslookup . $EXTERNAL_IP_LOOKUP_URL | grep Address | tail -n 1 | awk -F ' ' '{print \$2}')" >> $ip_update_script
+    echo 'if [[ "$curr_ip" != "$existing_ip" ]]; then' >> $ip_update_script
+    echo "  sed -i \"s|EXTERNAL_IPV4_ADDRESS=.*|EXTERNAL_IPV4_ADDRESS=\${curr_ip}|g\" $CONFIGURATION_FILE" >> $ip_update_script
+    echo "  iptables -t nat -D POSTROUTING -s \${curr_ip}/24 -o ${FIREWALL_EIFACE} -j MASQUERADE" >> $ip_update_script
+    echo "  iptables -t nat -A POSTROUTING -s \${curr_ip}/24 -o ${FIREWALL_EIFACE} -j MASQUERADE" >> $ip_update_script
+    echo '  iptables-save > /etc/firewall.conf' >> $ip_update_script
+    echo 'fi' >> $ip_update_script
+
+    cron_add_mins 10 $ip_update_script
+}
+
 function firewall_disable_vpn {
     read_config_param EXTERNAL_IPV4_ADDRESS
     if [ ! $EXTERNAL_IPV4_ADDRESS ]; then
         return
     fi
+    sed -i '/externalipupdate/d' /etc/crontab
     iptables -D INPUT -i ${FIREWALL_EIFACE} -m state --state NEW -p udp --dport 1194 -j ACCEPT
     iptables -D INPUT -i tun+ -j ACCEPT
     iptables -D FORWARD -i tun+ -j ACCEPT
@@ -136,6 +152,8 @@ function firewall_enable_vpn {
     iptables -A OUTPUT -o tun+ -j ACCEPT
     write_config_param EXTERNAL_IPV4_ADDRESS "$curr_external_ipv4_address"
     save_firewall_settings
+
+    firewall_update_external_ip
 }
 
 function configure_firewall {
