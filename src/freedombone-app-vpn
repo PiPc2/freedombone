@@ -107,6 +107,7 @@ function vpn_change_tls_port {
             tlsport=$(<$data)
             if [ ${#tlsport} -gt 0 ]; then
                 if [[ "$tlsport" != "$EXISTING_VPN_TLS_PORT" ]]; then
+                    clear
                     VPN_TLS_PORT=$tlsport
                     write_config_param "VPN_TLS_PORT" "$VPN_TLS_PORT"
                     sed -i "s|accept =.*|accept = $VPN_TLS_PORT|g" /etc/stunnel/stunnel.conf
@@ -138,6 +139,28 @@ function vpn_change_tls_port {
     esac
 }
 
+function vpn_regenerate_client_keys {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Regenerate VPN keys for a user" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $'username' 10 50 2>$data
+    sel=$?
+    case $sel in
+        0)
+            USERNAME=$(<$data)
+            if [ ${#USERNAME} -gt 0 ]; then
+                if [ -d /home/$USERNAME ]; then
+                    clear
+                    create_user_vpn_key $USERNAME
+                    dialog --title $"Regenerate VPN keys for a user" \
+                           --msgbox $"VPN keys were regenerated for $USERNAME" 6 60
+                fi
+            fi
+            ;;
+    esac
+}
+
 function configure_interactive_vpn {
     read_config_param VPN_TLS_PORT
     while true
@@ -146,9 +169,10 @@ function configure_interactive_vpn {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"VPN Configuration" \
-               --radiolist $"Choose an operation:" 12 70 2 \
+               --radiolist $"Choose an operation:" 13 70 3 \
                1 $"Change TLS port (currently $VPN_TLS_PORT)" off \
-               2 $"Exit" on 2> $data
+               2 $"Regenerate keys for a user" off \
+               3 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
@@ -156,7 +180,8 @@ function configure_interactive_vpn {
         esac
         case $(cat $data) in
             1) vpn_change_tls_port;;
-            2) break;;
+            2) vpn_regenerate_client_keys;;
+            3) break;;
         esac
     done
 }
