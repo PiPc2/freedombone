@@ -31,6 +31,13 @@
 # If the system is on an IPv6 network
 IPV6_NETWORK='2001:470:26:307'
 
+# Destinations used to get the local IP address of this system
+# Google ipv6 DNS   2001:4860:4860::8888
+# OpenDNS ipv6 DNS  2620:0:ccc::2
+IPV4_ADDRESS_TEST_DESTINATION='85.214.73.63'
+IPV6_ADDRESS_TEST_DESTINATION='2620:0:ccc::2'
+EXTERNAL_IP_LOOKUP_URL='ifcfg.me'
+
 # The static IP address of the system within the local network
 # By default the IP address is dynamic within your LAN
 LOCAL_NETWORK_STATIC_IP_ADDRESS=
@@ -64,13 +71,31 @@ function install_static_network {
     mark_completed $FUNCNAME
 }
 
+function get_external_ipv4_address {
+    nslookup . $EXTERNAL_IP_LOOKUP_URL | grep Address | tail -n 1 | awk -F ' ' '{print $2}'
+}
+
 function get_ipv4_address {
-    IPv4dev=$(ip route get 8.8.8.8 | awk '{for(i=1;i<=NF;i++)if($i~/dev/)print $(i+1)}')
+    IPv4dev=$(ip route get $IPV4_ADDRESS_TEST_DESTINATION | awk '{for(i=1;i<=NF;i++)if($i~/dev/)print $(i+1)}')
     echo $(ip -o -f inet addr show dev "$IPv4dev" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
 }
 
 function get_ipv6_address {
-    echo $(ip -6 route get 2001:4860:4860::8888 | awk -F " " '{ for(i=1;i<=NF;i++) if ($i == "src") print $(i+1) }')
+    retval=$(ip -6 route get $IPV6_ADDRESS_TEST_DESTINATION 2> /dev/null)
+    echo $(echo "$retval" | awk -F " " '{ for(i=1;i<=NF;i++) if ($i == "src") print $(i+1) }')
+}
+
+function update_external_ip {
+    ip_update_script=/usr/bin/externalipupdate
+    echo '#!/bin/bash' >> $ip_update_script
+    echo "existing_ip=\$(cat $CONFIGURATION_FILE | grep \"EXTERNAL_IPV4_ADDRESS=\" | head -n 1 | awk -F '=' '{print \$2}')'" >> $ip_update_script
+    echo "curr_ip=\$(nslookup . $EXTERNAL_IP_LOOKUP_URL | grep Address | tail -n 1 | awk -F ' ' '{print \$2}')" >> $ip_update_script
+    echo 'if [[ "$curr_ip" != "$existing_ip" ]]; then' >> $ip_update_script
+    echo "  sed -i \"s|EXTERNAL_IPV4_ADDRESS=.*|EXTERNAL_IPV4_ADDRESS=\${curr_ip}|g\" $CONFIGURATION_FILE" >> $ip_update_script
+    echo "  echo \"\$(date)\" >> ~/${PROJECT_NAME}-external-ip-changes.txt" >> $ip_update_script
+    echo 'fi' >> $ip_update_script
+
+    cron_add_mins 10 $ip_update_script
 }
 
 # NOTE: deliberately no exit 0
