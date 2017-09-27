@@ -349,23 +349,23 @@ function create_user_vpn_key {
 
     user_vpn_cert_file=/home/$username/$OPENVPN_KEY_FILENAME
 
-    if [ ! -f /usr/share/doc/openvpn/examples/sample-config-files/client.conf ]; then
-        echo $'No VPN client template found'
-        exit 429823
-    fi
-
-    cp /usr/share/doc/openvpn/examples/sample-config-files/client.conf $user_vpn_cert_file
-    sed -i "s|remote .*|remote $DEFAULT_DOMAIN_NAME $STUNNEL_PORT|g" $user_vpn_cert_file
-    sed -i 's|;user .*|user nobody|g' $user_vpn_cert_file
-    sed -i 's|;group .*|group nobody|g' $user_vpn_cert_file
-
-    sed -i 's|ca ca.crt|;ca ca.crt|g' $user_vpn_cert_file
-    sed -i 's|cert client.crt|;cert client.crt|g' $user_vpn_cert_file
-    sed -i 's|key client.key|;key client.key|g' $user_vpn_cert_file
-    sed -i 's|tls-auth ta.key|;tls-auth ta.key|g' $user_vpn_cert_file
-
-    sed -i 's|;proto tcp|proto tcp|g' $user_vpn_cert_file
-    sed -i 's|proto udp|;proto udp|g' $user_vpn_cert_file
+    echo 'client' > $user_vpn_cert_file
+    echo 'dev tun' >> $user_vpn_cert_file
+    echo 'proto tcp' >> $user_vpn_cert_file
+    echo "remote localhost $STUNNEL_PORT" >> $user_vpn_cert_file
+    echo "route $DEFAULT_DOMAIN_NAME 255.255.255.255 net_gateway" >> $user_vpn_cert_file
+    echo 'resolv-retry infinite' >> $user_vpn_cert_file
+    echo 'nobind' >> $user_vpn_cert_file
+    echo 'tun-mtu 1500' >> $user_vpn_cert_file
+    echo 'tun-mtu-extra 32' >> $user_vpn_cert_file
+    echo 'mssfix 1450' >> $user_vpn_cert_file
+    echo 'persist-key' >> $user_vpn_cert_file
+    echo 'persist-tun' >> $user_vpn_cert_file
+    echo 'auth-nocache' >> $user_vpn_cert_file
+    echo 'remote-cert-tls server' >> $user_vpn_cert_file
+    echo 'comp-lzo' >> $user_vpn_cert_file
+    echo 'verb 3' >> $user_vpn_cert_file
+    echo '' >> $user_vpn_cert_file
 
     echo '<ca>' >> $user_vpn_cert_file
     cat /etc/openvpn/ca.crt >> $user_vpn_cert_file
@@ -460,7 +460,7 @@ function install_stunnel {
     echo 'client = yes' >> stunnel-client.conf
     echo "accept = $STUNNEL_PORT" >> stunnel-client.conf
     echo "connect = $DEFAULT_DOMAIN_NAME:$VPN_TLS_PORT" >> stunnel-client.conf
-    echo 'cert = /etc/stunnel/stunnel.pem' >> stunnel-client.conf
+    echo 'cert = stunnel.pem' >> stunnel-client.conf
 
     echo '[Unit]' > /etc/systemd/system/stunnel.service
     echo 'Description=SSL tunnel for network daemons' >> /etc/systemd/system/stunnel.service
@@ -502,27 +502,31 @@ function install_stunnel {
 function install_vpn {
     apt-get -yq install fastd openvpn easy-rsa
 
-    if [ ! -f /usr/share/doc/openvpn/examples/sample-config-files/server.conf.gz ]; then
-        echo $'Example openvpn server config not found'
-        exit 783953
-    fi
-
     groupadd vpn
     useradd -r -s /bin/false -g vpn vpn
 
     # server configuration
-    gunzip -c /usr/share/doc/openvpn/examples/sample-config-files/server.conf.gz > /etc/openvpn/server.conf
-    sed -i "s|;push \"redirect-gateway|push \"redirect-gateway|g" /etc/openvpn/server.conf
-    sed -i 's|;push "dhcp-option|push "dhcp-option|g' /etc/openvpn/server.conf
-    sed -i 's|;user no.*|user vpn|g' /etc/openvpn/server.conf
-    sed -i 's|;group no.*|group vpn|g' /etc/openvpn/server.conf
-    sed -i 's|;max-clients.*|max-clients 2|g' /etc/openvpn/server.conf
-
-    sed -i 's|;proto tcp|proto tcp|g' /etc/openvpn/server.conf
-    sed -i 's|proto udp|;proto udp|g' /etc/openvpn/server.conf
-
-    sed -i 's|explicit-exit-notify.*|explicit-exit-notify 0|g' /etc/openvpn/server.conf
-    sed -i 's|tls-auth|;tls-auth|g' /etc/openvpn/server.conf
+    echo 'port 1194' > /etc/openvpn/server.conf
+    echo 'proto tcp' >> /etc/openvpn/server.conf
+    echo 'dev tun' >> /etc/openvpn/server.conf
+    echo 'tun-mtu 1500' >> /etc/openvpn/server.conf
+    echo 'tun-mtu-extra 32' >> /etc/openvpn/server.conf
+    echo 'mssfix 1450' >> /etc/openvpn/server.conf
+    echo 'ca /etc/openvpn/easy-rsa/keys/ca.crt' >> /etc/openvpn/server.conf
+    echo 'cert /etc/openvpn/easy-rsa/keys/server.crt' >> /etc/openvpn/server.conf
+    echo 'key /etc/openvpn/easy-rsa/keys/server.key' >> /etc/openvpn/server.conf
+    echo 'dh /etc/openvpn/easy-rsa/keys/dh2048.pem' >> /etc/openvpn/server.conf
+    echo 'server 10.8.0.0 255.255.255.0' >> /etc/openvpn/server.conf
+    echo 'push "redirect-gateway def1 bypass-dhcp"' >> /etc/openvpn/server.conf
+    echo "push \"dhcp-option DNS 85.214.73.63\"" >> /etc/openvpn/server.conf
+    echo "push \"dhcp-option DNS 213.73.91.35\"" >> /etc/openvpn/server.conf
+    echo 'keepalive 5 30' >> /etc/openvpn/server.conf
+    echo 'comp-lzo' >> /etc/openvpn/server.conf
+    echo 'persist-key' >> /etc/openvpn/server.conf
+    echo 'persist-tun' >> /etc/openvpn/server.conf
+    echo 'status /dev/null' >> /etc/openvpn/server.conf
+    echo 'verb 3' >> /etc/openvpn/server.conf
+    echo '' >> /etc/openvpn/server.conf
 
     echo 1 > /proc/sys/net/ipv4/ip_forward
     sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
@@ -545,7 +549,7 @@ function install_vpn {
 
     # generate host keys
     if [ ! -f /etc/openvpn/dh2048.pem ]; then
-        openssl dhparam -out /etc/openvpn/dh2048.pem 2048
+        openssl dhparam -out /etc/openvpn/easy-rsa/keys/dh2048.pem 2048
     fi
     cd /etc/openvpn/easy-rsa
     . ./vars
