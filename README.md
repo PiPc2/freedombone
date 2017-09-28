@@ -8,7 +8,7 @@ So you want to run your own internet services? Email, chat, VoIP, web sites, fil
 
 [Here's how](https://freedombone.net/homeserver.html).
 
-And here's how [on a Beaglebone Black](https://freedombone.net/beaglebone.html).
+And here's how [on a Beaglebone Black](https://freedombone.net/beaglebone.html). A list of other supported ARM boards [can be found here](https://freedombone.net/boards.html).
 
 Want to make a community mesh network which doesn't depend upon the internet? The [Freedombone Mesh](https://freedombone.net/mesh.html) is a wireless solution for autonomous communication that can be rapidly deployed in temporary, emergency or post-disaster situations where internet access is unavailable or compromised.
 
