@@ -4,7 +4,7 @@
 
 <img src="https://github.com/bashrc/freedombone/blob/master/img/beaglebone_logo.jpg?raw=true" width=800/>
 
-So you want to run your own internet services? Email, chat, VoIP, web sites, file synchronisation, wikis, blogs, social networks, media hosting, backups. Freedombone enables you to do all of that in a self-hosted way, where you keep control of your data and it resides in your own home.
+So you want to run your own internet services? Email, chat, VoIP, web sites, file synchronisation, wikis, blogs, social networks, media hosting, backups, VPN. Freedombone enables you to do all of that in a self-hosted way, where you keep control of your data and it resides in your own home.
 
 [Here's how](https://freedombone.net/homeserver.html).
 
