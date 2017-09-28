@@ -4,11 +4,11 @@
 
 <img src="https://github.com/bashrc/freedombone/blob/master/img/beaglebone_logo.jpg?raw=true" width=800/>
 
-So you want to run your own internet services? Email, chat, VoIP, web sites, file synchronisation, wikis, blogs, social networks, media hosting, backups. Freedombone enables you to do all of that in a self-hosted way, where you keep control of your data and it resides in your own home.
+So you want to run your own internet services? Email, chat, VoIP, web sites, file synchronisation, wikis, blogs, social networks, media hosting, backups, VPN. Freedombone enables you to do all of that in a self-hosted way, where you keep control of your data and it resides in your own home.
 
 [Here's how](https://freedombone.net/homeserver.html).
 
-And here's how [on a Beaglebone Black](https://freedombone.net/beaglebone.html).
+And here's how [on a Beaglebone Black](https://freedombone.net/beaglebone.html). A list of other supported ARM boards [can be found here](https://freedombone.net/boards.html).
 
 Want to make a community mesh network which doesn't depend upon the internet? The [Freedombone Mesh](https://freedombone.net/mesh.html) is a wireless solution for autonomous communication that can be rapidly deployed in temporary, emergency or post-disaster situations where internet access is unavailable or compromised.
 
