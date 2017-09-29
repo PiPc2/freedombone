@@ -205,7 +205,6 @@ function assign_peer_address {
         fi
         echo -n "${octet}"
     done
-    echo ''
 }
 
 function start {
@@ -230,7 +229,9 @@ function start {
 
     ifconfig $IFACE down
     ifconfig $IFACE mtu 1532
-    ifconfig $IFACE hw ether $(assign_peer_address)
+    peeraddr=$(assign_peer_address)
+    ifconfig $IFACE hw ether $peeraddr
+    echo $"$IFACE assigned MAC address $peeraddr"
     iwconfig $IFACE enc off
     iwconfig $IFACE mode ad-hoc essid $WIFI_SSID channel $CHANNEL
     sleep 1
@@ -242,17 +243,8 @@ function start {
     avahi-autoipd --force-bind --daemonize --wait $IFACE
     ifconfig bat0 up promisc
 
-    #Use persistent HWAddr
-    ether_new=$(ifconfig eth0 | grep HWaddr | sed -e "s/.*HWaddr //")
-    if [ ! -f /var/lib/mesh-node/bat0 ]; then
-        mkdir /var/lib/mesh-node
-        echo "${ether_new}" > /var/lib/mesh-node/bat0
-    else
-        ether=$(cat /var/lib/mesh-node/bat0)
-        ifconfig bat0 hw ether ${ether}
-    fi
-
     if [ "$EIFACE" ] ; then
+        echo $'Trying ethernet bridge to the internet'
         brctl addbr $BRIDGE
         brctl addif $BRIDGE bat0
         brctl addif $BRIDGE $EIFACE
@@ -261,6 +253,7 @@ function start {
         ifconfig $EIFACE up promisc
         ifconfig $BRIDGE up
         dhclient $BRIDGE
+        echo $'End of ethernet bridge'
     fi
 
     hotspot_enabled=
@@ -271,7 +264,9 @@ function start {
                 HOTSPOT_NAME=$"${WIFI_SSID}-hotspot"
                 ifconfig $IFACE_SECONDARY down
                 ifconfig $IFACE_SECONDARY mtu 1500
-                ifconfig $IFACE_SECONDARY hw ether $(assign_peer_address)
+                peeraddr=$(assign_peer_address)
+                ifconfig $IFACE_SECONDARY hw ether $peeraddr
+                echo $"Secondary wifi adaptor $IFACE_SECONDARY assigned to MAC address $peeraddr"
                 iwconfig $IFACE_SECONDARY enc open
                 iwconfig $IFACE_SECONDARY mode managed essid $HOTSPOT_NAME channel ${HOTSPOT_CHANNEL}
                 iwconfig $IFACE_SECONDARY ap $CELLID
@@ -338,7 +333,7 @@ function start {
     iptables -A INPUT -p tcp --dport 8942 -j ACCEPT
     iptables -A INPUT -p udp --dport 8942 -j ACCEPT
 
-    iptables -t nat -A POSTROUTING -o $EIFACE -j MASQUERADE
+    iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $EIFACE -j MASQUERADE
     iptables -A FORWARD -i $EIFACE -o $IFACE -j ACCEPT -m state --state RELATED,ESTABLISHED
     iptables -A FORWARD -i $IFACE -o $EIFACE -j ACCEPT
 
