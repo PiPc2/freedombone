@@ -229,13 +229,15 @@ function start {
 
     ifconfig $IFACE down
     ifconfig $IFACE mtu 1532
-    peeraddr=$(assign_peer_address)
-    ifconfig $IFACE hw ether $peeraddr
-    echo $"$IFACE assigned MAC address $peeraddr"
+    peermac=$(assign_peer_address)
+    if [ ! $peermac ]; then
+        echo $"Unable to obtain MAC address for $peermac"
+        return
+    fi
+    ifconfig $IFACE hw ether $peermac
+    echo $"$IFACE assigned MAC address $peermac"
     iwconfig $IFACE enc off
     iwconfig $IFACE mode ad-hoc essid $WIFI_SSID channel $CHANNEL
-    sleep 1
-    iwconfig $IFACE ap $CELLID
 
     modprobe batman-adv
     batctl if add $IFACE
@@ -264,42 +266,45 @@ function start {
                 HOTSPOT_NAME=$"${WIFI_SSID}-hotspot"
                 ifconfig $IFACE_SECONDARY down
                 ifconfig $IFACE_SECONDARY mtu 1500
-                peeraddr=$(assign_peer_address)
-                ifconfig $IFACE_SECONDARY hw ether $peeraddr
-                echo $"Secondary wifi adaptor $IFACE_SECONDARY assigned to MAC address $peeraddr"
-                iwconfig $IFACE_SECONDARY enc open
-                iwconfig $IFACE_SECONDARY mode managed essid $HOTSPOT_NAME channel ${HOTSPOT_CHANNEL}
-                iwconfig $IFACE_SECONDARY ap $CELLID
+                CELLID=$(assign_peer_address)
+                if [ $CELLID ]; then
+                    ifconfig $IFACE_SECONDARY hw ether $CELLID
+                    echo $"Secondary wifi adaptor $IFACE_SECONDARY assigned to MAC address $CELLID"
+                    iwconfig $IFACE_SECONDARY enc open
+                    iwconfig $IFACE_SECONDARY mode managed essid $HOTSPOT_NAME channel ${HOTSPOT_CHANNEL}
+                    iwconfig $IFACE_SECONDARY ap $CELLID
+                    iwconfig $IFACE ap $CELLID
 
-                brctl addbr $BRIDGE_HOTSPOT
-                brctl addif $BRIDGE_HOTSPOT bat0
-                brctl addif $BRIDGE_HOTSPOT $IFACE_SECONDARY
-                ifconfig bat0 0.0.0.0
-                ifconfig $IFACE_SECONDARY 0.0.0.0
+                    brctl addbr $BRIDGE_HOTSPOT
+                    brctl addif $BRIDGE_HOTSPOT bat0
+                    brctl addif $BRIDGE_HOTSPOT $IFACE_SECONDARY
+                    ifconfig bat0 0.0.0.0
+                    ifconfig $IFACE_SECONDARY 0.0.0.0
 
-                sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
+                    sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
-                echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
-                echo "bridge=${BRIDGE_HOTSPOT}" >> /etc/hostapd/hostapd.conf
-                echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
-                echo "country_code=UK" >> /etc/hostapd/hostapd.conf
-                echo "ssid=$HOTSPOT_NAME" >> /etc/hostapd/hostapd.conf
-                echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
-                echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
-                echo 'wpa=2' >> /etc/hostapd/hostapd.conf
-                echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
-                echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
-                echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
-                echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
-                echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
-                echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+                    echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
+                    echo "bridge=${BRIDGE_HOTSPOT}" >> /etc/hostapd/hostapd.conf
+                    echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+                    echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+                    echo "ssid=$HOTSPOT_NAME" >> /etc/hostapd/hostapd.conf
+                    echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+                    echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
+                    echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+                    echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+                    echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+                    echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+                    echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+                    echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+                    echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
 
-                ifconfig $BRIDGE_HOTSPOT up
-                avahi-autoipd --force-bind --daemonize --wait $BRIDGE_HOTSPOT
-                ifconfig $IFACE_SECONDARY up promisc
-                #ifconfig $IFACE_SECONDARY auto-dhcp start
-                systemctl start hostapd
-                hotspot_enabled=1
+                    ifconfig $BRIDGE_HOTSPOT up
+                    avahi-autoipd --force-bind --daemonize --wait $BRIDGE_HOTSPOT
+                    ifconfig $IFACE_SECONDARY up promisc
+                    #ifconfig $IFACE_SECONDARY auto-dhcp start
+                    systemctl start hostapd
+                    hotspot_enabled=1
+                fi
             fi
         fi
     fi
