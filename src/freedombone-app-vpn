@@ -454,141 +454,111 @@ function remove_user_vpn {
     new_username="$1"
 }
 
-function install_stunnel {
-    apt-get -yq install stunnel4
-
-    cd /etc/stunnel
-
+function generate_stunnel_keys {
     openssl req -x509 -nodes -days 3650 -sha256 \
             -subj "/O=$VPN_ORGANISATION/OU=$VPN_UNIT/C=$VPN_COUNTRY_CODE/ST=$VPN_AREA/L=$VPN_LOCATION/CN=$HOSTNAME" \
-            -newkey rsa:2048 -keyout key.pem \
-            -out cert.pem
-    if [ ! -f key.pem ]; then
+            -newkey rsa:2048 -keyout /etc/stunnel/key.pem \
+            -out /etc/stunnel/cert.pem
+    if [ ! -f /etc/stunnel/key.pem ]; then
         echo $'stunnel key not created'
         exit 793530
     fi
-    if [ ! -f cert.pem ]; then
+    if [ ! -f /etc/stunnel/cert.pem ]; then
         echo $'stunnel cert not created'
         exit 204587
     fi
-    chmod 400 key.pem
-    chmod 640 cert.pem
+    chmod 400 /etc/stunnel/key.pem
+    chmod 640 /etc/stunnel/cert.pem
 
-    cat key.pem cert.pem >> stunnel.pem
-    chmod 640 stunnel.pem
+    cat /etc/stunnel/key.pem /etc/stunnel/cert.pem >> /etc/stunnel/stunnel.pem
+    chmod 640 /etc/stunnel/stunnel.pem
 
-    openssl pkcs12 -export -out stunnel.p12 -inkey key.pem -in cert.pem -passout pass:
-    if [ ! -f stunnel.p12 ]; then
+    openssl pkcs12 -export -out /etc/stunnel/stunnel.p12 -inkey /etc/stunnel/key.pem -in /etc/stunnel/cert.pem -passout pass:
+    if [ ! -f /etc/stunnel/stunnel.p12 ]; then
         echo $'stunnel pkcs12 not created'
         exit 639353
     fi
-    chmod 640 stunnel.p12
-
-    echo 'chroot = /var/lib/stunnel4' > stunnel.conf
-    echo 'pid = /stunnel4.pid' >> stunnel.conf
-    echo 'setuid = stunnel4' >> stunnel.conf
-    echo 'setgid = stunnel4' >> stunnel.conf
-    echo 'socket = l:TCP_NODELAY=1' >> stunnel.conf
-    echo 'socket = r:TCP_NODELAY=1' >> stunnel.conf
-    echo 'cert = /etc/stunnel/stunnel.pem' >> stunnel.conf
-    echo '[openvpn]' >> stunnel.conf
-    echo "accept = $VPN_TLS_PORT" >> stunnel.conf
-    echo 'connect = localhost:1194' >> stunnel.conf
-    echo 'cert = /etc/stunnel/stunnel.pem' >> stunnel.conf
-
-    sed -i 's|ENABLED=.*|ENABLED=1|g' /etc/default/stunnel4
-
-    echo '[openvpn]' > stunnel-client.conf
-    echo 'client = yes' >> stunnel-client.conf
-    echo "accept = $STUNNEL_PORT" >> stunnel-client.conf
-    echo "connect = $DEFAULT_DOMAIN_NAME:$VPN_TLS_PORT" >> stunnel-client.conf
-    echo 'cert = stunnel.pem' >> stunnel-client.conf
-
-    echo '[Unit]' > /etc/systemd/system/stunnel.service
-    echo 'Description=SSL tunnel for network daemons' >> /etc/systemd/system/stunnel.service
-    echo 'Documentation=man:stunnel https://www.stunnel.org/docs.html' >> /etc/systemd/system/stunnel.service
-    echo 'DefaultDependencies=no' >> /etc/systemd/system/stunnel.service
-    echo 'After=network.target' >> /etc/systemd/system/stunnel.service
-    echo 'After=syslog.target' >> /etc/systemd/system/stunnel.service
-    echo '' >> /etc/systemd/system/stunnel.service
-    echo '[Install]' >> /etc/systemd/system/stunnel.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/stunnel.service
-    echo 'Alias=stunnel.target' >> /etc/systemd/system/stunnel.service
-    echo '' >> /etc/systemd/system/stunnel.service
-    echo '[Service]' >> /etc/systemd/system/stunnel.service
-    echo 'Type=forking' >> /etc/systemd/system/stunnel.service
-    echo 'RuntimeDirectory=stunnel' >> /etc/systemd/system/stunnel.service
-    echo 'EnvironmentFile=-/etc/stunnel/stunnel.conf' >> /etc/systemd/system/stunnel.service
-    echo 'ExecStart=/usr/bin/stunnel /etc/stunnel/stunnel.conf' >> /etc/systemd/system/stunnel.service
-    echo 'ExecStop=/usr/bin/killall -9 stunnel' >> /etc/systemd/system/stunnel.service
-    echo 'RemainAfterExit=yes' >> /etc/systemd/system/stunnel.service
-
-    if [ $VPN_TLS_PORT -eq 443 ]; then
-        systemctl stop nginx
-        systemctl disable nginx
-    else
-        systemctl enable nginx
-        systemctl restart nginx
-    fi
-
-    systemctl enable stunnel
-    systemctl daemon-reload
-    systemctl start stunnel
+    chmod 640 /etc/stunnel/stunnel.p12
 
     cp /etc/stunnel/stunnel.pem /home/$MY_USERNAME/stunnel.pem
     cp /etc/stunnel/stunnel.p12 /home/$MY_USERNAME/stunnel.p12
-    cp /etc/stunnel/stunnel-client.conf /home/$MY_USERNAME/stunnel-client.conf
-    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/stunnel*
+    chown $MY_USERNAME:$MY_USERNAME $prefix$userhome/stunnel*
 }
 
-function install_vpn {
-    apt-get -yq install fastd openvpn easy-rsa
-
-    groupadd vpn
-    useradd -r -s /bin/false -g vpn vpn
-
-    # server configuration
-    echo 'port 1194' > /etc/openvpn/server.conf
-    echo 'proto tcp' >> /etc/openvpn/server.conf
-    echo 'dev tun' >> /etc/openvpn/server.conf
-    echo 'tun-mtu 1500' >> /etc/openvpn/server.conf
-    echo 'tun-mtu-extra 32' >> /etc/openvpn/server.conf
-    echo 'mssfix 1450' >> /etc/openvpn/server.conf
-    echo 'ca /etc/openvpn/ca.crt' >> /etc/openvpn/server.conf
-    echo 'cert /etc/openvpn/server.crt' >> /etc/openvpn/server.conf
-    echo 'key /etc/openvpn/server.key' >> /etc/openvpn/server.conf
-    echo 'dh /etc/openvpn/dh2048.pem' >> /etc/openvpn/server.conf
-    echo 'server 10.8.0.0 255.255.255.0' >> /etc/openvpn/server.conf
-    echo 'push "redirect-gateway def1 bypass-dhcp"' >> /etc/openvpn/server.conf
-    echo "push \"dhcp-option DNS 85.214.73.63\"" >> /etc/openvpn/server.conf
-    echo "push \"dhcp-option DNS 213.73.91.35\"" >> /etc/openvpn/server.conf
-    echo 'keepalive 5 30' >> /etc/openvpn/server.conf
-    echo 'comp-lzo' >> /etc/openvpn/server.conf
-    echo 'persist-key' >> /etc/openvpn/server.conf
-    echo 'persist-tun' >> /etc/openvpn/server.conf
-    echo 'status /dev/null' >> /etc/openvpn/server.conf
-    echo 'verb 3' >> /etc/openvpn/server.conf
-    echo '' >> /etc/openvpn/server.conf
-
-    echo 1 > /proc/sys/net/ipv4/ip_forward
-    sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
-    sed -i 's|#net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
-    sed -i 's|net.ipv4.ip_forward.*|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
-
-    cp -r /usr/share/easy-rsa/ /etc/openvpn
-    if [ ! -d /etc/openvpn/easy-rsa/keys ]; then
-        mkdir /etc/openvpn/easy-rsa/keys
+function install_stunnel {
+    prefix=
+    prefixchroot=
+    userhome=/home/$MY_USERNAME
+    if [ $rootdir ]; then
+        prefix=$rootdir
+        prefixchroot="chroot $rootdir"
     fi
 
-    # keys configuration
-    sed -i "s|export KEY_COUNTRY.*|export KEY_COUNTRY=\"US\"|g" /etc/openvpn/easy-rsa/vars
-    sed -i "s|export KEY_PROVINCE.*|export KEY_PROVINCE=\"TX\"|g" /etc/openvpn/easy-rsa/vars
-    sed -i "s|export KEY_CITY.*|export KEY_CITY=\"Dallas\"|g" /etc/openvpn/easy-rsa/vars
-    sed -i "s|export KEY_ORG.*|export KEY_ORG=\"$PROJECT_NAME\"|g" /etc/openvpn/easy-rsa/vars
-    sed -i "s|export KEY_EMAIL.*|export KEY_EMAIL=\"$MY_EMAIL_ADDRESS\"|g" /etc/openvpn/easy-rsa/vars
-    sed -i "s|export KEY_OU=.*|export KEY_OU=\"MoonUnit\"|g" /etc/openvpn/easy-rsa/vars
-    sed -i "s|export KEY_NAME.*|export KEY_NAME=\"$OPENVPN_SERVER_NAME\"|g" /etc/openvpn/easy-rsa/vars
+    $prefixchroot apt-get -yq install stunnel4
 
+    if [ ! $prefix ]; then
+        cd /etc/stunnel
+        generate_stunnel_keys
+    fi
+
+    echo 'chroot = /var/lib/stunnel4' > $prefix/etc/stunnel/stunnel.conf
+    echo 'pid = /stunnel4.pid' >> $prefix/etc/stunnel/stunnel.conf
+    echo 'setuid = stunnel4' >> $prefix/etc/stunnel/stunnel.conf
+    echo 'setgid = stunnel4' >> $prefix/etc/stunnel/stunnel.conf
+    echo 'socket = l:TCP_NODELAY=1' >> $prefix/etc/stunnel/stunnel.conf
+    echo 'socket = r:TCP_NODELAY=1' >> $prefix/etc/stunnel/stunnel.conf
+    echo 'cert = /etc/stunnel/stunnel.pem' >> $prefix/etc/stunnel/stunnel.conf
+    echo '[openvpn]' >> $prefix/etc/stunnel/stunnel.conf
+    echo "accept = $VPN_TLS_PORT" >> $prefix/etc/stunnel/stunnel.conf
+    echo 'connect = localhost:1194' >> $prefix/etc/stunnel/stunnel.conf
+    echo 'cert = /etc/stunnel/stunnel.pem' >> $prefix/etc/stunnel/stunnel.conf
+
+    sed -i 's|ENABLED=.*|ENABLED=1|g' /etc/default/stunnel4
+
+    echo '[openvpn]' > $prefix/etc/stunnel/stunnel-client.conf
+    echo 'client = yes' >> $prefix/etc/stunnel/stunnel-client.conf
+    echo "accept = $STUNNEL_PORT" >> $prefix/etc/stunnel/stunnel-client.conf
+    echo "connect = $DEFAULT_DOMAIN_NAME:$VPN_TLS_PORT" >> $prefix/etc/stunnel/stunnel-client.conf
+    echo 'cert = stunnel.pem' >> $prefix/etc/stunnel/stunnel-client.conf
+
+    echo '[Unit]' > $prefix/etc/systemd/system/stunnel.service
+    echo 'Description=SSL tunnel for network daemons' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'Documentation=man:stunnel https://www.stunnel.org/docs.html' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'DefaultDependencies=no' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'After=network.target' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'After=syslog.target' >> $prefix/etc/systemd/system/stunnel.service
+    echo '' >> $prefix/etc/systemd/system/stunnel.service
+    echo '[Install]' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'WantedBy=multi-user.target' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'Alias=stunnel.target' >> $prefix/etc/systemd/system/stunnel.service
+    echo '' >> $prefix/etc/systemd/system/stunnel.service
+    echo '[Service]' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'Type=forking' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'RuntimeDirectory=stunnel' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'EnvironmentFile=-/etc/stunnel/stunnel.conf' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'ExecStart=/usr/bin/stunnel /etc/stunnel/stunnel.conf' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'ExecStop=/usr/bin/killall -9 stunnel' >> $prefix/etc/systemd/system/stunnel.service
+    echo 'RemainAfterExit=yes' >> $prefix/etc/systemd/system/stunnel.service
+
+    if [ ! $prefix ]; then
+        if [ $VPN_TLS_PORT -eq 443 ]; then
+            systemctl stop nginx
+            systemctl disable nginx
+        else
+            systemctl enable nginx
+            systemctl restart nginx
+        fi
+
+        systemctl enable stunnel
+        systemctl daemon-reload
+        systemctl start stunnel
+    fi
+
+    cp $prefix/etc/stunnel/stunnel-client.conf $prefix$userhome/stunnel-client.conf
+    chown $MY_USERNAME:$MY_USERNAME $prefix$userhome/stunnel*
+}
+
+function vpn_generate_keys {
     # generate host keys
     if [ ! -f /etc/openvpn/dh2048.pem ]; then
         openssl dhparam -out /etc/openvpn/dh2048.pem 2048
@@ -621,7 +591,7 @@ function install_vpn {
     sed -i 's| --interact||g' build-key-server
     sed -i 's| --interact||g' build-ca
     ./build-ca
-    ./build-key-server $OPENVPN_SERVER_NAME
+    ./build-key-server ${OPENVPN_SERVER_NAME}
     if [ ! -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt ]; then
         echo $'OpenVPN crt not found'
         exit 7823352
@@ -643,19 +613,81 @@ function install_vpn {
     fi
     cp /etc/openvpn/easy-rsa/keys/{$OPENVPN_SERVER_NAME.crt,$OPENVPN_SERVER_NAME.key,ca.crt} /etc/openvpn
 
-    create_user_vpn_key $MY_USERNAME
+    create_user_vpn_key ${MY_USERNAME}
+}
 
-    firewall_enable_vpn
+function install_vpn {
+    prefix=
+    prefixchroot=
+    if [ $rootdir ]; then
+        prefix=$rootdir
+        prefixchroot="chroot $rootdir"
+    fi
+    $prefixchroot apt-get -yq install fastd openvpn easy-rsa
 
-    if [ $VPN_TLS_PORT -ne 443 ]; then
-        firewall_add VPN-TLS $VPN_TLS_PORT tcp
+    $prefixchroot groupadd vpn
+    $prefixchroot useradd -r -s /bin/false -g vpn vpn
+
+    # server configuration
+    echo 'port 1194' > $prefix/etc/openvpn/server.conf
+    echo 'proto tcp' >> $prefix/etc/openvpn/server.conf
+    echo 'dev tun' >> $prefix/etc/openvpn/server.conf
+    echo 'tun-mtu 1500' >> $prefix/etc/openvpn/server.conf
+    echo 'tun-mtu-extra 32' >> $prefix/etc/openvpn/server.conf
+    echo 'mssfix 1450' >> $prefix/etc/openvpn/server.conf
+    echo 'ca /etc/openvpn/ca.crt' >> $prefix/etc/openvpn/server.conf
+    echo 'cert /etc/openvpn/server.crt' >> $prefix/etc/openvpn/server.conf
+    echo 'key /etc/openvpn/server.key' >> $prefix/etc/openvpn/server.conf
+    echo 'dh /etc/openvpn/dh2048.pem' >> $prefix/etc/openvpn/server.conf
+    echo 'server 10.8.0.0 255.255.255.0' >> $prefix/etc/openvpn/server.conf
+    echo 'push "redirect-gateway def1 bypass-dhcp"' >> $prefix/etc/openvpn/server.conf
+    echo "push \"dhcp-option DNS 85.214.73.63\"" >> $prefix/etc/openvpn/server.conf
+    echo "push \"dhcp-option DNS 213.73.91.35\"" >> $prefix/etc/openvpn/server.conf
+    echo 'keepalive 5 30' >> $prefix/etc/openvpn/server.conf
+    echo 'comp-lzo' >> $prefix/etc/openvpn/server.conf
+    echo 'persist-key' >> $prefix/etc/openvpn/server.conf
+    echo 'persist-tun' >> $prefix/etc/openvpn/server.conf
+    echo 'status /dev/null' >> $prefix/etc/openvpn/server.conf
+    echo 'verb 3' >> $prefix/etc/openvpn/server.conf
+    echo '' >> $prefix/etc/openvpn/server.conf
+
+    if [ ! $prefix ]; then
+        echo 1 > /proc/sys/net/ipv4/ip_forward
+    fi
+    sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' $prefix/etc/sysctl.conf
+    sed -i 's|#net.ipv4.ip_forward|net.ipv4.ip_forward|g' $prefix/etc/sysctl.conf
+    sed -i 's|net.ipv4.ip_forward.*|net.ipv4.ip_forward=1|g' $prefix/etc/sysctl.conf
+
+    cp -r $prefix/usr/share/easy-rsa/ $prefix/etc/openvpn
+    if [ ! -d $prefix/etc/openvpn/easy-rsa/keys ]; then
+        mkdir $prefix/etc/openvpn/easy-rsa/keys
     fi
 
-    systemctl start openvpn
+    # keys configuration
+    sed -i "s|export KEY_COUNTRY.*|export KEY_COUNTRY=\"US\"|g" $prefix/etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_PROVINCE.*|export KEY_PROVINCE=\"TX\"|g" $prefix/etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_CITY.*|export KEY_CITY=\"Dallas\"|g" $prefix/etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_ORG.*|export KEY_ORG=\"$PROJECT_NAME\"|g" $prefix/etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_EMAIL.*|export KEY_EMAIL=\"$MY_EMAIL_ADDRESS\"|g" $prefix/etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_OU=.*|export KEY_OU=\"MoonUnit\"|g" $prefix/etc/openvpn/easy-rsa/vars
+    sed -i "s|export KEY_NAME.*|export KEY_NAME=\"$OPENVPN_SERVER_NAME\"|g" $prefix/etc/openvpn/easy-rsa/vars
+
+    if [ ! $prefix ]; then
+        vpn_generate_keys
+        firewall_enable_vpn
+
+        if [ ${VPN_TLS_PORT} -ne 443 ]; then
+            firewall_add VPN-TLS ${VPN_TLS_PORT} tcp
+        fi
+
+        systemctl start openvpn
+    fi
 
     install_stunnel
 
-    systemctl restart openvpn
+    if [ ! $prefix ]; then
+        systemctl restart openvpn
+    fi
 
     APP_INSTALLED=1
 }
