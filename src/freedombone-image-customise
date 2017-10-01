@@ -564,6 +564,9 @@ INSTALLING_MESH=
 PATCHWORK_REPO="https://github.com/ssbc/patchwork"
 PATCHWORK_COMMIT='60111a9e3385d65be0d17aa0d15fd20e5fb311ce'
 
+FERMENT_REPO="https://github.com/LolaShare/ferment"
+FERMENT_COMMIT='6e0e434114cd4cc652a03f6dcc6ddcec007b0058'
+
 install_patchwork() {
     if [[ $VARIANT != "meshclient" ]]; then
         return
@@ -597,6 +600,41 @@ EOF
 
     # Copy icon to an accesible location
     cp $rootdir/root/$PROJECT_NAME/img/icon_patchwork.png $rootdir/etc/patchwork/icon_patchwork.png
+}
+
+install_ferment() {
+    if [[ $VARIANT != "meshclient" ]]; then
+        return
+    fi
+
+    get_npm_arch
+
+    git clone $FERMENT_REPO $rootdir/etc/ferment
+    if [ ! -d $rootdir/etc/ferment ]; then
+        exit 5239465
+    fi
+    cd $rootdir/etc/ferment
+    git checkout $FERMENT_COMMIT -b $FERMENT_COMMIT
+
+    cat <<EOF > $rootdir/usr/bin/install_ferment
+#!/bin/bash
+cd /etc/ferment
+npm install --arch=$NPM_ARCH --build-from-source
+npm install --arch=$NPM_ARCH --save-dev electron-rebuild
+./node_modules/.bin/electron-rebuild
+npm install --arch=$NPM_ARCH git-ssb
+EOF
+    chroot "$rootdir" /bin/chmod +x /usr/bin/install_ferment
+    chroot "$rootdir" /usr/bin/install_ferment
+    rm $rootdir/usr/bin/install_ferment
+
+    echo '#!/bin/bash' > $rootdir/usr/bin/start_ferment
+    echo 'cd /etc/ferment' >> $rootdir/usr/bin/start_ferment
+    echo 'npm start' >> $rootdir/usr/bin/start_ferment
+    chmod +x $rootdir/usr/bin/start_ferment
+
+    # Copy icon to an accesible location
+    cp $rootdir/root/$PROJECT_NAME/img/icon_ferment.png $rootdir/etc/patchwork/icon_ferment.png
 }
 
 initialise_mesh() {
@@ -637,6 +675,7 @@ initialise_mesh() {
     #install_tahoelafs
     #install_librevault
     install_patchwork
+    install_ferment
     install_ipfs
     install_tox
     install_web_server
@@ -880,6 +919,22 @@ if [ \$no_of_users -gt 0 ]; then
         fi
     fi
 
+    if [ ! -f /home/$MY_USERNAME/Desktop/audio.desktop ]; then
+        echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/audio.desktop
+        echo 'Name=Audio/Music' >> /home/$MY_USERNAME/Desktop/audio.desktop
+        echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/audio.desktop
+        echo 'Comment=Audio publishing and streaming' >> /home/$MY_USERNAME/Desktop/audio.desktop
+        echo 'Exec=bash /usr/bin/start_ferment' >> /home/$MY_USERNAME/Desktop/audio.desktop
+        echo "Icon=/etc/patchwork/icon_ferment.png" >> /home/$MY_USERNAME/Desktop/audio.desktop
+        echo 'StartupNotify=true' >> /home/$MY_USERNAME/Desktop/audio.desktop
+        chmod +x /home/$MY_USERNAME/Desktop/audio.desktop
+        chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Desktop/audio.desktop
+    else
+        if grep -q "Offline" /home/$MY_USERNAME/Desktop/audio.desktop; then
+            sed -i 's|Name=.*|Name=Audio/Music|g' /home/$MY_USERNAME/Desktop/audio.desktop
+        fi
+    fi
+
     if [ -f /tmp/.ipfs-users ]; then
         echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/sites.desktop
         echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/sites.desktop
@@ -942,6 +997,11 @@ else
         if [ -f /home/$MY_USERNAME/Desktop/social.desktop ]; then
             if ! grep -q "Offline" /home/$MY_USERNAME/Desktop/social.desktop; then
                 sed -i 's|Name=.*|Name=Social (Offline)|g' /home/$MY_USERNAME/Desktop/social.desktop
+            fi
+        fi
+        if [ -f /home/$MY_USERNAME/Desktop/audio.desktop ]; then
+            if ! grep -q "Offline" /home/$MY_USERNAME/Desktop/audio.desktop; then
+                sed -i 's|Name=.*|Name=Audio/Music (Offline)|g' /home/$MY_USERNAME/Desktop/audio.desktop
             fi
         fi
         pkill qtox
