@@ -96,6 +96,10 @@ if [ -e /etc/default/batctl ]; then
     . /etc/default/batctl
 fi
 
+function mesh_hotspot_ip_address {
+    echo $(ip -o -f inet addr show dev "$BRIDGE" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
+}
+
 function global_rate_limit {
     if ! grep -q "tcp_challenge_ack_limit" /etc/sysctl.conf; then
         echo 'net.ipv4.tcp_challenge_ack_limit = 999999999' >> /etc/sysctl.conf
@@ -246,6 +250,32 @@ function add_wifi_interface {
     ifconfig $ifname up
 }
 
+function mesh_create_app_downloads_page {
+    if [ ! -d /root/$PROJECT_NAME/image_build/mesh_apps ]; then
+        return
+    fi
+    if [ ! -d /var/www/html ]; then
+        return
+    fi
+    cp /root/$PROJECT_NAME/website/EN/meshindex.html /var/www/html/index.html
+    if [ ! -f /var/www/html/ssb.apk ]; then
+        cp /root/$PROJECT_NAME/image_build/mesh_apps/ssb.apk /var/www/html/ssb.apk
+    fi
+    if [ ! -d /var/www/html/images ]; then
+        mkdir /var/www/html/images
+    fi
+    if [ ! -f /var/www/html/images/logo.png ]; then
+        cp /root/$PROJECT_NAME/img/logo.png /var/www/html/images/logo.png
+    fi
+    if [ ! -f /var/www/html/images/ssb.png ]; then
+        cp /root/$PROJECT_NAME/img/icon_patchwork.png /var/www/html/images/ssb.png
+    fi
+    if [ ! -f /var/www/html/freedombone.css ]; then
+        cp /root/$PROJECT_NAME/website/freedombone.css /var/www/html/freedombone.css
+    fi
+    chown -R www-data:www-data /var/www/html/*
+}
+
 function start {
     if [ -z "$IFACE" ] ; then
         echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
@@ -313,7 +343,7 @@ function start {
         echo "bridge=${BRIDGE}" >> /etc/hostapd/hostapd.conf
         echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
         echo "country_code=UK" >> /etc/hostapd/hostapd.conf
-        echo "ssid=${WIFI_SSID}-${HOSTNAME}" >> /etc/hostapd/hostapd.conf
+        echo "ssid=${WIFI_SSID}-$(mesh_hotspot_ip_address)" >> /etc/hostapd/hostapd.conf
         echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
         echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
         echo 'wpa=2' >> /etc/hostapd/hostapd.conf
@@ -326,6 +356,7 @@ function start {
 
         systemctl enable hostapd
         systemctl restart hostapd
+        mesh_create_app_downloads_page
     fi
 
     iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
