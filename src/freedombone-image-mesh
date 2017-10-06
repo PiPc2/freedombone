@@ -72,6 +72,19 @@ IPFS_PORT=4001
 
 CURRENT_BLOG_INDEX=/home/$MY_USERNAME/.blog-index
 
+OPENVPN_SERVER_NAME="server"
+OPENVPN_KEY_FILENAME='client.ovpn'
+VPN_COUNTRY_CODE="US"
+VPN_AREA="Apparent Free Speech Zone"
+VPN_LOCATION="Freedomville"
+VPN_ORGANISATION="Freedombone"
+VPN_UNIT="Freedombone Unit"
+STUNNEL_PORT=3439
+VPN_TLS_PORT=553
+VPN_MESH_TLS_PORT=653
+
+SCUTTLEBOT_PORT=8010
+
 # Debian stretch has a problem where the formerly predictable wlan0 and eth0
 # device names get assigned random names. This is a hacky workaround.
 # Also adding net.ifnames=0 to kernel options on bootloader may work.
@@ -279,6 +292,24 @@ function show_desktop_icons {
     echo 'Icon=/usr/share/freedombone/avatars/newidentity.png' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
     echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
     echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+
+    echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/social.desktop
+    echo 'Name=Social (Offline)' >> /home/$MY_USERNAME/Desktop/social.desktop
+    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/social.desktop
+    echo 'Comment=A decentralized messaging and sharing app built on top of Secure Scuttlebutt (SSB)' >> /home/$MY_USERNAME/Desktop/social.desktop
+    echo 'Exec=bash /usr/bin/start_patchwork' >> /home/$MY_USERNAME/Desktop/social.desktop
+    echo "Icon=/etc/patchwork/icon_patchwork.png" >> /home/$MY_USERNAME/Desktop/social.desktop
+    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/social.desktop
+    echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/social.desktop
+
+    #echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/audio.desktop
+    #echo 'Name=Audio/Music (Offline)' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #echo 'Comment=Audio publishing and streaming' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #echo 'Exec=bash /usr/bin/start_ferment' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #echo "Icon=/etc/patchwork/icon_ferment.png" >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/audio.desktop
 
     # set permissions
     chmod +x /home/$MY_USERNAME/Desktop/*.desktop
@@ -554,6 +585,236 @@ function setup_tahoelafs {
     echo $'Configured Tahoe-LAFS' >> $INSTALL_LOG
 }
 
+function create_user_vpn_key {
+    username=$1
+
+    if [ ! -d /home/$username ]; then
+        return
+    fi
+
+    echo $"Creating VPN key for $username" >> /var/log/${PROJECT_NAME}.log
+
+    cd /etc/openvpn/easy-rsa
+
+    if [ -f /etc/openvpn/easy-rsa/keys/$username.crt ]; then
+        rm /etc/openvpn/easy-rsa/keys/$username.crt
+    fi
+    if [ -f /etc/openvpn/easy-rsa/keys/$username.key ]; then
+        rm /etc/openvpn/easy-rsa/keys/$username.key
+    fi
+    if [ -f /etc/openvpn/easy-rsa/keys/$username.csr ]; then
+        rm /etc/openvpn/easy-rsa/keys/$username.csr
+    fi
+
+    sed -i 's| --interact||g' build-key
+    ./build-key "$username"
+
+    if [ ! -f /etc/openvpn/easy-rsa/keys/$username.crt ]; then
+        echo $'VPN user cert not generated' >> /var/log/${PROJECT_NAME}.log
+        exit 783528
+    fi
+    user_cert=$(cat /etc/openvpn/easy-rsa/keys/$username.crt)
+    if [ ${#user_cert} -lt 10 ]; then
+        cat /etc/openvpn/easy-rsa/keys/$username.crt
+        echo $'User cert generation failed' >> /var/log/${PROJECT_NAME}.log
+        exit 634659
+    fi
+    if [ ! -f /etc/openvpn/easy-rsa/keys/$username.key ]; then
+        echo $'VPN user key not generated'
+        exit 682523
+    fi
+    user_key=$(cat /etc/openvpn/easy-rsa/keys/$username.key)
+    if [ ${#user_key} -lt 10 ]; then
+        cat /etc/openvpn/easy-rsa/keys/$username.key
+        echo $'User key generation failed'
+        exit 285838
+    fi
+
+    user_vpn_cert_file=/home/$username/$OPENVPN_KEY_FILENAME
+
+    echo 'client' > $user_vpn_cert_file
+    echo 'dev tun' >> $user_vpn_cert_file
+    echo 'proto tcp' >> $user_vpn_cert_file
+    echo "remote localhost $STUNNEL_PORT" >> $user_vpn_cert_file
+    echo "route $DEFAULT_DOMAIN_NAME 255.255.255.255 net_gateway" >> $user_vpn_cert_file
+    echo 'resolv-retry infinite' >> $user_vpn_cert_file
+    echo 'nobind' >> $user_vpn_cert_file
+    echo 'tun-mtu 1500' >> $user_vpn_cert_file
+    echo 'tun-mtu-extra 32' >> $user_vpn_cert_file
+    echo 'mssfix 1450' >> $user_vpn_cert_file
+    echo 'persist-key' >> $user_vpn_cert_file
+    echo 'persist-tun' >> $user_vpn_cert_file
+    echo 'auth-nocache' >> $user_vpn_cert_file
+    echo 'remote-cert-tls server' >> $user_vpn_cert_file
+    echo 'comp-lzo' >> $user_vpn_cert_file
+    echo 'verb 3' >> $user_vpn_cert_file
+    echo '' >> $user_vpn_cert_file
+
+    echo '<ca>' >> $user_vpn_cert_file
+    cat /etc/openvpn/ca.crt >> $user_vpn_cert_file
+    echo '</ca>' >> $user_vpn_cert_file
+
+    echo '<cert>' >> $user_vpn_cert_file
+    cat /etc/openvpn/easy-rsa/keys/$username.crt >> $user_vpn_cert_file
+    echo '</cert>' >> $user_vpn_cert_file
+
+    echo '<key>' >> $user_vpn_cert_file
+    cat /etc/openvpn/easy-rsa/keys/$username.key >> $user_vpn_cert_file
+    echo '</key>' >> $user_vpn_cert_file
+
+    chown $username:$username $user_vpn_cert_file
+
+    # keep a backup
+    cp $user_vpn_cert_file /etc/openvpn/easy-rsa/keys/$username.ovpn
+
+    #rm /etc/openvpn/easy-rsa/keys/$username.crt
+    #rm /etc/openvpn/easy-rsa/keys/$username.csr
+    shred -zu /etc/openvpn/easy-rsa/keys/$username.key
+
+    echo $"VPN key created at $user_vpn_cert_file" >> /var/log/${PROJECT_NAME}.log
+}
+
+function vpn_generate_keys {
+    # generate host keys
+    if [ ! -f /etc/openvpn/dh2048.pem ]; then
+        ${PROJECT_NAME}-dhparam -o /etc/openvpn/dh2048.pem
+    fi
+    if [ ! -f /etc/openvpn/dh2048.pem ]; then
+        echo $'vpn dhparams were not generated' >> /var/log/${PROJECT_NAME}.log
+        exit 73724523
+    fi
+    cp /etc/openvpn/dh2048.pem /etc/openvpn/easy-rsa/keys/dh2048.pem
+
+    cd /etc/openvpn/easy-rsa
+    . ./vars
+    ./clean-all
+    vpn_openssl_version='1.0.0'
+    if [ ! -f openssl-${vpn_openssl_version}.cnf ]; then
+        echo $"openssl-${vpn_openssl_version}.cnf was not found" >> /var/log/${PROJECT_NAME}.log
+        exit 7392353
+    fi
+    cp openssl-${vpn_openssl_version}.cnf openssl.cnf
+
+    if [ -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt ]; then
+        rm /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt
+    fi
+    if [ -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.key ]; then
+        rm /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.key
+    fi
+    if [ -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.csr ]; then
+        rm /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.csr
+    fi
+    sed -i 's| --interact||g' build-key-server
+    sed -i 's| --interact||g' build-ca
+    ./build-ca
+    ./build-key-server ${OPENVPN_SERVER_NAME}
+    if [ ! -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt ]; then
+        echo $'OpenVPN crt not found' >> /var/log/${PROJECT_NAME}.log
+        exit 7823352
+    fi
+    server_cert=$(cat /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt)
+    if [ ${#server_cert} -lt 10 ]; then
+        cat /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt
+        echo $'Server cert generation failed' >> /var/log/${PROJECT_NAME}.log
+        exit 3284682
+    fi
+
+    if [ ! -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.key ]; then
+        echo $'OpenVPN key not found' >> /var/log/${PROJECT_NAME}.log
+        exit 6839436
+    fi
+    if [ ! -f /etc/openvpn/easy-rsa/keys/ca.key ]; then
+        echo $'OpenVPN ca not found' >> /var/log/${PROJECT_NAME}.log
+        exit 7935203
+    fi
+    cp /etc/openvpn/easy-rsa/keys/{$OPENVPN_SERVER_NAME.crt,$OPENVPN_SERVER_NAME.key,ca.crt} /etc/openvpn
+
+    create_user_vpn_key ${MY_USERNAME}
+}
+
+function generate_stunnel_keys {
+    echo "Creating stunnel keys" >> /var/log/${PROJECT_NAME}.log
+    openssl req -x509 -nodes -days 3650 -sha256 \
+            -subj "/O=$VPN_ORGANISATION/OU=$VPN_UNIT/C=$VPN_COUNTRY_CODE/ST=$VPN_AREA/L=$VPN_LOCATION/CN=$HOSTNAME" \
+            -newkey rsa:2048 -keyout /etc/stunnel/key.pem \
+            -out /etc/stunnel/cert.pem
+    if [ ! -f /etc/stunnel/key.pem ]; then
+        echo $'stunnel key not created' >> /var/log/${PROJECT_NAME}.log
+        exit 793530
+    fi
+    if [ ! -f /etc/stunnel/cert.pem ]; then
+        echo $'stunnel cert not created' >> /var/log/${PROJECT_NAME}.log
+        exit 204587
+    fi
+    chmod 400 /etc/stunnel/key.pem
+    chmod 640 /etc/stunnel/cert.pem
+
+    cat /etc/stunnel/key.pem /etc/stunnel/cert.pem >> /etc/stunnel/stunnel.pem
+    chmod 640 /etc/stunnel/stunnel.pem
+
+    openssl pkcs12 -export -out /etc/stunnel/stunnel.p12 -inkey /etc/stunnel/key.pem -in /etc/stunnel/cert.pem -passout pass:
+    if [ ! -f /etc/stunnel/stunnel.p12 ]; then
+        echo $'stunnel pkcs12 not created' >> /var/log/${PROJECT_NAME}.log
+        exit 639353
+    fi
+    chmod 640 /etc/stunnel/stunnel.p12
+
+    cp /etc/stunnel/stunnel.pem /home/$MY_USERNAME/stunnel.pem
+    cp /etc/stunnel/stunnel.p12 /home/$MY_USERNAME/stunnel.p12
+    chown $MY_USERNAME:$MY_USERNAME $prefix$userhome/stunnel*
+    echo "stunnel keys created" >> /var/log/${PROJECT_NAME}.log
+}
+
+function mesh_setup_vpn {
+    vpn_generate_keys
+
+    cp /etc/stunnel/stunnel-client.conf /home/$MY_USERNAME/stunnel-client.conf
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/stunnel*
+
+    generate_stunnel_keys
+
+    sed -i 's|tun-mtu .*|tun-mtu 1532|g' /home/$MY_USERNAME/client.ovpn
+
+    systemctl restart openvpn
+}
+
+function initialise_scuttlebot_pub {
+    chown -R scuttlebot:scuttlebot /etc/scuttlebot
+
+    systemctl enable scuttlebot.service
+    systemctl daemon-reload
+    systemctl start scuttlebot.service
+
+    sleep 3
+
+    if [ ! -d /etc/scuttlebot/.ssb ]; then
+        echo $'Scuttlebot config not generated' >> /var/log/${PROJECT_NAME}.log
+        exit 73528
+    fi
+
+    echo '{' > /etc/scuttlebot/.ssb/config
+    echo "  \"host\": \"${HOSTNAME}\"," >> /etc/scuttlebot/.ssb/config
+    echo "  \"port\": ${SCUTTLEBOT_PORT}," >> /etc/scuttlebot/.ssb/config
+    echo '  "allowPrivate": true,' >> /etc/scuttlebot/.ssb/config
+    echo '  "timeout": 30000,' >> /etc/scuttlebot/.ssb/config
+    echo '  "pub": true,' >> /etc/scuttlebot/.ssb/config
+    echo '  "local": true,' >> /etc/scuttlebot/.ssb/config
+    echo '  "friends": {' >> /etc/scuttlebot/.ssb/config
+    echo '    "dunbar": 150,' >> /etc/scuttlebot/.ssb/config
+    echo '    "hops": 3' >> /etc/scuttlebot/.ssb/config
+    echo '  },' >> /etc/scuttlebot/.ssb/config
+    echo '  "gossip": {' >> /etc/scuttlebot/.ssb/config
+    echo '    "connections": 2' >> /etc/scuttlebot/.ssb/config
+    echo '  },' >> /etc/scuttlebot/.ssb/config
+    echo '  "master": [],' >> /etc/scuttlebot/.ssb/config
+    echo '  "logging": {' >> /etc/scuttlebot/.ssb/config
+    echo '    "level": "error"' >> /etc/scuttlebot/.ssb/config
+    echo '  }' >> /etc/scuttlebot/.ssb/config
+    echo '}' >> /etc/scuttlebot/.ssb/config
+    chown scuttlebot:scuttlebot /etc/scuttlebot/.ssb/config
+    systemctl restart scuttlebot.service
+}
+
 # whether to reset the identity
 set_new_identity=
 if [ $2 ]; then
@@ -594,6 +855,11 @@ if [ -f $MESH_INSTALL_SETUP ]; then
         rm -rf /home/$MY_USERNAME/.ssb
     fi
 
+    # Remove vpn keys
+    if [ -d /etc/openvpn/easy-rsa/keys ]; then
+        rm -rf /etc/openvpn/easy-rsa/keys/*
+    fi
+
     echo $'Beginning mesh node setup' >> $INSTALL_LOG
 
     if [ -d /home/$MY_USERNAME/.config ]; then
@@ -610,6 +876,8 @@ if [ -f $MESH_INSTALL_SETUP ]; then
     configure_toxcore
     create_tox_user
     #setup_tahoelafs
+    mesh_setup_vpn
+    initialise_scuttlebot_pub
     setup_ipfs
     mesh_amnesic
     make_root_read_only

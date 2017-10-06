@@ -564,6 +564,9 @@ INSTALLING_MESH=
 PATCHWORK_REPO="https://github.com/ssbc/patchwork"
 PATCHWORK_COMMIT='60111a9e3385d65be0d17aa0d15fd20e5fb311ce'
 
+FERMENT_REPO="https://github.com/LolaShare/ferment"
+FERMENT_COMMIT='6e0e434114cd4cc652a03f6dcc6ddcec007b0058'
+
 install_patchwork() {
     if [[ $VARIANT != "meshclient" ]]; then
         return
@@ -599,6 +602,56 @@ EOF
     cp $rootdir/root/$PROJECT_NAME/img/icon_patchwork.png $rootdir/etc/patchwork/icon_patchwork.png
 }
 
+install_ferment() {
+    if [[ $VARIANT != "meshclient" ]]; then
+        return
+    fi
+
+    get_npm_arch
+
+    git clone $FERMENT_REPO $rootdir/etc/ferment
+    if [ ! -d $rootdir/etc/ferment ]; then
+        exit 5239465
+    fi
+    cd $rootdir/etc/ferment
+    git checkout $FERMENT_COMMIT -b $FERMENT_COMMIT
+
+    cat <<EOF > $rootdir/usr/bin/install_ferment
+#!/bin/bash
+cd /etc/ferment
+npm install --arch=$NPM_ARCH --build-from-source
+npm install --arch=$NPM_ARCH --save-dev electron-rebuild
+./node_modules/.bin/electron-rebuild
+npm install --arch=$NPM_ARCH git-ssb
+EOF
+    chroot "$rootdir" /bin/chmod +x /usr/bin/install_ferment
+    chroot "$rootdir" /usr/bin/install_ferment
+    rm $rootdir/usr/bin/install_ferment
+
+    echo '#!/bin/bash' > $rootdir/usr/bin/start_ferment
+    echo 'cd /etc/ferment' >> $rootdir/usr/bin/start_ferment
+    echo 'npm start' >> $rootdir/usr/bin/start_ferment
+    chmod +x $rootdir/usr/bin/start_ferment
+
+    # Copy icon to an accesible location
+    cp $rootdir/root/$PROJECT_NAME/img/icon_ferment.png $rootdir/etc/patchwork/icon_ferment.png
+}
+
+mesh_shutdown_script() {
+    echo '[Unit]' > $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'Description=Shuts down the mesh' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'Before=shutdown.target' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo '' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'ExecStart=/bin/true' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'ExecStop=/bin/bash /usr/local/bin/batman stop' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'RemainAfterExit=yes' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo '' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/meshshutdown.service
+    chroot "$rootdir" systemctl enable meshshutdown
+}
+
 initialise_mesh() {
     if [[ $VARIANT != "mesh"* ]]; then
         return
@@ -632,10 +685,14 @@ initialise_mesh() {
     configure_firewall
     install_avahi
     install_batman
+    mesh_shutdown_script
+    install_vpn
     install_tomb
     #install_tahoelafs
     #install_librevault
     install_patchwork
+    mesh_install_scuttlebot
+    #install_ferment
     install_ipfs
     install_tox
     install_web_server
@@ -828,9 +885,16 @@ function configure_user_interface {
     # USB cloning tool
     chroot "$rootdir" apt-get -yq install gnome-multi-writer
 
+    # clipboard
+    chroot "$rootdir" apt-get -yq install xclip
+
+    # audio recording
+    chroot "$rootdir" apt-get -yq install audacity
+
     # Produce a text file on the desktop listing users on the mesh
     cat <<EOF > $rootdir/usr/bin/list-tox-users
 #!/bin/bash
+ethernet_connected=$(cat /sys/class/net/eth0/carrier)
 users_list=\$(lstox | awk -F ' ' '{\$1=""; print \$0}' | sed -e 's/^[[:space:]]*//' | sort -d | uniq)
 if [ ! \$users_list ]; then
     no_of_users=0
@@ -870,7 +934,8 @@ if [ \$no_of_users -gt 0 ]; then
         echo 'Comment=A decentralized messaging and sharing app built on top of Secure Scuttlebutt (SSB)' >> /home/$MY_USERNAME/Desktop/social.desktop
         echo 'Exec=bash /usr/bin/start_patchwork' >> /home/$MY_USERNAME/Desktop/social.desktop
         echo "Icon=/etc/patchwork/icon_patchwork.png" >> /home/$MY_USERNAME/Desktop/social.desktop
-        echo 'StartupNotify=true' >> /home/$MY_USERNAME/Desktop/social.desktop
+        echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/social.desktop
+        echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/social.desktop
         chmod +x /home/$MY_USERNAME/Desktop/social.desktop
         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Desktop/social.desktop
     else
@@ -878,6 +943,23 @@ if [ \$no_of_users -gt 0 ]; then
             sed -i 's|Name=.*|Name=Social|g' /home/$MY_USERNAME/Desktop/social.desktop
         fi
     fi
+
+    #if [ ! -f /home/$MY_USERNAME/Desktop/audio.desktop ]; then
+    #    echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/audio.desktop
+    #    echo 'Name=Audio/Music' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #    echo 'Comment=Audio publishing and streaming' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #    echo 'Exec=bash /usr/bin/start_ferment' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #    echo "Icon=/etc/patchwork/icon_ferment.png" >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #    echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/audio.desktop
+    #    chmod +x /home/$MY_USERNAME/Desktop/audio.desktop
+    #    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Desktop/audio.desktop
+    #else
+    #    if grep -q "Offline" /home/$MY_USERNAME/Desktop/audio.desktop; then
+    #        sed -i 's|Name=.*|Name=Audio/Music|g' /home/$MY_USERNAME/Desktop/audio.desktop
+    #    fi
+    #fi
 
     if [ -f /tmp/.ipfs-users ]; then
         echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/sites.desktop
@@ -922,6 +1004,26 @@ if [ \$no_of_users -gt 0 ]; then
         chmod +x /home/$MY_USERNAME/Desktop/tox.desktop
         chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Desktop/tox.desktop
     fi
+
+    # If ethernet is connected then add the invite icon to help enable
+    # SSB nat traversal
+    if [[ "$ethernet_connected" != "0" ]]; then
+        if [ ! -f /home/$MY_USERNAME/Desktop/invite.desktop ]; then
+            echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Version=1.0' >> /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Name=Create Invite' >> /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Comment=Create an invite for Patchwork or Ferment' >> /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Exec=mate-terminal -e freedombone-mesh-invite' >> /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Icon=/usr/share/freedombone/avatars/invite.png' >> /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/invite.desktop
+            echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/invite.desktop
+        fi
+    else
+        if [ -f /home/$MY_USERNAME/Desktop/invite.desktop ]; then
+            rm /home/$MY_USERNAME/Desktop/invite.desktop
+        fi
+    fi
 else
     if [ -f /tmp/Users.txt ]; then
         rm /tmp/Users.txt
@@ -943,7 +1045,19 @@ else
                 sed -i 's|Name=.*|Name=Social (Offline)|g' /home/$MY_USERNAME/Desktop/social.desktop
             fi
         fi
+        #if [ -f /home/$MY_USERNAME/Desktop/audio.desktop ]; then
+        #    if ! grep -q "Offline" /home/$MY_USERNAME/Desktop/audio.desktop; then
+        #        sed -i 's|Name=.*|Name=Audio/Music (Offline)|g' /home/$MY_USERNAME/Desktop/audio.desktop
+        #    fi
+        #fi
         pkill qtox
+    fi
+
+    # If there is no ethernet then remove the invite icon
+    if [[ "$ethernet_connected" == "0" ]]; then
+        if [ -f /home/$MY_USERNAME/Desktop/invite.desktop ]; then
+            rm /home/$MY_USERNAME/Desktop/invite.desktop
+        fi
     fi
 fi
 EOF

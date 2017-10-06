@@ -13,7 +13,7 @@
 # License
 # =======
 #
-# Copyright (C) 2015-2016 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2015-2017 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -30,7 +30,9 @@
 
 PROJECT_NAME='freedombone'
 COMPLETION_FILE=/root/${PROJECT_NAME}-completed.txt
-HOTSPOT_PASSPHRASE='mesh'
+
+# hotspot passphrase must be 5 characters or longer
+HOTSPOT_PASSPHRASE="${PROJECT_NAME}"
 
 source /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-wifi
 
@@ -94,6 +96,14 @@ if [ -e /etc/default/batctl ]; then
     . /etc/default/batctl
 fi
 
+function get_ipv4_wlan {
+    echo $(ip -o -f inet addr show dev "$IFACE" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
+}
+
+function mesh_hotspot_ip_address {
+    echo $(ip -o -f inet addr show dev "$BRIDGE" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
+}
+
 function global_rate_limit {
     if ! grep -q "tcp_challenge_ack_limit" /etc/sysctl.conf; then
         echo 'net.ipv4.tcp_challenge_ack_limit = 999999999' >> /etc/sysctl.conf
@@ -114,16 +124,14 @@ function stop {
     fi
     if [ "$EIFACE" ]; then
         brctl delif $BRIDGE bat0
-        brctl delif $BRIDGE $EIFACE
         ifconfig $BRIDGE down || true
+        ethernet_connected=$(cat /sys/class/net/$EIFACE/carrier)
+        if [[ "$ethernet_connected" != "0" ]]; then
+            systemctl stop hostapd
+            brctl delif $BRIDGE $EIFACE
+            ifconfig $EIFACE down -promisc
+        fi
         brctl delbr $BRIDGE
-        ifconfig $EIFACE down -promisc
-    fi
-    if [ $IFACE_SECONDARY ]; then
-        systemctl stop hostapd
-        brctl delif $BRIDGE_HOTSPOT bat0
-        ifconfig $BRIDGE_HOTSPOT down || true
-        brctl delbr $BRIDGE_HOTSPOT
     fi
 
     avahi-autoipd -k $BRIDGE
@@ -131,10 +139,20 @@ function stop {
     ifconfig bat0 down -promisc
 
     batctl if del $IFACE
-    rmmod batman-adv
     ifconfig $IFACE mtu 1500
     ifconfig $IFACE down
     iwconfig $IFACE mode managed
+
+    if [ $IFACE_SECONDARY ]; then
+        systemctl stop hostapd
+        systemctl disable hostapd
+        batctl if del $IFACE_SECONDARY
+        ifconfig $IFACE_SECONDARY mtu 1500
+        ifconfig $IFACE_SECONDARY down
+        iwconfig $IFACE_SECONDARY mode managed
+    fi
+
+    rmmod batman-adv
 
     iptables -D INPUT -p tcp --dport $TRACKER_PORT -j ACCEPT
     iptables -D INPUT -p udp --dport $TRACKER_PORT -j ACCEPT
@@ -155,9 +173,24 @@ function stop {
     iptables -D INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
     iptables -D INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
     iptables -D INPUT -p tcp --dport $TAHOELAFS_PORT -j ACCEPT
-    # SSB/Patchwork
+    # SSB/Scuttlebot/Patchwork
     iptables -D INPUT -p udp --dport 8008 -j ACCEPT
     iptables -D INPUT -p tcp --dport 8008 -j ACCEPT
+    iptables -D INPUT -p udp --dport 8010 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 8010 -j ACCEPT
+    # vpn over the internet
+    iptables -D INPUT -p tcp --dport 653 -j ACCEPT
+    iptables -D INPUT -p udp --dport 653 -j ACCEPT
+    iptables -D INPUT -i ${EIFACE} -m state --state NEW -p tcp --dport 1194 -j ACCEPT
+    iptables -D INPUT -i tun+ -j ACCEPT
+    iptables -D FORWARD -i tun+ -j ACCEPT
+    iptables -D FORWARD -i tun+ -o ${EIFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -D FORWARD -i ${EIFACE} -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o ${EIFACE} -j MASQUERADE
+    iptables -D OUTPUT -o tun+ -j ACCEPT
+
+    echo 0 > /proc/sys/net/ipv4/ip_forward
+    sed -i 's|net.ipv4.ip_forward=.*|net.ipv4.ip_forward=0|g' /etc/sysctl.conf
 
     systemctl restart network-manager
 }
@@ -188,7 +221,63 @@ function assign_peer_address {
         fi
         echo -n "${octet}"
     done
-    echo ''
+}
+
+function add_wifi_interface {
+    ifname=$1
+    ifssid=$WIFI_SSID
+    if [ $2 ]; then
+        ifssid=$2
+    fi
+    ifmode=ad-hoc
+    if [ $3 ]; then
+        ifmode=$3
+    fi
+    ifchannel=$CHANNEL
+    if [ $4 ]; then
+        ifchannel=$4
+    fi
+
+    ifconfig $ifname down
+    ifconfig $ifname mtu 1532
+    peermac=$(assign_peer_address)
+    if [ ! $peermac ]; then
+        echo $"Unable to obtain MAC address for $peermac on $ifname"
+        return
+    fi
+    ifconfig $ifname hw ether $peermac
+    echo $"$ifname assigned MAC address $peermac"
+    iwconfig $ifname enc off
+    iwconfig $ifname mode $ifmode essid $ifssid channel $ifchannel
+
+    batctl if add $ifname
+    ifconfig $ifname up
+}
+
+function mesh_create_app_downloads_page {
+    if [ ! -d /root/$PROJECT_NAME/image_build/mesh_apps ]; then
+        return
+    fi
+    if [ ! -d /var/www/html ]; then
+        return
+    fi
+    cp /root/$PROJECT_NAME/website/EN/meshindex.html /var/www/html/index.html
+    if [ ! -f /var/www/html/ssb.apk ]; then
+        cp /root/$PROJECT_NAME/image_build/mesh_apps/ssb.apk /var/www/html/ssb.apk
+    fi
+    if [ ! -d /var/www/html/images ]; then
+        mkdir /var/www/html/images
+    fi
+    if [ ! -f /var/www/html/images/logo.png ]; then
+        cp /root/$PROJECT_NAME/img/logo.png /var/www/html/images/logo.png
+    fi
+    if [ ! -f /var/www/html/images/ssb.png ]; then
+        cp /root/$PROJECT_NAME/img/icon_patchwork.png /var/www/html/images/ssb.png
+    fi
+    if [ ! -f /var/www/html/freedombone.css ]; then
+        cp /root/$PROJECT_NAME/website/freedombone.css /var/www/html/freedombone.css
+    fi
+    chown -R www-data:www-data /var/www/html/*
 }
 
 function start {
@@ -211,83 +300,67 @@ function start {
     # Might have to re-enable wifi
     rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true
 
-    ifconfig $IFACE down
-    ifconfig $IFACE mtu 1532
-    ifconfig $IFACE hw ether $(assign_peer_address)
-    iwconfig $IFACE enc off
-    iwconfig $IFACE mode ad-hoc essid $WIFI_SSID channel $CHANNEL
-    sleep 1
-    iwconfig $IFACE ap $CELLID
-
-    modprobe batman-adv
-    batctl if add $IFACE
-    ifconfig $IFACE up
-    avahi-autoipd --force-bind --daemonize --wait $IFACE
-    ifconfig bat0 up promisc
-
-    #Use persistent HWAddr
-    ether_new=$(ifconfig eth0 | grep HWaddr | sed -e "s/.*HWaddr //")
-    if [ ! -f /var/lib/mesh-node/bat0 ]; then
-        mkdir /var/lib/mesh-node
-        echo "${ether_new}" > /var/lib/mesh-node/bat0
-    else
-        ether=$(cat /var/lib/mesh-node/bat0)
-        ifconfig bat0 hw ether ${ether}
-    fi
-
-    if [ "$EIFACE" ] ; then
-        brctl addbr $BRIDGE
-        brctl addif $BRIDGE bat0
-        brctl addif $BRIDGE $EIFACE
-        ifconfig bat0 0.0.0.0
-        ifconfig $EIFACE 0.0.0.0
-        ifconfig $EIFACE up promisc
-        ifconfig $BRIDGE up
-        avahi-autoipd --force-bind --daemonize --wait $BRIDGE
-    fi
-
+    secondary_wifi_available=
     if [ $IFACE_SECONDARY ]; then
         if [[ $IFACE != $IFACE_SECONDARY ]]; then
             if [ -d /etc/hostapd ]; then
-                # bridge between mesh and wifi hotspot for mobile
-                HOTSPOT_NAME=$"${WIFI_SSID}-hotspot"
-                ifconfig $IFACE_SECONDARY down
-                ifconfig $IFACE_SECONDARY mtu 1500
-                ifconfig $IFACE_SECONDARY hw ether $(assign_peer_address)
-                iwconfig $IFACE_SECONDARY enc open
-                iwconfig $IFACE_SECONDARY mode managed essid $HOTSPOT_NAME channel ${HOTSPOT_CHANNEL}
-                iwconfig $IFACE_SECONDARY ap $CELLID
-
-                brctl addbr $BRIDGE_HOTSPOT
-                brctl addif $BRIDGE_HOTSPOT bat0
-                brctl addif $BRIDGE_HOTSPOT $IFACE_SECONDARY
-                ifconfig bat0 0.0.0.0
-                ifconfig $IFACE_SECONDARY 0.0.0.0
-
-                sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
-
-                echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
-                echo "bridge=${BRIDGE_HOTSPOT}" >> /etc/hostapd/hostapd.conf
-                echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
-                echo "country_code=UK" >> /etc/hostapd/hostapd.conf
-                echo "ssid=$HOTSPOT_NAME" >> /etc/hostapd/hostapd.conf
-                echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
-                echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
-                echo 'wpa=2' >> /etc/hostapd/hostapd.conf
-                echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
-                echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
-                echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
-                echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
-                echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
-                echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
-
-                ifconfig $BRIDGE_HOTSPOT up
-                avahi-autoipd --force-bind --daemonize --wait $BRIDGE_HOTSPOT
-                ifconfig $IFACE_SECONDARY up promisc
-                #ifconfig $IFACE_SECONDARY auto-dhcp start
-                systemctl start hostapd
+                if [ ${#HOTSPOT_PASSPHRASE} -gt 4 ]; then
+                    secondary_wifi_available=1
+                else
+                    echo $'Hotspot passphrase is too short'
+                fi
             fi
         fi
+    fi
+
+    modprobe batman-adv
+
+    add_wifi_interface $IFACE $WIFI_SSID ad-hoc $CHANNEL
+    avahi-autoipd --force-bind --daemonize --wait $IFACE
+
+    # NOTE: Don't connect the secondary wifi device. hostapd will handle that by itself
+
+    ifconfig bat0 up promisc
+
+    brctl addbr $BRIDGE
+    brctl addif $BRIDGE bat0
+    ifconfig bat0 0.0.0.0
+    if [ "$EIFACE" ] ; then
+        ethernet_connected=$(cat /sys/class/net/$EIFACE/carrier)
+        if [[ "$ethernet_connected" != "0" ]]; then
+            echo $'Trying ethernet bridge to the internet'
+            brctl addif $BRIDGE $EIFACE
+            ifconfig $EIFACE 0.0.0.0
+            ifconfig $EIFACE up promisc
+            echo $'End of ethernet bridge'
+        else
+            echo $"$EIFACE is not connected"
+        fi
+    fi
+    ifconfig $BRIDGE up
+    dhclient $BRIDGE
+
+    if [ $secondary_wifi_available ]; then
+        sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
+
+        echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
+        echo "bridge=${BRIDGE}" >> /etc/hostapd/hostapd.conf
+        echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+        echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+        echo "ssid=${WIFI_SSID}-$(mesh_hotspot_ip_address)" >> /etc/hostapd/hostapd.conf
+        echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+        echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
+        echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+        echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+        echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+        echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+        echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+        echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+        echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+
+        systemctl enable hostapd
+        systemctl restart hostapd
+        mesh_create_app_downloads_page
     fi
 
     iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
@@ -310,11 +383,38 @@ function start {
     iptables -A INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
     iptables -A INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
     iptables -A INPUT -p tcp --dport $TAHOELAFS_PORT -j ACCEPT
-    # SSB/Patchwork
+    # SSB/Scuttlebot/Patchwork
     iptables -A INPUT -p udp --dport 8008 -j ACCEPT
     iptables -A INPUT -p tcp --dport 8008 -j ACCEPT
+    iptables -A INPUT -p udp --dport 8010 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 8010 -j ACCEPT
+    # vpn over the internet
+    iptables -A INPUT -p tcp --dport 653 -j ACCEPT
+    iptables -A INPUT -p udp --dport 653 -j ACCEPT
+    iptables -A INPUT -i ${EIFACE} -m state --state NEW -p tcp --dport 1194 -j ACCEPT
+    iptables -A INPUT -i tun+ -j ACCEPT
+    iptables -A FORWARD -i tun+ -j ACCEPT
+    iptables -A FORWARD -i tun+ -o ${EIFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -A FORWARD -i ${EIFACE} -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o ${EIFACE} -j MASQUERADE
+    iptables -A OUTPUT -o tun+ -j ACCEPT
+
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+    sed -i 's|#net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+    sed -i 's|net.ipv4.ip_forward.*|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
 
     systemctl restart avahi-daemon
+
+    if [ -f /etc/scuttlebot/.ssb/config ]; then
+        ethernet_connected=$(cat /sys/class/net/eth0/carrier)
+        if [[ "$ethernet_connected" != "0" ]]; then
+            sed -i "s|\"host\": .*|\"host\": \"$(get_ipv4_wlan)\",|g" /etc/scuttlebot/.ssb/config
+            systemctl restart scuttlebot
+        else
+            systemctl stop scuttlebot
+        fi
+    fi
 
     verify
 }
