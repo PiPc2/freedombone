@@ -35,8 +35,8 @@ VARIANTS='mesh'
 
 # change these versions at your peril. Things will often crash if you don't
 # have specifically the correct versions
-NODEJS_VERSION='6.11.3'
-NODEJS_N_VERSION='2.1.7'
+NODEJS_VERSION='6.11.4'
+NODEJS_N_VERSION='2.1.8'
 NPM_VERSION='4.0.5'
 
 # This file keeps track of the apps needing nodejs
@@ -48,7 +48,7 @@ function get_npm_arch {
     NPM_ARCH='ia32'
     if [[ $ARCHITECTURE == 'arm'* ]]; then
         NPM_ARCH='armv7l'
-        N_ARCH='arm'
+        N_ARCH='armv7l'
     fi
     if [[ $ARCHITECTURE == *"aarch"* ]]; then
         NPM_ARCH='arm64'
@@ -68,16 +68,48 @@ function mesh_install_nodejs {
         fi
         mesh_install_nodejs_prefix="chroot $rootdir"
     fi
-    $mesh_install_nodejs_prefix apt-get -yq install g++ m4 libtool automake nodejs curl
-    $mesh_install_nodejs_prefix apt-get -yq install libxext-dev libxtst-dev libxkbfile-dev
 
-    if [ ! -f ${rootdir}/usr/bin/nodejs ]; then
-        echo $'nodejs was not installed'
-        exit 63962
+    $mesh_install_nodejs_prefix apt-get -yq install wget curl g++ m4 libtool automake
+    $mesh_install_nodejs_prefix apt-get -yq install libxext-dev libxtst-dev libxkbfile-dev
+    $mesh_install_nodejs_prefix apt-get -yq install apt-transport-https
+    $mesh_install_nodejs_prefix wget https://deb.nodesource.com/gpgkey/nodesource.gpg.key -O /root/node.gpg.key
+    if [ ! -f $rootdir/root/node.gpg.key ]; then
+        echo $'Unable to obtain gpg key for nodejs repo'
+        exit 6389252
     fi
+    $mesh_install_nodejs_prefix apt-key add /root/node.gpg.key
+    echo "deb https://deb.nodesource.com/node_6.x stretch main" > $rootdir/etc/apt/sources.list.d/nodesource.list
+    echo "deb-src https://deb.nodesource.com/node_6.x stretch main" >> $rootdir/etc/apt/sources.list.d/nodesource.list
+
+    $mesh_install_nodejs_prefix apt-get update
+    $mesh_install_nodejs_prefix apt-get -yq remove --purge nodejs
+
+    if [ -d $rootdir/usr/local/lib/node_modules ]; then
+        rm -rf $rootdir/usr/local/lib/node_modules
+    fi
+    if [ -f $rootdir/usr/local/bin/node ]; then
+        rm $rootdir/usr/local/bin/node
+    fi
+    if [ -f $rootdir/usr/bin/node ]; then
+        rm /usr/bin/node
+    fi
+    if [ -f $rootdir/usr/bin/nodejs ]; then
+        rm $rootdir/usr/bin/nodejs
+    fi
+
+    $mesh_install_nodejs_prefix apt-get -yq install nodejs
 
     if [ -f $rootdir/usr/bin/nodejs ]; then
         cp $rootdir/usr/bin/nodejs $rootdir/usr/bin/node
+    fi
+
+    if [ ! -f ${rootdir}/usr/bin/node ]; then
+        if [ ! -f ${rootdir}/usr/local/bin/node ]; then
+            if [ ! -f ${rootdir}/usr/bin/nodejs ]; then
+                echo $'nodejs was not installed'
+                exit 63962
+            fi
+        fi
     fi
 
     if [ ! -f $rootdir/usr/bin/node ]; then
@@ -85,23 +117,16 @@ function mesh_install_nodejs {
         exit 7235728
     fi
 
-    wget https://www.npmjs.com/install.sh -O $rootdir/root/npm_install.sh
-    if [ ! -f $rootdir/root/npm_install.sh ]; then
-        echo $'Unable to download npm installer'
-        exit 8793636
-    fi
-    $mesh_install_nodejs_prefix chmod +x /root/npm_install.sh
-    sed -i "s|t=\"\${npm_install}\"|t=\"$NPM_VERSION\"|g" $rootdir/root/npm_install.sh
-    $mesh_install_nodejs_prefix /root/npm_install.sh
+    get_npm_arch
 
-    if [ ! -f $rootdir/usr/bin/npm ]; then
-        echo $'npm was not installed'
-        exit 5290462
+    $mesh_install_nodejs_prefix npm config set unsafe-perm true
+    $mesh_install_nodejs_prefix npm install --arch=$NPM_ARCH -g npm@${NPM_VERSION} --save
+    if [ -f $rootdir/usr/local/bin/npm ]; then
+        cp $rootdir/usr/local/bin/npm /usr/bin/npm
     fi
     cp $rootdir/usr/bin/npm $rootdir/root/npm
 
     # update from the old debian nodejs version
-    get_npm_arch
     $mesh_install_nodejs_prefix npm install --arch=$NPM_ARCH -g n@${NODEJS_N_VERSION} --save
     $mesh_install_nodejs_prefix n --arch $N_ARCH ${NODEJS_VERSION}
     cp $rootdir/root/npm $rootdir/usr/bin/npm
@@ -182,55 +207,7 @@ function install_nodejs {
     rootdir=
     mesh_install_nodejs
 
-
-    #if [ ! -f /usr/bin/nodejs ]; then
-        # Note: this has to be jessie for now
-    #    wget -qO- https://deb.nodesource.com/gpgkey/nodesource.gpg.key > /root/node.gpg.key
-    #    apt-key add /root/node.gpg.key
-    #    echo "deb https://deb.nodesource.com/node_6.x stretch main" > /etc/apt/sources.list.d/nodesource.list
-    #    echo "deb-src https://deb.nodesource.com/node_6.x stretch main" >> /etc/apt/sources.list.d/nodesource.list
-
-    #    apt-get update
-
-    #    apt-get -yq remove --purge nodejs
-
-    #    if [ -d /usr/local/lib/node_modules ]; then
-    #        rm -rf /usr/local/lib/node_modules
-    #    fi
-    #    if [ -f /usr/local/bin/node ]; then
-    #        rm /usr/local/bin/node
-    #    fi
-    #    if [ -f /usr/bin/node ]; then
-    #        rm /usr/bin/node
-    #    fi
-    #    if [ -f /usr/bin/nodejs ]; then
-    #        rm /usr/bin/nodejs
-    #    fi
-
-    #    apt-get -yq install nodejs
-    #    apt-get -yq install curl
-
-    #    if [ ! -f /usr/bin/nodejs ]; then
-    #        echo $'nodejs was not installed'
-    #        exit 63962
-    #    fi
-    #fi
-
-    #npm install -g npm@${NPM_VERSION} --save
-    #npm install -g n@${NODEJS_N_VERSION} --save
-    #n ${NODEJS_VERSION}
-    #npm install -g pug@2.0.0-beta6 --save
-    #npm install -g graceful-fs@4.1.10 --save
-    #npm install -g minimatch@3.0.3 --save
-    npm install -g npm@${NPM_VERSION} --save
-
-    #cp /usr/local/bin/node /usr/bin/nodejs
-    if [ -f /usr/local/bin/npm ]; then
-        cp /usr/local/bin/npm /usr/bin/npm
-    fi
-
-    # node seems tricky so here we're going to double check
-    # that the versions we expect did get installed
+    # verify nodejs versions are what we expect
     CURR_NODE_VERSION=$(node --version)
     CURR_NPM_VERSION=$(npm --version)
     CURR_N_VERSION=$(n --version)
