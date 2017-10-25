@@ -106,13 +106,17 @@ function install_interactive_vpn {
 }
 
 function vpn_change_tls_port {
-    EXISTING_VPN_TLS_PORT=$VPN_TLS_PORT
+    if ! grep -q "VPN-TLS" $FIREWALL_CONFIG; then
+        EXISTING_VPN_TLS_PORT=443
+    else
+        EXISTING_VPN_TLS_PORT=$(cat $FIREWALL_CONFIG | grep "VPN-TLS" | awk -F '=' '{print $2}')
+    fi
 
     data=$(tempfile 2>/dev/null)
     trap "rm -f $data" 0 1 2 5 15
     dialog --title $"VPN Configuration" \
            --backtitle $"Freedombone Control Panel" \
-           --inputbox $'Change TLS port' 10 50 $VPN_TLS_PORT 2>$data
+           --inputbox $'Change TLS port' 10 50 $EXISTING_VPN_TLS_PORT 2>$data
     sel=$?
     case $sel in
         0)
@@ -134,17 +138,29 @@ function vpn_change_tls_port {
                     done
 
                     if [ $VPN_TLS_PORT -eq 443 ]; then
+                        if [[ "$PREVIOUS_VPN_TLS_PORT" != "443" ]]; then
+                            firewall_remove VPN-TLS ${EXISTING_VPN_TLS_PORT}
+                        fi
                         systemctl stop nginx
                         systemctl disable nginx
                     else
+                        if [[ "$PREVIOUS_VPN_TLS_PORT" != "$VPN_TLS_PORT" ]]; then
+                            firewall_remove VPN-TLS ${EXISTING_VPN_TLS_PORT}
+                            firewall_add VPN-TLS ${VPN_TLS_PORT} tcp
+                        fi
                         systemctl enable nginx
                         systemctl restart nginx
                     fi
 
                     systemctl restart stunnel
 
-                    dialog --title $"VPN Configuration" \
-                           --msgbox $"TLS port changed to $VPN_TLS_PORT" 6 60
+                    if [ $VPN_TLS_PORT -eq 443 ]; then
+                        dialog --title $"VPN Configuration" \
+                               --msgbox $"TLS port changed to ${VPN_TLS_PORT}. Forward this port from your internet router." 10 60
+                    else
+                        dialog --title $"VPN Configuration" \
+                               --msgbox $"TLS port changed to ${VPN_TLS_PORT}. Forward this port from your internet router." 10 60
+                    fi
                 fi
             fi
             ;;
