@@ -1,0 +1,229 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Blogging functions for mesh clients
+#
+# License
+# =======
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+
+export TEXTDOMAIN=${PROJECT_NAME}-mesh-blog
+export TEXTDOMAINDIR="/usr/share/locale"
+
+MY_USERNAME='fbone'
+
+OPENVPN_SERVER_NAME="server"
+OPENVPN_KEY_FILENAME='client.ovpn'
+VPN_COUNTRY_CODE="US"
+VPN_AREA="Apparent Free Speech Zone"
+VPN_LOCATION="Freedomville"
+VPN_ORGANISATION="Freedombone"
+VPN_UNIT="Freedombone Unit"
+STUNNEL_PORT=3439
+VPN_MESH_TLS_PORT=653
+
+function vpn_generate_keys {
+    # generate host keys
+    if [ ! -f /etc/openvpn/dh2048.pem ]; then
+        ${PROJECT_NAME}-dhparam -o /etc/openvpn/dh2048.pem
+    fi
+    if [ ! -f /etc/openvpn/dh2048.pem ]; then
+        echo $'vpn dhparams were not generated' >> /var/log/${PROJECT_NAME}.log
+        exit 73724523
+    fi
+    cp /etc/openvpn/dh2048.pem /etc/openvpn/easy-rsa/keys/dh2048.pem
+
+    cd /etc/openvpn/easy-rsa
+    . ./vars
+    ./clean-all
+    vpn_openssl_version='1.0.0'
+    if [ ! -f openssl-${vpn_openssl_version}.cnf ]; then
+        echo $"openssl-${vpn_openssl_version}.cnf was not found" >> /var/log/${PROJECT_NAME}.log
+        exit 7392353
+    fi
+    cp openssl-${vpn_openssl_version}.cnf openssl.cnf
+
+    if [ -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt ]; then
+        rm /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt
+    fi
+    if [ -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.key ]; then
+        rm /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.key
+    fi
+    if [ -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.csr ]; then
+        rm /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.csr
+    fi
+    sed -i 's| --interact||g' build-key-server
+    sed -i 's| --interact||g' build-ca
+    ./build-ca
+    ./build-key-server ${OPENVPN_SERVER_NAME}
+    if [ ! -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt ]; then
+        echo $'OpenVPN crt not found' >> /var/log/${PROJECT_NAME}.log
+        exit 7823352
+    fi
+    server_cert=$(cat /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt)
+    if [ ${#server_cert} -lt 10 ]; then
+        cat /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.crt
+        echo $'Server cert generation failed' >> /var/log/${PROJECT_NAME}.log
+        exit 3284682
+    fi
+
+    if [ ! -f /etc/openvpn/easy-rsa/keys/${OPENVPN_SERVER_NAME}.key ]; then
+        echo $'OpenVPN key not found' >> /var/log/${PROJECT_NAME}.log
+        exit 6839436
+    fi
+    if [ ! -f /etc/openvpn/easy-rsa/keys/ca.key ]; then
+        echo $'OpenVPN ca not found' >> /var/log/${PROJECT_NAME}.log
+        exit 7935203
+    fi
+    cp /etc/openvpn/easy-rsa/keys/{$OPENVPN_SERVER_NAME.crt,$OPENVPN_SERVER_NAME.key,ca.crt} /etc/openvpn
+
+    create_user_vpn_key ${MY_USERNAME}
+}
+
+function generate_stunnel_keys {
+    echo "Creating stunnel keys" >> /var/log/${PROJECT_NAME}.log
+    openssl req -x509 -nodes -days 3650 -sha256 \
+            -subj "/O=$VPN_ORGANISATION/OU=$VPN_UNIT/C=$VPN_COUNTRY_CODE/ST=$VPN_AREA/L=$VPN_LOCATION/CN=$HOSTNAME" \
+            -newkey rsa:2048 -keyout /etc/stunnel/key.pem \
+            -out /etc/stunnel/cert.pem
+    if [ ! -f /etc/stunnel/key.pem ]; then
+        echo $'stunnel key not created' >> /var/log/${PROJECT_NAME}.log
+        exit 793530
+    fi
+    if [ ! -f /etc/stunnel/cert.pem ]; then
+        echo $'stunnel cert not created' >> /var/log/${PROJECT_NAME}.log
+        exit 204587
+    fi
+    chmod 400 /etc/stunnel/key.pem
+    chmod 640 /etc/stunnel/cert.pem
+
+    cat /etc/stunnel/key.pem /etc/stunnel/cert.pem >> /etc/stunnel/stunnel.pem
+    chmod 640 /etc/stunnel/stunnel.pem
+
+    openssl pkcs12 -export -out /etc/stunnel/stunnel.p12 -inkey /etc/stunnel/key.pem -in /etc/stunnel/cert.pem -passout pass:
+    if [ ! -f /etc/stunnel/stunnel.p12 ]; then
+        echo $'stunnel pkcs12 not created' >> /var/log/${PROJECT_NAME}.log
+        exit 639353
+    fi
+    chmod 640 /etc/stunnel/stunnel.p12
+
+    cp /etc/stunnel/stunnel.pem /home/$MY_USERNAME/stunnel.pem
+    cp /etc/stunnel/stunnel.p12 /home/$MY_USERNAME/stunnel.p12
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/stunnel*
+    echo "stunnel keys created" >> /var/log/${PROJECT_NAME}.log
+}
+
+function mesh_setup_vpn {
+    vpn_generate_keys
+
+    cp /etc/stunnel/stunnel-client.conf /home/$MY_USERNAME/stunnel-client.conf
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/stunnel*
+
+    generate_stunnel_keys
+
+    sed -i 's|tun-mtu .*|tun-mtu 1532|g' /home/$MY_USERNAME/client.ovpn
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/client.ovpn
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/stunnel*
+
+    # create an archive of the vpn client files
+    cd /home/$MY_USERNAME
+    tar -czvf vpn.tar.gz stunnel* client.ovpn
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/vpn.tar.gz
+
+    if [ -f vpn.tar.gz ]; then
+        dialog --title $"Generate VPN client keys" \
+               --msgbox $"\nNew VPN client keys have been generated in the /home/fbone directory.\n\nYou can find it by selecting \"Places\" then \"Home Directory\" on the top menu bar. Transmit the vpn.tar.gz file to whoever is running the other mesh network so that they can connect to yours.\n\nThey should uncompress vpn.tar.gz to their /home/fbone directory, forward port $VPN_MESH_TLS_PORT then connect using your IP address or domain name." 15 70
+    fi
+}
+
+function connect_to_vpn {
+    dialog --title $"VPN Connect to another mesh network" \
+           --backtitle $"Freedombone Mesh" \
+           --defaultno \
+           --yesno $"\nHave you received the vpn.tar.gz file from the other mesh administrator, uncompressed it into the /home/fbone directory and also forwarded port $VPN_MESH_TLS_PORT from your internet router to this system?" 10 70
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"VPN Connect to another mesh network" \
+           --backtitle $"Freedombone Mesh" \
+           --inputbox $'Enter the IP address or domain name of the other mesh.' 10 60 2>$data
+    sel=$?
+    case $sel in
+        0)
+            ip_or_domain=$(<$data)
+            if [ ${#ip_or_domain} -gt 1 ]; then
+                if [[ "$ip_or_domain" == *'.'* ]]; then
+
+                    if [ ! -f ~/client.ovpn ]; then
+                        rm $data
+                        exit 1
+                    fi
+                    if [ ! -f ~/stunnel.pem ]; then
+                        rm $data
+                        exit 1
+                    fi
+                    if [ ! -f ~/stunnel.p12 ]; then
+                        rm $data
+                        exit 1
+                    fi
+
+                    sed -i "s|route .*|route $ip_or_domain 255.255.255.255 net_gateway|g" ~/client.ovpn
+
+                    clear
+                    cd ~/
+                    sudo stunnel stunnel-client.conf
+                    sudo openvpn client.ovpn
+                fi
+            fi
+            ;;
+    esac
+
+    rm $data
+}
+
+data=$(tempfile 2>/dev/null)
+trap "rm -f $data" 0 1 2 5 15
+dialog --backtitle $"Freedombone Mesh" \
+       --title $"Connect to another mesh network" \
+       --radiolist $"Choose an operation:" 10 75 2 \
+       1 $"Connect to another mesh network" on \
+       2 $"Generate VPN keys for another mesh network to connect to me" off 2> $data
+sel=$?
+case $sel in
+    1) exit 1;;
+    255) exit 1;;
+esac
+case $(cat $data) in
+    1) rm $data
+       connect_to_vpn;;
+    2) rm $data
+       mesh_setup_vpn;;
+esac
+
+exit 0

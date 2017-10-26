@@ -215,6 +215,165 @@ function remove_cryptpad {
     userdel -r cryptpad
 }
 
+function mesh_install_cryptpad {
+    if [[ $VARIANT != "meshclient" && $VARIANT != "meshusb" ]]; then
+        return
+    fi
+
+    if [ ! -d $rootdir/var/www/cryptpad ]; then
+        mkdir $rootdir/var/www/cryptpad
+    fi
+    if [ -d $rootdir$CRYPTPAD_DIR ]; then
+        rm -rf $rootdir$CRYPTPAD_DIR
+    fi
+
+    git_clone $CRYPTPAD_REPO $rootdir$CRYPTPAD_DIR
+
+    if [ ! -d $rootdir$CRYPTPAD_DIR ]; then
+        echo $'Unable to clone cryptpad repo'
+        exit 783251
+    fi
+
+    if [ -f $rootdir/root/$PROJECT_NAME/img/icon_cryptpad.png ]; then
+        cp $rootdir/root/$PROJECT_NAME/img/icon_cryptpad.png $rootdir$CRYPTPAD_DIR/icon_cryptpad.png
+    fi
+
+    # an unprivileged user to run as
+    chroot "$rootdir" useradd -d $CRYPTPAD_DIR/ cryptpad
+
+    cd $rootdir$CRYPTPAD_DIR
+    git checkout $CRYPTPAD_COMMIT -b $CRYPTPAD_COMMIT
+
+    chroot "$rootdir" chown -R cryptpad:cryptpad $CRYPTPAD_DIR
+
+    cryptpad_nginx_site=$rootdir/etc/nginx/sites-available/cryptpad
+    echo 'server {' > $cryptpad_nginx_site
+    echo "  listen 80 default_server;" >> $cryptpad_nginx_site
+    echo "  server_name P${PEER_ID}.local;" >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  # Logs' >> $cryptpad_nginx_site
+    echo '  access_log /dev/null;' >> $cryptpad_nginx_site
+    echo '  error_log /dev/null;' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  # Root' >> $cryptpad_nginx_site
+    echo "  root $CRYPTPAD_DIR;" >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  index index.html;' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  add_header X-XSS-Protection "1; mode=block";' >> $cryptpad_nginx_site
+    echo '  add_header X-Content-Type-Options nosniff;' >> $cryptpad_nginx_site
+    echo '  add_header X-Frame-Options SAMEORIGIN;' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  if ($uri = /pad/inner.html) {' >> $cryptpad_nginx_site
+    echo "    set \$scriptSrc \"'self' 'unsafe-eval' 'unsafe-inline'\";" >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location = /cryptpad_websocket {' >> $cryptpad_nginx_site
+    echo "    proxy_pass http://localhost:$CRYPTPAD_PORT;" >> $cryptpad_nginx_site
+    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $cryptpad_nginx_site
+    echo '    proxy_set_header Host $host;' >> $cryptpad_nginx_site
+    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '    # WebSocket support (nginx 1.4)' >> $cryptpad_nginx_site
+    echo '    proxy_http_version 1.1;' >> $cryptpad_nginx_site
+    echo '    proxy_set_header Upgrade $http_upgrade;' >> $cryptpad_nginx_site
+    echo '    proxy_set_header Connection upgrade;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+
+    echo '  location ^~ /customize.dist/ {' >> $cryptpad_nginx_site
+    echo '    # This is needed in order to prevent infinite recursion between /customize/ and the root' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '  location ^~ /customize/ {' >> $cryptpad_nginx_site
+    echo '    rewrite ^/customize/(.*)$ $1 break;' >> $cryptpad_nginx_site
+    echo '    try_files /customize/$uri /customize.dist/$uri;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '  location = /api/config {' >> $cryptpad_nginx_site
+    echo '    default_type text/javascript;' >> $cryptpad_nginx_site
+    echo '    rewrite ^.*$ /customize/api/config break;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location ^~ /blob/ {' >> $cryptpad_nginx_site
+    echo '    try_files $uri =404;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location ^~ /register/ {' >> $cryptpad_nginx_site
+    echo '    try_files $uri =404;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location ^~ /login/ {' >> $cryptpad_nginx_site
+    echo '    try_files $uri =404;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location ^~ /about.html {' >> $cryptpad_nginx_site
+    echo '    try_files $uri =404;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location ^~ /contact.html {' >> $cryptpad_nginx_site
+    echo '    try_files $uri =404;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location ^~ /what-is-cryptpad.html {' >> $cryptpad_nginx_site
+    echo '    try_files $uri =404;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  location ~ ^/(register|login|settings|user|pad|drive|poll|slide|code|whiteboard|file|media)$ {' >> $cryptpad_nginx_site
+    echo '    rewrite ^(.*)$ $1/ redirect;' >> $cryptpad_nginx_site
+    echo '  }' >> $cryptpad_nginx_site
+    echo '' >> $cryptpad_nginx_site
+    echo '  try_files /www/$uri /www/$uri/index.html /customize/$uri;' >> $cryptpad_nginx_site
+    echo '}' >> $cryptpad_nginx_site
+
+    cd $rootdir$CRYPTPAD_DIR
+
+    get_npm_arch
+
+    cat <<EOF > $rootdir/usr/bin/install_cryptpad
+#!/bin/bash
+cd $CRYPTPAD_DIR
+npm install --arch=$NPM_ARCH --build-from-source
+npm install --arch=$NPM_ARCH -g bower@1.8.0
+chown -R cryptpad:cryptpad $CRYPTPAD_DIR
+su -c 'bower install' - cryptpad
+cp config.example.js config.js
+EOF
+    chmod +x $rootdir/usr/bin/install_cryptpad
+    chroot "$rootdir" /usr/bin/install_cryptpad
+
+    if [ ! -f $rootdir$CRYPTPAD_DIR/config.js ]; then
+        echo $'Cryptpad config file not found'
+        exit 628252
+    fi
+
+    rm $rootdir/usr/bin/install_cryptpad
+
+    sed -i "s|httpPort:.*|httpPort: $CRYPTPAD_PORT,|g" $rootdir$CRYPTPAD_DIR/config.js
+    sed -i "s|// domain:|domain:|g" $rootdir$CRYPTPAD_DIR/config.js
+    sed -i 's|openFileLimit:.*|openFileLimit: 1024,|g' $rootdir$CRYPTPAD_DIR/config.js
+    sed -i "s|domain:.*|domain: 'http://P${PEER_ID}.local',|g" $rootdir$CRYPTPAD_DIR/config.js
+
+    chroot "$rootdir" chown -R cryptpad:cryptpad $CRYPTPAD_DIR
+
+    # daemon
+    echo '[Unit]' > $rootdir/etc/systemd/system/cryptpad.service
+    echo 'Description=Cryptpad' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'After=syslog.target' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo '' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'User=cryptpad' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'Group=cryptpad' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo "WorkingDirectory=$CRYPTPAD_DIR" >> $rootdir/etc/systemd/system/cryptpad.service
+    echo "ExecStart=/usr/local/bin/node $CRYPTPAD_DIR/server.js" >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'Environment=PATH=/usr/bin:/usr/local/bin' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'Environment=NODE_ENV=production' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'Restart=on-failure' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo '' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/cryptpad.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/cryptpad.service
+    chroot "$rootdir" systemctl enable cryptpad.service
+}
+
 function install_cryptpad_main {
     if [[ $(app_is_installed cryptpad_main) == "1" ]]; then
         return
@@ -313,10 +472,6 @@ function install_cryptpad_main {
     echo '  }' >> $cryptpad_nginx_site
     echo '' >> $cryptpad_nginx_site
     echo '  location ^~ /about.html {' >> $cryptpad_nginx_site
-    echo '    try_files $uri =404;' >> $cryptpad_nginx_site
-    echo '  }' >> $cryptpad_nginx_site
-    echo '' >> $cryptpad_nginx_site
-    echo '  location ^~ /contact.html {' >> $cryptpad_nginx_site
     echo '    try_files $uri =404;' >> $cryptpad_nginx_site
     echo '  }' >> $cryptpad_nginx_site
     echo '' >> $cryptpad_nginx_site

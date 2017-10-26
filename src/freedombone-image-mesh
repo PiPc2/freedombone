@@ -85,6 +85,29 @@ VPN_MESH_TLS_PORT=653
 
 SCUTTLEBOT_PORT=8010
 
+CRYPTPAD_PORT=9003
+CRYPTPAD_DIR=/etc/cryptpad
+
+function enable_cryptpad {
+    if [ ! -d $CRYPTPAD_DIR ]; then
+        return
+    fi
+
+    # Set up the web server
+    ln -s /etc/nginx/sites-available/cryptpad /etc/nginx/sites-enabled/cryptpad
+    rm /etc/nginx/sites-enabled/default
+
+    if [ ! -d $CRYPTPAD_DIR/customize/api ]; then
+        mkdir -p $CRYPTPAD_DIR/customize/api
+    fi
+    wget 127.0.0.1:$CRYPTPAD_PORT/api/config -O $CRYPTPAD_DIR/customize/api/config
+    if [ ! -f $CRYPTPAD_DIR/customize/api/config ]; then
+        echo $'Unable to wget api/config'
+        exit 89252
+    fi
+    chown -R cryptpad:cryptpad $CRYPTPAD_DIR
+}
+
 # Debian stretch has a problem where the formerly predictable wlan0 and eth0
 # device names get assigned random names. This is a hacky workaround.
 # Also adding net.ifnames=0 to kernel options on bootloader may work.
@@ -761,7 +784,7 @@ function generate_stunnel_keys {
 
     cp /etc/stunnel/stunnel.pem /home/$MY_USERNAME/stunnel.pem
     cp /etc/stunnel/stunnel.p12 /home/$MY_USERNAME/stunnel.p12
-    chown $MY_USERNAME:$MY_USERNAME $prefix$userhome/stunnel*
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/stunnel*
     echo "stunnel keys created" >> /var/log/${PROJECT_NAME}.log
 }
 
@@ -774,6 +797,13 @@ function mesh_setup_vpn {
     generate_stunnel_keys
 
     sed -i 's|tun-mtu .*|tun-mtu 1532|g' /home/$MY_USERNAME/client.ovpn
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/client.ovpn
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/stunnel*
+
+    # create an archive of the vpn client files
+    cd /home/$MY_USERNAME
+    tar -czvf vpn.tar.gz stunnel* client.ovpn
+    chown $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/vpn.tar.gz
 
     systemctl restart openvpn
 }
@@ -873,12 +903,16 @@ if [ -f $MESH_INSTALL_SETUP ]; then
     #create_ram_disk 1
     #setup_amnesic_data
     change_avahi_name
+    if [ -d $CRYPTPAD_DIR ]; then
+        systemctl start cryptpad
+    fi
     configure_toxcore
     create_tox_user
     #setup_tahoelafs
     mesh_setup_vpn
     initialise_scuttlebot_pub
     setup_ipfs
+    enable_cryptpad
     mesh_amnesic
     make_root_read_only
 
