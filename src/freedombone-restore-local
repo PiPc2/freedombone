@@ -289,6 +289,59 @@ function restore_mariadb {
     fi
 }
 
+function restore_postgresql {
+    if [[ $RESTORE_APP != 'all' ]]; then
+        if [[ $RESTORE_APP != 'postgresql' ]]; then
+            return
+        fi
+    fi
+
+    if [[ $(is_completed install_postgresql) == "0" ]]; then
+        function_check install_postgresql
+        install_postgresql
+    fi
+
+    if [ -d $USB_MOUNT/backup/postgresql ]; then
+        echo $"Restoring postgresql settings"
+        temp_restore_dir=/root/temppostgresql
+        restore_directory_from_usb $temp_restore_dir postgresql
+
+        store_original_postgresql_password
+
+        echo $'Obtaining original postgresql password'
+        db_pass=$(cat /root/.postgresqloriginal)
+        if [ ${#db_pass} -gt 0 ]; then
+            echo $"Restore the postgresql user table"
+            if [ -d ${temp_restore_dir}${temp_restore_dir} ]; then
+                mysqlsuccess=$(sudo -u postgres pg_restore ${temp_restore_dir}${temp_restore_dir}/postgresql.sql)
+            else
+                mysqlsuccess=$(sudo -u postgres pg_restore ${temp_restore_dir}/postgresql.sql)
+            fi
+            if [ ! "$?" = "0" ]; then
+                echo $"Try again using the password obtained from backup"
+                db_pass=$(${PROJECT_NAME}-pass -u root -a postgresql)
+                if [ -d ${temp_restore_dir}${temp_restore_dir} ]; then
+                    mysqlsuccess=$(sudo -u postgres pg_restore ${temp_restore_dir}${temp_restore_dir}/postgresql.sql)
+                else
+                    mysqlsuccess=$(sudo -u postgres pg_restore ${temp_restore_dir}/postgresql.sql)
+                fi
+            fi
+            if [ ! "$?" = "0" ]; then
+                echo "$mysqlsuccess"
+                set_user_permissions
+                backup_unmount_drive
+                exit 73825
+            fi
+            echo $"Restarting database"
+            systemctl restart postgresql
+            echo $"Ensure postgresql handles authentication"
+            POSTGRESQL_PASSWORD=$(${PROJECT_NAME}-pass -u root -a postgresql)
+            DATABASE_PASSWORD=$(${PROJECT_NAME}-pass -u root -a postgresql)
+        fi
+        rm -rf $temp_restore_dir
+    fi
+}
+
 function restore_letsencrypt {
     if [[ $RESTORE_APP != 'all' ]]; then
         if [[ $RESTORE_APP != 'letsencrypt' ]]; then
@@ -865,6 +918,7 @@ restore_configfiles
 same_admin_user
 restore_passwordstore
 restore_mariadb
+restore_postgresql
 restore_letsencrypt
 restore_tor
 restore_mutt_settings
