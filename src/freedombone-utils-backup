@@ -235,9 +235,14 @@ function backup_database_local_usb {
     if [ ! -d ${local_database_dir} ]; then
         mkdir -p ${local_database_dir}
     fi
-    keep_database_running
     echo $"Obtaining ${1} database backup"
-    mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.sql
+    if [ ! $USE_POSTGRESQL ]; then
+        keep_database_running
+        mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.sql
+    else
+        USE_POSTGRESQL=
+        pg_dump ${1} > ${local_database_dir}/${1}.sql
+    fi
     if [ -f ${local_database_dir}/${1}.sql ]; then
         if [ ! -s ${local_database_dir}/${1}.sql ]; then
             echo $"${1} database could not be saved"
@@ -545,9 +550,16 @@ function backup_database_remote {
     if [ ! -d ${local_database_dir} ]; then
         mkdir -p ${local_database_dir}
     fi
-    keep_database_running
+
     echo "Obtaining ${1} database backup"
-    mysqldump --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.sql
+    if [ ! $USE_POSTGRESQL ]; then
+        keep_database_running
+        mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.sql
+    else
+        USE_POSTGRESQL=
+        pg_dump ${1} > ${local_database_dir}/${1}.sql
+    fi
+
     if [ -f ${local_database_dir}/${1}.sql ]; then
         if [ ! -s ${local_database_dir}/${1}.sql ]; then
             echo $"${1} database could not be saved"
@@ -642,8 +654,13 @@ function restore_database_from_friend {
             rm -rf ${local_database_dir}
             exit 503
         fi
-        keep_database_running
-        mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${1} -o < ${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+        if [ ! $USE_POSTGRESQL ]; then
+            keep_database_running
+            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${1} -o < ${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+        else
+            USE_POSTGRESQL=
+            mysqlsuccess=$(sudo -u postgres psql $database_name < ${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+        fi
         if [ ! "$?" = "0" ]; then
             echo "$mysqlsuccess"
             exit 964

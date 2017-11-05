@@ -1,0 +1,139 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# postgresql database functions
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Set this when calling backup and restore commands
+USE_POSTGRESQL=
+
+function get_postgresql_password {
+    POSTGRESQL_PASSWORD=$(${PROJECT_NAME}-pass -u root -a postgresql)
+    if [[ "$POSTGRESQL_PASSWORD" == *'failed'* ]]; then
+        echo $'Could not obtain postgresql password'
+        exit 7835272
+    fi
+}
+
+function install_postgresql {
+    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+        return
+    fi
+
+    function_check get_postgresql_password
+    get_postgresql_password
+    if [ ! $POSTGRESQL_PASSWORD ]; then
+        if [ -f $IMAGE_PASSWORD_FILE ]; then
+            POSTGRESQL_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            POSTGRESQL_PASSWORD="$(openssl rand -base64 32 | cut -c1-${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    ${PROJECT_NAME}-pass -u root -a postgresql -p "$POSTGRESQL_PASSWORD"
+
+    apt-get -yq install postgresql postgresql-contrib postgresql-client
+    apt-get -yq remove --purge apache2-bin*
+    if [ -d /etc/apache2 ]; then
+        rm -rf /etc/apache2
+        echo $'Removed Apache installation after postgresql install'
+    fi
+
+    if [ ! -d /etc/postgresql ]; then
+        echo $"ERROR: postgresql does not appear to have installed. $CHECK_MESSAGE"
+        exit 78352
+    fi
+
+    if [ ! -f /usr/bin/psql ]; then
+        echo $"ERROR: psql command does not appear to have installed. $CHECK_MESSAGE"
+        exit 835290
+    fi
+
+    mark_completed $FUNCNAME
+}
+
+function add_postgresql_user {
+    postgresql_username=$1
+    postgresql_password=$2
+    sudo -u postgres psql -c "create user $postgresql_username password 'postgresql_password'"
+}
+
+function remove_postgresql_user {
+    postgresql_username=$1
+    sudo -u postgres psql -c "drop user $postgresql_username"
+}
+
+function remove_database_postgresql {
+    database_name="$1"
+    sudo -u postgres psql -c "drop database $database_name"
+}
+
+function run_query_postgresql {
+    database_name=$1
+    database_query=$2
+    sudo -u postgres psql -d $database_name -c "$database_query"
+}
+
+function run_query_postgresql_with_output {
+    database_name=$1
+    database_query=$2
+    output=$(sudo -u postgres psql -d $database_name -c << EOF
+use $database_name;
+$database_query
+EOF
+)
+    echo "$output"
+}
+
+function initialise_database_postgresql {
+    database_name=$1
+    database_file=$2
+    sudo -u postgres psql $database_name < $database_file
+    if [ ! "$?" = "0" ]; then
+        exit 7238525
+    fi
+}
+
+function create_database_postgresql {
+    app_name="$1"
+    app_admin_password="$2"
+    app_admin_username=$3
+    if [ ! -d $INSTALL_DIR ]; then
+        mkdir $INSTALL_DIR
+    fi
+    if [ ! $app_admin_username ]; then
+        app_admin_username=${app_name}admin
+    fi
+
+    echo "create database ${app_name};
+CREATE USER '$app_admin_username@localhost' IDENTIFIED BY '${app_admin_password}';
+GRANT ALL PRIVILEGES ON ${app_name}.* TO '$app_admin_username@localhost';
+flush privileges;
+quit" > $INSTALL_DIR/batch.sql
+    chmod 600 $INSTALL_DIR/batch.sql
+    sudo -u postgres psql -d $database_name --file=$INSTALL_DIR/batch.sql
+    shred -zu $INSTALL_DIR/batch.sql
+}
