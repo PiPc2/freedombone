@@ -88,9 +88,10 @@ function qvitter_update_background {
 }
 
 function pleroma_set_background_image_from_url {
-    domain_name="$1"
-    url="$2"
-    title="$3"
+    basedir="$1"
+    domain_name="$2"
+    url="$3"
+    title="$4"
 
     if [ ${#domain_name} -eq 0 ]; then
         echo "1"
@@ -111,7 +112,7 @@ function pleroma_set_background_image_from_url {
     fi
 
     if [ ${#ext} -gt 0 ]; then
-        cd /var/www/${domain_name}/htdocs
+        cd $basedir
 
         # remove any existing image
         if [ -f bg_custom.${ext} ]; then
@@ -127,13 +128,15 @@ function pleroma_set_background_image_from_url {
             return
         fi
 
-        if [ -d /var/www/${domain_name}/htdocs/static ]; then
+        if [ -d $basedir/static ]; then
             cp bg_custom.${ext} static/bg_custom.${ext}
             chown www-data:www-data static/bg_custom.${ext}
             sed -i "s|\"background\":.*|\"background\": \"/static/bg_custom.${ext}\",|g" static/config.json
         fi
 
-        qvitter_update_background ${domain_name} ${ext}
+        if [[ "$basedir" != $PLEROMA_DIR ]]; then
+            qvitter_update_background ${domain_name} ${ext}
+        fi
 
         rm bg_custom.${ext}
     else
@@ -142,19 +145,19 @@ function pleroma_set_background_image_from_url {
     fi
 
     # customise the logo
-    if [ -f /var/www/${domain_name}/htdocs/static/logo.png ]; then
+    if [ -f $basedir/static/logo.png ]; then
         if [ -f ~/freedombone/img/logo_fbone3.png ]; then
-            cp ~/freedombone/img/logo_fbone3.png /var/www/${domain_name}/htdocs/static/logo.png
+            cp ~/freedombone/img/logo_fbone3.png $basedir/static/logo.png
         else
             if [ -f /home/$MY_USERNAME/freedombone/img/logo_fbone3.png ]; then
-                cp /home/$MY_USERNAME/freedombone/img/logo_fbone3.png /var/www/${domain_name}/htdocs/static/logo.png
+                cp /home/$MY_USERNAME/freedombone/img/logo_fbone3.png $basedir/static/logo.png
             fi
         fi
     fi
 
     # customise the title
-    if [ -f /var/www/${domain_name}/htdocs/static/config.json ]; then
-        sed -i "s|\"name\":.*|\"name\": \"${title}\",|g" /var/www/${domain_name}/htdocs/static/config.json
+    if [ -f $basedir/static/config.json ]; then
+        sed -i "s|\"name\":.*|\"name\": \"${title}\",|g" $basedir/static/config.json
     fi
 
     echo "0"
@@ -328,9 +331,14 @@ function install_pleroma_front_end {
         exit 5282682
     fi
 
-    cp -r $INSTALL_DIR/pleroma/dist/* /var/www/${pleroma_domain}/htdocs/
+    if [[ "$app_name" != 'pleroma' ]]; then
+        cp -r $INSTALL_DIR/pleroma/dist/* /var/www/${pleroma_domain}/htdocs/
+        pleroma_set_background_image_from_url /var/www/${pleroma_domain}/htdocs "$pleroma_domain" "$background_url" "$title"
+    else
+        cp -r $INSTALL_DIR/pleroma/dist/* $PLEROMA_DIR
+        pleroma_set_background_image_from_url $PLEROMA_DIR "$pleroma_domain" "$background_url" "$title"
+    fi
 
-    pleroma_set_background_image_from_url "$pleroma_domain" "$background_url" "$title"
 
     nginx_site=/etc/nginx/sites-available/${pleroma_domain}
     sed -i 's|index index.php;|index index.html;|g' $nginx_site
@@ -345,7 +353,11 @@ function install_pleroma_front_end {
         rm -rf /root/.cache/yarn
     fi
 
-    chown -R www-data:www-data /var/www/${pleroma_domain}/htdocs
+    if [[ "$app_name" != 'pleroma' ]]; then
+        chown -R www-data:www-data /var/www/${pleroma_domain}/htdocs
+    else
+        chown -R pleroma:pleroma $PLEROMA_DIR
+    fi
 }
 
 function upgrade_pleroma_frontend {
