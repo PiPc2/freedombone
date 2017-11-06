@@ -62,6 +62,17 @@ pleroma_variables=(ONION_ONLY
                    MY_EMAIL_ADDRESS
                    MY_USERNAME)
 
+function pleroma_recompile {
+    # necessary after parameter changes
+    sudo -u pleroma mix clean
+    sudo -u pleroma mix deps.compile
+    sudo -u pleroma mix compile
+
+    if [ -f /etc/systemd/system/pleroma.service ]; then
+        systemctl restart pleroma
+    fi
+}
+
 function logging_on_pleroma {
     echo -n ''
 }
@@ -344,6 +355,19 @@ function pleroma_set_expire_months {
     rm $data
 }
 
+function pleroma_disable_registrations {
+    dialog --title $"Disable new Pleroma user registrations" \
+           --backtitle $"Freedombone Control Panel" \
+           --yesno $"\nDo you wish to disable new registrations?" 10 60
+    sel=$?
+    case $sel in
+        0) sed -i 's|registrations_open:.*|registrations_open: false|g' $PLEROMA_DIR/config/config.exs;;
+        1) sed -i 's|registrations_open:.*|registrations_open: true|g' $PLEROMA_DIR/config/config.exs;;
+        255) return;;
+    esac
+    pleroma_recompile
+}
+
 function configure_interactive_pleroma {
     read_config_param PLEROMA_EXPIRE_MONTHS
     while true
@@ -352,11 +376,12 @@ function configure_interactive_pleroma {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Pleroma" \
-               --radiolist $"Choose an operation:" 13 70 4 \
+               --radiolist $"Choose an operation:" 14 70 5 \
                1 $"Set a background image" off \
                2 $"Set the title" off \
-               3 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)" off \
-               4 $"Exit" on 2> $data
+               3 $"Disable new account registrations" off \
+               4 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)" off \
+               5 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
@@ -365,8 +390,9 @@ function configure_interactive_pleroma {
         case $(cat $data) in
             1) pleroma_set_background_image;;
             2) pleroma_set_title;;
-            3) pleroma_set_expire_months;;
-            4) break;;
+            3) pleroma_disable_registrations;;
+            4) pleroma_set_expire_months;;
+            5) break;;
         esac
         rm $data
     done
