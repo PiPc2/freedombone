@@ -42,6 +42,7 @@ PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
 PLEROMA_COMMIT='7252f6b054dfdfac1f9bac77c442c5a1ebd898af'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
+PLEROMA_SECRET_KEY=""
 
 PLEROMA_BACKGROUND_IMAGE_URL=
 
@@ -196,20 +197,28 @@ function pleroma_create_database {
     run_system_query_postgresql "GRANT ALL ON ALL sequences IN SCHEMA public TO pleroma;"
     run_system_query_postgresql "CREATE EXTENSION citext;"
 
+    read_config_param "PLEROMA_SECRET_KEY"
+    if [ ${#PLEROMA_SECRET_KEY} -lt 50 ]; then
+        PLEROMA_SECRET_KEY="$(create_password 30)$(create_password 30)"
+        if [ ${#PLEROMA_SECRET_KEY} -lt 50 ]; then
+            echo $'Pleroma secret key not created'
+            exit 6782352
+        fi
+        write_config_param "PLEROMA_SECRET_KEY" "$PLEROMA_SECRET_KEY"
+    fi
+
     pleroma_secret=config/dev.secret.exs
     cp config/dev.exs $pleroma_secret
     sed -i "s|username:.*|username: \"pleroma\",|g" $pleroma_secret
     sed -i "s|password:.*|password: \"$PLEROMA_ADMIN_PASSWORD\",|g" $pleroma_secret
     sed -i "s|database:.*|database: \"pleroma\",|g" $pleroma_secret
+    sed -i "/Pleroma.Web.Endpoint/a secret_key_base: \"$PLEROMA_SECRET_KEY\"," $pleroma_secret
+    sed -i 's|secret_key_base: |  secret_key_base: |g' $pleroma_secret
     sed -i "/Pleroma.Web.Endpoint/a pubsub: [name: Pleroma.Web.PubSub, adapter: Phoenix.PubSub.PG2]," $pleroma_secret
     sed -i 's|pubsub: |  pubsub: |g' $pleroma_secret
     sed -i 's|watchers: []|watchers: [],|g' $pleroma_secret
     sed -i "/watchers: []/a url: [host: \"$PLEROMA_DOMAIN_NAME\", scheme: \"https\", port: 443]" $pleroma_secret
     sed -i 's|url: |  url: |g' $pleroma_secret
-
-    #pleroma_config=config/config.exs
-    #sed -i "s|name: .*|name: \"$PLEROMA_TITLE\",|g" $pleroma_config
-    #sed -i "s|email: .*|email: \"$MY_EMAIL_ADDRESS\",|g" $pleroma_config
 
     cd $PLEROMA_DIR
     chown -R pleroma:pleroma *
