@@ -190,9 +190,21 @@ function pleroma_create_database {
     run_system_query_postgresql "GRANT ALL ON ALL tables IN SCHEMA public TO pleroma;"
     run_system_query_postgresql "GRANT ALL ON ALL sequences IN SCHEMA public TO pleroma;"
 
+    pleroma_secret=config/dev.secret.exs
+    cp config/dev.exs $pleroma_secret
+    sed -i "s|username:.*|username: \"pleroma\",|g" $pleroma_secret
+    sed -i "s|password:.*|password: \"$PLEROMA_ADMIN_PASSWORD\",|g" $pleroma_secret
+    sed -i "s|database:.*|database: \"pleroma\",|g" $pleroma_secret
+    sed -i "/config :pleroma, Pleroma.Web.Endpoint/a url: [host: \"$PLEROMA_DOMAIN_NAME\", scheme: \"https\", port: 443]," $pleroma_secret
+
+    pleroma_config=config/config.exs
+    sed -i "s|name: .*|name: \"$PLEROMA_TITLE\",|g" $pleroma_config
+    sed -i "s|email: .*|email: \"$MY_EMAIL_ADDRESS\",|g" $pleroma_config
+
     cd $PLEROMA_DIR
-    mix ecto.create
-    mix ecto.migrate
+    mix local.rebar --force
+    mix ecto.create --force
+    mix ecto.migrate --force
 }
 
 function reconfigure_pleroma {
@@ -620,28 +632,18 @@ function install_pleroma {
     systemctl restart postgresql
     systemctl restart nginx
 
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a pleroma -p "$PLEROMA_ADMIN_PASSWORD"
-
     set_completion_param "pleroma domain" "$PLEROMA_DOMAIN_NAME"
 
 
     # back end
     cd $PLEROMA_DIR
-    mix deps.get
+    mix local.hex --force
+    mix deps.get --force
 
     function_check pleroma_create_database
     pleroma_create_database
 
-    pleroma_secret=config/dev.secret.exs
-    cp config/dev.exs $pleroma_secret
-    sed -i "s|username:.*|username: \"pleroma\",|g" $pleroma_secret
-    sed -i "s|password:.*|password: \"$PLEROMA_ADMIN_PASSWORD\",|g" $pleroma_secret
-    sed -i "s|database:.*|database: \"pleroma\",|g" $pleroma_secret
-    sed -i "/config :pleroma, Pleroma.Web.Endpoint/a url: [host: \"$PLEROMA_DOMAIN_NAME\", scheme: \"https\", port: 443]," $pleroma_secret
-
-    pleroma_config=config/config.exs
-    sed -i "s|name: .*|name: \"$PLEROMA_TITLE\",|g" $pleroma_config
-    sed -i "s|email: .*|email: \"$MY_EMAIL_ADDRESS\",|g" $pleroma_config
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a pleroma -p "$PLEROMA_ADMIN_PASSWORD"
 
     # front end
     install_pleroma_front_end "pleroma" "$PLEROMA_DOMAIN_NAME" "$PLEROMA_BACKGROUND_IMAGE_URL" "$PLEROMA_TITLE"
