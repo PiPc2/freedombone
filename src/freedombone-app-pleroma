@@ -386,6 +386,80 @@ function pleroma_disable_registrations {
     pleroma_recompile
 }
 
+function pleroma_add_emoji {
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Add Custom Emoji" \
+           --form "\n" 8 75 2 \
+           $"Shortcode:" 1 1 "" 1 18 16 15 \
+           $"ImageURL:" 2 1 "" 2 18 512 10000 \
+           2> $data
+    sel=$?
+    case $sel in
+        1) return;;
+        255) return;;
+    esac
+    shortcode=$(cat $data | sed -n 1p)
+    image_url=$(cat $data | sed -n 2p)
+    rm $data
+    if [ ${#shortcode} -lt 2 ]; then
+        return
+    fi
+    if [ ${#image_url} -lt 2 ]; then
+        return
+    fi
+    if [[ "$image_url" != *'.'* ]]; then
+        return
+    fi
+    if [[ "$image_url" != *'.png' && "$image_url" != *'.jpg' && "$image_url" != *'.jpeg' && "$image_url" != *'.gif' ]]; then
+        dialog --title $"Add Custom Emoji" \
+               --msgbox $"The image must be png/jpg/gif format" 6 60
+        return
+    fi
+    if [[ "$shortcode" == *':'* || "$shortcode" == *' '* || "$shortcode" == *'.'* || "$shortcode" == *'!'* ]]; then
+        dialog --title $"Add Custom Emoji" \
+               --msgbox $"The shortcode contains invalid characters" 6 60
+        return
+    fi
+
+    image_extension='png'
+    if [[ "$image_url" == *'.jpg' || "$image_url" == *'.jpeg' ]]; then
+        image_extension='jpg'
+    fi
+    if [[ "$image_url" == *'.gif' ]]; then
+        image_extension='gif'
+    fi
+
+    if [ ! -d $PLEROMA_DIR/custom_emoji ]; then
+        mkdir -p $PLEROMA_DIR/custom_emoji
+    fi
+
+    image_filename=$PLEROMA_DIR/custom_emoji/${shortcode}.${image_extension}
+    wget "$image_url" -O $image_filename
+    if [ ! -f $image_filename ]; then
+        dialog --title $"Add Custom Emoji" \
+               --msgbox $"Unable to download the image" 6 60
+        return
+    fi
+
+    if ! grep -q "${shortcode}," $image_filename; then
+        echo "${shortcode}, ${image_filename}" >> $PLEROMA_DIR/config/emoji.txt
+    else
+        sed -i "s|${shortcode},.*|${shortcode}, ${image_filename}|g" $PLEROMA_DIR/config/emoji.txt
+    fi
+
+    chown -R pleroma:pleroma $PLEROMA_DIR
+    clear
+    echo ''
+    echo $'Recompiling Pleroma with the new emoji'
+    systemctl stop pleroma
+    pleroma_recompile
+
+    dialog --title $"Add Custom Emoji" \
+           --msgbox $"Custom emoji :${shortcode}: has been added" 6 70
+}
+
 function configure_interactive_pleroma {
     read_config_param PLEROMA_EXPIRE_MONTHS
     while true
@@ -394,12 +468,13 @@ function configure_interactive_pleroma {
         trap "rm -f $data" 0 1 2 5 15
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Pleroma" \
-               --radiolist $"Choose an operation:" 14 70 5 \
+               --radiolist $"Choose an operation:" 15 70 6 \
                1 $"Set a background image" off \
                2 $"Set the title" off \
                3 $"Disable new account registrations" off \
-               4 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)" off \
-               5 $"Exit" on 2> $data
+               4 $"Add a custom emoji" off \
+               5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)" off \
+               6 $"Exit" on 2> $data
         sel=$?
         case $sel in
             1) return;;
@@ -409,8 +484,9 @@ function configure_interactive_pleroma {
             1) pleroma_set_background_image;;
             2) pleroma_set_title;;
             3) pleroma_disable_registrations;;
-            4) pleroma_set_expire_months;;
-            5) break;;
+            4) pleroma_add_emoji;;
+            5) pleroma_set_expire_months;;
+            6) break;;
         esac
         rm $data
     done
