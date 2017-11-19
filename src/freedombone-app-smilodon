@@ -1,0 +1,357 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Smilodon ActivityPub app
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim social'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+SHOW_ICANN_ADDRESS_ON_ABOUT=0
+
+SMILODON_REPO="https://github.com/bashrc/smilodon"
+SMILODON_COMMIT='22072cfbd9bdbdd6f4bb5ab440d8f468e38a912a'
+SMILODON_ADMIN_PASSWORD=
+SMILODON_ONION_PORT=8054
+SMILODON_PATH=/etc/smilodon
+SMILODON_SECRET_KEY=
+
+smilodon_variables=(SMILODON_REPO
+                    SMILODON_ADMIN_PASSWORD
+                    USB_MOUNT
+                    SMILODON_SECRET_KEY
+                    MY_EMAIL_ADDRESS
+                    MY_USERNAME)
+
+function logging_on_smilodon {
+    echo -n ''
+}
+
+function logging_off_smilodon {
+    echo -n ''
+}
+
+function remove_user_smilodon {
+    remove_username="$1"
+}
+
+function add_user_smilodon {
+    new_username="$1"
+    new_user_password="$2"
+    echo '0'
+}
+
+function install_interactive_smilodon {
+    echo -n ''
+    APP_INSTALLED=1
+}
+
+function change_password_smilodon {
+    curr_username="$1"
+    new_user_password="$2"
+
+    #${PROJECT_NAME}-pass -u "$curr_username" -a smilodon -p "$new_user_password"
+}
+
+function smilodon_create_database {
+    if [ -f $IMAGE_PASSWORD_FILE ]; then
+        SMILODON_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    else
+        if [ ! $SMILODON_ADMIN_PASSWORD ]; then
+            SMILODON_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+    if [ ! $SMILODON_ADMIN_PASSWORD ]; then
+        return
+    fi
+
+    function_check create_database_mongodb
+    create_database_mongodb smilodon "$SMILODON_ADMIN_PASSWORD" smilodon
+}
+
+function reconfigure_smilodon {
+    echo -n ''
+}
+
+function upgrade_smilodon {
+    CURR_SMILODON_COMMIT=$(get_completion_param "smilodon commit")
+    if [[ "$CURR_SMILODON_COMMIT" == "$SMILODON_COMMIT" ]]; then
+        return
+    fi
+
+    if [[ $(app_is_installed smilodon) == "1" ]]; then
+        systemctl stop smilodon
+        function_check set_repo_commit
+        set_repo_commit $SMILODON_PATH "smilodon commit" "$SMILODON_COMMIT" $SMILODON_REPO
+        chown -R smilodon:smilodon $SMILODON_PATH
+        systemctl start smilodon
+    fi
+
+}
+
+function backup_local_smilodon {
+    if [ -d $SMILODON_PATH ]; then
+        systemctl stop smilodon
+
+        USE_MONGODB=1
+        function_check backup_database_to_usb
+        backup_database_to_usb smilodon
+
+        backup_directory_to_usb $SMILODON_PATH smilodon
+
+        systemctl start smilodon
+    fi
+}
+
+function restore_local_smilodon {
+    temp_restore_dir=/root/tempsmilodon
+
+    systemctl stop smilodon
+
+    function_check smilodon_create_database
+    smilodon_create_database
+
+    USE_MONGODB=1
+    restore_database smilodon
+
+    if [ -d ${SMILODON_PATH} ]; then
+        if [ -d $temp_restore_dir${SMILODON_PATH} ]; then
+            if [ -d $temp_restore_dir${SMILODON_PATH} ]; then
+                rm -rf ${SMILODON_PATH}
+                mv $temp_restore_dir$SMILODON_PATH ${SMILODON_PATH}/
+            else
+                cp -r $temp_restore_dir/* ${SMILODON_PATH}/
+            fi
+            if [ ! "$?" = "0" ]; then
+                function_check backup_unmount_drive
+                backup_unmount_drive
+                systemctl start smilodon
+                exit 528823
+            fi
+            chown -R smilodon:smilodon ${SMILODON_PATH}
+        fi
+    fi
+
+    if [ -d $USB_MOUNT/backup/smilodon ]; then
+        chown -R smilodon:smilodon ${SMILODON_PATH}
+        if [ -d $temp_restore_dir ]; then
+            rm -rf $temp_restore_dir
+        fi
+    fi
+
+    systemctl start smilodon
+}
+
+function backup_remote_smilodon {
+    if [ -d $SMILODON_PATH ]; then
+        function_check suspend_site
+        suspend_site smilodon
+
+        systemctl stop smilodon
+
+        USE_MONGODB=1
+        function_check backup_database_to_friend
+        backup_database_to_friend smilodon
+
+        function_check backup_directory_to_friend
+        backup_directory_to_friend $SMILODON_PATH smilodon
+
+        systemctl start smilodon
+
+        function_check restart_site
+        restart_site
+    else
+        echo $"Smilodon domain specified but not found in $SMILODON_PATH"
+    fi
+}
+
+function restore_remote_smilodon {
+    temp_restore_dir=/root/tempsmilodon
+    if grep -q "smilodon domain" $COMPLETION_FILE; then
+        echo $"Restoring smilodon"
+        systemctl stop smilodon
+
+        function_check restore_database_from_friend
+
+        function_check smilodon_create_database
+        smilodon_create_database
+
+        USE_MONGODB=1
+        restore_database_from_friend smilodon
+
+        if [ -d $SMILODON_PATH ]; then
+            if [ -d $temp_restore_dir$SMILODON_PATH ]; then
+                rm -rf $SMILODON_PATH
+                mv $temp_restore_dir$SMILODON_PATH ${SMILODON_PATH}/
+            else
+                cp -r $temp_restore_dir/* ${SMILODON_PATH}/
+            fi
+            if [ ! "$?" = "0" ]; then
+                systemctl start smilodon
+                exit 6391643
+            fi
+        fi
+
+        if [ -d $SERVER_DIRECTORY/backup/smilodon ]; then
+            chown -R smilodon:smilodon ${SMILODON_PATH}
+        fi
+        if [ -d /root/tempsmilodon ]; then
+            rm -rf /root/tempsmilodon
+        fi
+
+        systemctl start smilodon
+
+        echo $"Restore of smilodon complete"
+    fi
+}
+
+function remove_smilodon {
+    nginx_dissite smilodon
+
+    systemctl stop smilodon
+    systemctl disable smilodon
+    rm /etc/systemd/system/smilodon.service
+
+    function_check remove_onion_service
+    remove_onion_service smilodon ${SMILODON_ONION_PORT}
+    if [ -f /etc/nginx/sites-available/smilodon ]; then
+        rm /etc/nginx/sites-available/smilodon
+    fi
+
+    groupdel -f smilodon
+    userdel -r smilodon
+
+    if [ -d $SMILODON_PATH ]; then
+        rm -rf $SMILODON_PATH
+    fi
+
+    function_check remove_mongodb_user
+    remove_mongodb_user smilodon
+
+    function_check drop_database_mongodb
+    drop_database_mongodb smilodon
+
+    remove_completion_param install_smilodon
+    sed -i '/smilodon_/d' $COMPLETION_FILE
+}
+
+function install_smilodon {
+    apt-get -yq install python3-pip
+
+    if [ -d $SMILODON_PATH ]; then
+        rm -rf $SMILODON_PATH
+    fi
+
+    if [ -d /repos/smilodon ]; then
+        mkdir $SMILODON_PATH
+        cp -r -p /repos/smilodon/. $SMILODON_PATH
+        cd $SMILODON_PATH
+        git pull
+    else
+        function_check git_clone
+        git_clone $SMILODON_REPO $SMILODON_PATH
+    fi
+
+    if [ ! -d $SMILODON_PATH ]; then
+        echo $'Could not clone smilodon repo'
+        exit 6784783
+    fi
+    cd $SMILODON_PATH
+    git checkout $SMILODON_COMMIT -b $SMILODON_COMMIT
+    set_completion_param "smilodon commit" "$SMILODON_COMMIT"
+
+    groupadd smilodon
+    useradd -c "Smilodon system account" -d $SMILODON_PATH -m -r -g smilodon smilodon
+
+    function_check install_mongodb
+    install_mongodb
+
+    smilodon_create_database
+
+    SMILODON_ONION_HOSTNAME=$(add_onion_service smilodon 80 ${SMILODON_ONION_PORT})
+
+    pip3 install -r requirements.txt
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to install smilodon dependencies'
+        exit 87352835
+    fi
+
+    echo 'server {' > /etc/nginx/sites-available/smilodon
+    echo "  listen 127.0.0.1:$SMILODON_ONION_PORT;" >> /etc/nginx/sites-available/smilodon
+    echo "  server_name $SMILODON_ONION_HOSTNAME;" >> /etc/nginx/sites-available/smilodon
+    echo '' >> /etc/nginx/sites-available/smilodon
+    echo '  access_log /dev/null;' >> /etc/nginx/sites-available/smilodon
+    echo '  error_log /dev/null;' >> /etc/nginx/sites-available/smilodon
+    echo '' >> /etc/nginx/sites-available/smilodon
+    echo '  location / {' >> /etc/nginx/sites-available/smilodon
+    echo '      proxy_pass http://localhost:5000;' >> /etc/nginx/sites-available/smilodon
+    echo '  }' >> /etc/nginx/sites-available/smilodon
+    echo '' >> /etc/nginx/sites-available/smilodon
+    echo '}' >> /etc/nginx/sites-available/smilodon
+
+    nginx_ensite smilodon
+    systemctl enable mongodb
+    systemctl restart mongodb
+    systemctl restart nginx
+
+    chown -R smilodon:smilodon ${SMILODON_PATH}
+
+    if [ ! $SMILODON_SECRET_KEY ]; then
+        SMILODON_SECRET_KEY="$(create_password 30)$(create_password 30)$(create_password 30)$(create_password 30)"
+    fi
+
+    echo '[Unit]' > /etc/systemd/system/smilodon.service
+    echo 'Description=Smilodon ActivityPub messenger' >> /etc/systemd/system/smilodon.service
+    echo 'After=network.target mongodb.service' >> /etc/systemd/system/smilodon.service
+    echo 'After=tor.service' >> /etc/systemd/system/smilodon.service
+    echo '' >> /etc/systemd/system/smilodon.service
+    echo '[Service]' >> /etc/systemd/system/smilodon.service
+    echo 'User=smilodon' >> /etc/systemd/system/smilodon.service
+    echo 'Group=smilodon' >> /etc/systemd/system/smilodon.service
+    echo "WorkingDirectory=${SMILODON_PATH}/" >> /etc/systemd/system/smilodon.service
+    echo "ExecStart=/usr/bin/python3 run.py" >> /etc/systemd/system/smilodon.service
+    echo "Environment=smilodon_domain_name=$SMILODON_ONION_HOSTNAME" >> /etc/systemd/system/smilodon.service
+    echo "Environment=secret_key='$SMILODON_SECRET_KEY'" >> /etc/systemd/system/smilodon.service
+    echo "Environment=mongodb_username='smilodon'" >> /etc/systemd/system/smilodon.service
+    echo "Environment=mongodb_password='$SMILODON_ADMIN_PASSWORD'" >> /etc/systemd/system/smilodon.service
+    echo "Environment=smilodon_admin_address=$MY_EMAIL_ADDRESS" >> /etc/systemd/system/smilodon.service
+    echo "Environment=MAIL_SERVER='localhost'" >> /etc/systemd/system/smilodon.service
+    echo "Environment=MAIL_PORT=25" >> /etc/systemd/system/smilodon.service
+    echo '' >> /etc/systemd/system/smilodon.service
+    echo '[Install]' >> /etc/systemd/system/smilodon.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/smilodon.service
+    systemctl enable smilodon
+    systemctl daemon-reload
+    systemctl start smilodon
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a smilodon -p "$SMILODON_ADMIN_PASSWORD"
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
