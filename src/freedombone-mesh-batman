@@ -101,7 +101,7 @@ function get_ipv4_wlan {
 }
 
 function mesh_hotspot_ip_address {
-    echo $(ip -o -f inet addr show dev "$BRIDGE" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
+    echo $(ip -o -f inet addr show dev "${BRIDGE}" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
 }
 
 function global_rate_limit {
@@ -122,6 +122,10 @@ function stop {
         echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
         return
     fi
+
+    systemctl stop dnsmasq
+    systemctl disable dnsmasq
+
     if [ "$EIFACE" ]; then
         brctl delif $BRIDGE bat0
         ifconfig $BRIDGE down || true
@@ -302,6 +306,8 @@ function mesh_create_app_downloads_page {
 }
 
 function start {
+    update_wifi_adaptors
+
     if [ -z "$IFACE" ] ; then
         echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
         exit 723657
@@ -310,6 +316,9 @@ function start {
 
     systemctl stop network-manager
     sleep 5
+
+    systemctl stop dnsmasq
+    systemctl disable dnsmasq
 
     # remove an avahi service which isn't used
     if [ -f /etc/avahi/services/udisks.service ]; then
@@ -364,25 +373,42 @@ function start {
     if [ $secondary_wifi_available ]; then
         sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
-        echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
-        echo "bridge=${BRIDGE}" >> /etc/hostapd/hostapd.conf
-        echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
-        echo "country_code=UK" >> /etc/hostapd/hostapd.conf
-        echo "ssid=${WIFI_SSID}-$(mesh_hotspot_ip_address)" >> /etc/hostapd/hostapd.conf
-        echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
-        echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
-        echo 'wpa=2' >> /etc/hostapd/hostapd.conf
-        echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
-        echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
-        echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
-        echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
-        echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
-        echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+        mesh_hotspot_address=$(mesh_hotspot_ip_address)
+        if [[ "$mesh_hotspot_address" == *'.'* ]]; then
+            echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
+            echo "bridge=${BRIDGE}" >> /etc/hostapd/hostapd.conf
+            echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+            echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+            echo "ssid=${WIFI_SSID}-$(mesh_hotspot_address)" >> /etc/hostapd/hostapd.conf
+            echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+            echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
+            echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+            echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+            echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+            echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+            echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+            echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+            echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
 
-        systemctl enable hostapd
-        systemctl restart hostapd
-        mesh_create_app_downloads_page
-    else
+            sed -i "s|#interface=.*|interface=${IFACE_SECONDARY}|g" /etc/dnsmasq.conf
+            sed -i "s|interface=.*|interface=${IFACE_SECONDARY}|g" /etc/dnsmasq.conf
+            sed -i "s|listen-address=.*|listen-address=127.0.0.1,$mesh_hotspot_address|g" /etc/dnsmasq.conf
+            systemctl enable dnsmasq
+            systemctl restart dnsmasq
+
+            systemctl enable hostapd
+            systemctl restart hostapd
+            mesh_create_app_downloads_page
+        else
+            secondary_wifi_available=
+            echo $'WARNING: No IP address could be obtained for the hotspot'
+        fi
+    fi
+
+    if [ ! $secondary_wifi_available ]; then
+        systemctl stop hostapd
+        systemctl disable hostapd
+
         # Recreate the cryptpad symlink
         if [ -f /etc/nginx/sites-available/cryptpad ]; then
             if [ -L /etc/nginx/sites-enabled/cryptpad ]; then
