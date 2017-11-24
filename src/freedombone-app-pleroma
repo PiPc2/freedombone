@@ -39,7 +39,7 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='7252f6b054dfdfac1f9bac77c442c5a1ebd898af'
+PLEROMA_COMMIT='5fc6e9d467f69af155627cccaa27616fe7ffc61f'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
@@ -64,6 +64,7 @@ pleroma_variables=(ONION_ONLY
 
 function pleroma_recompile {
     # necessary after parameter changes
+    chown -R pleroma:pleroma $PLEROMA_DIR
     sudo -u pleroma mix clean
     sudo -u pleroma mix deps.compile
     sudo -u pleroma mix compile
@@ -208,7 +209,7 @@ function pleroma_create_database {
     run_system_query_postgresql "GRANT ALL ON ALL tables IN SCHEMA public TO pleroma;"
     run_system_query_postgresql "GRANT ALL ON ALL sequences IN SCHEMA public TO pleroma;"
     run_system_query_postgresql "CREATE EXTENSION citext;"
-    run_system_query_postgresql "set statement_timeout to 20000;"
+    run_system_query_postgresql "set statement_timeout to 40000;"
 
     read_config_param "PLEROMA_SECRET_KEY"
     if [ ${#PLEROMA_SECRET_KEY} -lt 64 ]; then
@@ -520,6 +521,8 @@ function upgrade_pleroma {
     function_check set_repo_commit
     set_repo_commit $PLEROMA_DIR "pleroma commit" "$PLEROMA_COMMIT" $PLEROMA_REPO
     chown -R pleroma:pleroma $PLEROMA_DIR
+
+    sudo -u pleroma mix deps.get
     pleroma_recompile
 }
 
@@ -639,7 +642,7 @@ function remove_pleroma {
     rm /etc/systemd/system/pleroma.service
 
     userdel pleroma
-    apt-get -yq remove esl-erlang elixir erlang-xmerl erlang-dev erlang-parsetools
+    #apt-get -yq remove esl-erlang elixir erlang-xmerl erlang-dev erlang-parsetools
 
     function_check remove_nodejs
     remove_nodejs pleroma-backend
@@ -865,6 +868,19 @@ function install_pleroma {
 
     set_completion_param "pleroma domain" "$PLEROMA_DOMAIN_NAME"
 
+    # We need to set up the url option again because it somehow gets
+    # lost during mix compile
+    pleroma_secret=$PLEROMA_DIR/config/dev.secret.exs
+    if ! grep -q 'watchers: [],' $pleroma_secret; then
+        sed -i 's|watchers: []|watchers: [],|g' $pleroma_secret
+    fi
+    if ! grep -q 'url:' $pleroma_secret; then
+        if [[ $ONION_ONLY == 'no' ]]; then
+            sed -i "/watchers: []/a url: [host: \"$PLEROMA_DOMAIN_NAME\", scheme: \"https\", port: 443]" $pleroma_secret
+        else
+            sed -i "/watchers: []/a url: [host: \"$PLEROMA_ONION_HOSTNAME\", scheme: \"http\", port: 80]" $pleroma_secret
+        fi
+    fi
 
     # daemon
     echo '[Unit]' > /etc/systemd/system/pleroma.service

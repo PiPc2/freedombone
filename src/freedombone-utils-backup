@@ -236,15 +236,29 @@ function backup_database_local_usb {
         mkdir -p ${local_database_dir}
     fi
     echo $"Obtaining ${1} database backup"
-    if [ ! $USE_POSTGRESQL ]; then
-        keep_database_running
-        mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.sql
-    else
+    database_file_extension='sql'
+    if [ $USE_MONGODB ]; then
+        database_file_extension='mdb'
         USE_POSTGRESQL=
-        sudo -u postgres pg_dump ${1} > ${local_database_dir}/${1}.sql
     fi
-    if [ -f ${local_database_dir}/${1}.sql ]; then
-        if [ ! -s ${local_database_dir}/${1}.sql ]; then
+    if [ ! $USE_POSTGRESQL ]; then
+        if [ ! $USE_MONGODB ]; then
+            USE_MONGODB=
+            USE_POSTGRESQL=
+            keep_database_running
+            mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.${database_file_extension}
+        else
+            USE_MONGODB=
+            USE_POSTGRESQL=
+            mongodump --db ${1} --archive=${local_database_dir}/${1}.${database_file_extension} --gzip
+        fi
+    else
+        USE_MONGODB=
+        USE_POSTGRESQL=
+        sudo -u postgres pg_dump ${1} > ${local_database_dir}/${1}.${database_file_extension}
+    fi
+    if [ -f ${local_database_dir}/${1}.${database_file_extension} ]; then
+        if [ ! -s ${local_database_dir}/${1}.${database_file_extension} ]; then
             echo $"${1} database could not be saved"
             shred -zu ${local_database_dir}/*
             rm -rf ${local_database_dir}
@@ -552,16 +566,30 @@ function backup_database_remote {
     fi
 
     echo "Obtaining ${1} database backup"
-    if [ ! $USE_POSTGRESQL ]; then
-        keep_database_running
-        mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.sql
-    else
+    database_file_extension='sql'
+    if [ $USE_MONGODB ]; then
+        database_file_extension='mdb'
         USE_POSTGRESQL=
-        sudo -u postgres pg_dump ${1} > ${local_database_dir}/${1}.sql
+    fi
+    if [ ! $USE_POSTGRESQL ]; then
+        if [ ! $USE_MONGODB ]; then
+            USE_MONGODB=
+            USE_POSTGRESQL=
+            keep_database_running
+            mysqldump --lock-tables --password="$DATABASE_PASSWORD" ${1} > ${local_database_dir}/${1}.${database_file_extension}
+        else
+            USE_MONGODB=
+            USE_POSTGRESQL=
+            mongodump --db ${1} --archive=${local_database_dir}/${1}.${database_file_extension} --gzip
+        fi
+    else
+        USE_MONGODB=
+        USE_POSTGRESQL=
+        sudo -u postgres pg_dump ${1} > ${local_database_dir}/${1}.${database_file_extension}
     fi
 
-    if [ -f ${local_database_dir}/${1}.sql ]; then
-        if [ ! -s ${local_database_dir}/${1}.sql ]; then
+    if [ -f ${local_database_dir}/${1}.${database_file_extension} ]; then
+        if [ ! -s ${local_database_dir}/${1}.${database_file_extension} ]; then
             echo $"${1} database could not be saved"
             shred -zu ${local_database_dir}/*
             rm -rf ${local_database_dir}
@@ -569,7 +597,7 @@ function backup_database_remote {
             echo $"Unable to export ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
             function_check restart_site
             restart_site
-            exit 5738
+            exit 57386728
         fi
     else
         echo $"${1} database could not be dumped"
@@ -578,7 +606,7 @@ function backup_database_remote {
         echo $"Unable to dump ${1} database" | mail -s $"${PROJECT_NAME} backup to friends" $ADMIN_EMAIL_ADDRESS
         function_check restart_site
         restart_site
-        exit 3687
+        exit 36874289
     fi
 }
 
@@ -642,33 +670,47 @@ function restore_database_from_friend {
     RESTORE_SUBDIR="root"
 
     if [ -d $SERVER_DIRECTORY/backup/${1} ]; then
+        database_file_extension='sql'
+        if [ $USE_MONGODB ]; then
+            database_file_extension='mdb'
+            USE_POSTGRESQL=
+        fi
         echo $"Restoring ${1} database"
         local_database_dir=/root/temp${1}data
         restore_directory_from_friend ${local_database_dir} ${1}data
-        database_file=${local_database_dir}/${RESTORE_SUBDIR}/temp${restore_app_name}data/${restore_app_name}.sql
+        database_file=${local_database_dir}/${RESTORE_SUBDIR}/temp${restore_app_name}data/${restore_app_name}.${database_file_extension}
         if [ ! -f $database_file ]; then
-            database_file=${local_database_dir}/${restore_app_name}.sql
+            database_file=${local_database_dir}/${restore_app_name}.${database_file_extension}
         fi
         if [ ! -f $database_file ]; then
             echo $"Unable to restore ${1} database"
             rm -rf ${local_database_dir}
-            exit 503
+            exit 5289252
         fi
         if [ ! $USE_POSTGRESQL ]; then
-            keep_database_running
-            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${1} -o < ${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+            if [ ! $USE_MONGODB ]; then
+                USE_MONGODB=
+                USE_POSTGRESQL=
+                keep_database_running
+                mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${restore_app_name} -o < ${database_file})
+            else
+                USE_MONGODB=
+                USE_POSTGRESQL=
+                mongorestore --gzip --archive=${database_file} --db ${restore_app_name}
+            fi
         else
+            USE_MONGODB=
             USE_POSTGRESQL=
-            mysqlsuccess=$(sudo -u postgres pg_restore ${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data/${1}.sql)
+            mysqlsuccess=$(sudo -u postgres pg_restore ${database_file})
         fi
         if [ ! "$?" = "0" ]; then
             echo "$mysqlsuccess"
-            exit 964
+            exit 8735271
         fi
         if [ -d ${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data ]; then
             shred -zu ${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data/*
         else
-            shred -zu ${local_database_dir}/*.sql
+            shred -zu ${local_database_dir}/*.${database_file_extension}
         fi
         rm -rf ${local_database_dir}
         echo $"Restoring ${1} installation"
@@ -695,7 +737,7 @@ function restore_database_from_friend {
                         cp -r $restore_from_dir/* /var/www/${2}/htdocs/
                     fi
                     if [ ! "$?" = "0" ]; then
-                        exit 683
+                        exit 78352682
                     fi
                     if [ -d /etc/letsencrypt/live/${2} ]; then
                         ln -s /etc/letsencrypt/live/${2}/privkey.pem /etc/ssl/private/${2}.key
@@ -725,9 +767,14 @@ function restore_database {
         fi
         function_check restore_directory_from_usb
         restore_directory_from_usb "${local_database_dir}" "${restore_app_name}data"
-        database_file=${local_database_dir}/${RESTORE_SUBDIR}/temp${restore_app_name}data/${restore_app_name}.sql
+        database_file_extension='sql'
+        if [ $USE_MONGODB ]; then
+            database_file_extension='mdb'
+            USE_POSTGRESQL=
+        fi
+        database_file=${local_database_dir}/${RESTORE_SUBDIR}/temp${restore_app_name}data/${restore_app_name}.${database_file_extension}
         if [ ! -f $database_file ]; then
-            database_file=${local_database_dir}/${restore_app_name}.sql
+            database_file=${local_database_dir}/${restore_app_name}.${database_file_extension}
         fi
         if [ ! -f $database_file ]; then
             echo $"Unable to restore ${restore_app_name} database"
@@ -736,12 +783,21 @@ function restore_database {
             set_user_permissions
             function_check backup_unmount_drive
             backup_unmount_drive
-            exit 503
+            exit 7825235
         fi
         if [ ! $USE_POSTGRESQL ]; then
-            keep_database_running
-            mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${restore_app_name} -o < $database_file)
+            if [ ! $USE_MONGODB ]; then
+                USE_MONGODB=
+                USE_POSTGRESQL=
+                keep_database_running
+                mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" ${restore_app_name} -o < $database_file)
+            else
+                USE_MONGODB=
+                USE_POSTGRESQL=
+                mongorestore --gzip --archive=$database_file --db ${restore_app_name}
+            fi
         else
+            USE_MONGODB=
             USE_POSTGRESQL=
             mysqlsuccess=$(sudo -u postgres pg_restore $database_file)
         fi
@@ -751,12 +807,12 @@ function restore_database {
             set_user_permissions
             function_check set_user_permissions
             backup_unmount_drive
-            exit 964
+            exit 482638995
         fi
         if [ -d ${local_database_dir}/${RESTORE_SUBDIR}/temp${restore_app_name}data ]; then
             shred -zu ${local_database_dir}/${RESTORE_SUBDIR}/temp${restore_app_name}data/*
         else
-            shred -zu ${local_database_dir}/*.sql
+            shred -zu ${local_database_dir}/*.${database_file_extension}
         fi
 
         rm -rf ${local_database_dir}
@@ -789,7 +845,7 @@ function restore_database {
                     if [ ! "$?" = "0" ]; then
                         set_user_permissions
                         backup_unmount_drive
-                        exit 683
+                        exit 78252429
                     fi
                     if [ -d /etc/letsencrypt/live/${restore_app_domain} ]; then
                         ln -s /etc/letsencrypt/live/${restore_app_domain}/privkey.pem /etc/ssl/private/${restore_app_domain}.key

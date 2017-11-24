@@ -101,7 +101,7 @@ function get_ipv4_wlan {
 }
 
 function mesh_hotspot_ip_address {
-    echo $(ip -o -f inet addr show dev "$BRIDGE" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
+    echo $(ip -o -f inet addr show dev "${BRIDGE}" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
 }
 
 function global_rate_limit {
@@ -122,6 +122,10 @@ function stop {
         echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
         return
     fi
+
+    systemctl stop dnsmasq
+    systemctl disable dnsmasq
+
     if [ "$EIFACE" ]; then
         brctl delif $BRIDGE bat0
         ifconfig $BRIDGE down || true
@@ -280,6 +284,9 @@ function mesh_create_app_downloads_page {
     if [ ! -f /var/www/html/ssb.apk ]; then
         cp /root/$PROJECT_NAME/image_build/mesh_apps/ssb.apk /var/www/html/ssb.apk
     fi
+    if [ ! -f /var/www/html/trifa.apk ]; then
+        cp /root/$PROJECT_NAME/image_build/mesh_apps/trifa.apk /var/www/html/trifa.apk
+    fi
     if [ ! -d /var/www/html/images ]; then
         mkdir /var/www/html/images
     fi
@@ -289,6 +296,9 @@ function mesh_create_app_downloads_page {
     if [ ! -f /var/www/html/images/ssb.png ]; then
         cp /root/$PROJECT_NAME/img/icon_patchwork.png /var/www/html/images/ssb.png
     fi
+    if [ ! -f /var/www/html/images/trifa.png ]; then
+        cp /root/$PROJECT_NAME/img/trifa.png /var/www/html/images/trifa.png
+    fi
     if [ ! -f /var/www/html/freedombone.css ]; then
         cp /root/$PROJECT_NAME/website/freedombone.css /var/www/html/freedombone.css
     fi
@@ -296,6 +306,8 @@ function mesh_create_app_downloads_page {
 }
 
 function start {
+    update_wifi_adaptors
+
     if [ -z "$IFACE" ] ; then
         echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
         exit 723657
@@ -304,6 +316,9 @@ function start {
 
     systemctl stop network-manager
     sleep 5
+
+    systemctl stop dnsmasq
+    systemctl disable dnsmasq
 
     # remove an avahi service which isn't used
     if [ -f /etc/avahi/services/udisks.service ]; then
@@ -340,6 +355,7 @@ function start {
     brctl addbr $BRIDGE
     brctl addif $BRIDGE bat0
     ifconfig bat0 0.0.0.0
+    ethernet_connected='0'
     if [ "$EIFACE" ] ; then
         ethernet_connected=$(cat /sys/class/net/$EIFACE/carrier)
         if [[ "$ethernet_connected" != "0" ]]; then
@@ -358,25 +374,43 @@ function start {
     if [ $secondary_wifi_available ]; then
         sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
 
-        echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
-        echo "bridge=${BRIDGE}" >> /etc/hostapd/hostapd.conf
-        echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
-        echo "country_code=UK" >> /etc/hostapd/hostapd.conf
-        echo "ssid=${WIFI_SSID}-$(mesh_hotspot_ip_address)" >> /etc/hostapd/hostapd.conf
-        echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
-        echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
-        echo 'wpa=2' >> /etc/hostapd/hostapd.conf
-        echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
-        echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
-        echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
-        echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
-        echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
-        echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+        mesh_hotspot_address=$(mesh_hotspot_ip_address)
+        if [[ "$mesh_hotspot_address" == *'.'* ]]; then
+            echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
+            echo "bridge=${BRIDGE}" >> /etc/hostapd/hostapd.conf
+            echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+            echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+            echo "ssid=${WIFI_SSID}-${mesh_hotspot_address}" >> /etc/hostapd/hostapd.conf
+            echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+            echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
+            echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+            echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+            echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+            echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+            echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+            echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+            echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
 
-        systemctl enable hostapd
-        systemctl restart hostapd
-        mesh_create_app_downloads_page
-    else
+            sed -i "s|#interface=.*|interface=${IFACE_SECONDARY}|g" /etc/dnsmasq.conf
+            sed -i "s|interface=.*|interface=${IFACE_SECONDARY}|g" /etc/dnsmasq.conf
+            sed -i "s|listen-address=.*|listen-address=127.0.0.1,$mesh_hotspot_address|g" /etc/dnsmasq.conf
+            sed -i 's|#listen-address|listen-address|g' /etc/dnsmasq.conf
+            systemctl enable dnsmasq
+            systemctl restart dnsmasq
+
+            systemctl enable hostapd
+            systemctl restart hostapd
+            mesh_create_app_downloads_page
+        else
+            secondary_wifi_available=
+            echo $'WARNING: No IP address could be obtained for the hotspot'
+        fi
+    fi
+
+    if [ ! $secondary_wifi_available ]; then
+        systemctl stop hostapd
+        systemctl disable hostapd
+
         # Recreate the cryptpad symlink
         if [ -f /etc/nginx/sites-available/cryptpad ]; then
             if [ -L /etc/nginx/sites-enabled/cryptpad ]; then
@@ -420,21 +454,22 @@ function start {
     iptables -A INPUT -p tcp --dport 8008 -j ACCEPT
     iptables -A INPUT -p udp --dport 8010 -j ACCEPT
     iptables -A INPUT -p tcp --dport 8010 -j ACCEPT
-    # vpn over the internet
-    iptables -A INPUT -p tcp --dport 653 -j ACCEPT
-    iptables -A INPUT -p udp --dport 653 -j ACCEPT
-    iptables -A INPUT -i ${EIFACE} -m state --state NEW -p tcp --dport 1194 -j ACCEPT
-    iptables -A INPUT -i tun+ -j ACCEPT
-    iptables -A FORWARD -i tun+ -j ACCEPT
-    iptables -A FORWARD -i tun+ -o ${EIFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
-    iptables -A FORWARD -i ${EIFACE} -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
-    iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o ${EIFACE} -j MASQUERADE
-    iptables -A OUTPUT -o tun+ -j ACCEPT
-
-    echo 1 > /proc/sys/net/ipv4/ip_forward
-    sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
-    sed -i 's|#net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
-    sed -i 's|net.ipv4.ip_forward.*|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
+    if [[ "$ethernet_connected" != "0" ]]; then
+        # vpn over the internet
+        iptables -A INPUT -p tcp --dport 653 -j ACCEPT
+        iptables -A INPUT -p udp --dport 653 -j ACCEPT
+        iptables -A INPUT -i ${EIFACE} -m state --state NEW -p tcp --dport 1194 -j ACCEPT
+        iptables -A INPUT -i tun+ -j ACCEPT
+        iptables -A FORWARD -i tun+ -j ACCEPT
+        iptables -A FORWARD -i tun+ -o ${EIFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -A FORWARD -i ${EIFACE} -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+        iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o ${EIFACE} -j MASQUERADE
+        iptables -A OUTPUT -o tun+ -j ACCEPT
+        echo 1 > /proc/sys/net/ipv4/ip_forward
+        sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+        sed -i 's|#net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+        sed -i 's|net.ipv4.ip_forward.*|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
+    fi
 
     systemctl restart avahi-daemon
 
