@@ -10,6 +10,10 @@
 #
 # Icecast application
 #
+# Notes: An attempt was made to get ices2 running with systemd, but that
+#        was very unsuccessful. Instead there's a hacky cron entry which
+#        starts icecast2 and ices2 if necessary
+#
 # License
 # =======
 #
@@ -55,6 +59,22 @@ function icecast_update_daemon {
         rm /etc/init.d/icecast2
     fi
 
+    echo '#!/bin/sh' > /usr/bin/stop_icecast
+    echo 'kill $(pidof ices2)' >> /usr/bin/stop_icecast
+    echo 'systemctl stop icecast2' >> /usr/bin/stop_icecast
+    chmod +x /usr/bin/stop_icecast
+
+    # Note that the sleep here actually is important
+    echo '#!/bin/bash' > /usr/bin/start_icecast
+    echo 'isrunning=$(ps aux | grep ices2)' >> /usr/bin/start_icecast
+    echo 'if [[ "$isrunning" != *"ices-playlist"* ]]; then' >> /usr/bin/start_icecast
+    echo '    systemctl start icecast2' >> /usr/bin/start_icecast
+    echo '    sleep 3' >> /usr/bin/start_icecast
+    echo '    cd /etc/ices2' >> /usr/bin/start_icecast
+    echo '    ices2 ices-playlist.xml' >> /usr/bin/start_icecast
+    echo 'fi' >> /usr/bin/start_icecast
+    chmod +x /usr/bin/start_icecast
+
     echo '[Unit]' > /etc/systemd/system/icecast2.service
     echo 'Description=Icecast' >> /etc/systemd/system/icecast2.service
     echo 'After=network.target' >> /etc/systemd/system/icecast2.service
@@ -63,46 +83,37 @@ function icecast_update_daemon {
     echo '[Service]' >> /etc/systemd/system/icecast2.service
     echo 'User=icecast2' >> /etc/systemd/system/icecast2.service
     echo 'Group=icecast' >> /etc/systemd/system/icecast2.service
-    echo "ExecStart=/usr/bin/icecast2 -c /etc/icecast2/icecast.xml" >> /etc/systemd/system/icecast2.service
+    echo 'ExecStart=/usr/bin/icecast2 -c /etc/icecast2/icecast.xml' >> /etc/systemd/system/icecast2.service
     echo 'Restart=on-failure' >> /etc/systemd/system/icecast2.service
     echo 'RestartSec=10' >> /etc/systemd/system/icecast2.service
     echo '' >> /etc/systemd/system/icecast2.service
     echo '[Install]' >> /etc/systemd/system/icecast2.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/icecast2.service
 
-    echo '[Unit]' > /etc/systemd/system/ices2.service
-    echo 'Description=Icecast' >> /etc/systemd/system/ices2.service
-    echo 'After=network.target' >> /etc/systemd/system/ices2.service
-    echo 'After=tor.service' >> /etc/systemd/system/ices2.service
-    echo 'After=icecast2.service' >> /etc/systemd/system/ices2.service
-    echo '' >> /etc/systemd/system/ices2.service
-    echo '[Service]' >> /etc/systemd/system/ices2.service
-    echo 'Type=oneshot' >> /etc/systemd/system/ices2.service
-    echo 'User=icecast2' >> /etc/systemd/system/ices2.service
-    echo 'Group=icecast' >> /etc/systemd/system/ices2.service
-    echo "ExecStart=/usr/bin/ices2 /etc/ices2/ices-playlist.xml" >> /etc/systemd/system/ices2.service
-    echo '' >> /etc/systemd/system/ices2.service
-    echo '[Install]' >> /etc/systemd/system/ices2.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/ices2.service
-
+    chown -R icecast2:icecast /etc/ices2
+    chown -R icecast2:icecast /etc/icecast2
     systemctl daemon-reload
     systemctl enable icecast2
-    systemctl enable ices2
-    systemctl restart icecast2
-    systemctl restart ices2
+
+    if ! grep -q "start_icecast" /etc/crontab; then
+        echo '*/1            * *   *   *   root /usr/bin/start_icecast > /dev/null' >> /etc/crontab
+    fi
 }
 
 function change_password_icecast {
     curr_username="$1"
     new_user_password="$2"
 
+    stop_icecast
+
     sed -i  -e "s|<source-password>[^<]*</source-password>|<source-password>$new_user_password</source-password>|" \
         -e "s|<relay-password>[^<]*</relay-password>|<relay-password>$new_user_password</relay-password>|" \
         -e "s|<admin-password>[^<]*</admin-password>|<admin-password>$new_user_password</admin-password>|" \
         /etc/icecast2/icecast.xml
+    sed -i "s|<password>.*|<password>${new_user_password}</password>|g" /etc/ices2/ices-playlist.xml
 
     ${PROJECT_NAME}-pass -u "$curr_username" -a icecast -p "$new_user_password"
-    systemctl restart icecast2
+    start_icecast
 }
 
 function logging_on_icecast {
@@ -153,8 +164,8 @@ function icecast_add_file_to_playlist {
     done
 
     chown icecast2:icecast $ICECAST_PLAYLIST_FILE
-    systemctl restart icecast2
-    systemctl restart ices2
+    stop_icecast
+    start_icecast
 }
 
 function icecast_import_from_directory {
@@ -265,7 +276,8 @@ function icecast_format_drive {
 
 function icecast_edit_playlist {
     editor $ICECAST_PLAYLIST_FILE
-    systemctl restart icecast2
+    stop_icecast
+    start_icecast
 }
 
 function icecast_change_login {
@@ -432,6 +444,13 @@ function restore_remote_icecast {
 function remove_icecast {
     nginx_dissite icecast
 
+    sed -i '/start_icecast/d' /etc/crontab
+    stop_icecast
+    systemctl disable icecast2
+    rm /etc/systemd/system/icecast2.service
+    rm /usr/bin/start_icecast
+    rm /usr/bin/stop_icecast
+
     if [ -f /etc/nginx/sites-available/icecast ]; then
         rm /etc/nginx/sites-available/icecast
     fi
@@ -441,6 +460,14 @@ function remove_icecast {
     fi
 
     apt-get -yq remove --purge icecast2
+
+    if [ -d /etc/icecast2 ]; then
+        rm -rf /etc/icecast2
+    fi
+    if [ -d /etc/ices2 ]; then
+        rm -rf /etc/ices2
+    fi
+    sed -i '/icecast/d' $COMPLETION_FILE
 }
 
 function install_icecast {
@@ -475,6 +502,7 @@ function install_icecast {
     sed -i "s|<admin-user>.*|<admin-user>$MY_USERNAME</admin-user>|g" /etc/icecast2/icecast.xml
     sed -i "s|<admin>.*|<admin>$MY_EMAIL_ADDRESS</admin>|g" /etc/icecast2/icecast.xml
     sed -i "s|<location>.*|<location>The Interwebs</location>|g" /etc/icecast2/icecast.xml
+    #sed -i 's|<!-- <bind-address>.*|<bind-address>127.0.0.1</bind-address>|g' /etc/icecast2/icecast.xml
 
     if [ ! -d /var/www/icecast/htdocs ]; then
         mkdir -p /var/www/icecast/htdocs
@@ -539,7 +567,7 @@ function install_icecast {
     echo '        <input>' >> /etc/ices2/ices-playlist.xml
     echo '            <module>playlist</module>' >> /etc/ices2/ices-playlist.xml
     echo '            <param name="type">basic</param>' >> /etc/ices2/ices-playlist.xml
-    echo '            <param name="file">playlist.txt</param>' >> /etc/ices2/ices-playlist.xml
+    echo "            <param name=\"file\">$ICECAST_PLAYLIST_FILE</param>" >> /etc/ices2/ices-playlist.xml
     echo '            <!-- random play -->' >> /etc/ices2/ices-playlist.xml
     echo '            <param name="random">0</param>' >> /etc/ices2/ices-playlist.xml
     echo '            <!-- if the playlist get updated that start at the beginning -->' >> /etc/ices2/ices-playlist.xml
@@ -633,7 +661,7 @@ function install_icecast {
     icecast_update_daemon
     nginx_ensite icecast
     systemctl restart nginx
-    systemctl restart icecast2
+    start_icecast
 
     APP_INSTALLED=1
 }
