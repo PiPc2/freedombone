@@ -107,6 +107,67 @@ function install_interactive_peertube {
     APP_INSTALLED=1
 }
 
+function peertube_set_admin_email {
+    read_config_param $MY_EMAIL_ADDRESS
+    data=$(tempfile 2>/dev/null)
+    trap "rm -f $data" 0 1 2 5 15
+    dialog --title $"Set PeerTube administrator email address" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Admin email address" 8 75 "$MY_EMAIL_ADDRESS" 2>$data
+    sel=$?
+    case $sel in
+        0)  peertube_email=$(<$data)
+            if [[ "$peertube_email" != *' '* && "$peertube_email" != *','* && "$peertube_email" != *';'* && "$peertube_email" == *'@'* && "$peertube_email" == *'.'* ]]; then
+                if [ ${#peertube_email} -gt 8 ]; then
+                    sed -i "s|email:.*|email: '${peertube_email}'|g" $PEERTUBE_DIR/config/production.yaml
+                    systemctl restart peertube
+                    dialog --title $"Set PeerTube administrator email address" \
+                           --msgbox $"Set to $peertube_email" 6 75
+                fi
+            fi
+            ;;
+    esac
+    rm $data
+}
+
+function peertube_disable_signups {
+    dialog --title $"Disable PeerTube signups" \
+           --backtitle $"Freedombone Control Panel" \
+           --yesno $"\nDo you wish to disable further PeerTube signups?" 8 75
+    sel=$?
+    case $sel in
+        0) sed "0,/RE/s/enabled:.*/enabled: false/" $PEERTUBE_DIR/config/production.yaml;;
+        1) sed "0,/RE/s/enabled:.*/enabled: true/" $PEERTUBE_DIR/config/production.yaml;;
+        255) return;;
+    esac
+
+    systemctl restart peertube
+}
+
+function configure_interactive_peertube {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"PeerTube" \
+               --radiolist $"Choose an operation:" 10 70 4 \
+               1 $"Set administrator email address" off \
+               2 $"Disable or enable signups" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) peertube_set_admin_email;;
+            2) peertube_disable_signups;;
+            3) break;;
+        esac
+    done
+}
+
 function change_password_peertube {
     PEERTUBE_USERNAME="$1"
     PEERTUBE_PASSWORD="$2"
