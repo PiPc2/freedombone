@@ -88,6 +88,59 @@ SCUTTLEBOT_PORT=8010
 CRYPTPAD_PORT=9003
 CRYPTPAD_DIR=/etc/cryptpad
 
+PEERTUBE_DIR=/etc/peertube
+
+function run_system_query_postgresql {
+    query=$1
+    cd /etc/postgresql
+    sudo -u postgres psql -c "$query"
+}
+
+function create_password {
+    openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c ${1} ; echo -n ''
+}
+
+function enable_peertube {
+    if [ ! -d $PEERTUBE_DIR ]; then
+        return
+    fi
+
+    PEERTUBE_ADMIN_PASSWORD="$(create_password 10)"
+
+    if [ -d $PEERTUBE_DIR/videos ]; then
+        rm -rf $PEERTUBE_DIR/videos/*
+    fi
+    if [ -d $PEERTUBE_DIR/thumbnails ]; then
+        rm -rf $PEERTUBE_DIR/thumbnails/*
+    fi
+
+    systemctl restart postgresql
+    run_system_query_postgresql "DROP DATABASE peertube;"
+    run_system_query_postgresql "CREATE USER peertube WITH PASSWORD '$PEERTUBE_ADMIN_PASSWORD';"
+    run_system_query_postgresql "CREATE DATABASE peertube OWNER peertube;"
+    run_system_query_postgresql "GRANT ALL PRIVILEGES ON DATABASE peertube to peertube;"
+    run_system_query_postgresql "set statement_timeout to 40000;"
+
+    peertube_config_file=$PEERTUBE_DIR/config/production.yaml
+    sed -i "s|hostname:.*|hostname: 'P$PEER_ID.local'|g" $peertube_config_file
+    sed -i "s|password:.*|password: '$PEERTUBE_ADMIN_PASSWORD'|g" $peertube_config_file
+
+    peertube_nginx_file=/etc/nginx/sites-available/peertube
+    sed -i "s|server_name.*|server_name P$PEER_ID.local;|g" $peertube_nginx_file
+
+    chown -R peertube:peertube $PEERTUBE_DIR
+
+    # Set up the web server
+    ln -s /etc/nginx/sites-available/peertube /etc/nginx/sites-enabled/peertube
+    if [ -f /etc/nginx/sites-enabled/default ]; then
+        rm /etc/nginx/sites-enabled/default
+    fi
+
+    systemctl enable peertube
+    systemctl daemon-reload
+    systemctl start peertube
+}
+
 function enable_cryptpad {
     if [ ! -d $CRYPTPAD_DIR ]; then
         return
@@ -95,7 +148,9 @@ function enable_cryptpad {
 
     # Set up the web server
     ln -s /etc/nginx/sites-available/cryptpad /etc/nginx/sites-enabled/cryptpad
-    rm /etc/nginx/sites-enabled/default
+    if [ -f /etc/nginx/sites-enabled/default ]; then
+        rm /etc/nginx/sites-enabled/default
+    fi
 
     if [ ! -d $CRYPTPAD_DIR/customize/api ]; then
         mkdir -p $CRYPTPAD_DIR/customize/api
@@ -1042,6 +1097,7 @@ if [ -f $MESH_INSTALL_SETUP ]; then
     initialise_scuttlebot_pub
     setup_ipfs
     enable_cryptpad
+    enable_peertube
     mesh_amnesic
     make_root_read_only
 
