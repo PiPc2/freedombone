@@ -41,6 +41,13 @@ CURRENT_BLOG_INDEX=/home/$USER/.blog-index
 BLOG_EDITOR='pluma'
 DEFAULT_BLOG_TITLE=$"Freedombone Blog"
 
+function remove_bad_blog_links {
+    current_theme=$1
+    if [ -f $BLOG_PATH/themes/$current_theme/static/css/style.css ]; then
+        sed -i '/googleapi/d' $BLOG_PATH/themes/$current_theme/static/css/style.css
+    fi
+}
+
 function ipfs_publish {
     DIR_TO_CHECK=/home/$USER/Public
     if [ ! -d $DIR_TO_CHECK ]; then
@@ -165,44 +172,36 @@ function change_theme {
         THEMES+=("$THEME_NAME")
     done
 
-    themelist=""
     n=1
-    theme_index=0
     curr_theme_index=
     if [ -f /home/$USER/.blog-theme-index ]; then
         curr_theme_index=$(cat /home/$USER/.blog-theme-index)
     fi
+    if [ -f /tmp/.blog-themes ]; then
+        rm /tmp/.blog-themes
+    fi
     for a in "${THEMES[@]}"
     do
-        is_selected='off'
-        if [ $curr_theme_index ]; then
-            if [ $n -eq $curr_theme_index ]; then
-                is_selected='on'
-            fi
-        else
-            if [[ "$a" == 'nice-blog' ]]; then
-                is_selected='on'
-            fi
-        fi
-
-        themelist="$themelist $n $a $is_selected"
+        echo "$n $a" >> /tmp/.blog-themes
         n=$[n+1]
-        theme_index=$[theme_index+1]
     done
 
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
-    dialog --backtitle $"Freedombone Mesh" \
-           --title $"Select Blog Theme" \
-           --radiolist $'Choose:' \
-           80 40 20 $themelist 2> $data
+    CHOSEN_THEME_INDEX=$(
+    cat /tmp/.blog-themes | \
+        awk -F ' ' '{
+        for(i=1;i<=NF;i++){
+            print $i;
+        }
+}' | \
+        zenity --list \
+           --title=$'Select Blog Theme' \
+           --column=$'Index' --column=$'Theme' \
+           --print-column=1 --hide-column=1 --width=300 --height=400)
+    rm /tmp/.blog-themes
+    if [ ! $CHOSEN_THEME_INDEX ]; then
+        exit 1
+    fi
 
-    sel=$?
-    case $sel in
-        1) exit 1;;
-        255) exit 1;;
-    esac
-    CHOSEN_THEME_INDEX=$(cat $data)
     echo "$CHOSEN_THEME_INDEX" > /home/$USER/.blog-theme-index
     CHOSEN_THEME_INDEX=$((CHOSEN_THEME_INDEX - 1))
 
