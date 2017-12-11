@@ -334,7 +334,23 @@ function remove_user_matrix {
 
     ${PROJECT_NAME}-pass -u $remove_username --rmapp matrix
 
-    # TODO: There is no user removal script within synapse
+    read_config_param MY_USERNAME
+    read_config_param MATRIX_DOMAIN_NAME
+
+    matrix_remove_user=/usr/bin/matrix-remove-user
+    echo '#!/bin/bash' > $matrix_remove_user
+    echo "cd $MATRIX_DATA_DIR" >> $matrix_remove_user
+    echo 'remove_username=$1' >> $matrix_remove_user
+    echo "ADMIN=\"@${MY_USERNAME}:$MATRIX_DOMAIN_NAME\"" >> $matrix_remove_user
+    echo 'BUSY="pragma busy_timeout=20000"' >> $matrix_remove_user
+    echo "BUFFER=\$(sqlite3 homeserver.db \"\$BUSY;select token from access_tokens where user_id like '\$ADMIN' order by id desc limit 1;\")" >> $matrix_remove_user
+    echo "TOKEN=\$(echo \$BUFFER|awk '{print \$2}')" >> $matrix_remove_user
+    echo 'set -x' >> $matrix_remove_user
+    echo "curl -X POST 'https://$MATRIX_DOMAIN_NAME/_matrix/client/r0/admin/deactivate/%40\$remove_username%3A$MATRIX_DOMAIN_NAME?access_token=\$TOKEN' --data '{}'" >> $matrix_remove_user
+
+    chmod +x $matrix_remove_user
+
+    $matrix_remove_user "$remove_username"
 }
 
 function add_user_matrix {
