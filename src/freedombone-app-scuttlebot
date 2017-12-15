@@ -35,10 +35,17 @@ IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=0
 SHOW_ICANN_ADDRESS_ON_ABOUT=0
 
+SCUTTLEBOT_DOMAIN_NAME=
+SCUTTLEBOT_CODE=
 SCUTTLEBOT_VERSION='10.4.6'
 SCUTTLEBOT_PORT=8010
+SCUTTLEBOT_ONION_PORT=8623
+GIT_SSB_PORT=7718
+NGINX_GIT_SSB_PORT=7719
 
 scuttlebot_variables=(MY_USERNAME
+                      SCUTTLEBOT_DOMAIN_NAME
+                      SCUTTLEBOT_CODE
                       DEFAULT_DOMAIN_NAME
                       SYSTEM_TYPE)
 
@@ -91,7 +98,13 @@ function add_user_scuttlebot {
 }
 
 function install_interactive_scuttlebot {
-    echo -n ''
+    if [[ $ONION_ONLY != "no" ]]; then
+        SCUTTLEBOT_DOMAIN_NAME='scuttlebot.local'
+        write_config_param "SCUTTLEBOT_DOMAIN_NAME" "$SCUTTLEBOT_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details scuttlebot
+    fi
     APP_INSTALLED=1
 }
 
@@ -180,9 +193,18 @@ function restore_remote_scuttlebot {
 
 function remove_scuttlebot {
     firewall_remove ${SCUTTLEBOT_PORT}
+    firewall_remove ${GIT_SSB_PORT}
 
+    if [ $SCUTTLEBOT_DOMAIN_NAME ]; then
+        nginx_dissite ${SCUTTLEBOT_DOMAIN_NAME}
+        rm /etc/nginx/sites-available/${SCUTTLEBOT_DOMAIN_NAME}
+    fi
+
+    systemctl stop git_ssb
     systemctl stop scuttlebot
+    systemctl disable git_ssb
     systemctl disable scuttlebot
+    rm /etc/systemd/system/git_ssb.service
     rm /etc/systemd/system/scuttlebot.service
     systemctl daemon-reload
 
@@ -191,15 +213,142 @@ function remove_scuttlebot {
     if [ -d /etc/scuttlebot ]; then
         rm -rf /etc/scuttlebot
     fi
+    if [ -f /usr/bin/git-ssb-create ]; then
+        rm /usr/bin/git-ssb-create
+    fi
 
     remove_completion_param install_scuttlebot
     sed -i '/scuttlebot /d' $COMPLETION_FILE
 }
 
+function git_ssb_script {
+    if [[ "$1" == "mesh" ]]; then
+        git_ssb_script_name=$rootdir/usr/bin/git-ssb-create
+    else
+        git_ssb_script_name=/usr/bin/git-ssb-create
+    fi
+    echo '#!/bin/bash' > $git_ssb_script_name
+    echo 'reponame="$1"' >> $git_ssb_script_name
+    echo '' >> $git_ssb_script_name
+    echo 'if [[ "$reponame" != "" ]]; then' >> $git_ssb_script_name
+    echo '  mkdir $reponame' >> $git_ssb_script_name
+    echo '  cd $reponame' >> $git_ssb_script_name
+    echo '  git init' >> $git_ssb_script_name
+    echo '  git ssb create ssb $reponame' >> $git_ssb_script_name
+    echo '  git push --tags ssb master' >> $git_ssb_script_name
+    echo 'fi' >> $git_ssb_script_name
+    echo 'exit 0' >> $git_ssb_script_name
+    chmod +x $git_ssb_script_name
+}
+
+function scuttlebot_git_setup {
+    if [[ "$1" == "mesh" ]]; then
+        if [ ! -d $rootdir/usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web/highlight ]; then
+            mkdir $rootdir/usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web/highlight
+        fi
+        if [ ! -f $rootdir/usr/local/lib/node_modules/git-ssb/node_modules/highlight.js/styles/foundation.css ]; then
+            echo $'Could not find foundation.css'
+            exit 347687245
+        fi
+        cp $rootdir/usr/local/lib/node_modules/git-ssb/node_modules/highlight.js/styles/foundation.css $rootdir/usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web/highlight/foundation.css
+
+        git_ssb_nginx_site=$rootdir/etc/nginx/sites-available/git_ssb
+        echo 'server {' > $git_ssb_nginx_site
+        echo "  listen $NGINX_GIT_SSB_PORT default_server;" >> $git_ssb_nginx_site
+        echo "  server_name P${PEER_ID}.local;" >> $git_ssb_nginx_site
+        echo '' >> $git_ssb_nginx_site
+        echo '  access_log /dev/null;' >> $git_ssb_nginx_site
+        echo '  error_log /dev/null;' >> $git_ssb_nginx_site
+        echo '' >> $git_ssb_nginx_site
+        echo '  add_header X-XSS-Protection "1; mode=block";' >> $git_ssb_nginx_site
+        echo '  add_header X-Content-Type-Options nosniff;' >> $git_ssb_nginx_site
+        echo '  add_header X-Frame-Options SAMEORIGIN;' >> $git_ssb_nginx_site
+    else
+        if [ ! $SCUTTLEBOT_DOMAIN_NAME ]; then
+            exit 7357225
+        fi
+
+        if [ ! -d /usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web/highlight ]; then
+            mkdir /usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web/highlight
+        fi
+        if [ ! -f /usr/local/lib/node_modules/git-ssb/node_modules/highlight.js/styles/foundation.css ]; then
+            echo $'Could not find foundation.css'
+            exit 347687245
+        fi
+        cp /usr/local/lib/node_modules/git-ssb/node_modules/highlight.js/styles/foundation.css /usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web/highlight/foundation.css
+
+        git_ssb_nginx_site=/etc/nginx/sites-available/${SCUTTLEBOT_DOMAIN_NAME}
+        function_check nginx_http_redirect
+        nginx_http_redirect $SCUTTLEBOT_DOMAIN_NAME "index index.html"
+        echo 'server {' >> $git_ssb_nginx_site
+        echo '  listen 443 ssl;' >> $git_ssb_nginx_site
+        echo '  listen [::]:443 ssl;' >> $git_ssb_nginx_site
+        echo "  server_name $SCUTTLEBOT_DOMAIN_NAME;" >> $git_ssb_nginx_site
+        echo '' >> $git_ssb_nginx_site
+        function_check nginx_compress
+        nginx_compress $SCUTTLEBOT_DOMAIN_NAME
+        echo '' >> $git_ssb_nginx_site
+        echo '  # Security' >> $git_ssb_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $SCUTTLEBOT_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $SCUTTLEBOT_DOMAIN_NAME
+    fi
+
+    echo '' >> $git_ssb_nginx_site
+    echo '  root /usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web;' >> $git_ssb_nginx_site
+    echo '' >> $git_ssb_nginx_site
+    echo '  location = / {' >> $git_ssb_nginx_site
+    echo "    proxy_pass http://localhost:${GIT_SSB_PORT};" >> $git_ssb_nginx_site
+    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $git_ssb_nginx_site
+    echo '    proxy_set_header Host $host;' >> $git_ssb_nginx_site
+    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $git_ssb_nginx_site
+    echo '    proxy_http_version 1.1;' >> $git_ssb_nginx_site
+    echo '    proxy_set_header Upgrade $http_upgrade;' >> $git_ssb_nginx_site
+    echo '    proxy_set_header Connection upgrade;' >> $git_ssb_nginx_site
+    echo '  }' >> $git_ssb_nginx_site
+    echo '}' >> $git_ssb_nginx_site
+
+    if [ $SCUTTLEBOT_ONION_HOSTNAME ]; then
+        echo '' >> $git_ssb_nginx_site
+        echo 'server {' >> $git_ssb_nginx_site
+        echo "  listen 127.0.0.1:${SCUTTLEBOT_ONION_PORT} default_server;" >> $git_ssb_nginx_site
+        echo "  server_name ${SCUTTLEBOT_ONION_HOSTNAME};" >> $git_ssb_nginx_site
+        echo '' >> $git_ssb_nginx_site
+        echo '  access_log /dev/null;' >> $git_ssb_nginx_site
+        echo '  error_log /dev/null;' >> $git_ssb_nginx_site
+        echo '' >> $git_ssb_nginx_site
+        echo '  add_header X-XSS-Protection "1; mode=block";' >> $git_ssb_nginx_site
+        echo '  add_header X-Content-Type-Options nosniff;' >> $git_ssb_nginx_site
+        echo '  add_header X-Frame-Options SAMEORIGIN;' >> $git_ssb_nginx_site
+        echo '' >> $git_ssb_nginx_site
+        echo '  root /usr/local/lib/node_modules/git-ssb/node_modules/git-ssb-web;' >> $git_ssb_nginx_site
+        echo '' >> $git_ssb_nginx_site
+        echo '  location = / {' >> $git_ssb_nginx_site
+        echo "    proxy_pass http://localhost:${GIT_SSB_PORT};" >> $git_ssb_nginx_site
+        echo '    proxy_set_header X-Real-IP $remote_addr;' >> $git_ssb_nginx_site
+        echo '    proxy_set_header Host $host;' >> $git_ssb_nginx_site
+        echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $git_ssb_nginx_site
+        echo '    proxy_http_version 1.1;' >> $git_ssb_nginx_site
+        echo '    proxy_set_header Upgrade $http_upgrade;' >> $git_ssb_nginx_site
+        echo '    proxy_set_header Connection upgrade;' >> $git_ssb_nginx_site
+        echo '  }' >> $git_ssb_nginx_site
+        echo '}' >> $git_ssb_nginx_site
+    fi
+    nginx_ensite git_ssb
+}
+
 function mesh_install_scuttlebot {
+    SCUTTLEBOT_ONION_HOSTNAME=
+
+    get_npm_arch
+
     cat <<EOF > $rootdir/usr/bin/install_scuttlebot
 #!/bin/bash
-npm install -g scuttlebot@${SCUTTLEBOT_VERSION}
+npm install --arch=$NPM_ARCH -g scuttlebot@${SCUTTLEBOT_VERSION}
+npm install --arch=$NPM_ARCH -g git-ssb
+npm install --arch=$NPM_ARCH -g git-remote-ssb
 EOF
     chroot "$rootdir" /bin/chmod +x /usr/bin/install_scuttlebot
     chroot "$rootdir" /usr/bin/install_scuttlebot
@@ -234,6 +383,9 @@ EOF
     echo '' >> $rootdir/etc/systemd/system/scuttlebot.service
     echo '[Install]' >> $rootdir/etc/systemd/system/scuttlebot.service
     echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/scuttlebot.service
+
+    scuttlebot_git_setup mesh
+    git_ssb_script mesh
 }
 
 function install_scuttlebot {
@@ -244,6 +396,9 @@ function install_scuttlebot {
     if [ ! -f /usr/local/bin/sbot ]; then
         exit 528253
     fi
+
+    npm install -g git-ssb
+    npm install -g git-remote-ssb
 
     if [ ! -d /etc/scuttlebot ]; then
         mkdir -p /etc/scuttlebot
@@ -270,6 +425,24 @@ function install_scuttlebot {
     echo '[Install]' >> /etc/systemd/system/scuttlebot.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/scuttlebot.service
 
+    echo '[Unit]' > /etc/systemd/system/git_ssb.service
+    echo 'Description=Git SSB (SSB git web interface)' >> /etc/systemd/system/git_ssb.service
+    echo 'After=syslog.target' >> /etc/systemd/system/git_ssb.service
+    echo 'After=network.target' >> /etc/systemd/system/git_ssb.service
+    echo 'After=scuttlebot.target' >> /etc/systemd/system/git_ssb.service
+    echo '' >> /etc/systemd/system/git_ssb.service
+    echo '[Service]' >> /etc/systemd/system/git_ssb.service
+    echo 'Type=simple' >> /etc/systemd/system/git_ssb.service
+    echo 'User=scuttlebot' >> /etc/systemd/system/git_ssb.service
+    echo 'Group=scuttlebot' >> /etc/systemd/system/git_ssb.service
+    echo "WorkingDirectory=/etc/scuttlebot" >> /etc/systemd/system/git_ssb.service
+    echo "ExecStart=/usr/bin/git ssb web --public localhost:$GIT_SSB_PORT" >> /etc/systemd/system/git_ssb.service
+    echo 'Restart=always' >> /etc/systemd/system/git_ssb.service
+    echo 'Environment="USER=scuttlebot"' >> /etc/systemd/system/git_ssb.service
+    echo '' >> /etc/systemd/system/git_ssb.service
+    echo '[Install]' >> /etc/systemd/system/git_ssb.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/git_ssb.service
+
     chown -R scuttlebot:scuttlebot /etc/scuttlebot
 
     # files gw_name myhostname mdns4_minimal [NOTFOUND=return] dns
@@ -279,6 +452,9 @@ function install_scuttlebot {
     systemctl enable scuttlebot.service
     systemctl daemon-reload
     systemctl start scuttlebot.service
+    systemctl enable git_ssb.service
+    systemctl daemon-reload
+    systemctl start git_ssb.service
 
     sleep 3
 
@@ -309,6 +485,17 @@ function install_scuttlebot {
     systemctl restart scuttlebot.service
 
     firewall_add scuttlebot ${SCUTTLEBOT_PORT}
+    firewall_add git_ssb ${GIT_SSB_PORT}
+
+
+    SCUTTLEBOT_ONION_HOSTNAME=$(add_onion_service scuttlebot 80 ${SCUTTLEBOT_ONION_PORT})
+    scuttlebot_git_setup
+    git_ssb_script
+
+    function_check create_site_certificate
+    create_site_certificate ${SCUTTLEBOT_DOMAIN_NAME} 'yes'
+
+    systemctl restart nginx
 
     if ! grep -q "scuttlebot version:" ${COMPLETION_FILE}; then
         echo "scuttlebot version:${SCUTTLEBOT_VERSION}" >> ${COMPLETION_FILE}

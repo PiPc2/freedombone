@@ -10,6 +10,9 @@
 #
 # PeerTube server
 #
+# There's a problem with installing this onto mesh images, which is
+# that qemu appears to run out of RAM when using yarn to add webpack.
+#
 # License
 # =======
 #
@@ -39,6 +42,7 @@ PEERTUBE_REPO="https://github.com/Chocobozzz/PeerTube"
 PEERTUBE_COMMIT='fef2c7164e025b12a64185dbab058ef4129733c6'
 PEERTUBE_ONION_PORT=8136
 PEERTUBE_PORT=9004
+MESH_PEERTUBE_PORT=8500
 PEERTUBE_DIR=/etc/peertube
 
 peertube_variables=(PEERTUBE_DOMAIN_NAME
@@ -479,21 +483,83 @@ function peertube_setup_web {
     nginx_ensite $PEERTUBE_DOMAIN_NAME
 }
 
+function mesh_peertube_setup_web {
+    peertube_nginx_file=$rootdir/etc/nginx/sites-available/peertube
+
+    echo 'server {' >> $peertube_nginx_file
+    echo "  listen $MESH_PEERTUBE_PORT http2;" >> $peertube_nginx_file
+    echo '  listen [::]:$MESH_PEERTUBE_PORT http2;' >> $peertube_nginx_file
+    echo '  server_name $HOSTNAME;' >> $peertube_nginx_file
+    echo '' >> $peertube_nginx_file
+    echo '  location / {' >> $peertube_nginx_file
+    echo "    proxy_pass http://localhost:${PEERTUBE_PORT};" >> $peertube_nginx_file
+    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $peertube_nginx_file
+    echo '    proxy_set_header Host $host;' >> $peertube_nginx_file
+    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $peertube_nginx_file
+    echo '' >> $peertube_nginx_file
+    echo '    # For the video upload' >> $peertube_nginx_file
+    echo '    client_max_body_size 2G;' >> $peertube_nginx_file
+    echo '  }' >> $peertube_nginx_file
+    echo '' >> $peertube_nginx_file
+    echo '  location /static/webseed {' >> $peertube_nginx_file
+    echo "    if (\$request_method = 'OPTIONS') {" >> $peertube_nginx_file
+    echo "      add_header 'Access-Control-Allow-Origin' '*';" >> $peertube_nginx_file
+    echo "      add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';" >> $peertube_nginx_file
+    echo "      add_header 'Access-Control-Allow-Headers' 'Range,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type';" >> $peertube_nginx_file
+    echo "      add_header 'Access-Control-Max-Age' 1728000;" >> $peertube_nginx_file
+    echo "      add_header 'Content-Type' 'text/plain charset=UTF-8';" >> $peertube_nginx_file
+    echo "      add_header 'Content-Length' 0;" >> $peertube_nginx_file
+    echo '      return 204;' >> $peertube_nginx_file
+    echo '    }' >> $peertube_nginx_file
+    echo '' >> $peertube_nginx_file
+    echo "    if (\$request_method = 'GET') {" >> $peertube_nginx_file
+    echo "      add_header 'Access-Control-Allow-Origin' '*';" >> $peertube_nginx_file
+    echo "      add_header 'Access-Control-Allow-Methods' 'GET, OPTIONS';" >> $peertube_nginx_file
+    echo "      add_header 'Access-Control-Allow-Headers' 'Range,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type';" >> $peertube_nginx_file
+    echo '    }' >> $peertube_nginx_file
+    echo '' >> $peertube_nginx_file
+    echo "    alias $PEERTUBE_DIR/videos;" >> $peertube_nginx_file
+    echo '  }' >> $peertube_nginx_file
+    echo '' >> $peertube_nginx_file
+    echo '  # Websocket tracker' >> $peertube_nginx_file
+    echo '  location /tracker/socket {' >> $peertube_nginx_file
+    echo '    # Peers send a message to the tracker every 15 minutes' >> $peertube_nginx_file
+    echo '    # Dont close the websocket before this time' >> $peertube_nginx_file
+    echo '    proxy_read_timeout 1200s;' >> $peertube_nginx_file
+    echo '    proxy_set_header Upgrade $http_upgrade;' >> $peertube_nginx_file
+    echo '    proxy_set_header Connection "upgrade";' >> $peertube_nginx_file
+    echo '    proxy_http_version 1.1;' >> $peertube_nginx_file
+    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $peertube_nginx_file
+    echo '    proxy_set_header Host $host;' >> $peertube_nginx_file
+    echo "    proxy_pass http://localhost:${PEERTUBE_PORT};" >> $peertube_nginx_file
+    echo '  }' >> $peertube_nginx_file
+    echo '}' >> $peertube_nginx_file
+}
+
 function peertube_create_config {
-    peertube_config_file=$PEERTUBE_DIR/config/production.yaml
+    peertube_prefix=$1
+
+    peertube_config_file=$peertube_prefix$PEERTUBE_DIR/config/production.yaml
+
     echo 'listen:' > $peertube_config_file
     echo "  port: $PEERTUBE_PORT" >> $peertube_config_file
     echo '' >> $peertube_config_file
     echo '# Correspond to your reverse proxy "listen" configuration' >> $peertube_config_file
     echo 'webserver:' >> $peertube_config_file
-    if [[ $ONION_ONLY == 'no' ]]; then
-        echo '  https: true' >> $peertube_config_file
-        echo "  hostname: '$PEERTUBE_DOMAIN_NAME'" >> $peertube_config_file
-        echo '  port: 443' >> $peertube_config_file
+    if [ ! $peertube_prefix ]; then
+        if [[ $ONION_ONLY == 'no' ]]; then
+            echo '  https: true' >> $peertube_config_file
+            echo "  hostname: '$PEERTUBE_DOMAIN_NAME'" >> $peertube_config_file
+            echo '  port: 443' >> $peertube_config_file
+        else
+            echo '  https: false' >> $peertube_config_file
+            echo "  hostname: '$PEERTUBE_ONION_HOSTNAME'" >> $peertube_config_file
+            echo '  port: 80' >> $peertube_config_file
+        fi
     else
         echo '  https: false' >> $peertube_config_file
-        echo "  hostname: '$PEERTUBE_ONION_HOSTNAME'" >> $peertube_config_file
-        echo '  port: 80' >> $peertube_config_file
+        echo "  hostname: ''" >> $peertube_config_file
+        echo "  port: $MESH_PEERTUBE_PORT" >> $peertube_config_file
     fi
     echo '' >> $peertube_config_file
     echo '# Your database name will be "peertube"+database.suffix' >> $peertube_config_file
@@ -502,7 +568,11 @@ function peertube_create_config {
     echo '  port: 5432' >> $peertube_config_file
     echo "  suffix: ''" >> $peertube_config_file
     echo "  username: 'peertube'" >> $peertube_config_file
-    echo "  password: '$PEERTUBE_ADMIN_PASSWORD'" >> $peertube_config_file
+    if [ ! $peertube_prefix ]; then
+        echo "  password: '$PEERTUBE_ADMIN_PASSWORD'" >> $peertube_config_file
+    else
+        echo "  password: ''" >> $peertube_config_file
+    fi
     echo '' >> $peertube_config_file
     echo '# From the project root directory' >> $peertube_config_file
     echo 'storage:' >> $peertube_config_file
@@ -519,7 +589,7 @@ function peertube_create_config {
     echo '    size: 10 # Max number of previews you want to cache' >> $peertube_config_file
     echo '' >> $peertube_config_file
     echo 'admin:' >> $peertube_config_file
-    echo "  email: '$MY_EMAIL_ADDRESS'" >> $peertube_config_file
+    echo "  email: 'root@local'" >> $peertube_config_file
     echo '' >> $peertube_config_file
     echo 'signup:' >> $peertube_config_file
     echo '  enabled: true' >> $peertube_config_file
@@ -543,7 +613,118 @@ function peertube_create_config {
     echo '    1080p: false' >> $peertube_config_file
 }
 
+function mesh_install_peertube {
+    if [[ $VARIANT != "meshclient" && $VARIANT != "meshusb" ]]; then
+        return
+    fi
+    if [[ $ARCHITECTURE != 'x86_64' && $ARCHITECTURE != 'amd64' ]]; then
+        return
+    fi
+
+    chroot "$rootdir" apt-get -yq install ffmpeg curl
+
+    function_check install_postgresql
+    install_postgresql
+
+    if [ -d $rootdir$PEERTUBE_DIR ]; then
+        rm -rf $rootdir$PEERTUBE_DIR
+    fi
+
+    git clone $PEERTUBE_REPO $rootdir$PEERTUBE_DIR
+
+    chroot "$rootdir" groupadd peertube
+    chroot "$rootdir" useradd -c "PeerTube system account" -d $PEERTUBE_DIR -m -r -g peertube peertube
+
+    cd $rootdir$PEERTUBE_DIR
+    git checkout $PEERTUBE_COMMIT -b $PEERTUBE_COMMIT
+
+
+    get_npm_arch
+
+    cat <<EOF > $rootdir/usr/bin/install_peertube
+#!/bin/bash
+cd $PEERTUBE_DIR
+curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | sudo apt-key add -
+echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/sources.list.d/yarn.list
+apt-get -y update
+apt-get -yq install yarn
+
+#npm install --arch=$NPM_ARCH -g yarn
+#if [ ! "\$?" = "0" ]; then
+#    echo $'PeerTube Failed to install yarn'
+#    exit 79353234
+#fi
+#npm install --arch=$NPM_ARCH webpack@3.10.0 --no-optional
+#if [ ! "\$?" = "0" ]; then
+#    echo $'PeerTube failed to install webpack'
+#    exit 68386353
+#fi
+yarn install
+yarn run build:prod
+yarn add -D webpack
+if [ ! "\$?" = "0" ]; then
+    echo $'PeerTube failed to add webpack'
+    exit 67342823
+fi
+yarn install --ignore-optional
+if [ ! "\$?" = "0" ]; then
+    echo $'PeerTube failed to run yarn install'
+    exit 63754235
+fi
+npm install --arch=$NPM_ARCH
+if [ ! "\$?" = "0" ]; then
+    echo $'PeerTube failed to install peertube'
+    exit 7835243
+fi
+npm run build --arch=$NPM_ARCH
+if [ ! "\$?" = "0" ]; then
+    echo $'PeerTube failed to build peertube'
+    exit 5293593
+fi
+EOF
+    chmod +x $rootdir/usr/bin/install_peertube
+    chroot "$rootdir" /usr/bin/install_peertube
+    if [ ! "$?" = "0" ]; then
+        echo $'PeerTube install failed'
+        exit 735638
+    fi
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/peertube.service
+    echo 'Description=PeerTube Decentralized video streaming platform' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'After=syslog.target' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/peertube.service
+    echo '' >> $rootdir/etc/systemd/system/peertube.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'User=peertube' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'Group=peertube' >> $rootdir/etc/systemd/system/peertube.service
+    echo "WorkingDirectory=$PEERTUBE_DIR" >> $rootdir/etc/systemd/system/peertube.service
+    echo "ExecStart=/usr/local/bin/npm start" >> $rootdir/etc/systemd/system/peertube.service
+    echo "ExecStop=/usr/local/bin/npm stop" >> $rootdir/etc/systemd/system/peertube.service
+    echo 'StandardOutput=syslog' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'StandardError=syslog' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'SyslogIdentifier=peertube' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'Restart=always' >> $rootdir/etc/systemd/system/peertube.service
+    echo "Environment=NODE_ENV=production" >> $rootdir/etc/systemd/system/peertube.service
+    echo '' >> $rootdir/etc/systemd/system/peertube.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/peertube.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/peertube.service
+
+    peertube_create_config $rootdir
+
+    chroot "$rootdir" chown -R peertube:peertube $PEERTUBE_DIR
+
+    mesh_peertube_setup_web
+}
+
 function install_peertube {
+    if [[ $VARIANT == "mesh"* ]]; then
+        mesh_install_peertube
+        return
+    fi
+    if [[ $ARCHITECTURE != 'x86_64' && $ARCHITECTURE != 'amd64' ]]; then
+        return
+    fi
+
     if [ ! $ONION_ONLY ]; then
         ONION_ONLY='no'
     fi

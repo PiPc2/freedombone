@@ -32,8 +32,8 @@ export TEXTDOMAIN=${PROJECT_NAME}-image-mesh
 export TEXTDOMAINDIR="/usr/share/locale"
 
 # The browser application to use
-BROWSER=midori
-BROWSER_OPTIONS='-p'
+BROWSER=firefox
+BROWSER_OPTIONS='-private -url'
 
 MY_USERNAME='fbone'
 PEER_ID=
@@ -88,6 +88,59 @@ SCUTTLEBOT_PORT=8010
 CRYPTPAD_PORT=9003
 CRYPTPAD_DIR=/etc/cryptpad
 
+PEERTUBE_DIR=/etc/peertube
+
+function run_system_query_postgresql {
+    query=$1
+    cd /etc/postgresql
+    sudo -u postgres psql -c "$query"
+}
+
+function create_password {
+    openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c ${1} ; echo -n ''
+}
+
+function enable_peertube {
+    if [ ! -d $PEERTUBE_DIR ]; then
+        return
+    fi
+
+    PEERTUBE_ADMIN_PASSWORD="$(create_password 10)"
+
+    if [ -d $PEERTUBE_DIR/videos ]; then
+        rm -rf $PEERTUBE_DIR/videos/*
+    fi
+    if [ -d $PEERTUBE_DIR/thumbnails ]; then
+        rm -rf $PEERTUBE_DIR/thumbnails/*
+    fi
+
+    systemctl restart postgresql
+    run_system_query_postgresql "DROP DATABASE peertube;"
+    run_system_query_postgresql "CREATE USER peertube WITH PASSWORD '$PEERTUBE_ADMIN_PASSWORD';"
+    run_system_query_postgresql "CREATE DATABASE peertube OWNER peertube;"
+    run_system_query_postgresql "GRANT ALL PRIVILEGES ON DATABASE peertube to peertube;"
+    run_system_query_postgresql "set statement_timeout to 40000;"
+
+    peertube_config_file=$PEERTUBE_DIR/config/production.yaml
+    sed -i "s|hostname:.*|hostname: 'P$PEER_ID.local'|g" $peertube_config_file
+    sed -i "s|password:.*|password: '$PEERTUBE_ADMIN_PASSWORD'|g" $peertube_config_file
+
+    peertube_nginx_file=/etc/nginx/sites-available/peertube
+    sed -i "s|server_name.*|server_name P$PEER_ID.local;|g" $peertube_nginx_file
+
+    chown -R peertube:peertube $PEERTUBE_DIR
+
+    # Set up the web server
+    ln -s /etc/nginx/sites-available/peertube /etc/nginx/sites-enabled/peertube
+    if [ -f /etc/nginx/sites-enabled/default ]; then
+        rm /etc/nginx/sites-enabled/default
+    fi
+
+    systemctl enable peertube
+    systemctl daemon-reload
+    systemctl start peertube
+}
+
 function enable_cryptpad {
     if [ ! -d $CRYPTPAD_DIR ]; then
         return
@@ -95,7 +148,9 @@ function enable_cryptpad {
 
     # Set up the web server
     ln -s /etc/nginx/sites-available/cryptpad /etc/nginx/sites-enabled/cryptpad
-    rm /etc/nginx/sites-enabled/default
+    if [ -f /etc/nginx/sites-enabled/default ]; then
+        rm /etc/nginx/sites-enabled/default
+    fi
 
     if [ ! -d $CRYPTPAD_DIR/customize/api ]; then
         mkdir -p $CRYPTPAD_DIR/customize/api
@@ -391,7 +446,7 @@ function show_desktop_icons {
     echo "Comment[it]=Crea una nuova identità" >> /home/$MY_USERNAME/Desktop/new_identity.desktop
     echo "Comment[ru]=Создайте новое удостоверение личности" >> /home/$MY_USERNAME/Desktop/new_identity.desktop
     echo "Comment[zh]=创建一个新的身份" >> /home/$MY_USERNAME/Desktop/new_identity.desktop
-    echo "Exec=mate-terminal --full-screen -e ${PROJECT_NAME}-mesh-reset" >> /home/$MY_USERNAME/Desktop/new_identity.desktop
+    echo "Exec=${PROJECT_NAME}-mesh-reset" >> /home/$MY_USERNAME/Desktop/new_identity.desktop
     echo "Icon=/usr/share/${PROJECT_NAME}/avatars/icon_new_identity.png" >> /home/$MY_USERNAME/Desktop/new_identity.desktop
     echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
     echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/new_identity.desktop
@@ -424,6 +479,324 @@ function show_desktop_icons {
     echo "Icon=/usr/share/$PROJECT_NAME/avatars/icon_social.png" >> /home/$MY_USERNAME/Desktop/social.desktop
     echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/social.desktop
     echo 'Categories=Application;' >> /home/$MY_USERNAME/Desktop/social.desktop
+
+    cp /root/${PROJECT_NAME}/img/icon_kdenlive.png /usr/share/${PROJECT_NAME}/avatars/icon_kdenlive.png
+    echo '#!/usr/bin/env xdg-open' > /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo '# KDE Config File' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo '' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo '[Desktop Entry]' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name=Video Editor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ast]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[bs]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ca]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ca@valencia]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[cs]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[da]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[de]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[el]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[en_GB]=Video Editor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[es]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[et]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[fi]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[fr]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ga]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[gl]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[hu]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[it]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ja]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[km]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[lt]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[lv]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[mr]=के-डि-एनलाइव्ह' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[nb]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[nds]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[nl]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[nn]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[pl]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[pt]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[pt_BR]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ro]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ru]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[sk]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[sl]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[sv]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[tr]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[ug]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[uk]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[x-test]=xxKdenlivexx' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[zh_CN]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Name[zh_TW]=Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName=Video Editor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ar]=محرّر فيديوهات' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ast]=Editor de videu' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[bs]=Video uređivač' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ca]=Editor de vídeo' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ca@valencia]=Editor de vídeo' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[cs]=Editor videí' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[da]=Videoredigering' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[de]=Video-Editor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[el]=Επεξεργαστής βίντεο' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[en_GB]=Video Editor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[es]=Editor de video' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[et]=Videoredaktor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[fi]=Videomuokkain' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[fr]=Éditeur vidéo' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ga]=Eagarthóir Físe' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[gl]=Editor de vídeo' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[hu]=Videoszerkesztő' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[it]=Editor video' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ja]=ビデオエディタ' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[km]=កម្មវិធី​កែសម្រួល​វីដេអូ' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[lt]=Video redaktorius' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[lv]=Video redaktors' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[mr]=व्हिडीओ संपादक' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[nb]=Videoredigeringsprogram' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[nl]=Video-bewerker' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[nn]=Videoredigering' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[pl]=Edytor wideo' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[pt]=Editor de Víde' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[pt_BR]=Editor de Vídeo' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ro]=Redactor de imagini' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[ru]=Видеоредактор' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[sk]=Editor videa' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[sl]=Urejevalnik videa' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[sv]=Videoeditor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[tr]=Video Düzenleyici' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[uk]=Відеоредактор' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[x-test]=xxVideo Editorxx' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[zh_CN]=视频编辑器' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'GenericName[zh_TW]=影像編輯器' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment=Nonlinear video editor for KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ar]=محرّر فيديوهات غير خطّيّ لكدي' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ast]=Editor de videu non llinial pa KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[bs]=Nelinearni video uređivač za KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ca]=Editor de vídeo no lineal per al KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ca@valencia]=Editor de vídeo no lineal per al KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[cs]=Nelineární editor videí pro KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[da]=Ikke-lineær videoredigering til KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[de]=Nichtlinearer Video-Editor für KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[el]=Μη γραμμικός επεξεργαστής βίντεο για το KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[en_GB]=Nonlinear video editor for KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[es]=Editor no lineal de video para KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[et]=KDE mittelineaarne videoredaktor' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[fi]=Epälineaarinen videomuokkain KDE:lle' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[fr]=Éditeur vidéo non linéaire pour KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[gl]=Editor de vídeo non linear para KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[hu]=Nemlineáris videoszerkesztő a KDE-hez' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[it]=Editor di video non lineare per KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ja]=KDE 向けノンリニアビデオエディタ' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[km]=កម្មវិធី​កែសម្រួល​វីដេអូ​មិន​លីនេអ៊ែរ​សម្រាប់ KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[lt]=Nelinijinis veido redaktorius skirtas KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[lv]=Nelineārais video redaktors KDE videi' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[mr]=केडीई करिता अरेषीय व्हिडीओ संपादक' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[nb]=Videoredigeringsprogram for KDE med dataklipping' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[nl]=Niet-lineaire video-bewerker voor KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[nn]=Program for ikkje-lineær videoredigering' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[pl]=Nieliniowy edytor wideo dla KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[pt]=Editor de vídeo não-linear para o KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[pt_BR]=Editor de vídeo não-linear para o KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ro]=Redactor de imagini neliniar pentru KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ru]=Нелинейный видеоредактор от KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[sk]=Nelineárny editor videa pre KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[sl]=Ne-linearni urejevalnik videa za KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[sv]=Icke-linjär videoeditor för KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[tr]=KDE için doğrusal olmayan video düzenleyici' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[ug]=KDE ئۈچۈن سىزىقسىز سىن تەھرىرلىگۈچ' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[uk]=Нелінійний редактор відео для KDE' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[x-test]=xxNonlinear video editor for KDExx' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[zh_CN]=KDE 的非线性视频编辑器' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Comment[zh_TW]=KDE 上的非線性影像編輯器' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Exec=kdenlive %U' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo "Icon=/usr/share/${PROJECT_NAME}/avatars/icon_kdenlive.png" >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'X-DocPath=kdenlive/index.html' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'X-DocPath[cs]=http://cs.wikibooks.org/wiki/Kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'MimeType=application/x-kdenlive;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Categories=Qt;KDE;AudioVideo;AudioVideoEditing;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords=editing;video;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[ca]=edició;vídeo;àudio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[ca@valencia]=edició;vídeo;àudio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[da]=redigering;video;lyd;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[de]=Editing;Bearbeitung;Schnitt;Videoschnitt;Video;Audio;MLT;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[en_GB]=editing;video;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[es]=edición;video;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[et]=redigeerimine;muutmine;video;audio;heli;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[fi]=editing;video;audio;mlt;kde;editointi;ääni;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[fr]=montage;vidéo;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[gl]=editing;edición;video;vídeo;audio;son;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[it]=editing;video;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[nl]=bewerken;video;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[nn]=redigering;video;lyd;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[pl]=edytowanie;video;wideo;filmy;audio;dźwięk;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[pt]=edição;vídeo;áudio;MLT;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[pt_BR]=edição;vídeo;áudio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[sk]=editovanie;video;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[sl]=urejanje;video;zvok;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[sv]=redigering;video;ljud;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[uk]=editing;video;audio;mlt;kde;редагування;відео;звук;аудіо;млт;кдє;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[x-test]=xxeditingxx;xxvideoxx;xxaudioxx;xxmltxx;xxkdexx;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[zh_CN]=editing;video;audio;mlt;kde;编辑;视频;音频;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'Keywords[zh_TW]=editing;video;audio;mlt;kde;' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+    echo 'X-DBUS-ServiceName=org.kde.kdenlive' >> /home/$MY_USERNAME/Desktop/kdenlive.desktop
+
+    cp /root/${PROJECT_NAME}/img/icon_photos.png /usr/share/${PROJECT_NAME}/avatars/icon_photos.png
+    echo '#!/usr/bin/env xdg-open' > /home/$MY_USERNAME/Desktop/photos.desktop
+    echo '[Desktop Entry]' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Version=1.0' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ar]=شُتْ‌وِل' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[as]=Photos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[bn_IN]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[bs]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ca]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[cs]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[da]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[de]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[el]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[en_GB]=Photos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[es]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[et]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[eu]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[fi]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[fr]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[gd]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[gl]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[gu]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[he]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[hi]=शॉटवेल' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[hr]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[hu]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[id]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[it]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ja]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[kk]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[kn]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ko]=샷웰' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[lt]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[lv]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ml]=ഷോട്ട്‌‌വെല്‍' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[mr]=शॉटवेल' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[nb]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[nl]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[oc]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[or]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[pa]=ਸ਼ੂਟਵੈੱਲ' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[pl]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[pt]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[pt_BR]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ro]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ru]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[sk]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[sl]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[sr]=Фото-бунар' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[sr@latin]=Foto-bunar' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[sv]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[ta]=ஷாட்வெல்' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[te]=షాట్‌వెల్' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[tr]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[uk]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[vi]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[zh_CN]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[zh_HK]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name[zh_TW]=Shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Name=Photos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[af]=Foto Organiseerder' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ar]=مدير الصور' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo "GenericName[as]=ফ'টো ব্যৱস্থাপক" >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ast]=Xestor de semeyes' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[bg]=Мениджър на снимки' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[bn]=ফটো ম্যানেজার' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[bn_IN]=ছবি পরিচালন ব্যবস্থা' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[bs]=Organizator Slika' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ca]=Gestor fotogràfic' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[cs]=Správce fotografií' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[da]=Billedhåndtering' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[de]=Fotoverwaltung' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[el]=Διαχειριστής εικόνων' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[en_GB]=Photo Manager' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[es]=Gestor de fotos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[et]=Fotohaldur' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[eu]=Argazki-kudeatzailea' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[fi]=Valokuvien hallinta' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[fr]=Gestionnaire de photos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[gd]=Manaidsear dhealbhan' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[gl]=Xestor de fotos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[gu]=ફોટો સંચાલક' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[he]=מנהל תמונות' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[hi]=फ़ोटो प्रबंधक' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[hr]=Upravitelj fotografija' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[hu]=Fényképkezelő' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ia]=Administrator de photos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[id]=Manajer Foto' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[it]=Gestore di fotografie' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ja]=Shotwell 写真管理ツール' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[kk]=Фотосуреттерді басқару қолданбасы' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[km]=កម្ម​វិធី​គ្រប់​គ្រង​រូប​ថត' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[kn]=ಫೋಟೊ ವ್ಯವಸ್ಥಾಪಕ' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ko]=사진 관리자' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ky]=Фотография менеджери' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[lt]=Nuotraukų tvarkytuvė' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[lv]=Fotogrāfiju pārvaldnieks' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[mk]=Менаџер на фотографии' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ml]=ചിത്ര പാലകന്‍' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[mr]=छायाचित्र व्यवस्थापक' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[nb]=Fotobehandler' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[nl]=Fotobeheerder' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[oc]=Gestionari de fòtos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[or]=ଫୋଟୋ ପରିଚାଳକ' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[pa]=ਫੋਟੋ ਮੈਨੇਜਰ' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[pl]=Menedżer zdjęć' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[pt]=Gestor de fotografias' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[pt_BR]=Organizador de fotos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ro]=Administrator de fotografii' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ru]=Менеджер фотографий' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[sk]=Správca fotografií' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[sl]=Upravljalnik fotografij' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[sr]=Управник фотографија' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[sr@latin]=Upravnik fotografija' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[sv]=Bildhanterare' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[ta]=புகைப்பட அடுக்கு' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[te]=ఫోటో నిర్వాహకం' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[th]=ตัวจัดการภาพถ่าย' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[tr]=Fotoğraf Yöneticisi' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[uk]=Впорядник фотографій' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[vi]=Trình quản lý ảnh' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[zh_CN]=照片管理器' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[zh_HK]=相片管理員' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName[zh_TW]=相片管理員' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'GenericName=Photo Manager' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[cs]=Roztřiďte si své fotografie' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[da]=Organisér dine billeder' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[de]=Ihre Fotos organisieren' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[es]=Organice sus fotos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[fi]=Hallitse kuviasi' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[gd]=Cuir rian air na dealbhan agad' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[he]=ארגון התמונות שלך' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[hr]=Organizirajte svoje fotografije' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[hu]=Rendszerezze a fényképeit' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[id]=Organisasikan foto Anda' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[kk]=Фотосуреттеріңізді реттеңіз' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[kn]=ನಿಮ್ಮ ಚಿತ್ರಗಳನ್ನು ವ್ಯವಸ್ಥಿತವಾಗಿ ಜೋಡಿಸಿ' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[ko]=사진을 정리합니다.' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[lv]=Organizē savas fotogrāfijas' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[pl]=Organizowanie zdjęć' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[pt]=Organize as suas fotografias' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[pt_BR]=Organize suas fotos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[sk]=Organizuje vaše fotografie' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[sr]=Организујте ваше фотографије' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[sr@latin]=Organizujte vaše fotografije' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[sv]=Organisera dina bilder' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment[uk]=Впорядкуйте ваші фотографії' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Comment=Organize your photos' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo "Icon=/usr/share/${PROJECT_NAME}/avatars/icon_photos.png" >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Exec=shotwell %U' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Terminal=false' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Type=Application' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'MimeType=x-content/image-dcf;' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'Categories=Graphics;Photography;GNOME;GTK;' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'X-GIO-NoFuse=true' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'X-GNOME-Gettext-Domain=shotwell' >> /home/$MY_USERNAME/Desktop/photos.desktop
+    echo 'X-GNOME-FullName=Shotwell Photo Manager' >> /home/$MY_USERNAME/Desktop/photos.desktop
 
     #echo '[Desktop Entry]' > /home/$MY_USERNAME/Desktop/audio.desktop
     #echo 'Name=Audio/Music' >> /home/$MY_USERNAME/Desktop/audio.desktop
@@ -680,7 +1053,11 @@ function setup_ipfs {
     TOX_ID='none'
     if [ -d /home/$MY_USERNAME/Desktop ]; then
         if [ ! -d /home/$MY_USERNAME/Public ]; then
-            mkdir /home/$MY_USERNAME/Public
+            mkdir -p /home/$MY_USERNAME/Public/Videos
+            mkdir -p /home/$MY_USERNAME/Public/Music
+            mkdir -p /home/$MY_USERNAME/Public/Podcasts
+            mkdir -p /home/$MY_USERNAME/Public/Documents
+            mkdir -p /home/$MY_USERNAME/Public/Pictures
             echo $'Files within this directory will be publicly visible on the network' > /home/$MY_USERNAME/Public/README.txt
             chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/Public
             ln -s /home/$MY_USERNAME/Public /home/$MY_USERNAME/Desktop/Public
@@ -915,10 +1292,11 @@ function initialise_scuttlebot_pub {
     systemctl daemon-reload
     systemctl start scuttlebot.service
 
-    sleep 3
+    sleep 10
 
     if [ ! -d /etc/scuttlebot/.ssb ]; then
         echo $'Scuttlebot config not generated' >> /var/log/${PROJECT_NAME}.log
+        systemctl status scuttlebot -l >> /var/log/${PROJECT_NAME}.log
         exit 73528
     fi
 
@@ -943,6 +1321,7 @@ function initialise_scuttlebot_pub {
     echo '}' >> /etc/scuttlebot/.ssb/config
     chown scuttlebot:scuttlebot /etc/scuttlebot/.ssb/config
     systemctl restart scuttlebot.service
+    echo "scuttlebot pub started" >> /var/log/${PROJECT_NAME}.log
 }
 
 # whether to reset the identity
@@ -1038,6 +1417,7 @@ if [ -f $MESH_INSTALL_SETUP ]; then
     initialise_scuttlebot_pub
     setup_ipfs
     enable_cryptpad
+    enable_peertube
     mesh_amnesic
     make_root_read_only
 
