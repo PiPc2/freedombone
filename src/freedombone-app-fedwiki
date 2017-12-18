@@ -35,11 +35,9 @@ SHOW_ON_ABOUT=1
 
 FEDWIKI_DOMAIN_NAME=
 FEDWIKI_CODE=
-FEDWIKI_REPO="https://github.com/fedwiki/wiki"
-FEDWIKI_COMMIT='8fba3bb5c18b53b0c07fd2f2af10058b0d1bd253'
+FEDWIKI_VERSION='0.13.0'
 FEDWIKI_ONION_PORT=8131
 FEDWIKI_PORT=3053
-FEDWIKI_DIR=/etc/fedwiki
 FEDWIKI_DATA=/var/lib/fedwiki
 
 fedwiki_variables=(FEDWIKI_DOMAIN_NAME
@@ -104,22 +102,17 @@ function reconfigure_fedwiki {
 }
 
 function upgrade_fedwiki {
-    CURR_FEDWIKI_COMMIT=$(get_completion_param "fedwiki commit")
-    if [[ "$CURR_FEDWIKI_COMMIT" == "$FEDWIKI_COMMIT" ]]; then
+    CURR_FEDWIKI_VERSION=$(get_completion_param "fedwiki version")
+    if [[ "$CURR_FEDWIKI_VERSION" == "$FEDWIKI_VERSION" ]]; then
         return
     fi
 
-    read_config_param FEDWIKI_DOMAIN_NAME
     systemctl stop fedwiki
-    cd $FEDWIKI_DIR
-
-    function_check set_repo_commit
-    set_repo_commit $FEDWIKI_DIR "fedwiki commit" "$FEDWIKI_COMMIT" $FEDWIKI_REPO
-
-    npm run upgrade-fedwiki
-    chown -R fedwiki:fedwiki $FEDWIKI_DIR
+    npm upgrade -g wiki@$FEDWIKI_VERSION
     chown -R fedwiki:fedwiki $FEDWIKI_DATA
     systemctl start fedwiki
+
+    set_completion_param "fedwiki version" "$FEDWIKI_VERSION"
 }
 
 function backup_local_fedwiki {
@@ -224,6 +217,8 @@ function remove_fedwiki {
     rm /etc/systemd/system/fedwiki.service
     systemctl daemon-reload
 
+    npm uninstall -g wiki
+
     function_check remove_nodejs
     remove_nodejs fedwiki
 
@@ -246,9 +241,6 @@ function remove_fedwiki {
     groupdel -f fedwiki
     userdel -r fedwiki
 
-    if [ -d $FEDWIKI_DIR ]; then
-        rm -rf $FEDWIKI_DIR
-    fi
     if [ -d $FEDWIKI_DATA ]; then
         rm -rf $FEDWIKI_DATA
     fi
@@ -326,43 +318,32 @@ function install_fedwiki {
         exit 893635
     fi
 
-    #apt-get -yq install ffmpeg
-
     if [ ! -d /var/www/$FEDWIKI_DOMAIN_NAME/htdocs ]; then
         mkdir -p /var/www/$FEDWIKI_DOMAIN_NAME/htdocs
     fi
 
-    if [ -d $FEDWIKI_DIR ]; then
-        rm -rf $FEDWIKI_DIR
-    fi
     if [ ! -d $FEDWIKI_DATA ]; then
         mkdir -p $FEDWIKI_DATA
     fi
 
     groupadd fedwiki
-    useradd -c "Fedwiki system account" -d $FEDWIKI_DIR -m -r -g fedwiki fedwiki
+    useradd -c "Fedwiki system account" -d $FEDWIKI_DATA -m -r -g fedwiki fedwiki
+    if [ -d $FEDWIKI_DATA/Maildir ]; then
+        rm -rf $FEDWIKI_DATA/Maildir
+    fi
 
     function_check install_nodejs
     install_nodejs fedwiki
 
-    if [ -d /repos/fedwiki ]; then
-        mkdir -p $FEDWIKI_DIR
-        cp -r -p /repos/fedwiki/. $FEDWIKI_DIR
-        cd $FEDWIKI_DIR
-        git pull
-    else
-        function_check git_clone
-        git_clone $FEDWIKI_REPO $FEDWIKI_DIR
-    fi
-
-    cd $FEDWIKI_DIR
-    git checkout $FEDWIKI_COMMIT -b $FEDWIKI_COMMIT
-    set_completion_param "fedwiki commit" "$FEDWIKI_COMMIT"
-
-    npm install
+    npm install -g wiki@$FEDWIKI_VERSION
     if [ ! "$?" = "0" ]; then
         echo $'Failed to install fedwiki'
-        exit 8736254
+        exit 6293523
+    fi
+
+    if [ ! -f /usr/local/bin/wiki ]; then
+        echo $'wiki was not installed'
+        exit 5293524
     fi
 
     FEDWIKI_ONION_HOSTNAME=$(add_onion_service fedwiki 80 ${FEDWIKI_ONION_PORT})
@@ -375,8 +356,8 @@ function install_fedwiki {
     echo '[Service]' >> /etc/systemd/system/fedwiki.service
     echo 'User=fedwiki' >> /etc/systemd/system/fedwiki.service
     echo 'Group=fedwiki' >> /etc/systemd/system/fedwiki.service
-    echo "WorkingDirectory=$FEDWIKI_DIR" >> /etc/systemd/system/fedwiki.service
-    echo "ExecStart=$FEDWIKI_DIR/wiki --data $FEDWIKI_DATA -p $FEDWIKI_PORT" >> /etc/systemd/system/fedwiki.service
+    echo "WorkingDirectory=$FEDWIKI_DATA" >> /etc/systemd/system/fedwiki.service
+    echo "ExecStart=/usr/local/bin/wiki --data $FEDWIKI_DATA -p $FEDWIKI_PORT" >> /etc/systemd/system/fedwiki.service
     echo 'StandardOutput=syslog' >> /etc/systemd/system/fedwiki.service
     echo 'StandardError=syslog' >> /etc/systemd/system/fedwiki.service
     echo 'SyslogIdentifier=fedwiki' >> /etc/systemd/system/fedwiki.service
@@ -386,7 +367,6 @@ function install_fedwiki {
     echo '[Install]' >> /etc/systemd/system/fedwiki.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/fedwiki.service
 
-    chown -R fedwiki:fedwiki $FEDWIKI_DIR
     chown -R fedwiki:fedwiki $FEDWIKI_DATA
 
     fedwiki_setup_web
@@ -402,6 +382,7 @@ function install_fedwiki {
     systemctl restart nginx
 
     set_completion_param "fedwiki domain" "$FEDWIKI_DOMAIN_NAME"
+    set_completion_param "fedwiki version" "$FEDWIKI_VERSION"
     APP_INSTALLED=1
 }
 
