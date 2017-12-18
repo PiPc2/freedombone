@@ -1,0 +1,438 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Federated wiki
+#
+# License
+# =======
+#
+# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS="full full-vim media"
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+FEDWIKI_DOMAIN_NAME=
+FEDWIKI_CODE=
+FEDWIKI_VERSION='0.13.0'
+FEDWIKI_ONION_PORT=8131
+FEDWIKI_PORT=3053
+FEDWIKI_DATA=/var/lib/fedwiki
+
+fedwiki_variables=(FEDWIKI_DOMAIN_NAME
+                   FEDWIKI_CODE
+                   FEDWIKI_ADMIN_PASSWORD
+                   ONION_ONLY
+                   DDNS_PROVIDER
+                   MY_USERNAME
+                   MY_EMAIL_ADDRESS)
+
+function fedwiki_remove_bad_links {
+    if [ -f /usr/local/lib/node_modules/wiki/node_modules/wiki-security-friends/client/security.js ]; then
+        sed -i 's|maxcdn.bootstrapcdn.com|localhost|g' /usr/local/lib/node_modules/wiki/node_modules/wiki-security-friends/client/security.js
+    fi
+
+    if [ -f /usr/local/lib/node_modules/wiki/node_modules/localforage/docs/theme/style.css ]; then
+        sed -i '/googleapi/d' /usr/local/lib/node_modules/wiki/node_modules/localforage/docs/theme/style.css
+    fi
+
+    if [ -f /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/addAlternativeDialog.html ]; then
+        sed -i '/googleapi/d' /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/addAlternativeDialog.html
+    fi
+
+    if [ -f /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/done.html ]; then
+        sed -i '/googleapi/d' /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/done.html
+    fi
+
+    if [ -f /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/personaDialog.html ]; then
+        sed -i '/googleapi/d' /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/personaDialog.html
+    fi
+
+    if [ -f /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/securityDialog.html ]; then
+        sed -i '/googleapi/d' /usr/local/lib/node_modules/wiki/node_modules/wiki-security-passportjs/views/securityDialog.html
+    fi
+
+    if [ -d /usr/local/lib/node_modules/wiki/node_modules/passport-google-oauth20 ]; then
+        rm -rf /usr/local/lib/node_modules/wiki/node_modules/passport-google-oauth20
+    fi
+
+    if [ -d /usr/local/lib/node_modules/wiki/node_modules/passport-oauth2 ]; then
+        rm -rf /usr/local/lib/node_modules/wiki/node_modules/passport-oauth2
+    fi
+}
+
+function logging_on_fedwiki {
+    echo -n ''
+}
+
+function logging_off_fedwiki {
+    echo -n ''
+}
+
+function remove_user_fedwiki {
+    remove_username="$1"
+}
+
+function add_user_fedwiki {
+    if [[ $(app_is_installed fedwiki) == "0" ]]; then
+        echo '0'
+        return
+    fi
+
+    new_username="$1"
+    new_user_password="$2"
+
+    echo '0'
+}
+
+function install_interactive_fedwiki {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        FEDWIKI_DOMAIN_NAME='fedwiki.local'
+        write_config_param "FEDWIKI_DOMAIN_NAME" "$FEDWIKI_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "fedwiki" "FEDWIKI_DOMAIN_NAME" "FEDWIKI_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function change_password_fedwiki {
+    FEDWIKI_USERNAME="$1"
+    FEDWIKI_PASSWORD="$2"
+    if [ ${#FEDWIKI_PASSWORD} -lt 8 ]; then
+        echo $'Fedwiki password is too short'
+        return
+    fi
+    #${PROJECT_NAME}-pass -u $FEDWIKI_USERNAME -a fedwiki -p "$FEDWIKI_PASSWORD"
+}
+
+function reconfigure_fedwiki {
+    echo -n ''
+}
+
+function upgrade_fedwiki {
+    CURR_FEDWIKI_VERSION=$(get_completion_param "fedwiki version")
+    if [[ "$CURR_FEDWIKI_VERSION" == "$FEDWIKI_VERSION" ]]; then
+        return
+    fi
+
+    systemctl stop fedwiki
+    npm upgrade -g wiki@$FEDWIKI_VERSION
+    fedwiki_remove_bad_links
+    chown -R fedwiki:fedwiki $FEDWIKI_DATA
+    systemctl start fedwiki
+
+    set_completion_param "fedwiki version" "$FEDWIKI_VERSION"
+}
+
+function backup_local_fedwiki {
+    FEDWIKI_DOMAIN_NAME='fedwiki.local'
+    if grep -q "fedwiki domain" $COMPLETION_FILE; then
+        FEDWIKI_DOMAIN_NAME=$(get_completion_param "fedwiki domain")
+    fi
+
+    systemctl stop fedwiki
+    suspend_site ${FEDWIKI_DOMAIN_NAME}
+
+    fedwiki_path=$FEDWIKI_DATA
+    if [ -d $fedwiki_path ]; then
+        backup_directory_to_usb $fedwiki_path fedwiki
+    fi
+
+    restart_site
+    systemctl start fedwiki
+}
+
+function restore_local_fedwiki {
+    FEDWIKI_DOMAIN_NAME='fedwiki.local'
+    if grep -q "fedwiki domain" $COMPLETION_FILE; then
+        FEDWIKI_DOMAIN_NAME=$(get_completion_param "fedwiki domain")
+    fi
+    if [ $FEDWIKI_DOMAIN_NAME ]; then
+        suspend_site ${FEDWIKI_DOMAIN_NAME}
+        systemctl stop fedwiki
+
+        temp_restore_dir=/root/tempfedwiki
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir fedwiki
+        if [ -d $temp_restore_dir ]; then
+            if [ -d $temp_restore_dir$FEDWIKI_DATA ]; then
+                cp -r $temp_restore_dir$FEDWIKI_DATA/* $FEDWIKI_DATA/
+            else
+                cp -r $temp_restore_dir/* $FEDWIKI_DATA/
+            fi
+            chown -R fedwiki:fedwiki $FEDWIKI_DATA
+            rm -rf $temp_restore_dir
+        fi
+
+        systemctl start fedwiki
+        restart_site
+    fi
+}
+
+function backup_remote_fedwiki {
+    FEDWIKI_DOMAIN_NAME='fedwiki.local'
+    if grep -q "fedwiki domain" $COMPLETION_FILE; then
+        FEDWIKI_DOMAIN_NAME=$(get_completion_param "fedwiki domain")
+    fi
+
+    systemctl stop fedwiki
+    suspend_site ${FEDWIKI_DOMAIN_NAME}
+
+    temp_backup_dir=$FEDWIKI_DATA
+    if [ -d $temp_backup_dir ]; then
+        backup_directory_to_friend $temp_backup_dir fedwiki
+    else
+        echo $"Fedwiki domain specified but not found in $temp_backup_dir"
+        exit 63542852
+    fi
+
+    restart_site
+    systemctl start fedwiki
+}
+
+function restore_remote_fedwiki {
+    FEDWIKI_DOMAIN_NAME='fedwiki.local'
+    if grep -q "fedwiki domain" $COMPLETION_FILE; then
+        FEDWIKI_DOMAIN_NAME=$(get_completion_param "fedwiki domain")
+    fi
+
+    systemctl stop fedwiki
+    suspend_site ${FEDWIKI_DOMAIN_NAME}
+
+    temp_restore_dir=/root/tempfedwiki
+    function_check restore_directory_from_friend
+    restore_directory_from_friend $temp_restore_dir fedwiki
+    if [ -d $temp_restore_dir ]; then
+        if [ -d $temp_restore_dir$FEDWIKI_DATA ]; then
+            cp -r $temp_restore_dir$FEDWIKI_DATA/* $FEDWIKI_DATA/
+        else
+            cp -r $temp_restore_dir/* $FEDWIKI_DATA/
+        fi
+        chown -R fedwiki: $FEDWIKI_DATA
+        rm -rf $temp_restore_dir
+    fi
+
+    systemctl start fedwiki
+    restart_site
+}
+
+function remove_fedwiki {
+    if [ ${#FEDWIKI_DOMAIN_NAME} -eq 0 ]; then
+        return
+    fi
+
+    systemctl stop fedwiki
+    systemctl disable fedwiki
+    rm /etc/systemd/system/fedwiki.service
+    systemctl daemon-reload
+
+    npm uninstall -g wiki
+
+    function_check remove_nodejs
+    remove_nodejs fedwiki
+
+    read_config_param "FEDWIKI_DOMAIN_NAME"
+    nginx_dissite $FEDWIKI_DOMAIN_NAME
+    remove_certs ${FEDWIKI_DOMAIN_NAME}
+    if [ -f /etc/nginx/sites-available/$FEDWIKI_DOMAIN_NAME ]; then
+        rm -f /etc/nginx/sites-available/$FEDWIKI_DOMAIN_NAME
+    fi
+    if [ -d /var/www/$FEDWIKI_DOMAIN_NAME ]; then
+        rm -rf /var/www/$FEDWIKI_DOMAIN_NAME
+    fi
+    remove_config_param FEDWIKI_DOMAIN_NAME
+    remove_config_param FEDWIKI_CODE
+    function_check remove_onion_service
+    remove_onion_service fedwiki ${FEDWIKI_ONION_PORT}
+    remove_completion_param "install_fedwiki"
+    sed -i '/fedwiki/d' $COMPLETION_FILE
+
+    groupdel -f fedwiki
+    userdel -r fedwiki
+
+    if [ -d $FEDWIKI_DATA ]; then
+        rm -rf $FEDWIKI_DATA
+    fi
+
+    function_check remove_ddns_domain
+    remove_ddns_domain $FEDWIKI_DOMAIN_NAME
+}
+
+function fedwiki_setup_web {
+    fedwiki_nginx_file=/etc/nginx/sites-available/$FEDWIKI_DOMAIN_NAME
+
+    if [[ $ONION_ONLY == "no" ]]; then
+        echo 'server {' > $fedwiki_nginx_file
+        echo '  listen 80;' >> $fedwiki_nginx_file
+        echo '  listen [::]:80;' >> $fedwiki_nginx_file
+        echo "  server_name $FEDWIKI_DOMAIN_NAME;" >> $fedwiki_nginx_file
+        echo '  rewrite ^ https://$server_name$request_uri? permanent;' >> $fedwiki_nginx_file
+        echo '}' >> $fedwiki_nginx_file
+        echo '' >> $fedwiki_nginx_file
+        echo 'server {' >> $fedwiki_nginx_file
+        echo '  listen 443 ssl;' >> $fedwiki_nginx_file
+        echo '  listen [::]:443 ssl;' >> $fedwiki_nginx_file
+        echo "  server_name $FEDWIKI_DOMAIN_NAME;" >> $fedwiki_nginx_file
+        echo '' >> $fedwiki_nginx_file
+        function_check nginx_ssl
+        nginx_ssl $FEDWIKI_DOMAIN_NAME mobile
+
+        echo '  add_header X-Robots-Tag none;' >> $fedwiki_nginx_file
+        echo '  add_header X-Download-Options noopen;' >> $fedwiki_nginx_file
+        echo '  add_header X-Frame-Options DENY;' >> $fedwiki_nginx_file
+        echo '  add_header X-Content-Type-Options nosniff;' >> $fedwiki_nginx_file
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $fedwiki_nginx_file
+        echo '' >> $fedwiki_nginx_file
+        echo '  location / {' >> $fedwiki_nginx_file
+        echo "    proxy_pass http://localhost:${FEDWIKI_PORT};" >> $fedwiki_nginx_file
+        echo '    proxy_set_header X-Real-IP $remote_addr;' >> $fedwiki_nginx_file
+        echo '    proxy_set_header Host $host;' >> $fedwiki_nginx_file
+        echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $fedwiki_nginx_file
+        echo '    client_max_body_size 1M;' >> $fedwiki_nginx_file
+        echo '  }' >> $fedwiki_nginx_file
+        echo '}' >> $fedwiki_nginx_file
+        echo '' >> $fedwiki_nginx_file
+    else
+        echo -n '' > $fedwiki_nginx_file
+    fi
+    echo 'server {' >> $fedwiki_nginx_file
+    echo "  listen 127.0.0.1:$FEDWIKI_ONION_PORT default_server;" >> $fedwiki_nginx_file
+    echo "  server_name $FEDWIKI_ONION_HOSTNAME;" >> $fedwiki_nginx_file
+    echo '' >> $fedwiki_nginx_file
+    echo '  add_header X-Robots-Tag none;' >> $fedwiki_nginx_file
+    echo '  add_header X-Download-Options noopen;' >> $fedwiki_nginx_file
+    echo '  add_header X-Frame-Options DENY;' >> $fedwiki_nginx_file
+    echo '  add_header X-Content-Type-Options nosniff;' >> $fedwiki_nginx_file
+    echo '' >> $fedwiki_nginx_file
+    echo '  location / {' >> $fedwiki_nginx_file
+    echo "    proxy_pass http://localhost:${FEDWIKI_PORT};" >> $fedwiki_nginx_file
+    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $fedwiki_nginx_file
+    echo '    proxy_set_header Host $host;' >> $fedwiki_nginx_file
+    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $fedwiki_nginx_file
+    echo '    client_max_body_size 1M;' >> $fedwiki_nginx_file
+    echo '  }' >> $fedwiki_nginx_file
+    echo '}' >> $fedwiki_nginx_file
+
+    function_check create_site_certificate
+    create_site_certificate $FEDWIKI_DOMAIN_NAME 'yes'
+
+    function_check nginx_ensite
+    nginx_ensite $FEDWIKI_DOMAIN_NAME
+}
+
+function install_fedwiki {
+    if [[ $VARIANT == "mesh"* ]]; then
+        return
+    fi
+
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [ ! $FEDWIKI_DOMAIN_NAME ]; then
+        echo $'The fedwiki domain name was not specified'
+        exit 893635
+    fi
+
+    if [ ! -d /var/www/$FEDWIKI_DOMAIN_NAME/htdocs ]; then
+        mkdir -p /var/www/$FEDWIKI_DOMAIN_NAME/htdocs
+    fi
+
+    if [ ! -d $FEDWIKI_DATA ]; then
+        mkdir -p $FEDWIKI_DATA
+    fi
+
+    groupadd fedwiki
+    useradd -c "Fedwiki system account" -d $FEDWIKI_DATA -m -r -g fedwiki fedwiki
+    if [ -d $FEDWIKI_DATA/Maildir ]; then
+        rm -rf $FEDWIKI_DATA/Maildir
+    fi
+
+    function_check install_nodejs
+    install_nodejs fedwiki
+
+    npm install -g wiki@$FEDWIKI_VERSION
+    if [ ! "$?" = "0" ]; then
+        echo $'Failed to install fedwiki'
+        exit 6293523
+    fi
+
+    if [ ! -f /usr/local/bin/wiki ]; then
+        echo $'wiki was not installed'
+        exit 5293524
+    fi
+
+    if [ ! -d /usr/local/lib/node_modules/wiki ]; then
+        echo $'wiki directory not found /usr/local/lib/node_modules/wiki'
+        exit 6285324
+    fi
+
+    FEDWIKI_ONION_HOSTNAME=$(add_onion_service fedwiki 80 ${FEDWIKI_ONION_PORT})
+
+    echo '[Unit]' > /etc/systemd/system/fedwiki.service
+    echo 'Description=Fedwiki Decentralized video streaming platform' >> /etc/systemd/system/fedwiki.service
+    echo 'After=syslog.target' >> /etc/systemd/system/fedwiki.service
+    echo 'After=network.target' >> /etc/systemd/system/fedwiki.service
+    echo '' >> /etc/systemd/system/fedwiki.service
+    echo '[Service]' >> /etc/systemd/system/fedwiki.service
+    echo 'User=fedwiki' >> /etc/systemd/system/fedwiki.service
+    echo 'Group=fedwiki' >> /etc/systemd/system/fedwiki.service
+    echo "WorkingDirectory=/usr/local/lib/node_modules/wiki" >> /etc/systemd/system/fedwiki.service
+    echo "ExecStart=/usr/local/bin/wiki --data $FEDWIKI_DATA -p $FEDWIKI_PORT" >> /etc/systemd/system/fedwiki.service
+    echo 'StandardOutput=syslog' >> /etc/systemd/system/fedwiki.service
+    echo 'StandardError=syslog' >> /etc/systemd/system/fedwiki.service
+    echo 'SyslogIdentifier=fedwiki' >> /etc/systemd/system/fedwiki.service
+    echo 'Restart=always' >> /etc/systemd/system/fedwiki.service
+    echo "Environment=NODE_ENV=production" >> /etc/systemd/system/fedwiki.service
+    echo '' >> /etc/systemd/system/fedwiki.service
+    echo '[Install]' >> /etc/systemd/system/fedwiki.service
+    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/fedwiki.service
+
+    chown -R fedwiki:fedwiki $FEDWIKI_DATA
+
+    fedwiki_setup_web
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a fedwiki -p "$FEDWIKI_ADMIN_PASSWORD"
+
+    function_check add_ddns_domain
+    add_ddns_domain $FEDWIKI_DOMAIN_NAME
+
+    fedwiki_remove_bad_links
+
+    systemctl enable fedwiki
+    systemctl daemon-reload
+    systemctl start fedwiki
+    systemctl restart nginx
+
+    set_completion_param "fedwiki domain" "$FEDWIKI_DOMAIN_NAME"
+    set_completion_param "fedwiki version" "$FEDWIKI_VERSION"
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0

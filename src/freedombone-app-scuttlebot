@@ -224,8 +224,10 @@ function remove_scuttlebot {
 function git_ssb_script {
     if [[ "$1" == "mesh" ]]; then
         git_ssb_script_name=$rootdir/usr/bin/git-ssb-create
+        git_ssb_daemon_filename=$rootdir/etc/systemd/system/git_ssb.service
     else
         git_ssb_script_name=/usr/bin/git-ssb-create
+        git_ssb_daemon_filename=/etc/systemd/system/git_ssb.service
     fi
     echo '#!/bin/bash' > $git_ssb_script_name
     echo 'reponame="$1"' >> $git_ssb_script_name
@@ -239,6 +241,24 @@ function git_ssb_script {
     echo 'fi' >> $git_ssb_script_name
     echo 'exit 0' >> $git_ssb_script_name
     chmod +x $git_ssb_script_name
+
+    echo '[Unit]' > $git_ssb_daemon_filename
+    echo 'Description=Git SSB (SSB git web interface)' >> $git_ssb_daemon_filename
+    echo 'After=syslog.target' >> $git_ssb_daemon_filename
+    echo 'After=network.target' >> $git_ssb_daemon_filename
+    echo 'After=scuttlebot.target' >> $git_ssb_daemon_filename
+    echo '' >> $git_ssb_daemon_filename
+    echo '[Service]' >> $git_ssb_daemon_filename
+    echo 'Type=simple' >> $git_ssb_daemon_filename
+    echo 'User=scuttlebot' >> $git_ssb_daemon_filename
+    echo 'Group=scuttlebot' >> $git_ssb_daemon_filename
+    echo "WorkingDirectory=/etc/scuttlebot" >> $git_ssb_daemon_filename
+    echo "ExecStart=/usr/bin/git ssb web --public localhost:$GIT_SSB_PORT" >> $git_ssb_daemon_filename
+    echo 'Restart=always' >> $git_ssb_daemon_filename
+    echo 'Environment="USER=scuttlebot"' >> $git_ssb_daemon_filename
+    echo '' >> $git_ssb_daemon_filename
+    echo '[Install]' >> $git_ssb_daemon_filename
+    echo 'WantedBy=multi-user.target' >> $git_ssb_daemon_filename
 }
 
 function scuttlebot_git_setup {
@@ -336,7 +356,9 @@ function scuttlebot_git_setup {
         echo '  }' >> $git_ssb_nginx_site
         echo '}' >> $git_ssb_nginx_site
     fi
-    nginx_ensite git_ssb
+    if [[ "$1" != "mesh" ]]; then
+        nginx_ensite git_ssb
+    fi
 }
 
 function mesh_install_scuttlebot {
@@ -425,24 +447,6 @@ function install_scuttlebot {
     echo '[Install]' >> /etc/systemd/system/scuttlebot.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/scuttlebot.service
 
-    echo '[Unit]' > /etc/systemd/system/git_ssb.service
-    echo 'Description=Git SSB (SSB git web interface)' >> /etc/systemd/system/git_ssb.service
-    echo 'After=syslog.target' >> /etc/systemd/system/git_ssb.service
-    echo 'After=network.target' >> /etc/systemd/system/git_ssb.service
-    echo 'After=scuttlebot.target' >> /etc/systemd/system/git_ssb.service
-    echo '' >> /etc/systemd/system/git_ssb.service
-    echo '[Service]' >> /etc/systemd/system/git_ssb.service
-    echo 'Type=simple' >> /etc/systemd/system/git_ssb.service
-    echo 'User=scuttlebot' >> /etc/systemd/system/git_ssb.service
-    echo 'Group=scuttlebot' >> /etc/systemd/system/git_ssb.service
-    echo "WorkingDirectory=/etc/scuttlebot" >> /etc/systemd/system/git_ssb.service
-    echo "ExecStart=/usr/bin/git ssb web --public localhost:$GIT_SSB_PORT" >> /etc/systemd/system/git_ssb.service
-    echo 'Restart=always' >> /etc/systemd/system/git_ssb.service
-    echo 'Environment="USER=scuttlebot"' >> /etc/systemd/system/git_ssb.service
-    echo '' >> /etc/systemd/system/git_ssb.service
-    echo '[Install]' >> /etc/systemd/system/git_ssb.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/git_ssb.service
-
     chown -R scuttlebot:scuttlebot /etc/scuttlebot
 
     # files gw_name myhostname mdns4_minimal [NOTFOUND=return] dns
@@ -452,9 +456,6 @@ function install_scuttlebot {
     systemctl enable scuttlebot.service
     systemctl daemon-reload
     systemctl start scuttlebot.service
-    systemctl enable git_ssb.service
-    systemctl daemon-reload
-    systemctl start git_ssb.service
 
     sleep 3
 
@@ -491,6 +492,10 @@ function install_scuttlebot {
     SCUTTLEBOT_ONION_HOSTNAME=$(add_onion_service scuttlebot 80 ${SCUTTLEBOT_ONION_PORT})
     scuttlebot_git_setup
     git_ssb_script
+
+    systemctl enable git_ssb.service
+    systemctl daemon-reload
+    systemctl start git_ssb.service
 
     function_check create_site_certificate
     create_site_certificate ${SCUTTLEBOT_DOMAIN_NAME} 'yes'
