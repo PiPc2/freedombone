@@ -2,7 +2,7 @@
 
 ## Be respectful
 
-In a project the size of Freedombone, inevitably there will be people with whom you may disagree, or find it difficult to cooperate. Accept that, but even so, remain respectful. Disagreement is no excuse for poor behaviour or personal attacks, and a community in which people feel threatened is not a healthy community.
+In any Free Software project with more than one participant inevitably there may be people with whom you may disagree, or find it difficult to cooperate. Accept that, but even so, remain respectful. Disagreement is no excuse for poor behaviour or personal attacks, and a community in which people feel threatened is not a healthy community.
 
 ## Assume good faith
 
