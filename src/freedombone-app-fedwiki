@@ -28,7 +28,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VARIANTS=""
+VARIANTS="full full-vim media"
 
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
@@ -39,9 +39,11 @@ FEDWIKI_VERSION='0.13.0'
 FEDWIKI_ONION_PORT=8131
 FEDWIKI_PORT=3053
 FEDWIKI_DATA=/var/lib/fedwiki
+FEDWIKI_COOKIE=
 
 fedwiki_variables=(FEDWIKI_DOMAIN_NAME
                    FEDWIKI_CODE
+                   FEDWIKI_COOKIE
                    FEDWIKI_ADMIN_PASSWORD
                    ONION_ONLY
                    DDNS_PROVIDER
@@ -79,6 +81,14 @@ function fedwiki_remove_bad_links {
 
     if [ -d /usr/local/lib/node_modules/wiki/node_modules/passport-oauth2 ]; then
         rm -rf /usr/local/lib/node_modules/wiki/node_modules/passport-oauth2
+    fi
+
+    if [ -d /usr/local/lib/node_modules/wiki/node_modules/passport-twitter ]; then
+        rm -rf /usr/local/lib/node_modules/wiki/node_modules/passport-twitter
+    fi
+
+    if [ -d /usr/local/lib/node_modules/wiki/node_modules/passport-github ]; then
+        rm -rf /usr/local/lib/node_modules/wiki/node_modules/passport-github
     fi
 }
 
@@ -303,6 +313,12 @@ function fedwiki_setup_web {
         function_check nginx_ssl
         nginx_ssl $FEDWIKI_DOMAIN_NAME mobile
 
+        sed -i '/Content-Security-Policy/d' $fedwiki_nginx_file
+        sed -i '/X-XSS-Protection/d' $fedwiki_nginx_file
+        sed -i '/X-Robots-Tag/d' $fedwiki_nginx_file
+        sed -i '/X-Download-Options/d' $fedwiki_nginx_file
+        sed -i '/X-Permitted-Cross-Domain-Policies/d' $fedwiki_nginx_file
+
         echo '  add_header X-Robots-Tag none;' >> $fedwiki_nginx_file
         echo '  add_header X-Download-Options noopen;' >> $fedwiki_nginx_file
         echo '  add_header X-Frame-Options DENY;' >> $fedwiki_nginx_file
@@ -395,8 +411,9 @@ function install_fedwiki {
 
     FEDWIKI_ONION_HOSTNAME=$(add_onion_service fedwiki 80 ${FEDWIKI_ONION_PORT})
 
-    #TODO add a config file for the identity system
-    # $FEDWIKI_DATA/config.json
+    if [ ! $FEDWIKI_COOKIE ]; then
+        FEDWIKI_COOKIE="$(create_password 30)$(create_password 30)$(create_password 30)"
+    fi
 
     echo '[Unit]' > /etc/systemd/system/fedwiki.service
     echo 'Description=Fedwiki Decentralized video streaming platform' >> /etc/systemd/system/fedwiki.service
@@ -407,7 +424,7 @@ function install_fedwiki {
     echo 'User=fedwiki' >> /etc/systemd/system/fedwiki.service
     echo 'Group=fedwiki' >> /etc/systemd/system/fedwiki.service
     echo "WorkingDirectory=/usr/local/lib/node_modules/wiki" >> /etc/systemd/system/fedwiki.service
-    echo "ExecStart=/usr/local/bin/wiki --config $FEDWIKI_DATA/config.json --data $FEDWIKI_DATA -p $FEDWIKI_PORT" >> /etc/systemd/system/fedwiki.service
+    echo "ExecStart=/usr/local/bin/wiki --security_type friends --cookieSecret '${FEDWIKI_COOKIE}' --session_duration 7 --data $FEDWIKI_DATA -p $FEDWIKI_PORT" >> /etc/systemd/system/fedwiki.service
     echo 'StandardOutput=syslog' >> /etc/systemd/system/fedwiki.service
     echo 'StandardError=syslog' >> /etc/systemd/system/fedwiki.service
     echo 'SyslogIdentifier=fedwiki' >> /etc/systemd/system/fedwiki.service
