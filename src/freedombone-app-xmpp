@@ -326,6 +326,46 @@ function update_prosody_modules {
         return
     fi
 
+    # This module is a workaround for OMEMO within group chat
+    # See https://github.com/iNPUTmice/omemo_all_access
+    if [ -f ~/freedombone/image_build/mod_omemo_all_access.lua ]; then
+        if [ ! -d /var/lib/prosody/prosody-modules ]; then
+            mkdir -p /var/lib/prosody/prosody-modules
+        fi
+
+        copy_omemo_all_access=1
+        if [ -f /usr/lib/prosody/modules/mod_omemo_all_access.lua ]; then
+            curr_hash=$(sha256sum /usr/lib/prosody/modules/mod_omemo_all_access.lua)
+            new_hash=$(sha256sum ~/freedombone/image_build/mod_omemo_all_access.lua)
+            if [[ "$curr_hash" == "$new_hash" ]]; then
+                copy_omemo_all_access=
+            fi
+        fi
+
+        if [ $copy_omemo_all_access ]; then
+            systemctl stop prosody
+            cp ~/freedombone/image_build/mod_omemo_all_access.lua /var/lib/prosody/prosody-modules/mod_omemo_all_access.lua
+            cp ~/freedombone/image_build/mod_omemo_all_access.lua /usr/lib/prosody/modules/mod_omemo_all_access.lua
+
+            chmod +x /var/lib/prosody/prosody-modules/mod_omemo_all_access.lua
+            chmod +x /usr/lib/prosody/modules/mod_omemo_all_access.lua
+
+            if ! grep -q "omemo_all_access" /etc/prosody/prosody.cfg.lua; then
+                sed -i '/"pep";/a "omemo_all_access"; -- Fix for PEP with OMEMO' /etc/prosody/prosody.cfg.lua
+                sed -i 's|"omemo_all_access";|  "omemo_all_access";|g' /etc/prosody/prosody.cfg.lua
+            fi
+
+            if ! grep -q "omemo_all_access" /etc/prosody/conf.avail/xmpp.cfg.lua; then
+                sed -i '/"pep";/a "omemo_all_access"; -- Fix for PEP with OMEMO' /etc/prosody/conf.avail/xmpp.cfg.lua
+                sed -i 's|"omemo_all_access";|  "omemo_all_access";|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+            fi
+
+            chown -R prosody:prosody /var/lib/prosody/prosody-modules
+            chown -R prosody:prosody /usr/lib/prosody/modules
+            systemctl start prosody
+        fi
+    fi
+
     if [ ! -f $INSTALL_DIR/$prosody_modules_filename ]; then
         # Obtain the modules
         if [ -f ~/freedombone/image_build/$prosody_modules_filename ]; then
@@ -624,6 +664,7 @@ function xmpp_modules {
     echo '  "smacks"; -- Stream management' >> $filename
     echo '  "smacks_offline"; -- Stream management' >> $filename
     echo '  "pep"; -- Personal Eventing Protocol (to support OMEMO)' >> $filename
+    echo '  "omemo_all_access"; -- Fix for PEP with OMEMO' >> $filename
     echo '  "vcard"; -- Personal Eventing Protocol (to support OMEMO)' >> $filename
     echo '  "e2e_policy"; -- To support OMEMO' >> $filename
     echo '  "pep_vcard_avatar"; -- Personal Eventing Protocol (to support OMEMO)' >> $filename
