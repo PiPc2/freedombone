@@ -861,12 +861,27 @@ function update_default_domain {
             fi
         fi
 
-        if [ -d /etc/dovecot ]; then
-            if [ ${#DEFAULT_DOMAIN_NAME} -gt 0 ]; then
-                if ! grep -q "ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem" /etc/dovecot/conf.d/10-ssl.conf; then
-                    sed -i "s|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
-                    sed -i "s|ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
-                    systemctl restart dovecot
+        if [ ${#DEFAULT_DOMAIN_NAME} -gt 0 ]; then
+            if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+                if [ -d /etc/dovecot ]; then
+                    if ! grep -q "ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem" /etc/dovecot/conf.d/10-ssl.conf; then
+                        sed -i "s|#ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
+                        sed -i "s|ssl_cert =.*|ssl_cert = </etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/dovecot/conf.d/10-ssl.conf
+                        systemctl restart dovecot
+                    fi
+                fi
+
+                if [ -d /etc/exim4 ]; then
+                    cp /etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/{fullchain,privkey}.pem /etc/exim4/
+                    chown root:Debian-exim /etc/exim4/*.pem
+                    chmod 640 /etc/exim4/*.pem
+
+                    sed -i "s|MAIN_TLS_CERTKEY =.*|MAIN_TLS_CERTKEY = /etc/exim4/fullchain.pem|g" /etc/exim4/conf.d/main/03_exim4-config_tlsoptions
+                    sed -i "s|MAIN_TLS_CERTKEY =.*|MAIN_TLS_CERTKEY = /etc/exim4/fullchain.pem|g" /etc/exim4/exim4.conf.template
+                    sed -i "s|MAIN_TLS_PRIVATEKEY =.*|MAIN_TLS_PRIVATEKEY = /etc/exim4/privkey.pem|g" /etc/exim4/conf.d/main/03_exim4-config_tlsoptions
+                    sed -i "s|MAIN_TLS_PRIVATEKEY =.*|MAIN_TLS_PRIVATEKEY = /etc/exim4/privkey.pem|g" /etc/exim4/exim4.conf.template
+
+                    systemctl restart exim4
                 fi
             fi
         fi
@@ -1026,14 +1041,22 @@ function email_install_tls {
         email_config_changed=1
     fi
     if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
-        if ! grep -q "MAIN_TLS_CERTKEY = /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem" $tls_config_file; then
-            sed -i "/.ifdef MAIN_TLS_CERTKEY/i\MAIN_TLS_CERTKEY = /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem" $tls_config_file
+        cp /etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/fullchain.pem /etc/exim4/
+        chown root:Debian-exim /etc/exim4/*.pem
+        chmod 640 /etc/exim4/*.pem
+
+        if ! grep -q "MAIN_TLS_CERTKEY = /etc/exim4/fullchain.pem" $tls_config_file; then
+            sed -i "/.ifdef MAIN_TLS_CERTKEY/i\MAIN_TLS_CERTKEY = /etc/exim4/fullchain.pem" $tls_config_file
             email_config_changed=1
         fi
     fi
     if [ -f /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key ]; then
-        if ! grep -q "MAIN_TLS_PRIVATEKEY = /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key" $tls_config_file; then
-            sed -i "/.ifndef MAIN_TLS_PRIVATEKEY/i\MAIN_TLS_PRIVATEKEY = /etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key" $tls_config_file
+        cp /etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/privkey.pem /etc/exim4/
+        chown root:Debian-exim /etc/exim4/*.pem
+        chmod 640 /etc/exim4/*.pem
+
+        if ! grep -q "MAIN_TLS_PRIVATEKEY = /etc/exim4/privkey.pem" $tls_config_file; then
+            sed -i "/.ifndef MAIN_TLS_PRIVATEKEY/i\MAIN_TLS_PRIVATEKEY = /etc/exim4/privkey.pem" $tls_config_file
             email_config_changed=1
         fi
     fi
