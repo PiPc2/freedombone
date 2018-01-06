@@ -38,7 +38,7 @@ ETHERPAD_CODE=
 ETHERPAD_ONION_PORT=8101
 ETHERPAD_PORT=9001
 ETHERPAD_REPO="https://github.com/ether/etherpad-lite"
-ETHERPAD_COMMIT='223127bf39d2ba431d9c1965a7f2aadadc73d77a'
+ETHERPAD_COMMIT='454f539561a8d9de51ed107a29d974eb79198bc6'
 ETHERPAD_ADMIN_PASSWORD=
 ETHERPAD_TITLE=$'Freedombone Docs'
 ETHERPAD_WELCOME_MESSAGE=$"Welcome to ${ETHERPAD_TITLE}!\n\nThis pad text is synchronized as you type, so that everyone viewing this page sees the same text. This allows you to collaborate seamlessly on documents!"
@@ -60,22 +60,18 @@ function logging_off_etherpad {
     echo -n ''
 }
 
-function etherpad_password_hash {
-    echo $(python -c "from passlib.hash import bcrypt;print(bcrypt.encrypt(\"$1\", rounds=10))")
-}
-
 function change_password_etherpad {
     change_username="$1"
-    new_user_password=$(etherpad_password_hash "$2")
+    new_user_password="$2"
 
     read_config_param ETHERPAD_DOMAIN_NAME
 
     if grep -q "\"$change_username\": {" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json; then
         user_line=$(cat /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json | grep "\"$change_username\": {")
         if [[ "$user_line" == *"\"is_admin\": true"* ]]; then
-            sed -i "s|\"$change_username\": {.*|\"$change_username\": { \"hash\": \"$new_user_password\", \"is_admin\": true }|g" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
+            sed -i "s|\"$change_username\": {.*|\"$change_username\": { \"password\": "$new_user_password", \"is_admin\": true }|g" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
         else
-            sed -i "s|\"$change_username\": {.*|\"$change_username\": { \"hash\": \"$new_user_password\", \"is_admin\": false },|g" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
+            sed -i "s|\"$change_username\": {.*|\"$change_username\": { \"password\": "$new_user_password", \"is_admin\": false },|g" /var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
         fi
         ${PROJECT_NAME}-pass -u $change_username -a etherpad -p "$2"
         systemctl restart etherpad
@@ -104,18 +100,10 @@ function create_etherpad_settings {
     echo "  \"title\": \"${ETHERPAD_TITLE}\"," >> $settings_file
     echo '  "favicon": "favicon.ico",' >> $settings_file
 
-    echo '  "ip": "0.0.0.0",' >> $settings_file
+    echo '  "ip": "127.0.0.1",' >> $settings_file
     echo "  \"port\" : ${ETHERPAD_PORT}," >> $settings_file
 
     echo '  "showSettingsInAdminPage" : true,' >> $settings_file
-
-    if [[ $ONION_ONLY == 'no' ]]; then
-        echo '  "ssl" : {' >> $settings_file
-        echo "            \"key\"  : \"/etc/ssl/private/${ETHERPAD_DOMAIN_NAME}.key\"," >> $settings_file
-        echo "            \"cert\" : \"/etc/ssl/certs/${ETHERPAD_DOMAIN_NAME}.pem\"," >> $settings_file
-        echo '          },' >> $settings_file
-    fi
-
     echo '   "dbType" : "mysql",' >> $settings_file
     echo '   "dbSettings" : {' >> $settings_file
     echo '                    "user"    : "root",' >> $settings_file
@@ -157,7 +145,7 @@ function create_etherpad_settings {
     echo '  "disableIPlogging" : true,' >> $settings_file
 
     echo '  "users": {' >> $settings_file
-    echo "    \"${MY_USERNAME}\": { \"hash\": \"$(etherpad_password_hash "${ETHERPAD_ADMIN_PASSWORD}")\", \"is_admin\": true }" >> $settings_file
+    echo "    \"${MY_USERNAME}\": { \"password\": \"${ETHERPAD_ADMIN_PASSWORD}\", \"is_admin\": true }" >> $settings_file
     echo '  },' >> $settings_file
 
     echo '  "socketTransportProtocols" : ["xhr-polling", "jsonp-polling", "htmlfile"],' >> $settings_file
@@ -199,12 +187,12 @@ function remove_user_etherpad {
 
 function add_user_etherpad {
     new_username="$1"
-    new_user_password=$(etherpad_password_hash "$2")
+    new_user_password="$2"
     settings_file=/var/www/${ETHERPAD_DOMAIN_NAME}/htdocs/settings.json
 
     if ! grep -q "\"$new_username\": {" $settings_file; then
         ${PROJECT_NAME}-pass -u $new_username -a etherpad -p "$2"
-        sed -i "/\"users\": {/a    \"$new_username\": { \"hash\": \"$new_user_password\", \"is_admin\": false }," $settings_file
+        sed -i "/\"users\": {/a    \"$new_username\": { \"password\": \"$new_user_password\", \"is_admin\": false }," $settings_file
         if grep -q "\"$new_username\": {" $settings_file; then
             systemctl restart etherpad
         else
@@ -628,6 +616,7 @@ function install_etherpad {
     if [ -f /etc/ssl/private/${ETHERPAD_DOMAIN_NAME}.key ]; then
         chown etherpad: /etc/ssl/private/${ETHERPAD_DOMAIN_NAME}.key
     fi
+    usermod -a -G ssl-cert etherpad
 
     # Ensure that the database gets backed up locally, if remote
     # backups are not being used
