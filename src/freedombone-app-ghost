@@ -14,7 +14,7 @@
 # License
 # =======
 #
-# Copyright (C) 2016-2017 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2016-2018 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -347,6 +347,8 @@ function remove_ghost {
 }
 
 function install_ghost {
+    check_ram_availability 900
+
     if [ ! $ONION_ONLY ]; then
         ONION_ONLY='no'
     fi
@@ -367,77 +369,25 @@ function install_ghost {
     function_check install_nodejs
     install_nodejs ghost
 
-    # Some dependencies of ghost
-    npm install -g jison@0.4.13 --save
-    npm install moment-timezone@0.5.13
-    npm install express@4.15.3
-    npm install lodash@4.17.4
-    npm install uuid@3.0.1
-    npm install bluebird@3.5.0
-    npm install chalk@1.1.3
-    npm install intl-messageformat@1.3.0
-    npm install validator@7.0.0
-    npm install express-hbs@1.0.4
-    npm install glob@7.1.2
-    npm install unidecode@0.1.8
-    npm install csv-parser@1.11.0
-    npm install archiver@1.3.0
-    npm install fs-extra@3.0.1
-    npm install extract-zip-fork@1.5.1
-    npm install moment@2.18.1
-    npm install nodemailer@4.0.1
-    npm install html-to-text@3.3.0
-    npm install gscan@1.1.0
-    npm install body-parser@1.17.2
-    npm install compression@1.6.2
-    npm install morgan@1.8.2
-    npm install semver@5.3.0
-    npm install path-match@1.2.4
-    npm install downsize@0.0.8
-    npm install rss@1.2.2
-    npm install cheerio@1.0.0-rc.1
-    npm install passport@0.3.2
-    npm install xml@1.0.1
-    npm install multer@1.3.0
-    npm install oauth2orize@1.8.0
-    npm install connect-slashes@1.3.1
-    npm install cors@2.8.3
-    npm install netjet@1.1.3
-    npm install jsonpath@0.2.11
-    npm install image-size@0.5.4
-    npm install passport-oauth2-client-password@0.1.2
-    npm install passport-http-bearer@1.0.1
-    npm install amperize@0.3.4
-    npm install bcryptjs@2.4.3
-    npm install knex@0.12.9
-    npm install bookshelf@0.10.2
-    npm install cookie-session@1.2.0
-    npm install ghost-gql@0.0.6
-    npm install intl@1.2.5
-    npm install sanitize-html@1.14.1
-    npm install showdown-ghost@0.3.6
-    npm install superagent@3.5.2
-    npm install mysql@2.1.1
-    npm install mariasql@0.2.6
-    npm install debug@2.6.8
-    npm install nconf@0.8.4
-
-    npm install -g knex-migrator
-    knex-migrator init
-
     # now install ghost itself
-    npm install -g ghost-cli
+    npm install -g ghost-cli@1.4.1
 
     GHOST_ONION_HOSTNAME=$(add_onion_service ghost 80 ${GHOST_ONION_PORT})
 
-    ghost install local --port ${GHOST_PORT}
+    rm -rf /var/www/$GHOST_DOMAIN_NAME/htdocs/*
+    npm install -g yarn
+    yarn install --no-emoji --no-progress
+    yarn cache clean
+    printf 'y' | ghost install ${GHOST_VERSION} --user ghost --db=sqlite3 --port ${GHOST_PORT} --verbose
+    adduser --system --home=/var/www/${GHOST_DOMAIN_NAME}/htdocs/ --group ghost
+
+    npm install -g knex-migrator
+    knex-migrator init
 
     ghost_bust
 
     # NOTE: this has to be http, not https
     sed -i "s|\"url\":|\"url\": \"http://${GHOST_DOMAIN_NAME}/\",|g" /var/www/${GHOST_DOMAIN_NAME}/htdocs/config.development.json
-
-    adduser --system --home=/var/www/${GHOST_DOMAIN_NAME}/htdocs/ --group ghost
 
     echo '[Unit]' > /etc/systemd/system/ghost.service
     echo 'Description=Ghost Blog' >> /etc/systemd/system/ghost.service
@@ -462,6 +412,9 @@ function install_ghost {
     ghost_remove_offsite_links
 
     chown -R ghost: /var/www/${GHOST_DOMAIN_NAME}/htdocs
+
+    n ${NODEJS_VERSION}
+    npm upgrade -g npm@${NPM_VERSION} --save
 
     systemctl enable ghost
     systemctl daemon-reload
@@ -562,6 +515,7 @@ function install_ghost {
     else
         sed -i "s|ghost version.*|ghost version:${GHOST_VERSION}|g" ${COMPLETION_FILE}
     fi
+
     APP_INSTALLED=1
 }
 
