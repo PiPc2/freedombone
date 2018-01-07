@@ -488,7 +488,9 @@ time, are stored in the following directories by default:\n\n/lib\n/lib64\n/usr/
               find -L /lib  \! -user root  -exec ls -l {} \; | grep -v '> /dev/null'
               find -L /lib64  \! -user root  -exec ls -l {} \;
               find -L /usr/lib  \! -user root  -exec ls -l {} \;
-              find -L /usr/lib64  \! -user root  -exec ls -l {} \;
+              if [ -d /usr/lib64 ]; then
+                  find -L /usr/lib64  \! -user root  -exec ls -l {} \;
+              fi
               ;;
     V-38469)  if [ "$3" = "en" ]; then
                   log_msg $2 'All system command files must have mode 755 or less permissive.'
