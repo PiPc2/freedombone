@@ -485,6 +485,10 @@ time, are stored in the following directories by default:\n\n/lib\n/lib64\n/usr/
               if [ $2 -ne 0 ];then
                   printf '\n######################\n\nSTIG-ID:RHEL-06-000046\n\nVulnerability Discussion:  Files from shared library directories are loaded into the address space of processes (including privileged ones) or of the kernel itself at runtime. Proper ownership is necessary to protect the integrity of the system.\n\nFix text: System-wide shared library files, which are linked to executables during process load time or run time, are stored in the following directories by default:\n\n/lib\n/lib64\n/usr/lib\n/usr/lib64\n\nIf any file in these directories is found to be owned by a user other than root, correct its ownership with the following command:\n\n#chown root [FILE]\n\n######################\n\n' >> $LOG
               fi
+              find -L /lib  \! -user root  -exec ls -l {} \; | grep -v '> /dev/null'
+              find -L /lib64  \! -user root  -exec ls -l {} \;
+              find -L /usr/lib  \! -user root  -exec ls -l {} \;
+              find -L /usr/lib64  \! -user root  -exec ls -l {} \;
               ;;
     V-38469)  if [ "$3" = "en" ]; then
                   log_msg $2 'All system command files must have mode 755 or less permissive.'
