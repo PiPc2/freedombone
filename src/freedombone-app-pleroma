@@ -188,6 +188,11 @@ function change_password_pleroma {
     #${PROJECT_NAME}-pass -u "$curr_username" -a pleroma -p "$new_user_password"
 }
 
+function pleroma_create_database_failed {
+    run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
+    run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+}
+
 function pleroma_create_database {
     if [ -f $IMAGE_PASSWORD_FILE ]; then
         PLEROMA_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
@@ -215,8 +220,7 @@ function pleroma_create_database {
     if [ ${#PLEROMA_SECRET_KEY} -lt 64 ]; then
         PLEROMA_SECRET_KEY="$(create_password 30)$(create_password 30)$(create_password 30)"
         if [ ${#PLEROMA_SECRET_KEY} -lt 64 ]; then
-            run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-            run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+            pleroma_create_database_failed
             echo $'Pleroma secret key not created'
             exit 6782352
         fi
@@ -258,8 +262,7 @@ function pleroma_create_database {
     chown -R pleroma:pleroma $PLEROMA_DIR/*
     sudo -u pleroma mix local.rebar --force
     if [ ! "$?" = "0" ]; then
-        run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-        run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+        pleroma_create_database_failed
         echo $'mix local.rebar failed'
         exit 73528562
     fi
@@ -268,15 +271,13 @@ function pleroma_create_database {
     systemctl restart postgresql
     sudo -u pleroma mix ecto.create --force
     if [ ! "$?" = "0" ]; then
-        run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-        run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+        pleroma_create_database_failed
         echo $'mix ecto.create failed'
         exit 83653582
     fi
     sudo -u pleroma mix ecto.migrate --force
     if [ ! "$?" = "0" ]; then
-        run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-        run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+        pleroma_create_database_failed
         echo $'mix ecto.migrate failed'
         exit 73752573
     fi
