@@ -11,10 +11,18 @@
 # Pleroma backend application
 # https://git.pleroma.social/pleroma/pleroma/wikis/Installing-on-Debian-Based-Distributions
 #
+# Show stopper: This is dependent on https://placehold.it for avatar images,
+# so at present it's not usable until a first party placeholder image system
+# is included.
+#
+# There is also a possible issue with the chat system which uses an object called
+# "Agent" which may not be supported with the version of elixir within the
+# Debian package. This only applies if you're installing from the latest commit.
+#
 # License
 # =======
 #
-# Copyright (C) 2017 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2017-2018 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -29,7 +37,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VARIANTS='full full-vim social'
+VARIANTS=''
 
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
@@ -39,7 +47,7 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='5c09d8d3f199a3f323471f9ba4578371226cd726'
+PLEROMA_COMMIT='c1fa1e8844c8eae1ad7638a2d7f9d00e8cd07ce8'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
@@ -188,6 +196,11 @@ function change_password_pleroma {
     #${PROJECT_NAME}-pass -u "$curr_username" -a pleroma -p "$new_user_password"
 }
 
+function pleroma_create_database_failed {
+    run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
+    run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+}
+
 function pleroma_create_database {
     if [ -f $IMAGE_PASSWORD_FILE ]; then
         PLEROMA_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
@@ -215,16 +228,23 @@ function pleroma_create_database {
     if [ ${#PLEROMA_SECRET_KEY} -lt 64 ]; then
         PLEROMA_SECRET_KEY="$(create_password 30)$(create_password 30)$(create_password 30)"
         if [ ${#PLEROMA_SECRET_KEY} -lt 64 ]; then
-            run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-            run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+            pleroma_create_database_failed
             echo $'Pleroma secret key not created'
             exit 6782352
         fi
         write_config_param "PLEROMA_SECRET_KEY" "$PLEROMA_SECRET_KEY"
     fi
 
-    pleroma_secret=config/dev.secret.exs
-    cp config/dev.exs $pleroma_secret
+    if [ ! -d $PLEROMA_DIR/config ]; then
+        echo $"Missing directory $PLEROMA_DIR/config"
+        exit 7835393
+    fi
+    pleroma_secret=$PLEROMA_DIR/config/dev.secret.exs
+    if [ ! -f $PLEROMA_DIR/config/dev.exs ]; then
+        echo $"Did not find $PLEROMA_DIR/config/dev.exs"
+        exit 78923528
+    fi
+    cp $PLEROMA_DIR/config/dev.exs $pleroma_secret
     sed -i "s|username:.*|username: \"pleroma\",|g" $pleroma_secret
     sed -i "s|password:.*|password: \"$PLEROMA_ADMIN_PASSWORD\",|g" $pleroma_secret
     sed -i "s|database:.*|database: \"pleroma\",|g" $pleroma_secret
@@ -244,13 +264,13 @@ function pleroma_create_database {
     else
         sed -i 's|pbkdf2_rounds.*|pbkdf2_rounds, 1|g' $pleroma_secret
     fi
+    sed -i 's|import_config|# import_config|g' $pleroma_secret
 
     cd $PLEROMA_DIR
-    chown -R pleroma:pleroma *
+    chown -R pleroma:pleroma $PLEROMA_DIR/*
     sudo -u pleroma mix local.rebar --force
     if [ ! "$?" = "0" ]; then
-        run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-        run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+        pleroma_create_database_failed
         echo $'mix local.rebar failed'
         exit 73528562
     fi
@@ -259,15 +279,13 @@ function pleroma_create_database {
     systemctl restart postgresql
     sudo -u pleroma mix ecto.create --force
     if [ ! "$?" = "0" ]; then
-        run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-        run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+        pleroma_create_database_failed
         echo $'mix ecto.create failed'
         exit 83653582
     fi
     sudo -u pleroma mix ecto.migrate --force
     if [ ! "$?" = "0" ]; then
-        run_system_query_postgresql "ALTER USER pleroma NOSUPERUSER;"
-        run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
+        pleroma_create_database_failed
         echo $'mix ecto.migrate failed'
         exit 73752573
     fi
