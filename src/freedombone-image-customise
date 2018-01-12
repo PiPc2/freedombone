@@ -13,6 +13,8 @@
 # License
 # =======
 #
+# Copyright (C) 2015-2018 Bob Mottram <bob@freedombone.net>
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -122,6 +124,9 @@ MESH_SET_USERNAME=$"Welcome to the Freedombone mesh.\n\nThe first thing you will
 ENABLE_ZERONET=
 
 MESH_TEXT_EDITOR='pluma'
+
+BMX6_REPO="https://github.com/bashrc/bmx6"
+BMX6_COMMIT='20db4cf5abc129b8d4d2a341bb9265a92e7c3d50'
 
 PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
@@ -653,6 +658,63 @@ mesh_shutdown_script() {
     chroot "$rootdir" systemctl enable meshshutdown
 }
 
+install_bmx6() {
+    git clone $BMX6_REPO $rootdir/etc/bmx6
+
+    cat <<EOF > $rootdir/usr/bin/install_bmx6
+#!/bin/bash
+cd /etc/bmx6
+git checkout $BMX6_COMMIT -b $BMX6_COMMIT
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_http_info
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_json
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_quagga
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_sms
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_table
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_topology
+make
+make install
+EOF
+    chroot "$rootdir" chmod +x /usr/bin/install_bmx6
+    chroot "$rootdir" /usr/bin/install_bmx6
+
+    if [ ! -f $rootdir/usr/sbin/bmx6 ]; then
+        echo $'bmx6 was not installed'
+        exit 79835292
+    fi
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/bmx6.service
+    echo 'Description=BMX6 mesh routing protocol' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'Requires=network.target' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'User=root' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'Group=root' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'ExecStart=/usr/sbin/bmx6 dev=wlan0' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'Restart=on-failure' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/bmx6.service
+}
+
 initialise_mesh() {
     if [[ $VARIANT != "mesh"* ]]; then
         return
@@ -692,6 +754,7 @@ initialise_mesh() {
     configure_firewall
     install_avahi
     install_batman
+    install_bmx6
     mesh_shutdown_script
     install_vpn
     install_tomb

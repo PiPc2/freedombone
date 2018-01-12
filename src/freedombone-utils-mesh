@@ -1,0 +1,343 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# mesh utilities used by the batman and bmx commands
+#
+# License
+# =======
+#
+# Copyright (C) 2018 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+if [[ $1 == "start" ]]; then
+    # install avahi
+    sed -i "s|#host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|host-name=.*|host-name=$(hostname)|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|use-ipv4=.*|use-ipv4=yes|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|use-ipv6=.*|use-ipv6=no|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|#disallow-other-stacks=.*|disallow-other-stacks=yes|g" /etc/avahi/avahi-daemon.conf
+    sed -i "s|hosts:.*|hosts:          files mdns4_minimal dns mdns4 mdns|g" /etc/nsswitch.conf
+fi
+
+# Mesh definition
+WIFI_SSID='mesh'
+if [ -f $COMPLETION_FILE ]; then
+    if grep -q "WIFI_SSID:" $COMPLETION_FILE; then
+        WIFI_SSID=$(cat $COMPLETION_FILE | grep "WIFI_SSID:" | awk -F ':' '{print $2}')
+    fi
+    sed -i "s|WIFI_SSID:.*|WIFI_SSID:${WIFI_SSID}|g" $COMPLETION_FILE
+fi
+CELLID='any'
+
+CHANNEL=2
+HOTSPOT_CHANNEL=6
+if [ -f $COMPLETION_FILE ]; then
+    if grep -q "Wifi channel:" $COMPLETION_FILE; then
+        CHANNEL=$(cat $COMPLETION_FILE | grep "Wifi channel:" | awk -F ':' '{print $2}')
+    fi
+    sed -i "s|Wifi channel:.*|Wifi channel:${CHANNEL}|g" $COMPLETION_FILE
+fi
+
+ZERONET_PORT=15441
+IPFS_PORT=4001
+TOX_PORT=33445
+TRACKER_PORT=6969
+LIBREVAULT_PORT=42345
+TAHOELAFS_PORT=50213
+GIT_SSB_PORT=7718
+NGINX_GIT_SSB_PORT=7719
+
+# Ethernet bridge definition (bridged to bat0)
+BRIDGE=br-mesh
+BRIDGE_HOTSPOT=br-hotspot
+IFACE=
+IFACE_SECONDARY=
+EIFACE=eth0
+WLAN_ADAPTORS=$(count_wlan)
+
+if [ $WLAN_ADAPTORS -eq 0 ]; then
+    echo $'No wlan adaptors found'
+    exit 0
+fi
+
+function get_ipv4_wlan {
+    echo $(ip -o -f inet addr show dev "$IFACE" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
+}
+
+function mesh_hotspot_ip_address {
+    echo $(ip -o -f inet addr show dev "${BRIDGE}" | awk '{print $4}' | awk 'END {print}' | awk -F '/' '{print $1}')
+}
+
+function global_rate_limit {
+    if ! grep -q "tcp_challenge_ack_limit" /etc/sysctl.conf; then
+        echo 'net.ipv4.tcp_challenge_ack_limit = 999999999' >> /etc/sysctl.conf
+    else
+        sed -i 's|net.ipv4.tcp_challenge_ack_limit.*|net.ipv4.tcp_challenge_ack_limit = 999999999|g' /etc/sysctl.conf
+    fi
+    sysctl -p -q
+}
+
+function assign_peer_address {
+    for i in {1..6}; do
+        number=$RANDOM
+        let "number %= 255"
+        octet=$(echo "obase=16;$number" | bc)
+        if [ ${#octet} -lt 2 ]; then
+            octet="0${octet}"
+        fi
+        if [ $i -gt 1 ]; then
+            echo -n ":"
+        fi
+        echo -n "${octet}"
+    done
+}
+
+function mesh_create_app_downloads_page {
+    if [ ! -d /root/$PROJECT_NAME/image_build/mesh_apps ]; then
+        return
+    fi
+    if [ ! -d /var/www/html ]; then
+        return
+    fi
+    # Don't go straight to cryptpad when navigating to the peer's IP address
+    if [ -L /etc/nginx/sites-enabled/cryptpad ]; then
+        rm /etc/nginx/sites-enabled/cryptpad
+        ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
+        if [ -d /etc/cryptpad ]; then
+            systemctl stop cryptpad
+            systemctl disable cryptpad
+        fi
+        systemctl restart nginx
+    fi
+    # Don't show the cryptpad icon on the desktop
+    if [ -f /home/fbone/Desktop/cryptpad.desktop ]; then
+        mv /home/fbone/Desktop/cryptpad.desktop /home/fbone/.cryptpad.desktop
+    fi
+
+    cp /root/$PROJECT_NAME/website/EN/meshindex.html /var/www/html/index.html
+    if [ ! -f /var/www/html/ssb.apk ]; then
+        cp /root/$PROJECT_NAME/image_build/mesh_apps/ssb.apk /var/www/html/ssb.apk
+    fi
+    if [ ! -f /var/www/html/trifa.apk ]; then
+        cp /root/$PROJECT_NAME/image_build/mesh_apps/trifa.apk /var/www/html/trifa.apk
+    fi
+    if [ ! -d /var/www/html/images ]; then
+        mkdir /var/www/html/images
+    fi
+    if [ ! -f /var/www/html/images/logo.png ]; then
+        cp /root/$PROJECT_NAME/img/logo.png /var/www/html/images/logo.png
+    fi
+    if [ ! -f /var/www/html/images/ssb.png ]; then
+        cp /root/$PROJECT_NAME/img/icon_patchwork.png /var/www/html/images/ssb.png
+    fi
+    if [ ! -f /var/www/html/images/trifa.png ]; then
+        cp /root/$PROJECT_NAME/img/trifa.png /var/www/html/images/trifa.png
+    fi
+    if [ ! -f /var/www/html/freedombone.css ]; then
+        cp /root/$PROJECT_NAME/website/freedombone.css /var/www/html/freedombone.css
+    fi
+    chown -R www-data:www-data /var/www/html/*
+}
+
+function enable_mesh_firewall {
+    iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+    iptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
+    iptables -A INPUT -p tcp --dport $TRACKER_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport $TRACKER_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    iptables -A INPUT -p udp --dport 80 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 548 -j ACCEPT
+    iptables -A INPUT -p udp --dport 548 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 5353 -j ACCEPT
+    iptables -A INPUT -p udp --dport 5353 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 5354 -j ACCEPT
+    iptables -A INPUT -p udp --dport 5354 -j ACCEPT
+    iptables -A INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport $ZERONET_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $TOX_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport $TOX_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
+    iptables -A INPUT -p tcp --dport $TAHOELAFS_PORT -j ACCEPT
+    # SSB/Scuttlebot/Patchwork
+    iptables -A INPUT -p tcp --dport $GIT_SSB_PORT -j ACCEPT
+    iptables -A INPUT -p udp --dport 8008 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 8008 -j ACCEPT
+    iptables -A INPUT -p udp --dport 8010 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 8010 -j ACCEPT
+    # vpn over the internet
+    # Note: the vpn firewall settings are needed in order for Patchwork
+    # to discover local peers
+    iptables -A INPUT -p tcp --dport 653 -j ACCEPT
+    iptables -A INPUT -p udp --dport 653 -j ACCEPT
+    iptables -A INPUT -i ${EIFACE} -m state --state NEW -p tcp --dport 1194 -j ACCEPT
+    iptables -A INPUT -i tun+ -j ACCEPT
+    iptables -A FORWARD -i tun+ -j ACCEPT
+    iptables -A FORWARD -i tun+ -o ${EIFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -A FORWARD -i ${EIFACE} -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o ${EIFACE} -j MASQUERADE
+    iptables -A OUTPUT -o tun+ -j ACCEPT
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    sed -i 's|# net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+    sed -i 's|#net.ipv4.ip_forward|net.ipv4.ip_forward|g' /etc/sysctl.conf
+    sed -i 's|net.ipv4.ip_forward.*|net.ipv4.ip_forward=1|g' /etc/sysctl.conf
+}
+
+function disable_mesh_firewall {
+    iptables -D INPUT -p tcp --dport $TRACKER_PORT -j ACCEPT
+    iptables -D INPUT -p udp --dport $TRACKER_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport 80 -j ACCEPT
+    iptables -D INPUT -p udp --dport 80 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 548 -j ACCEPT
+    iptables -D INPUT -p udp --dport 548 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 5353 -j ACCEPT
+    iptables -D INPUT -p udp --dport 5353 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 5354 -j ACCEPT
+    iptables -D INPUT -p udp --dport 5354 -j ACCEPT
+    iptables -D INPUT -p tcp --dport $ZERONET_PORT -j ACCEPT
+    iptables -D INPUT -p udp --dport $ZERONET_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport $IPFS_PORT -j ACCEPT
+    iptables -D INPUT -p udp --dport $IPFS_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport $TOX_PORT -j ACCEPT
+    iptables -D INPUT -p udp --dport $TOX_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport $LIBREVAULT_PORT -j ACCEPT
+    iptables -D INPUT -p udp --dport $LIBREVAULT_PORT -j ACCEPT
+    iptables -D INPUT -p tcp --dport $TAHOELAFS_PORT -j ACCEPT
+    # SSB/Scuttlebot/Patchwork
+    iptables -D INPUT -p tcp --dport $GIT_SSB_PORT -j ACCEPT
+    iptables -D INPUT -p udp --dport 8008 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 8008 -j ACCEPT
+    iptables -D INPUT -p udp --dport 8010 -j ACCEPT
+    iptables -D INPUT -p tcp --dport 8010 -j ACCEPT
+    # vpn over the internet
+    iptables -D INPUT -p tcp --dport 653 -j ACCEPT
+    iptables -D INPUT -p udp --dport 653 -j ACCEPT
+    iptables -D INPUT -i ${EIFACE} -m state --state NEW -p tcp --dport 1194 -j ACCEPT
+    iptables -D INPUT -i tun+ -j ACCEPT
+    iptables -D FORWARD -i tun+ -j ACCEPT
+    iptables -D FORWARD -i tun+ -o ${EIFACE} -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -D FORWARD -i ${EIFACE} -o tun+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+    iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o ${EIFACE} -j MASQUERADE
+    iptables -D OUTPUT -o tun+ -j ACCEPT
+
+    echo 0 > /proc/sys/net/ipv4/ip_forward
+    sed -i 's|net.ipv4.ip_forward=.*|net.ipv4.ip_forward=0|g' /etc/sysctl.conf
+}
+
+function enable_mesh_scuttlebot {
+    if [ -f /etc/scuttlebot/.ssb/config ]; then
+        ethernet_connected=$(cat /sys/class/net/eth0/carrier)
+        if [[ "$ethernet_connected" != "0" ]]; then
+            sed -i "s|\"host\": .*|\"host\": \"$(get_ipv4_wlan)\",|g" /etc/scuttlebot/.ssb/config
+            systemctl restart scuttlebot
+        else
+            if [ ! -f /etc/nginx/sites-available/git_ssb ]; then
+                systemctl stop scuttlebot
+            else
+                systemctl restart scuttlebot
+            fi
+        fi
+    fi
+    sed -i "s|\"host\":.*|\"host\": \"${HOSTNAME}.local\",|g" /etc/scuttlebot/.ssb/config
+    systemctl restart scuttlebot
+}
+
+function enable_mesh_tor {
+    # if we have an ethernet connection to an internet router then create
+    # an onion address for this peer
+    if [[ "$ethernet_connected" != "0" ]]; then
+        systemctl enable tor
+        systemctl start tor
+        HIDDEN_SERVICE_PATH=/var/lib/tor/hidden_service_
+        if [ ! -f ${HIDDEN_SERVICE_PATH}mesh/hostname ]; then
+            echo "HiddenServiceDir ${HIDDEN_SERVICE_PATH}mesh/" >> /etc/tor/torrc
+            echo "HiddenServicePort 653 127.0.0.1:653" >> /etc/tor/torrc
+            systemctl restart tor
+        fi
+    else
+        systemctl stop tor
+        systemctl disable tor
+    fi
+}
+
+function enable_mesh_seconary_wifi {
+    if [ $secondary_wifi_available ]; then
+        sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|g' /etc/default/hostapd
+
+        mesh_hotspot_address=$(mesh_hotspot_ip_address)
+        if [[ "$mesh_hotspot_address" == *'.'* ]]; then
+            echo "interface=${IFACE_SECONDARY}" > /etc/hostapd/hostapd.conf
+            echo "bridge=${BRIDGE}" >> /etc/hostapd/hostapd.conf
+            echo 'driver=nl80211' >> /etc/hostapd/hostapd.conf
+            echo "country_code=UK" >> /etc/hostapd/hostapd.conf
+            echo "ssid=${WIFI_SSID}-${mesh_hotspot_address}" >> /etc/hostapd/hostapd.conf
+            echo 'hw_mode=g' >> /etc/hostapd/hostapd.conf
+            echo "channel=${HOTSPOT_CHANNEL}" >> /etc/hostapd/hostapd.conf
+            echo 'wpa=2' >> /etc/hostapd/hostapd.conf
+            echo "wpa_passphrase=$HOTSPOT_PASSPHRASE" >> /etc/hostapd/hostapd.conf
+            echo 'wpa_key_mgmt=WPA-PSK' >> /etc/hostapd/hostapd.conf
+            echo 'wpa_pairwise=TKIP' >> /etc/hostapd/hostapd.conf
+            echo 'rsn_pairwise=CCMP' >> /etc/hostapd/hostapd.conf
+            echo 'auth_algs=1' >> /etc/hostapd/hostapd.conf
+            echo 'macaddr_acl=0' >> /etc/hostapd/hostapd.conf
+
+            sed -i "s|#interface=.*|interface=${IFACE_SECONDARY}|g" /etc/dnsmasq.conf
+            sed -i "s|interface=.*|interface=${IFACE_SECONDARY}|g" /etc/dnsmasq.conf
+            sed -i "s|listen-address=.*|listen-address=127.0.0.1,$mesh_hotspot_address|g" /etc/dnsmasq.conf
+            sed -i 's|#listen-address|listen-address|g' /etc/dnsmasq.conf
+            systemctl enable dnsmasq
+            systemctl restart dnsmasq
+
+            systemctl enable hostapd
+            systemctl restart hostapd
+            mesh_create_app_downloads_page
+        else
+            secondary_wifi_available=
+            echo $'WARNING: No IP address could be obtained for the hotspot'
+        fi
+    fi
+
+    if [ ! $secondary_wifi_available ]; then
+        systemctl stop hostapd
+        systemctl disable hostapd
+
+        # Recreate the cryptpad symlink
+        if [ -f /etc/nginx/sites-available/cryptpad ]; then
+            if [ -L /etc/nginx/sites-enabled/cryptpad ]; then
+                rm /etc/nginx/sites-enabled/default
+            fi
+            systemctl enable cryptpad
+            systemctl start cryptpad
+
+            if [ ! -L /etc/nginx/sites-enabled/cryptpad ]; then
+                ln -s /etc/nginx/sites-available/cryptpad /etc/nginx/sites-enabled/cryptpad
+                systemctl restart nginx
+            fi
+        fi
+        if [ -f /home/fbone/.cryptpad.desktop ]; then
+            mv /home/fbone/.cryptpad.desktop /home/fbone/Desktop/cryptpad.desktop
+        fi
+    fi
+}
+
+# NOTE: deliberately there is no "exit 0"
