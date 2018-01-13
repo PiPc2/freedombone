@@ -1,0 +1,310 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Used to enable or disable BMX7 mesh protocol on wlanX
+#
+# License
+# =======
+#
+# Copyright (C) 2018 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+PROJECT_NAME='freedombone'
+COMPLETION_FILE=/root/${PROJECT_NAME}-completed.txt
+
+# hotspot passphrase must be 5 characters or longer
+HOTSPOT_PASSPHRASE="${PROJECT_NAME}"
+
+source /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-wifi
+source /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-mesh
+
+mesh_protocol_init
+update_wifi_adaptors
+
+if [ ! $IFACE ]; then
+    echo $'No wlan adaptor'
+    exit 0
+fi
+
+function status {
+    bmx7 -c status
+}
+
+function stop {
+    if [ -z "$IFACE" ]; then
+        echo 'error: unable to find wifi interface, not enabling BMX7 mesh'
+        return
+    fi
+
+    systemctl stop dnsmasq
+    systemctl disable dnsmasq
+    systemctl stop bmx7
+    systemctl disable bmx7
+
+    if [ "$EIFACE" ]; then
+        ethernet_connected=$(cat /sys/class/net/$EIFACE/carrier)
+        if [[ "$ethernet_connected" != "0" ]]; then
+            systemctl stop hostapd
+            ifconfig $EIFACE down -promisc
+        fi
+    fi
+
+    avahi-autoipd -k $BRIDGE
+    avahi-autoipd -k $IFACE
+    ifconfig $IFACE down -promisc
+
+    ifconfig $IFACE mtu 1500
+    ifconfig $IFACE down
+    iwconfig $IFACE mode managed
+
+    if [ $IFACE_SECONDARY ]; then
+        systemctl stop hostapd
+        systemctl disable hostapd
+        ifconfig $IFACE_SECONDARY mtu 1500
+        ifconfig $IFACE_SECONDARY down
+        iwconfig $IFACE_SECONDARY mode managed
+    fi
+
+    disable_mesh_firewall
+
+    systemctl restart network-manager
+
+    if [ -f $MESH_CURRENT_PROTOCOL ]; then
+        rm $MESH_CURRENT_PROTOCOL
+    fi
+}
+
+function verify {
+    # TODO
+    echo -n ''
+}
+
+function add_wifi_interface {
+    ifname=$1
+    ifssid=$WIFI_SSID
+    if [ $2 ]; then
+        ifssid=$2
+    fi
+    ifmode=ad-hoc
+    if [ $3 ]; then
+        ifmode=$3
+    fi
+    ifchannel=$CHANNEL
+    if [ $4 ]; then
+        ifchannel=$4
+    fi
+
+    ifconfig $ifname down
+    ifconfig $ifname mtu 1500
+    peermac=$(assign_peer_address)
+    if [ ! $peermac ]; then
+        echo $"Unable to obtain MAC address for $peermac on $ifname"
+        return
+    fi
+    ifconfig $ifname hw ether $peermac
+    echo $"$ifname assigned MAC address $peermac"
+    iwconfig $ifname enc off
+    iwconfig $ifname mode $ifmode essid $ifssid channel $ifchannel
+
+    ifconfig $ifname up
+}
+
+function start {
+    update_wifi_adaptors
+
+    if [ -z "$IFACE" ] ; then
+        echo 'error: unable to find wifi interface, not enabling BMX7 mesh'
+        exit 723657
+    fi
+    echo "info: enabling BMX7 mesh network $WIFI_SSID on $IFACE"
+
+    mesh_protocol_stop
+
+    systemctl stop network-manager
+    sleep 5
+
+    systemctl stop dnsmasq
+    systemctl disable dnsmasq
+
+    # remove an avahi service which isn't used
+    if [ -f /etc/avahi/services/udisks.service ]; then
+        sudo rm /etc/avahi/services/udisks.service
+    fi
+
+    global_rate_limit
+
+    # Might have to re-enable wifi
+    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true
+
+    secondary_wifi_available=
+    if [ $IFACE_SECONDARY ]; then
+        if [[ $IFACE != $IFACE_SECONDARY ]]; then
+            if [ -d /etc/hostapd ]; then
+                if [ ${#HOTSPOT_PASSPHRASE} -gt 4 ]; then
+                    secondary_wifi_available=1
+                else
+                    echo $'Hotspot passphrase is too short'
+                fi
+            fi
+        fi
+    fi
+
+    add_wifi_interface $IFACE $WIFI_SSID ad-hoc $CHANNEL
+    ifconfig $IFACE up promisc
+
+    if [ ! $secondary_wifi_available ]; then
+        sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx7 dev=${IFACE}|g" /etc/systemd/system/bmx7.service
+    else
+        sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx7 dev=${IFACE} dev=${EIFACE}|g" /etc/systemd/system/bmx7.service
+    fi
+
+    systemctl daemon-reload
+    systemctl enable bmx7
+    systemctl start bmx7
+
+    avahi-autoipd --force-bind --daemonize --wait $IFACE
+
+    # NOTE: Don't connect the secondary wifi device. hostapd will handle that by itself
+
+    ethernet_connected='0'
+    if [ "$EIFACE" ] ; then
+        ethernet_connected=$(cat /sys/class/net/$EIFACE/carrier)
+        if [[ "$ethernet_connected" != "0" ]]; then
+            echo $'Trying ethernet bridge to the internet'
+            ifconfig $EIFACE up promisc
+            echo $'End of ethernet bridge'
+        else
+            echo $"$EIFACE is not connected"
+        fi
+    fi
+
+    enable_mesh_seconary_wifi
+
+    enable_mesh_firewall
+
+    systemctl restart avahi-daemon
+
+    enable_mesh_scuttlebot
+    enable_mesh_tor
+
+
+    sed -i "s|server_name .*|server_name ${HOSTNAME}.local;|g" /etc/nginx/sites-available/git_ssb
+
+    systemctl restart nginx
+
+    verify
+
+    echo "bmx7" > $MESH_CURRENT_PROTOCOL
+}
+
+function monitor {
+    if [ -z "$IFACE" ] ; then
+        echo 'error: unable to find wifi interface, not enabling BMX7 mesh'
+        exit 723657
+    fi
+
+    clear
+    echo ''
+    echo $'*** Stopping network ***'
+    echo ''
+
+    stop
+
+    echo "info: monitoring mesh network $WIFI_SSID on $IFACE"
+
+    systemctl stop network-manager
+    sleep 5
+
+    clear
+    echo ''
+    echo $'*** Setting firewall rate limit ***'
+    echo ''
+
+    global_rate_limit
+
+    clear
+    echo ''
+    echo $'*** Enabling wifi adaptor in monitor mode ***'
+    echo ''
+
+    # Might have to re-enable wifi
+    rfkill unblock $(rfkill list|awk -F: "/phy/ {print $1}") || true
+
+    ifconfig $IFACE down
+    ifconfig $IFACE mtu 1500
+    ifconfig $IFACE hw ether $(assign_peer_address)
+    iwconfig $IFACE enc off
+    iwconfig $IFACE mode monitor channel $CHANNEL
+    sleep 1
+    iwconfig $IFACE ap $CELLID
+
+    ifconfig $IFACE up
+
+    horst -i $IFACE
+
+    clear
+    echo ''
+    echo $'*** Restarting the network daemon. This may take a while. ***'
+    echo ''
+
+    start
+}
+
+if ! grep -q "$IFACE" /proc/net/dev; then
+    echo 'Interface $IFACE was not found'
+    stop
+    exit 1
+fi
+
+case "$1" in
+    start|stop|status|monitor)
+        $1
+        ;;
+    restart)
+        clear
+        echo ''
+        echo $'*** Stopping BMX7 mesh network connection ***'
+        echo ''
+        stop
+        sleep 10
+        clear
+        echo ''
+        echo $'*** Starting BMX7 mesh network connection ***'
+        echo ''
+        start
+        ;;
+    ping)
+        ping $2
+        ;;
+    data)
+        bmx7 -lc traffic=$IFACE
+        ;;
+    ls|list)
+        avahi-browse -atl
+        ;;
+    *)
+        echo "error: invalid parameter $1"
+        echo 'usage: $0 {start|stop|restart|status|ping|ls|list}'
+        exit 2
+        ;;
+esac
+exit 0
