@@ -54,11 +54,17 @@ function status {
 }
 
 function stop {
+    if [ ! -f $MESH_CURRENT_PROTOCOL ]; then
+        return
+    fi
+
     if [ -z "$IFACE" ]; then
         echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
         return
     fi
 
+    systemctl stop bmx6
+    systemctl stop bmx7
     systemctl stop dnsmasq
     systemctl disable dnsmasq
 
@@ -154,8 +160,7 @@ function start {
     fi
     echo "info: enabling batman-adv mesh network $WIFI_SSID on $IFACE"
 
-    mesh_protocol_stop
-
+    stop
     systemctl stop network-manager
     sleep 5
 
@@ -188,9 +193,8 @@ function start {
     modprobe batman-adv
 
     # avahi on ipv4
-    sed -i 's|use-ipv4=.*|use-ipv4=yes|g' /etc/avahi/avahi-daemon.conf
-    sed -i 's|use-ipv6=.*|use-ipv6=no|g' /etc/avahi/avahi-daemon.conf
-    systemctl restart avahi-daemon
+    sed -i 's|use-ipv4=.*|use-ipv4=no|g' /etc/avahi/avahi-daemon.conf
+    sed -i 's|use-ipv6=.*|use-ipv6=yes|g' /etc/avahi/avahi-daemon.conf
 
     add_wifi_interface $IFACE $WIFI_SSID ad-hoc $CHANNEL
 
@@ -221,8 +225,6 @@ function start {
 
     enable_mesh_firewall
 
-    systemctl restart avahi-daemon
-
     enable_mesh_scuttlebot
     enable_mesh_tor
 
@@ -230,9 +232,17 @@ function start {
 
     systemctl restart nginx
 
+    if [[ "$MESH_DEFAULT_PROTOCOL" == 'bmx6' ]]; then
+        systemctl restart bmx6
+    else
+        systemctl restart bmx7
+    fi
+
+    systemctl restart avahi-daemon
+
     verify
 
-    echo "batman-adv" > $MESH_CURRENT_PROTOCOL
+    echo "$MESH_DEFAULT_PROTOCOL" > $MESH_CURRENT_PROTOCOL
 }
 
 function monitor {
