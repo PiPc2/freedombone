@@ -28,8 +28,6 @@ install:
 	cp img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
 	cp src/* ${DESTDIR}${PREFIX}/bin
 	cp src/${APP}-mesh-batman ${DESTDIR}${PREFIX}/bin/batman
-	cp src/${APP}-mesh-bmx6 ${DESTDIR}${PREFIX}/bin/bmx
-	cp src/${APP}-mesh-bmx7 ${DESTDIR}${PREFIX}/bin/bmxsec
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
 	cp src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
@@ -62,8 +60,6 @@ uninstall:
 	rm -f ${PREFIX}/bin/restore
 	rm -f ${PREFIX}/bin/restorefromfriend
 	rm -f ${PREFIX}/bin/batman
-	rm -f ${PREFIX}/bin/bmx
-	rm -f ${PREFIX}/bin/bmxsec
 	rm -rf /etc/${APP}
 	rm -f ${PREFIX}/bin/control
 	rm -f ${PREFIX}/bin/controluser
