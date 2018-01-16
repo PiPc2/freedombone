@@ -125,6 +125,9 @@ ENABLE_ZERONET=
 
 MESH_TEXT_EDITOR='pluma'
 
+OLSR2_REPO="https://github.com/OLSR/OONF"
+OLSR2_COMMIT='81033251c4ee1c5699bfee9d2985112c6266ab0a'
+
 BMX6_REPO="https://github.com/bmx-routing/bmx6"
 BMX6_COMMIT='39dd1f2d99ac5a3fa28e92f8173c15039132e181'
 
@@ -668,6 +671,48 @@ mesh_shutdown_script() {
     chroot "$rootdir" systemctl enable meshshutdown
 }
 
+install_olsr2() {
+    chroot "$rootdir" apt-get -yq install cmake libnl-3-dev
+
+    git clone $OLSR2_REPO $rootdir/etc/olsr2
+
+    cat <<EOF > $rootdir/usr/bin/install_olsr2
+#!/bin/bash
+cd /etc/olsr2
+git checkout $OLSR2_COMMIT -b $OLSR2_COMMIT
+cd /etc/olsr2/build
+cmake ..
+make
+make install
+EOF
+    chroot "$rootdir" chmod +x /usr/bin/install_olsr2
+    chroot "$rootdir" /usr/bin/install_olsr2
+
+    if [ ! -f $rootdir/usr/local/sbin/olsrd2_static ]; then
+        echo $'Unable to build OLSR2'
+        exit 79835392
+    fi
+
+    rm $rootdir/usr/bin/install_olsr2
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/olsr2.service
+    echo 'Description=OLSR2 mesh routing protocol' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'Requires=network.target' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/olsr2.service
+    echo '' >> $rootdir/etc/systemd/system/olsr2.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'Type=forking' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'User=root' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'Group=root' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'ExecStart=/usr/local/sbin/olsrd2_static wlan0' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'ExecStop=/usr/bin/kill -15 $MAINPID' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'PIDFile=/var/run/olsr2/pid' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'Restart=on-failure' >> $rootdir/etc/systemd/system/olsr2.service
+    echo '' >> $rootdir/etc/systemd/system/olsr2.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/olsr2.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/olsr2.service
+}
+
 install_bmx6() {
     git clone $BMX6_REPO $rootdir/etc/bmx6
 
@@ -853,6 +898,7 @@ initialise_mesh() {
     install_batman
     install_bmx6
     install_bmx7
+    install_olsr2
     mesh_shutdown_script
     install_vpn
     install_tomb
