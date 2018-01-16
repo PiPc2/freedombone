@@ -13,6 +13,8 @@
 # License
 # =======
 #
+# Copyright (C) 2015-2018 Bob Mottram <bob@freedombone.net>
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -122,6 +124,12 @@ MESH_SET_USERNAME=$"Welcome to the Freedombone mesh.\n\nThe first thing you will
 ENABLE_ZERONET=
 
 MESH_TEXT_EDITOR='pluma'
+
+BMX6_REPO="https://github.com/bmx-routing/bmx6"
+BMX6_COMMIT='39dd1f2d99ac5a3fa28e92f8173c15039132e181'
+
+BMX7_REPO="https://github.com/bmx-routing/bmx7"
+BMX7_COMMIT='0a82c7c10fef44b259b35e77ab33632aa132d219'
 
 PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
@@ -639,18 +647,154 @@ EOF
 }
 
 mesh_shutdown_script() {
+    mesh_shutdown_script=$rootdir/usr/bin/meshshutdown
+    echo '#!/bin/bash' > $mesh_shutdown_script
+    echo 'batman stop' >> $mesh_shutdown_script
+    chroot "$rootdir" chmod +x /usr/bin/meshshutdown
+
     echo '[Unit]' > $rootdir/etc/systemd/system/meshshutdown.service
     echo 'Description=Shuts down the mesh' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo 'Before=shutdown.target' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo '' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo '[Service]' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'User=root' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'Group=root' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo 'ExecStart=/bin/true' >> $rootdir/etc/systemd/system/meshshutdown.service
-    echo 'ExecStop=/bin/bash /usr/local/bin/batman stop' >> $rootdir/etc/systemd/system/meshshutdown.service
+    echo 'ExecStop=/bin/bash /usr/bin/meshshutdown' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo 'RemainAfterExit=yes' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo '' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo '[Install]' >> $rootdir/etc/systemd/system/meshshutdown.service
     echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/meshshutdown.service
     chroot "$rootdir" systemctl enable meshshutdown
+}
+
+install_bmx6() {
+    git clone $BMX6_REPO $rootdir/etc/bmx6
+
+    cat <<EOF > $rootdir/usr/bin/install_bmx6
+#!/bin/bash
+cd /etc/bmx6
+git checkout $BMX6_COMMIT -b $BMX6_COMMIT
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_http_info
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_json
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_quagga
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_sms
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_table
+make
+make install
+
+cd /etc/bmx6/lib/bmx6_topology
+make
+make install
+EOF
+    chroot "$rootdir" chmod +x /usr/bin/install_bmx6
+    chroot "$rootdir" /usr/bin/install_bmx6
+
+    if [ ! -f $rootdir/usr/sbin/bmx6 ]; then
+        echo $'bmx6 was not installed'
+        exit 79835292
+    fi
+
+    rm $rootdir/usr/bin/install_bmx6
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/bmx6.service
+    echo 'Description=BMX6 mesh routing protocol' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'Requires=network.target' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'Type=forking' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'User=root' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'Group=root' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'ExecStart=/usr/sbin/bmx6 dev=wlan0' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'ExecStop=/usr/bin/kill -15 $MAINPID' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'PIDFile=/var/run/bmx6/pid' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'Restart=on-failure' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '' >> $rootdir/etc/systemd/system/bmx6.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/bmx6.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/bmx6.service
+}
+
+install_bmx7() {
+    chroot "$rootdir" apt-get -qy install libjson-c-dev zlib1g-dev libiw-dev
+
+    git clone $BMX7_REPO $rootdir/etc/bmx7
+
+    cat <<EOF > $rootdir/usr/bin/install_bmx7
+#!/bin/bash
+cd /etc
+wget https://polarssl.org/code/releases/polarssl-1.3.3-gpl.tgz
+tar xzvf polarssl-1.3.3-gpl.tgz
+cd /etc/polarssl-1.3.3
+make
+sudo make install
+
+cd /etc/bmx7
+git checkout $BMX7_COMMIT -b $BMX7_COMMIT
+make EXTRA_CFLAGS="-DCRYPTLIB=POLARSSL_1_3_3"
+make install
+
+cd /etc/bmx7/lib/bmx7_http_info
+make
+make install
+
+cd /etc/bmx7/lib/bmx7_json
+make
+make install
+
+cd /etc/bmx7/lib/bmx7_tun
+make
+make install
+
+cd /etc/bmx7/lib/bmx7_sms
+make
+make install
+
+cd /etc/bmx7/lib/bmx7_topology
+make
+make install
+EOF
+    chroot "$rootdir" chmod +x /usr/bin/install_bmx7
+    chroot "$rootdir" /usr/bin/install_bmx7
+
+    if [ ! -f $rootdir/usr/sbin/bmx7 ]; then
+        echo $'bmx7 was not installed'
+        exit 67836235
+    fi
+
+    rm $rootdir/usr/bin/install_bmx7
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/bmx7.service
+    echo 'Description=BMX7 mesh routing protocol' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'Requires=network.target' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/bmx7.service
+    echo '' >> $rootdir/etc/systemd/system/bmx7.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'Type=forking' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'User=root' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'Group=root' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'ExecStart=/usr/sbin/bmx7 dev=wlan0' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'ExecStop=/usr/bin/kill -15 $MAINPID' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'PIDFile=/var/run/bmx7/pid' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'Restart=on-failure' >> $rootdir/etc/systemd/system/bmx7.service
+    echo '' >> $rootdir/etc/systemd/system/bmx7.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/bmx7.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/bmx7.service
 }
 
 initialise_mesh() {
@@ -689,9 +833,26 @@ initialise_mesh() {
     # dhcp daemon for hotspot on secondary wifi adapter
     chroot "$rootdir" apt-get -yq install dnsmasq
 
+    # for debugging
+    chroot "$rootdir" apt-get -yq install traceroute
+
+    # set the default protocol to be used
+    echo 'bmx6' > $rootdir$MESH_DEFAULT_PROTOCOL
+
+    sed -i 's|#net.ipv6.conf.all.forwarding.*|net.ipv6.conf.all.forwarding=1|g' $rootdir/etc/sysctl.conf
+    sed -i 's|net.ipv6.conf.all.forwarding.*|net.ipv6.conf.all.forwarding=1|g' $rootdir/etc/sysctl.conf
+
+    sed -i 's|#net.ipv6.conf.all.accept_redirects.*|net.ipv6.conf.all.accept_redirects=1|g' $rootdir/etc/sysctl.conf
+    sed -i 's|net.ipv6.conf.all.accept_redirects.*|net.ipv6.conf.all.accept_redirects=1|g' $rootdir/etc/sysctl.conf
+
+    sed -i 's|#net.ipv6.conf.all.accept_source_route.*|net.ipv6.conf.all.accept_source_route=1|g' $rootdir/etc/sysctl.conf
+    sed -i 's|net.ipv6.conf.all.accept_source_route.*|net.ipv6.conf.all.accept_source_route=1|g' $rootdir/etc/sysctl.conf
+
     configure_firewall
     install_avahi
     install_batman
+    install_bmx6
+    install_bmx7
     mesh_shutdown_script
     install_vpn
     install_tomb
@@ -1448,7 +1609,7 @@ function image_setup_utils {
     chroot "$rootdir" apt-get -yq install avahi-daemon avahi-utils avahi-discover
     chroot "$rootdir" apt-get -yq install connect-proxy openssh-server
     chroot "$rootdir" apt-get -yq install sudo git dialog build-essential avahi-daemon avahi-utils
-    chroot "$rootdir" apt-get -yq install avahi-discover avahi-autoipd iptables dnsutils net-tools
+    chroot "$rootdir" apt-get -yq install avahi-discover iptables dnsutils net-tools
     chroot "$rootdir" apt-get -yq install network-manager iputils-ping libnss-mdns libnss-myhostname
     chroot "$rootdir" apt-get -yq install libnss-gw-name nano man ntp locales locales-all debconf
     chroot "$rootdir" apt-get -yq install wireless-tools wpasupplicant usbutils cryptsetup zsh
@@ -1753,7 +1914,7 @@ if [[ $VARIANT != "mesh"* ]]; then
     chroot "$rootdir" apt-get install -y openssh-server
 fi
 chroot "$rootdir" apt-get install -y sudo git dialog build-essential
-chroot "$rootdir" apt-get install -y avahi-daemon avahi-utils avahi-discover avahi-autoipd
+chroot "$rootdir" apt-get install -y avahi-daemon avahi-utils avahi-discover
 chroot "$rootdir" apt-get install -y iptables dnsutils net-tools network-manager iputils-ping
 chroot "$rootdir" apt-get install -y libnss-mdns libnss-myhostname libnss-gw-name nano man ntp
 chroot "$rootdir" apt-get install -y locales locales-all debconf wireless-tools wpasupplicant usbutils
