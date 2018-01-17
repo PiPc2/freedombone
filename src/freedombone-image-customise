@@ -125,6 +125,9 @@ ENABLE_ZERONET=
 
 MESH_TEXT_EDITOR='pluma'
 
+BABEL_REPO="https://github.com/jech/babeld"
+BABEL_COMMIT='d9390d1fee337c464e67255bbbd879d975e126e2'
+
 OLSR2_REPO="https://github.com/OLSR/OONF"
 OLSR2_COMMIT='81033251c4ee1c5699bfee9d2985112c6266ab0a'
 
@@ -671,6 +674,42 @@ mesh_shutdown_script() {
     chroot "$rootdir" systemctl enable meshshutdown
 }
 
+install_babel() {
+    git clone $BABEL_REPO $rootdir/etc/babel
+
+    cat <<EOF > $rootdir/usr/bin/install_babel
+#!/bin/bash
+cd /etc/babel
+git checkout $BABEL_COMMIT -b $BABEL_COMMIT
+cd /etc/babel
+make
+make install
+EOF
+    chroot "$rootdir" chmod +x /usr/bin/install_babel
+    chroot "$rootdir" /usr/bin/install_babel
+
+    if [ ! -f $rootdir/usr/local/bin/babeld ]; then
+        echo $'Unable to build Babel'
+        exit 52382524
+    fi
+
+    rm $rootdir/usr/bin/install_babel
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/babel.service
+    echo 'Description=Babel mesh routing protocol' >> $rootdir/etc/systemd/system/babel.service
+    echo 'Requires=network.target' >> $rootdir/etc/systemd/system/babel.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/babel.service
+    echo '' >> $rootdir/etc/systemd/system/babel.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/babel.service
+    echo 'User=root' >> $rootdir/etc/systemd/system/babel.service
+    echo 'Group=root' >> $rootdir/etc/systemd/system/babel.service
+    echo 'ExecStart=/usr/local/bin/babeld wlan0' >> $rootdir/etc/systemd/system/babel.service
+    echo 'Restart=on-failure' >> $rootdir/etc/systemd/system/babel.service
+    echo '' >> $rootdir/etc/systemd/system/babel.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/babel.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/babel.service
+}
+
 install_olsr2() {
     chroot "$rootdir" apt-get -yq install cmake libnl-3-dev
 
@@ -896,6 +935,7 @@ initialise_mesh() {
     install_bmx6
     install_bmx7
     install_olsr2
+    install_babel
     mesh_shutdown_script
     install_vpn
     install_tomb

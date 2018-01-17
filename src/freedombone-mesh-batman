@@ -73,9 +73,11 @@ function stop {
     systemctl stop bmx6
     systemctl stop bmx7
     systemctl stop olsr2
+    systemctl stop babel
     systemctl disable bmx6
     systemctl disable bmx7
     systemctl disable olsr2
+    systemctl disable babel
     systemctl stop dnsmasq
     systemctl disable dnsmasq
 
@@ -210,6 +212,7 @@ function start {
     sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx6 dev=${IFACE}|g" /etc/systemd/system/bmx6.service
     sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx7 dev=${IFACE}|g" /etc/systemd/system/bmx7.service
     sed -i "s|ExecStart=.*|ExecStart=/usr/local/sbin/olsrd2_static ${IFACE}|g" /etc/systemd/system/olsr2.service
+    sed -i "s|ExecStart=.*|ExecStart=/usr/local/bin/babeld ${IFACE}|g" /etc/systemd/system/babel.service
     systemctl daemon-reload
 
     add_wifi_interface $IFACE $WIFI_SSID ad-hoc $CHANNEL
@@ -234,6 +237,7 @@ function start {
             sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx6 dev=${IFACE} dev=${EIFACE}|g" /etc/systemd/system/bmx6.service
             sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx7 dev=${IFACE} dev=${EIFACE}|g" /etc/systemd/system/bmx7.service
             sed -i "s|ExecStart=.*|ExecStart=/usr/local/sbin/olsrd2_static ${IFACE} ${EIFACE}|g" /etc/systemd/system/olsr2.service
+            sed -i "s|ExecStart=.*|ExecStart=/usr/local/bin/babeld ${IFACE} ${EIFACE}|g" /etc/systemd/system/babel.service
             systemctl daemon-reload
         else
             echo $"$EIFACE is not connected"
@@ -270,9 +274,21 @@ function start {
     fi
 
     if grep -q "olsr" $MESH_DEFAULT_PROTOCOL; then
+        IFACE=$(cat /etc/systemd/system/olsr2.service | grep ExecStart | awk -F ' ' '{print $2}')
+        mesh_generate_ipv6_address $IFACE
+
         systemctl enable olsr2
         systemctl restart olsr2
         sed -i 's|<type>.*|<type>_olsr2._tcp</type>|g' /etc/avahi/services/routing.service
+    fi
+
+    if grep -q "babel" $MESH_DEFAULT_PROTOCOL; then
+        IFACE=$(cat /etc/systemd/system/babel.service | grep ExecStart | awk -F ' ' '{print $2}')
+        mesh_generate_ipv6_address $IFACE
+
+        systemctl enable babel
+        systemctl restart babel
+        sed -i 's|<type>.*|<type>_babel._tcp</type>|g' /etc/avahi/services/routing.service
     fi
 
     systemctl restart avahi-daemon
