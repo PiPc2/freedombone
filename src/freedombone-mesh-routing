@@ -34,6 +34,17 @@ export TEXTDOMAINDIR="/usr/share/locale"
 source /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-wifi
 source /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-mesh
 
+function mesh_stop_daemon {
+    daemon_name=$1
+
+    clear
+    echo ''
+    echo $"Stopping $1..."
+    sudo systemctl stop $1
+    echo $"Disabling $1..."
+    sudo systemctl disable $1
+}
+
 clear
 echo ''
 echo $'Scanning for BMX6 protocol...'
@@ -59,12 +70,29 @@ case $sel in
     255) exit 1;;
 esac
 
-echo '#!/bin/bash' > /tmp/change_routing
-echo "echo '$1' > $MESH_DEFAULT_PROTOCOL" >> /tmp/change_routing
-echo "echo '$1' > $MESH_CURRENT_PROTOCOL" >> /tmp/change_routing
-echo "sed -i 's|<type>.*|<type>_${1}._tcp</type>|g' /etc/avahi/services/routing.service"  >> /tmp/change_routing
-echo 'systemctl restart avahi-daemon'  >> /tmp/change_routing
-chmod +x /tmp/change_routing
+temp_script=$HOME/.change_routing
+echo '#!/bin/bash' > $temp_script
+echo "echo \"\$1\" > $MESH_DEFAULT_PROTOCOL" >> $temp_script
+echo "echo \"\$1\" > $MESH_CURRENT_PROTOCOL" >> $temp_script
+echo "sed -i \"s|<type>.*|<type>_\${1}._tcp</type>|g\" /etc/avahi/services/routing.service" >> $temp_script
+echo 'systemctl restart avahi-daemon' >> $temp_script
+echo "IFACE=\$(cat /etc/systemd/system/\${1}.service | grep ExecStart | awk -F ' ' '{print \$2}')" >> $temp_script
+echo 'network=fd66:66:66' >> $temp_script
+echo 'search_ipv6=$(ifconfig $1 | grep $network)' >> $temp_script
+echo 'if [ $search_ipv6 ]; then' >> $temp_script
+echo "    result=\$(ifconfig \$1 | grep \$network | awk -F ' ' '{print \$2}')" >> $temp_script
+echo '    ip -6 addr add ${result}/128 dev $1' >> $temp_script
+echo 'else' >> $temp_script
+echo '    ipv6_array=( 1 2 3 4 5 6 7 8 9 0 a b c d e f )' >> $temp_script
+echo '    a=${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}' >> $temp_script
+echo '    b=${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}' >> $temp_script
+echo '    c=${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}' >> $temp_script
+echo '    d=${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}' >> $temp_script
+echo '    e=${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}${ipv6_array[$RANDOM%16]}' >> $temp_script
+echo '    result=$network:$a:$b:$c:$d:$e' >> $temp_script
+echo '    ip -6 addr add ${result}/128 dev $1' >> $temp_script
+echo 'fi' >> $temp_script
+chmod +x $temp_script
 
 clear
 echo ''
@@ -72,42 +100,41 @@ echo $'Authentication to change mesh protocol'
 echo ''
 
 case $data in
-    1)  sudo /tmp/change_routing 'bmx6'
-        sudo systemctl stop bmx7
-        sudo systemctl disable bmx7
-        sudo systemctl stop olsr2
-        sudo systemctl disable olsr2
-        sudo systemctl stop babel
-        sudo systemctl disable babel
+    1)  sudo $temp_script 'bmx6'
+        mesh_stop_daemon 'bmx7'
+        mesh_stop_daemon 'olsr2'
+        mesh_stop_daemon 'babel'
+        clear
+        echo ''
+        echo $'Enabling BMX6...'
         sudo systemctl enable bmx6
+        echo $'Starting BMX6...'
         sudo systemctl start bmx6
         ;;
-    2)  sudo /tmp/change_routing 'olsr2'
-        sudo systemctl stop bmx7
-        sudo systemctl disable bmx7
-        sudo systemctl stop bmx6
-        sudo systemctl disable bmx6
-        sudo systemctl stop babel
-        sudo systemctl disable babel
-        IFACE=$(cat /etc/systemd/system/olsr2.service | grep ExecStart | awk -F ' ' '{print $2}')
-        mesh_generate_ipv6_address $IFACE
+    2)  sudo $temp_script 'olsr2'
+        mesh_stop_daemon 'bmx6'
+        mesh_stop_daemon 'bmx7'
+        mesh_stop_daemon 'babel'
+        clear
+        echo ''
+        echo $'Enabling OLSR2...'
         sudo systemctl enable olsr2
+        echo $'Starting OLSR2...'
         sudo systemctl start olsr2
         ;;
-    3)  sudo /tmp/change_routing 'babel'
-        sudo systemctl stop bmx7
-        sudo systemctl disable bmx7
-        sudo systemctl stop bmx6
-        sudo systemctl disable bmx6
-        sudo systemctl stop olsr2
-        sudo systemctl disable olsr2
-        IFACE=$(cat /etc/systemd/system/babel.service | grep ExecStart | awk -F ' ' '{print $2}')
-        mesh_generate_ipv6_address $IFACE
+    3)  sudo $temp_script 'babel'
+        mesh_stop_daemon 'bmx6'
+        mesh_stop_daemon 'bmx7'
+        mesh_stop_daemon 'olsr2'
+        clear
+        echo ''
+        echo $'Enabling Babel...'
         sudo systemctl enable babel
+        echo $'Starting Babel...'
         sudo systemctl start babel
         ;;
 esac
 
-rm /tmp/change_routing
+rm $temp_script
 
 exit 0
