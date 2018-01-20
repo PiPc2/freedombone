@@ -58,6 +58,7 @@ PLEROMA_TITLE='Pleroma Server'
 
 # Number of months after which posts expire
 PLEROMA_EXPIRE_MONTHS=3
+pleroma_expire_posts_script=/usr/bin/pleroma-expire-posts
 
 pleroma_variables=(ONION_ONLY
                    PLEROMA_DOMAIN_NAME
@@ -69,6 +70,69 @@ pleroma_variables=(ONION_ONLY
                    PLEROMA_EXPIRE_MONTHS
                    MY_EMAIL_ADDRESS
                    MY_USERNAME)
+
+function expire_pleroma_posts {
+    domain_name=$1
+    expire_months=$3
+
+    if [ ! $expire_months ]; then
+        expire_months=3
+    fi
+
+    expire_days=$((expire_months * 30))
+
+    # files are what take up most of the backup time, so don't keep them for very long
+    expire_days_files=7
+
+    # To prevent the database size from growing endlessly this script expires posts
+    # after a number of months
+    if [ ! -d /etc/pleroma ]; then
+        return
+    fi
+
+    echo '<?php' > $pleroma_expire_posts_script
+    echo '' >> $pleroma_expire_posts_script
+    echo "\$oldate=date((\"Y-m-d\"), strtotime(\"-${expire_months} months\"));" >> $pleroma_expire_posts_script
+    echo '$username="root";' >> $pleroma_expire_posts_script
+    echo "\$password=shell_exec('${PROJECT_NAME}-pass -u root -a postgresql');" >> $pleroma_expire_posts_script
+    echo "\$database=\"pleroma\";" >> $pleroma_expire_posts_script
+    echo '' >> $pleroma_expire_posts_script
+    echo 'if (!$link = pg_connect("host=localhost dbname=pleroma user=$username password=$password")) {' >> $pleroma_expire_posts_script
+    echo '    echo "Could not connect to postgresql";' >> $pleroma_expire_posts_script
+    echo '    exit;' >> $pleroma_expire_posts_script
+    echo '}' >> $pleroma_expire_posts_script
+    echo '' >> $pleroma_expire_posts_script
+    echo "\$notice_query=\"DELETE FROM notifications WHERE inserted_at <= '\$oldate 01:01:01'\";" >> $pleroma_expire_posts_script
+    echo 'pg_exec($link, $notice_query);' >> $pleroma_expire_posts_script
+    echo '$rowaff1=pg_affected_rows($link);' >> $pleroma_expire_posts_script
+    echo 'pg_close($link);' >> $pleroma_expire_posts_script
+    echo '' >> $pleroma_expire_posts_script
+    echo "\$objects_query=\"DELETE FROM objects WHERE inserted_at <= '\$oldate 01:01:01'\";" >> $pleroma_expire_posts_script
+    echo 'pg_exec($link, $objects_query);' >> $pleroma_expire_posts_script
+    echo '$rowaff2=pg_affected_rows($link);' >> $pleroma_expire_posts_script
+    echo 'pg_close($link);' >> $pleroma_expire_posts_script
+    echo '' >> $pleroma_expire_posts_script
+    echo -n "echo \"Expire pleroma posts: " >> $pleroma_expire_posts_script
+    echo '$rowaff1 notifications and $rowaff2 objects deleted from database.\n";' >> $pleroma_expire_posts_script
+    chmod +x $pleroma_expire_posts_script
+
+    pleroma_expire_script=/etc/cron.daily/pleroma-expire
+    echo '#!/bin/bash' > $pleroma_expire_script
+    echo "find /etc/pleroma/uploads/* -mtime +${expire_days_files} -exec rm -rf {} +" >> $pleroma_expire_script
+    echo "/usr/bin/php $pleroma_expire_posts_script" >> $pleroma_expire_script
+    chmod +x $pleroma_expire_script
+
+    # remove any old cron job
+    if grep -q "pleroma-expire" /etc/crontab; then
+        sed -i "/pleroma-expire/d" /etc/crontab
+        rm /usr/bin/pleroma-expire
+    fi
+
+    # remove old expire script
+    if [ -f /etc/cron.weekly/clear-pleroma-database ]; then
+        rm /etc/cron.weekly/clear-pleroma-database
+    fi
+}
 
 function pleroma_recompile {
     # necessary after parameter changes
@@ -353,6 +417,7 @@ function pleroma_set_title {
 
 function pleroma_set_expire_months {
     PLEROMA_DOMAIN_NAME=$(get_completion_param "pleroma domain")
+    read_config_param "PLEROMA_DOMAIN_NAME"
     read_config_param "PLEROMA_EXPIRE_MONTHS"
 
     data=$(tempfile 2>/dev/null)
@@ -378,7 +443,7 @@ function pleroma_set_expire_months {
                 PLEROMA_EXPIRE_MONTHS=$new_expiry_months
                 write_config_param "PLEROMA_EXPIRE_MONTHS" "$PLEROMA_EXPIRE_MONTHS"
 
-                # TODO
+                expire_pleroma_posts $PLEROMA_DOMAIN_NAME $PLEROMA_EXPIRE_MONTHS
 
                 dialog --title $"Set Pleroma post expiry period" \
                        --msgbox $"Expiry period set to $PLEROMA_EXPIRE_MONTHS months" 6 60
@@ -499,6 +564,7 @@ function pleroma_add_emoji {
 }
 
 function configure_interactive_pleroma {
+    read_config_param PLEROMA_DOMAIN_NAME
     read_config_param PLEROMA_EXPIRE_MONTHS
     while true
     do
@@ -531,6 +597,11 @@ function configure_interactive_pleroma {
 }
 
 function upgrade_pleroma {
+    read_config_param PLEROMA_DOMAIN_NAME
+    if [ ! -f $pleroma_expire_posts_script ]; then
+        expire_pleroma_posts $PLEROMA_DOMAIN_NAME $PLEROMA_EXPIRE_MONTHS
+    fi
+
     CURR_PLEROMA_COMMIT=$(get_completion_param "pleroma commit")
     if [[ "$CURR_PLEROMA_COMMIT" == "$PLEROMA_COMMIT" ]]; then
         return
@@ -542,6 +613,8 @@ function upgrade_pleroma {
 
     sudo -u pleroma mix deps.get
     pleroma_recompile
+
+    expire_pleroma_posts $PLEROMA_DOMAIN_NAME $PLEROMA_EXPIRE_MONTHS
 }
 
 function backup_local_pleroma {
