@@ -43,6 +43,7 @@ MUMBLE_DATABASE="mumble-server.sqlite"
 MUMBLE_CONFIG_FILE="mumble-server.ini"
 
 mumble_variables=(MY_USERNAME
+                  DEFAULT_DOMAIN_NAME
                   MUMBLE_PORT
                   ONION_ONLY
                   ADMIN_USERNAME)
@@ -83,6 +84,21 @@ function reconfigure_mumble {
 function upgrade_mumble {
     if [ -d /etc/letsencrypt ]; then
         usermod -a -G ssl-cert mumble-server
+    fi
+
+    if [ ! -f /etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/fullchain.pem ]; then
+        if ! grep -q "mumble.pem" /etc/mumble-server.ini; then
+            sed -i 's|sslCert=.*|sslCert=/var/lib/mumble-server/mumble.pem|g' /etc/mumble-server.ini
+            sed -i 's|sslKey=.*|sslKey=/var/lib/mumble-server/mumble.key|g' /etc/mumble-server.ini
+            systemctl restart mumble
+        fi
+    else
+        if ! grep -q "${DEFAULT_DOMAIN_NAME}/fullchain.pem" /etc/mumble-server.ini; then
+            usermod -a -G ssl-cert mumble-server
+            sed -i "s|sslCert=.*|sslCert=/etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/fullchain.pem|g" /etc/mumble-server.ini
+            sed -i "s|sslKey=.*|sslKey=/etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/privkey.pem|g" /etc/mumble-server.ini
+            systemctl restart mumble
+        fi
     fi
 }
 
@@ -242,7 +258,7 @@ function install_mumble {
         if [ ! -d /var/www/${DEFAULT_DOMAIN_NAME}/htdocs ]; then
             mkdir /var/www/${DEFAULT_DOMAIN_NAME}/htdocs
         fi
-        if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+        if [ ! -f /etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/fullchain.pem ]; then
             if [ -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt ]; then
                 rm /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.crt
             fi
@@ -265,7 +281,7 @@ function install_mumble {
 
 
     # Make an ssl cert for the server
-    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+    if [ ! -f /etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/fullchain.pem ]; then
         if [ ! -f /etc/ssl/certs/mumble.dhparam ]; then
             ${PROJECT_NAME}-addcert -h mumble --dhkey $DH_KEYLENGTH
             function_check check_certificates
@@ -307,12 +323,12 @@ function install_mumble {
         echo 'allowping=False' >> /etc/mumble-server.ini
     fi
     sed -i 's|allowping=.*|allowping=False|g' /etc/mumble-server.ini
-    if [ ! -f /etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem ]; then
+    if [ ! -f /etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/fullchain.pem ]; then
         sed -i 's|#sslCert=.*|sslCert=/var/lib/mumble-server/mumble.pem|g' /etc/mumble-server.ini
         sed -i 's|#sslKey=.*|sslKey=/var/lib/mumble-server/mumble.key|g' /etc/mumble-server.ini
     else
-        sed -i "s|#sslCert=.*|sslCert=/etc/ssl/certs/${DEFAULT_DOMAIN_NAME}.pem|g" /etc/mumble-server.ini
-        sed -i "s|#sslKey=.*|sslKey=/etc/ssl/private/${DEFAULT_DOMAIN_NAME}.key|g" /etc/mumble-server.ini
+        sed -i "s|#sslCert=.*|sslCert=/etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/fullchain.pem|g" /etc/mumble-server.ini
+        sed -i "s|#sslKey=.*|sslKey=/etc/letsencrypt/live/${DEFAULT_DOMAIN_NAME}/privkey.pem|g" /etc/mumble-server.ini
     fi
     sed -i 's|#certrequired=.*|certrequired=True|g' /etc/mumble-server.ini
     sed -i 's|users=100|users=10|g' /etc/mumble-server.ini

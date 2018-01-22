@@ -228,14 +228,21 @@ function backup_local_ghost {
         GHOST_DOMAIN_NAME=$(get_completion_param "ghost domain")
     fi
 
+    suspend_site ${GHOST_DOMAIN_NAME}
+    systemctl stop ghost
+
     ghost_path=/var/www/${GHOST_DOMAIN_NAME}/htdocs/content
     if [ -d $ghost_path ]; then
-        suspend_site ${GHOST_DOMAIN_NAME}
-        systemctl stop ghost
         backup_directory_to_usb $ghost_path ghostcontent
-        systemctl start ghost
-        restart_site
     fi
+
+    ghost_path=/var/www/${GHOST_DOMAIN_NAME}/htdocs/current/content
+    if [ -d $ghost_path ]; then
+        backup_directory_to_usb $ghost_path ghostcurrent
+    fi
+
+    systemctl start ghost
+    restart_site
 }
 
 function restore_local_ghost {
@@ -254,9 +261,28 @@ function restore_local_ghost {
             if [ -d $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/content ]; then
                 cp -r $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/content/* /var/www/$GHOST_DOMAIN_NAME/htdocs/content/
             else
+                if [ ! -d /var/www/$GHOST_DOMAIN_NAME/htdocs/content ]; then
+                    mkdir /var/www/$GHOST_DOMAIN_NAME/htdocs/content
+                fi
                 cp -r $temp_restore_dir/* /var/www/$GHOST_DOMAIN_NAME/htdocs/content/
             fi
             chown -R ghost:ghost /var/www/$GHOST_DOMAIN_NAME/htdocs/content
+            rm -rf $temp_restore_dir
+        fi
+
+        temp_restore_dir=/root/tempghostcurrent
+        function_check restore_directory_from_usb
+        restore_directory_from_usb $temp_restore_dir ghostcurrent
+        if [ -d $temp_restore_dir ]; then
+            if [ -d $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/current/content ]; then
+                cp -r $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/current/content/* /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content/
+            else
+                if [ ! -d /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content ]; then
+                    mkdir -p /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content
+                fi
+                cp -r $temp_restore_dir/* /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content/
+            fi
+            chown -R ghost:ghost /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content
             rm -rf $temp_restore_dir
         fi
 
@@ -271,15 +297,27 @@ function backup_remote_ghost {
         GHOST_DOMAIN_NAME=$(get_completion_param "ghost domain")
     fi
 
+    suspend_site ${GHOST_DOMAIN_NAME}
+
     temp_backup_dir=/var/www/${GHOST_DOMAIN_NAME}/htdocs/content
     if [ -d $temp_backup_dir ]; then
-        suspend_site ${GHOST_DOMAIN_NAME}
         backup_directory_to_friend $temp_backup_dir ghostcontent
-        restart_site
     else
+        restart_site
         echo $"Ghost domain specified but not found in /var/www/${GHOST_DOMAIN_NAME}"
         exit 2578
     fi
+
+    temp_backup_dir=/var/www/${GHOST_DOMAIN_NAME}/htdocs/current/content
+    if [ -d $temp_backup_dir ]; then
+        backup_directory_to_friend $temp_backup_dir ghostcurrent
+    else
+        restart_site
+        echo $"Ghost domain specified but not found in $temp_backup_dir"
+        exit 78353
+    fi
+
+    restart_site
 }
 
 function restore_remote_ghost {
@@ -298,7 +336,26 @@ function restore_remote_ghost {
         if [ -d $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/content ]; then
             cp -r $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/content/* /var/www/$GHOST_DOMAIN_NAME/htdocs/content/
         else
+            if [ ! -d /var/www/$GHOST_DOMAIN_NAME/htdocs/content ]; then
+                mkdir /var/www/$GHOST_DOMAIN_NAME/htdocs/content
+            fi
             cp -r $temp_restore_dir/* /var/www/$GHOST_DOMAIN_NAME/htdocs/content/
+        fi
+        chown -R ghost: /var/www/$GHOST_DOMAIN_NAME/htdocs
+        rm -rf $temp_restore_dir
+    fi
+
+    temp_restore_dir=/root/tempghostcurrent
+    function_check restore_directory_from_friend
+    restore_directory_from_friend $temp_restore_dir ghostcurrent
+    if [ -d $temp_restore_dir ]; then
+        if [ -d $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/current/content ]; then
+            cp -r $temp_restore_dir/var/www/$GHOST_DOMAIN_NAME/htdocs/current/content/* /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content/
+        else
+            if [ ! -d /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content ]; then
+                mkdir -p /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content
+            fi
+            cp -r $temp_restore_dir/* /var/www/$GHOST_DOMAIN_NAME/htdocs/current/content/
         fi
         chown -R ghost: /var/www/$GHOST_DOMAIN_NAME/htdocs
         rm -rf $temp_restore_dir
