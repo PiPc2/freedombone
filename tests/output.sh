@@ -254,7 +254,7 @@ an administrator.\n\n######################\n\n' >> $LOG
               fi
               ;;
     V-51391)  if [ "$3" = "en" ]; then
-                  log_msg $2 'A file integrity baseline must be created.'
+                  log_msg $2 'A file integrity baseline must be created. Reset the tripwire from the administrator control panel.'
               else
                   log_msg $2 '必须创建文件完整性基线。'
               fi
