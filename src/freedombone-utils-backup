@@ -279,14 +279,6 @@ function backup_database_local_usb {
     echo $"Database dump was created for ${1}"
 }
 
-function set_obnam_client_name {
-    # obnam can backup multiple machines with different domain names to
-    # a repository. To be able to restore directories from different
-    # machines we need to enforce a single client name for all backups
-    echo '[config]' > /etc/obnam.conf
-    echo "client-name = ${PROJECT_NAME}" >> /etc/obnam.conf
-}
-
 function backup_directory_to_usb_duplicity {
     create_backups_temp_directory
     echo "$BACKUP_DUMMY_PASSWORD" | duplicity full --gpg-options "$BACKUP_GPG_OPTIONS" --tempdir $BACKUP_TEMP_DIRECTORY --encrypt-key $MY_BACKUP_KEY_ID --full-if-older-than 4W --exclude-other-filesystems ${1} file://$USB_MOUNT/backup/${2}
@@ -320,38 +312,6 @@ function backup_directory_to_usb_duplicity {
     remove_backups_temp_directory
 }
 
-function backup_directory_to_usb_obnam {
-    set_obnam_client_name
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam force-lock -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam backup -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
-    if [[ $ENABLE_BACKUP_VERIFICATION == "yes" ]]; then
-        echo "$BACKUP_DUMMY_PASSWORD" | obnam verify -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID ${1}
-        if [ ! "$?" = "0" ]; then
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
-            if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-                shred -zu ${1}/*
-                rm -rf ${1}
-            fi
-            function_check restart_site
-            restart_site
-            exit 683252
-        fi
-    fi
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam forget --keep=30d -r $USB_MOUNT/backup/${2} --encrypt-with $MY_BACKUP_KEY_ID
-    if [ ! "$?" = "0" ]; then
-        umount $USB_MOUNT
-        rm -rf $USB_MOUNT
-        if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-            shred -zu ${1}/*
-            rm -rf ${1}
-        fi
-        function_check restart_site
-        restart_site
-        exit 7
-    fi
-}
-
 function backup_directory_to_usb {
     if [ ! -d ${1} ]; then
         echo $"WARNING: directory does not exist: ${1}"
@@ -370,18 +330,12 @@ function backup_directory_to_usb {
         fi
 
         backup_directory_to_usb_duplicity ${1} ${2}
-        #backup_directory_to_usb_obnam ${1} ${2}
 
         if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
             shred -zu ${1}/*
             rm -rf ${1}
         fi
     fi
-}
-
-function restore_directory_from_usb_obnam {
-    set_obnam_client_name
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam restore -r $USB_MOUNT/backup/${2} --to ${1}
 }
 
 function restore_directory_from_usb_duplicity {
@@ -409,12 +363,6 @@ function restore_directory_from_usb {
         mkdir ${1}
     fi
     restore_directory_from_usb_duplicity ${1} ${2}
-    #restore_directory_from_usb_obnam ${1} ${2}
-}
-
-function restore_directory_from_friend_obnam {
-    set_obnam_client_name
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam restore -r $SERVER_DIRECTORY/backup/${2} --to ${1}
 }
 
 function restore_directory_from_friend_duplicity {
@@ -426,12 +374,10 @@ function restore_directory_from_friend_duplicity {
 
 function restore_directory_from_friend {
     if [ ! ${1} ]; then
-        echo "obnam restore -r $SERVER_DIRECTORY/backup/${2} --to ${1}"
         echo $'No restore destination given'
         return
     fi
     if [ ! ${2} ]; then
-        echo "obnam restore -r $SERVER_DIRECTORY/backup/${2} --to ${1}"
         echo $'No restore source given'
         return
     fi
@@ -439,7 +385,6 @@ function restore_directory_from_friend {
         mkdir ${1}
     fi
     restore_directory_from_friend_duplicity ${1} ${2}
-    #restore_directory_from_friend_obnam ${1} ${2}
 }
 
 function backup_database_to_usb {
@@ -493,38 +438,6 @@ function backup_directory_to_friend_duplicity {
     remove_backups_temp_directory
 }
 
-function backup_directory_to_friend_obnam {
-    set_obnam_client_name
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam force-lock -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam backup -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-    if [[ $ENABLE_VERIFICATION == "yes" ]]; then
-        echo "$BACKUP_DUMMY_PASSWORD" | obnam verify -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID} ${1}
-        if [ ! "$?" = "0" ]; then
-            if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-                shred -zu /root/temp${2}/*
-                rm -rf /root/temp${2}
-            fi
-            # Send a warning email
-            echo "Unable to verify ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
-            function_check restart_site
-            restart_site
-            exit 953
-        fi
-    fi
-    echo "$BACKUP_DUMMY_PASSWORD" | obnam forget --keep=30d -r $SERVER_DIRECTORY/backup/${2} --encrypt-with ${ADMIN_BACKUP_KEY_ID}
-    if [ ! "$?" = "0" ]; then
-        if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-            shred -zu /root/temp${2}/*
-            rm -rf /root/temp${2}
-        fi
-        # Send a warning email
-        echo "Unable to backup ${2}" | mail -s "${PROJECT_NAME} backup to friends" ${ADMIN_EMAIL_ADDRESS}
-        function_check restart_site
-        restart_site
-        exit 853
-    fi
-}
-
 function backup_directory_to_friend {
     BACKUP_KEY_EXISTS=$(gpg --list-keys "$ADMIN_NAME (backup key)")
     if [ ! "$?" = "0" ]; then
@@ -540,7 +453,6 @@ function backup_directory_to_friend {
     fi
 
     backup_directory_to_friend_duplicity ${1} ${2}
-    #backup_directory_to_friend_obnam ${1} ${2}
 
     if [[ ${1} == "/root/temp"* || ${1} == *"tempbackup" ]]; then
         shred -zu /root/temp${2}/*
