@@ -22,7 +22,7 @@ if [ -d "/lib64" ];then
 fi
 if [ -d "/usr/lib" ];then
 
-    COUNT=$(find -L /usr/lib  \! -user root  -exec ls -l {} \; |wc -l)
+    COUNT=$(find -L /usr/lib -path /usr/lib/prosody -prune -o \! -user root  -exec ls -l {} \; |wc -l)
 
     if [ $COUNT -eq 0 ];then
         :
