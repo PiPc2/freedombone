@@ -487,7 +487,7 @@ time, are stored in the following directories by default:\n\n/lib\n/lib64\n/usr/
               fi
               find -L /lib  \! -user root  -exec ls -l {} \; | grep -v '> /dev/null'
               find -L /lib64  \! -user root  -exec ls -l {} \;
-              find -L /usr/lib  \! -user root  -exec ls -l {} \;
+              find -L /usr/lib -path /usr/lib/prosody -prune -o \! -user root  -exec ls -l {} \;
               if [ -d /usr/lib64 ]; then
                   find -L /usr/lib64  \! -user root  -exec ls -l {} \;
               fi
