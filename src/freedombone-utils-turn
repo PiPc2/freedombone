@@ -48,6 +48,7 @@ function generate_turn_key {
 
 function remove_turn {
     firewall_remove ${TURN_HTTP_PORT}
+    firewall_remove ${TURN_PORT}
     systemctl stop turn
     systemctl disable turn
     if [ -f /etc/systemd/system/turn.service ]; then
@@ -59,6 +60,7 @@ function remove_turn {
     rm -rf /var/lib/turn
     sed -i "/# TURN Server/,/# End of TURN Server/d" /etc/nginx/sites-available/${DEFAULT_DOMAIN_NAME}
     remove_onion_service turn ${TURN_ONION_PORT}
+    rm /etc/avahi/services/turn.service
     systemctl restart nginx
 }
 
@@ -173,10 +175,26 @@ function install_turn {
     systemctl daemon-reload
     systemctl start turn
 
-    firewall_add turn ${TURN_HTTP_PORT}
+    firewall_add turn ${TURN_PORT}
+    firewall_add turn-http ${TURN_HTTP_PORT}
 
     TURN_ONION_HOSTNAME=$(add_onion_service turn ${TURN_PORT} ${TURN_ONION_PORT})
 
+    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /etc/avahi/services/turn.service
+    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /etc/avahi/services/turn.service
+    echo '<service-group>' >> /etc/avahi/services/turn.service
+    echo '  <name replace-wildcards="yes">%h TURN</name>' >> /etc/avahi/services/turn.service
+    echo '  <service>' >> /etc/avahi/services/turn.service
+    echo '    <type>_turn._tcp</type>' >> /etc/avahi/services/turn.service
+    echo "    <port>$TURN_PORT</port>" >> /etc/avahi/services/turn.service
+    echo '  </service>' >> /etc/avahi/services/turn.service
+    echo '  <service>' >> /etc/avahi/services/turn.service
+    echo '    <type>_turn._udp</type>' >> /etc/avahi/services/turn.service
+    echo "    <port>$TURN_PORT</port>" >> /etc/avahi/services/turn.service
+    echo '  </service>' >> /etc/avahi/services/turn.service
+    echo '</service-group>' >> /etc/avahi/services/turn.service
+
+    systemctl restart avahi-daemon
     systemctl restart nginx
 }
 
