@@ -1,0 +1,441 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# Edith: an ultra simple notes application
+#
+# License
+# =======
+#
+# Copyright (C) 2018 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim writer'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+EDITH_REPO="https://github.com/sunny/edith"
+EDITH_COMMIT='59f571e24be9e75d127a0f130591acf8d7a86ce3'
+EDITH_DOMAIN_NAME=
+EDITH_CODE=
+EDITH_ONION_PORT=8278
+EDITH_LOGIN_TEXT=$"Edith login"
+
+edith_variables=(MY_USERNAME
+                 MY_EMAIL_ADDRESS
+                 ONION_ONLY
+                 EDITH_DOMAIN_NAME
+                 EDITH_CODE
+                 DEFAULT_LANGUAGE)
+
+function change_password_edith {
+    curr_username="$1"
+    new_user_password="$2"
+
+    sed -i "/${curr_username}:/d" /etc/nginx/.edithpasswd
+    echo -n "$new_user_password" | htpasswd -i -s -c /etc/nginx/.edithpasswd ${curr_username}
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a ${curr_username} -p "$new_user_password"
+}
+
+function logging_on_edith {
+    echo -n ''
+}
+
+function logging_off_edith {
+    echo -n ''
+}
+
+function reconfigure_edith {
+    echo -n ''
+}
+
+function edith_enable_login {
+    read_config_param EDITH_DOMAIN_NAME
+
+    dialog --title $"Enable Edith login" \
+           --backtitle $"Freedombone Control Panel" \
+           --defaultno \
+           --yesno $"\nDo you want to add a login so that random web users can't access your notes?" 10 60
+    sel=$?
+    case $sel in
+        0) if grep -q '#auth_basic' /etc/nginx/sites-available/$EDITH_DOMAIN_NAME; then
+               sed -i 's|#auth_basic|auth_basic|g' /etc/nginx/sites-available/$EDITH_DOMAIN_NAME
+               systemctl restart nginx
+           fi
+           read_config_param $MY_USERNAME
+           EDITH_PASSWORD=$(${PROJECT_NAME}-pass -u $MY_USERNAME -a edith)
+           dialog --title $"Enable Edith login" \
+                  --msgbox $"Edith logins are now enabled with the password $EDITH_PASSWORD" 6 65
+           EDITH__PASSWORD=
+           ;;
+        1) if ! grep -q '#auth_basic' /etc/nginx/sites-available/$EDITH_DOMAIN_NAME; then
+               sed -i 's|auth_basic|#auth_basic|g' /etc/nginx/sites-available/$EDITH_DOMAIN_NAME
+               systemctl restart nginx
+           fi
+           dialog --title $"Disable Edith login" \
+                  --msgbox $"Edith logins are now disabled. Anyone can access your stream." 6 65
+           ;;
+    esac
+}
+
+function edith_browse {
+    read_config_param EDITH_DOMAIN_NAME
+    cd /var/www/$EDITH_DOMAIN_NAME/htdocs/data
+    editor /var/www/$EDITH_DOMAIN_NAME/htdocs/data
+}
+
+function configure_interactive_edith {
+    while true
+    do
+        data=$(tempfile 2>/dev/null)
+        trap "rm -f $data" 0 1 2 5 15
+        dialog --backtitle $"Freedombone Control Panel" \
+               --title $"Edith" \
+               --radiolist $"Choose an operation:" 10 50 3 \
+               1 $"Enable login" off \
+               2 $"Browse notes" off \
+               3 $"Exit" on 2> $data
+        sel=$?
+        case $sel in
+            1) break;;
+            255) break;;
+        esac
+        case $(cat $data) in
+            1) edith_enable_login;;
+            2) edith_browse;;
+            3) break;;
+        esac
+    done
+}
+
+function upgrade_edith {
+    CURR_EDITH_COMMIT=$(get_completion_param "edith commit")
+    if [[ "$CURR_EDITH_COMMIT" == "$EDITH_COMMIT" ]]; then
+        return
+    fi
+
+    read_config_param EDITH_DOMAIN_NAME
+
+    # update to the next commit
+    function_check set_repo_commit
+    set_repo_commit /var/www/$EDITH_DOMAIN_NAME/htdocs "edith commit" "$EDITH_COMMIT" $EDITH_REPO
+
+    chown -R www-data:www-data /var/www/$EDITH_DOMAIN_NAME/htdocs
+    chmod a+w /var/www/$EDITH_DOMAIN_NAME/htdocs/data
+}
+
+function backup_local_edith {
+    read_config_param EDITH_DOMAIN_NAME
+
+    function_check suspend_site
+    suspend_site ${EDITH_DOMAIN_NAME}
+
+    source_directory=/var/www/${EDITH_DOMAIN_NAME}/htdocs/data
+
+    function_check backup_directory_to_usb
+    dest_directory=edith
+    backup_directory_to_usb $source_directory $dest_directory
+
+    function_check restart_site
+    restart_site
+}
+
+function restore_local_edith {
+    read_config_param EDITH_DOMAIN_NAME
+
+    temp_restore_dir=/root/tempedith
+    edith_dir=/var/www/${EDITH_DOMAIN_NAME}/htdocs/data
+
+    function_check restore_directory_from_usb
+    restore_directory_from_usb $temp_restore_dir edith
+    if [ -d $temp_restore_dir ]; then
+        if [ -d cp $temp_restore_dir$edith_dir ]; then
+            cp -rp $temp_restore_dir$edith_dir $edith_dir/
+        else
+            if [ ! -d $edith_dir ]; then
+                mkdir $edith_dir
+                chmod a+w $edith_dir
+            fi
+            cp -rp $temp_restore_dir/* $edith_dir
+        fi
+        chown -R www-data:www-data $edith_dir
+        rm -rf $temp_restore_dir
+    fi
+}
+
+function backup_remote_edith {
+    read_config_param EDITH_DOMAIN_NAME
+
+    function_check suspend_site
+    suspend_site ${EDITH_DOMAIN_NAME}
+
+    source_directory=/var/www/${EDITH_DOMAIN_NAME}/htdocs/data
+
+    function_check backup_directory_to_friend
+    dest_directory=edith
+    backup_directory_to_friend $source_directory $dest_directory
+
+    function_check restart_site
+    restart_site
+}
+
+function restore_remote_edith {
+    read_config_param EDITH_DOMAIN_NAME
+
+    temp_restore_dir=/root/tempedith
+    edith_dir=/var/www/${EDITH_DOMAIN_NAME}/htdocs/data
+
+    function_check restore_directory_from_friend
+    restore_directory_from_friend $temp_restore_dir edith
+    if [ -d $temp_restore_dir ]; then
+        if [ -d cp $temp_restore_dir$edith_dir ]; then
+            cp -rp $temp_restore_dir$edith_dir $edith_dir/
+        else
+            if [ ! -d $edith_dir ]; then
+                mkdir $edith_dir
+                chmod a+w $edith_dir
+            fi
+            cp -rp $temp_restore_dir/* $edith_dir
+        fi
+        chown -R www-data:www-data $edith_dir
+        rm -rf $temp_restore_dir
+    fi
+}
+
+function remove_edith {
+    nginx_dissite $EDITH_DOMAIN_NAME
+
+    if [ -f /etc/nginx/sites-available/$EDITH_DOMAIN_NAME ]; then
+        rm /etc/nginx/sites-available/$EDITH_DOMAIN_NAME
+    fi
+
+    if [ -d /var/www/$EDITH_DOMAIN_NAME ]; then
+        rm -rf /var/www/$EDITH_DOMAIN_NAME
+    fi
+
+    function_check remove_onion_service
+    remove_onion_service edith ${EDITH_ONION_PORT}
+    sed -i '/edith/d' $COMPLETION_FILE
+
+    if [ -f /etc/nginx/.edithpasswd ]; then
+        rm /etc/nginx/.edithpasswd
+    fi
+
+    function_check remove_nodejs
+    remove_nodejs edith
+
+    remove_certs $EDITH_DOMAIN_NAME
+    remove_app edith
+
+    function_check remove_ddns_domain
+    remove_ddns_domain $EDITH_DOMAIN_NAME
+}
+
+function install_edith {
+    apt-get -yq install php-gettext php-curl php-gd php-mysql git curl
+    apt-get -yq install memcached php-memcached php-intl exiftool libfcgi0ldbl
+
+    function_check install_nodejs
+    install_nodejs edith
+
+    if [ ! ${EDITH_PASSWORD} ]; then
+        if [ -f ${IMAGE_PASSWORD_FILE} ]; then
+            EDITH_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+        else
+            EDITH_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        fi
+    fi
+
+
+    if [ -d /var/www/$EDITH_DOMAIN_NAME/htdocs ]; then
+        rm -rf /var/www/$EDITH_DOMAIN_NAME/htdocs
+    fi
+
+    if [ -d /repos/edith ]; then
+        mkdir /var/www/$EDITH_DOMAIN_NAME/htdocs
+        cp -r -p /repos/edith/. /var/www/$EDITH_DOMAIN_NAME/htdocs
+        cd /var/www/$EDITH_DOMAIN_NAME/htdocs
+        git pull
+    else
+        function_check git_clone
+        git_clone $EDITH_REPO /var/www/$EDITH_DOMAIN_NAME/htdocs
+    fi
+
+    if [ ! -d /var/www/$EDITH_DOMAIN_NAME/htdocs ]; then
+        echo $'Unable to clone edith repo'
+        exit 537593569
+    fi
+
+    cd /var/www/$EDITH_DOMAIN_NAME/htdocs
+    git checkout $EDITH_COMMIT -b $EDITH_COMMIT
+    set_completion_param "edith commit" "$EDITH_COMMIT"
+
+    if [ ! -d /var/www/$EDITH_DOMAIN_NAME/htdocs/data ]; then
+        mkdir -p /var/www/$EDITH_DOMAIN_NAME/htdocs/data
+    fi
+
+    EDITH_ONION_HOSTNAME=$(add_onion_service edith 80 ${EDITH_ONION_PORT})
+
+    edith_nginx_site=/etc/nginx/sites-available/$EDITH_DOMAIN_NAME
+    if [[ $ONION_ONLY == "no" ]]; then
+        function_check nginx_http_redirect
+        nginx_http_redirect $EDITH_DOMAIN_NAME "index index.php"
+        echo 'server {' >> $edith_nginx_site
+        echo '  listen 443 ssl;' >> $edith_nginx_site
+        echo '  listen [::]:443 ssl;' >> $edith_nginx_site
+        echo "  server_name $EDITH_DOMAIN_NAME;" >> $edith_nginx_site
+        echo '' >> $edith_nginx_site
+        function_check nginx_compress
+        nginx_compress $EDITH_DOMAIN_NAME
+        echo '' >> $edith_nginx_site
+        echo '  # Security' >> $edith_nginx_site
+        function_check nginx_ssl
+        nginx_ssl $EDITH_DOMAIN_NAME
+
+        function_check nginx_disable_sniffing
+        nginx_disable_sniffing $EDITH_DOMAIN_NAME
+
+        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $edith_nginx_site
+        echo '' >> $edith_nginx_site
+        echo '  access_log /dev/null;' >> $edith_nginx_site
+        echo '  error_log /dev/null;' >> $edith_nginx_site
+        echo '' >> $edith_nginx_site
+        echo "  root /var/www/$EDITH_DOMAIN_NAME/htdocs;" >> $edith_nginx_site
+        echo '' >> $edith_nginx_site
+        echo '  index index.php;' >> $edith_nginx_site
+        echo '' >> $edith_nginx_site
+        echo '  # PHP' >> $edith_nginx_site
+        echo '  location ~ \.php {' >> $edith_nginx_site
+        echo '    include snippets/fastcgi-php.conf;' >> $edith_nginx_site
+        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $edith_nginx_site
+        echo '    fastcgi_read_timeout 30;' >> $edith_nginx_site
+        echo '  }' >> $edith_nginx_site
+        echo '' >> $edith_nginx_site
+        echo '  # Location' >> $edith_nginx_site
+        echo '  location / {' >> $edith_nginx_site
+        function_check nginx_limits
+        nginx_limits $EDITH_DOMAIN_NAME '15m'
+        echo '    try_files $uri $uri/ /index.php?$args;' >> $edith_nginx_site
+        echo "    auth_basic \"${EDITH_LOGIN_TEXT}\";" >> $edith_nginx_site
+        echo '    auth_basic_user_file /etc/nginx/.edithpasswd;' >> $edith_nginx_site
+        echo '  }' >> $edith_nginx_site
+        echo '}' >> $edith_nginx_site
+    else
+        echo -n '' > $edith_nginx_site
+    fi
+    echo 'server {' >> $edith_nginx_site
+    echo "    listen 127.0.0.1:$EDITH_ONION_PORT default_server;" >> $edith_nginx_site
+    echo "    server_name $EDITH_ONION_HOSTNAME;" >> $edith_nginx_site
+    echo '' >> $edith_nginx_site
+    function_check nginx_compress
+    nginx_compress $EDITH_DOMAIN_NAME
+    echo '' >> $edith_nginx_site
+    function_check nginx_disable_sniffing
+    nginx_disable_sniffing $EDITH_DOMAIN_NAME
+    echo '' >> $edith_nginx_site
+    echo '  access_log /dev/null;' >> $edith_nginx_site
+    echo '  error_log /dev/null;' >> $edith_nginx_site
+    echo '' >> $edith_nginx_site
+    echo "  root /var/www/$EDITH_DOMAIN_NAME/htdocs;" >> $edith_nginx_site
+    echo '' >> $edith_nginx_site
+    echo '  index index.php;' >> $edith_nginx_site
+    echo '' >> $edith_nginx_site
+    echo '  # PHP' >> $edith_nginx_site
+    echo '  location ~ \.php {' >> $edith_nginx_site
+    echo '    include snippets/fastcgi-php.conf;' >> $edith_nginx_site
+    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $edith_nginx_site
+    echo '    fastcgi_read_timeout 30;' >> $edith_nginx_site
+    echo '  }' >> $edith_nginx_site
+    echo '' >> $edith_nginx_site
+    echo '  # Location' >> $edith_nginx_site
+    echo '  location / {' >> $edith_nginx_site
+    function_check nginx_limits
+    nginx_limits $EDITH_DOMAIN_NAME '15m'
+    echo '    try_files $uri $uri/ /index.php?$args;' >> $edith_nginx_site
+    echo "    auth_basic \"${EDITH_LOGIN_TEXT}\";" >> $edith_nginx_site
+    echo '    auth_basic_user_file /etc/nginx/.edithpasswd;' >> $edith_nginx_site
+    echo '  }' >> $edith_nginx_site
+    echo '}' >> $edith_nginx_site
+
+    function_check configure_php
+    configure_php
+
+    function_check create_site_certificate
+    create_site_certificate $EDITH_DOMAIN_NAME 'yes'
+
+    # create a password for users
+    if [ ! -f /etc/nginx/.edithpasswd ]; then
+        touch /etc/nginx/.edithpasswd
+    fi
+    if grep -q "$MY_USERNAME:" /etc/nginx/.edithpasswd; then
+        sed -i "/$MY_USERNAME:/d" /etc/nginx/.edithpasswd
+    fi
+    echo -n "$EDITH_PASSWORD" | htpasswd -i -s -c /etc/nginx/.edithpasswd $MY_USERNAME
+    if [ ! -f /etc/nginx/.edithpasswd ]; then
+        echo $'/etc/nginx/.edithpasswd not found'
+        exit 6537683563
+    fi
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a edith -p "$EDITH_PASSWORD"
+
+    cp /var/www/$EDITH_DOMAIN_NAME/htdocs/htaccess.example /var/www/$EDITH_DOMAIN_NAME/htdocs/.htaccess
+    cd /var/www/$EDITH_DOMAIN_NAME/htdocs
+    npm install -g coffeescript uglify-js
+    cake build
+    if [ ! "$?" = "0" ]; then
+        echo $'Unable to build Edith'
+        exit 7396483635
+    fi
+    cp config.example.php config.php
+    if [[ $ONION_ONLY == "no" ]]; then
+        sed -i "s|define('EDITH_URI'.*|define('EDITH_URI', 'https://$EDITH_DOMAIN_NAME');|g" config.php
+    else
+        sed -i "s|define('EDITH_URI'.*|define('EDITH_URI', 'http://$EDITH_ONION_HOSTNAME');|g" config.php
+    fi
+
+    set_completion_param "edith domain" "$EDITH_DOMAIN_NAME"
+    set_completion_param "edith onion domain" "$EDITH_ONION_HOSTNAME"
+    chown -R www-data:www-data /var/www/$EDITH_DOMAIN_NAME/htdocs
+    chmod a+w /var/www/$EDITH_DOMAIN_NAME/htdocs/data
+    nginx_ensite $EDITH_DAEMON_NAME
+    systemctl restart nginx
+
+    APP_INSTALLED=1
+}
+
+function install_interactive_edith {
+    if [ ! $ONION_ONLY ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ $ONION_ONLY != "no" ]]; then
+        GHOST_DOMAIN_NAME='edith.local'
+        write_config_param "EDITH_DOMAIN_NAME" "$EDITH_DOMAIN_NAME"
+    else
+        function_check interactive_site_details
+        interactive_site_details "edith" "EDITH_DOMAIN_NAME" "EDITH_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately no exit 0
