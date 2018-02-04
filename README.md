@@ -17,6 +17,8 @@ After installation it's possible that you might want some advice on how to run y
  * [Apps available on the system](https://freedombone.net/apps.html)
  * [General usage](https://freedombone.net/usage.html)
  * [Frequently Asked Questions](https://freedombone.net/faq.html)
+ * [Advice on setting up on a mobile phone](https://freedombone.net/mobile.html)
+ * [I like this project. How can I help to support it?](https://freedombone.net/support.html)
 
 If you find bugs, or want to add a new app to this system see the [Developers Guide](https://freedombone.net/devguide.html).
 
