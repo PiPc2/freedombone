@@ -47,6 +47,33 @@ edith_variables=(MY_USERNAME
                  EDITH_CODE
                  DEFAULT_LANGUAGE)
 
+function remove_bad_links_edith {
+    read_config_param EDITH_DOMAIN_NAME
+
+    edith_dir=/var/www/$EDITH_DOMAIN_NAME/htdocs
+
+    # copy jquery locally
+    jquery_version='1.12.4'
+    if [ ! -f $edith_dir/jquery-${jquery_version}.js ]; then
+        cd $edith_dir
+        wget https://code.jquery.com/jquery-${jquery_version}.js
+        if [ -f $edith_dir/jquery-${jquery_version}.js ]; then
+            jquery_hash=$(sha256sum $edith_dir/jquery-${jquery_version}.js | awk -F ' ' '{print $1}')
+            if [[ "$jquery_hash" != '430f36f9b5f21aae8cc9dca6a81c4d3d84da5175eaedcf2fdc2c226302cb3575' ]]; then
+                echo $'Unexpected jquery hash value'
+                exit 6783653856
+            fi
+        else
+            echo $"Unable to download https://code.jquery.com/jquery-${jquery_version}.js"
+            exit 7384673583
+        fi
+    fi
+
+    sed -i "s|//ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js|jquery-${jquery_version}.js|g" $edith_dir/templates/default.php
+    sed -i '/googleapi/d' $edith_dir/templates/remark.php
+    sed -i "s|//ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js|jquery-${jquery_version}.js|g" $edith_dir/templates/html.php
+}
+
 function change_password_edith {
     curr_username="$1"
     new_user_password="$2"
@@ -140,6 +167,7 @@ function upgrade_edith {
     function_check set_repo_commit
     set_repo_commit /var/www/$EDITH_DOMAIN_NAME/htdocs "edith commit" "$EDITH_COMMIT" $EDITH_REPO
 
+    remove_bad_links_edith
     chown -R www-data:www-data /var/www/$EDITH_DOMAIN_NAME/htdocs
     chmod a+w /var/www/$EDITH_DOMAIN_NAME/htdocs/data
 }
@@ -414,6 +442,9 @@ function install_edith {
 
     set_completion_param "edith domain" "$EDITH_DOMAIN_NAME"
     set_completion_param "edith onion domain" "$EDITH_ONION_HOSTNAME"
+
+    remove_bad_links_edith
+
     chown -R www-data:www-data /var/www/$EDITH_DOMAIN_NAME/htdocs
     chmod a+w /var/www/$EDITH_DOMAIN_NAME/htdocs/data
     nginx_ensite $EDITH_DAEMON_NAME
