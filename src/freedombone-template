@@ -38,6 +38,7 @@ app_repo="TODO"
 app_repo_commit='TODO'
 app_php=
 app_node=
+app_onion_only=
 app_port=''
 your_name=''
 your_email=''
@@ -59,6 +60,7 @@ function show_help {
     echo $'  -c --commit [hash]                   Git commit'
     echo $'     --port [number]                   Port number for the app'
     echo $'     --node [yes|no]                   Is this a nodejs app?'
+    echo $'  -o --onion [yes|no]                  Is this app only available on an onion address?'
     echo $'  -p --php [yes|no]                    Is this a PHP app?'
     echo $'  -d --database [mariadb|postgresql]   Type of database'
     echo ''
@@ -107,6 +109,12 @@ do
         --node|--nodejs)
             shift
             app_node="$1"
+            ;;
+        -o|--onion)
+            shift
+            if [[ "$1" == 'yes' ]]; then
+                app_onion_only=1
+            fi
             ;;
         --port)
             shift
@@ -191,6 +199,9 @@ echo "VARIANTS='full full-vim'"
 echo ''
 echo 'IN_DEFAULT_INSTALL=0'
 echo "SHOW_ON_ABOUT=${SHOW_ON_ABOUT}"
+if [ $app_onion_only ]; then
+    echo 'SHOW_ICANN_ADDRESS_ON_ABOUT=0'
+fi
 echo ''
 echo "${app_name_upper}_DOMAIN_NAME="
 echo "${app_name_upper}_CODE="
@@ -227,16 +238,20 @@ echo "    echo '0'"
 echo '}'
 echo ''
 echo "function install_interactive_${app_name} {"
-echo '    if [ ! $ONION_ONLY ]; then'
-echo "        ONION_ONLY='no'"
-echo '    fi'
-echo ''
-echo '    if [[ $ONION_ONLY != "no" ]]; then'
-echo "        ${app_name_upper}_DOMAIN_NAME='${app_name}.local'"
-echo "        write_config_param \"${app_name_upper}_DOMAIN_NAME\" \"\$${app_name_upper}_DOMAIN_NAME\""
-echo '    else'
-echo "        interactive_site_details \"${app_name}\" \"${app_name_upper}_DOMAIN_NAME\" \"${app_name}_CODE\""
-echo '    fi'
+if [ ! $app_onion_only ]; then
+    echo '    if [ ! $ONION_ONLY ]; then'
+    echo "        ONION_ONLY='no'"
+    echo '    fi'
+    echo ''
+    echo '    if [[ $ONION_ONLY != "no" ]]; then'
+    echo "        ${app_name_upper}_DOMAIN_NAME='${app_name}.local'"
+    echo "        write_config_param \"${app_name_upper}_DOMAIN_NAME\" \"\$${app_name_upper}_DOMAIN_NAME\""
+    echo '    else'
+    echo "        interactive_site_details \"${app_name}\" \"${app_name_upper}_DOMAIN_NAME\" \"${app_name}_CODE\""
+    echo '    fi'
+else
+    echo "    echo -n ''"
+fi
 echo '    APP_INSTALLED=1'
 echo '}'
 echo ''
@@ -541,7 +556,7 @@ echo ''
 echo "    chmod g+w /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
 echo "    chown -R www-data:www-data /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
 
-if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
+if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" || "$database_type" == "postgres"*  ]]; then
     echo ''
     echo "    ${app_name}_create_database"
 fi
@@ -551,53 +566,58 @@ echo ''
 echo "    ${app_name_upper}_ONION_HOSTNAME=\$(add_onion_service ${app_name} 80 \${${app_name_upper}_ONION_PORT})"
 echo ''
 echo "    ${app_name}_nginx_site=/etc/nginx/sites-available/\$${app_name_upper}_DOMAIN_NAME"
-echo '    if [[ $ONION_ONLY == "no" ]]; then'
-if [[ "$app_php" == 'yes' ]]; then
-    echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.php\""
-else
-    echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.html\""
-fi
-echo "        echo 'server {' >> \$${app_name}_nginx_site"
-echo "        echo '  listen 443 ssl;' >> \$${app_name}_nginx_site"
-echo "        echo '  listen [::]:443 ssl;' >> \$${app_name}_nginx_site"
-echo "        echo \"  server_name \$${app_name_upper}_DOMAIN_NAME;\" >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        nginx_compress \$${app_name_upper}_DOMAIN_NAME"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        echo '  # Security' >> \$${app_name}_nginx_site"
-echo "        nginx_ssl \$${app_name_upper}_DOMAIN_NAME"
-echo ''
-echo "        nginx_disable_sniffing \$${app_name_upper}_DOMAIN_NAME"
-echo ''
-echo "        echo '  add_header Strict-Transport-Security max-age=15768000;' >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        echo '  # Logs' >> \$${app_name}_nginx_site"
-echo "        echo '  access_log /dev/null;' >> \$${app_name}_nginx_site"
-echo "        echo '  error_log /dev/null;' >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        echo '  # Root' >> \$${app_name}_nginx_site"
-echo "        echo \"  root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\" >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-if [[ "$app_php" == 'yes' ]]; then
-    echo "        echo '  index index.php;' >> \$${app_name}_nginx_site"
-    echo "        echo '  location ~ \.php {' >> \$${app_name}_nginx_site"
-    echo "        echo '    include snippets/fastcgi-php.conf;' >> \$${app_name}_nginx_site"
-    echo "        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> \$${app_name}_nginx_site"
-    echo "        echo '    fastcgi_read_timeout 30;' >> \$${app_name}_nginx_site"
-    echo "        echo '  }' >> \$${app_name}_nginx_site"
+
+if [ $app_onion_only ]; then
+    echo '    if [[ $ONION_ONLY == "no" ]]; then'
+    if [[ "$app_php" == 'yes' ]]; then
+        echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.php\""
+    else
+        echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.html\""
+    fi
+    echo "        echo 'server {' >> \$${app_name}_nginx_site"
+    echo "        echo '  listen 443 ssl;' >> \$${app_name}_nginx_site"
+    echo "        echo '  listen [::]:443 ssl;' >> \$${app_name}_nginx_site"
+    echo "        echo \"  server_name \$${app_name_upper}_DOMAIN_NAME;\" >> \$${app_name}_nginx_site"
     echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        nginx_compress \$${app_name_upper}_DOMAIN_NAME"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        echo '  # Security' >> \$${app_name}_nginx_site"
+    echo "        nginx_ssl \$${app_name_upper}_DOMAIN_NAME"
+    echo ''
+    echo "        nginx_disable_sniffing \$${app_name_upper}_DOMAIN_NAME"
+    echo ''
+    echo "        echo '  add_header Strict-Transport-Security max-age=15768000;' >> \$${app_name}_nginx_site"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        echo '  # Logs' >> \$${app_name}_nginx_site"
+    echo "        echo '  access_log /dev/null;' >> \$${app_name}_nginx_site"
+    echo "        echo '  error_log /dev/null;' >> \$${app_name}_nginx_site"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        echo '  # Root' >> \$${app_name}_nginx_site"
+    echo "        echo \"  root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\" >> \$${app_name}_nginx_site"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    if [[ "$app_php" == 'yes' ]]; then
+        echo "        echo '  index index.php;' >> \$${app_name}_nginx_site"
+        echo "        echo '  location ~ \.php {' >> \$${app_name}_nginx_site"
+        echo "        echo '    include snippets/fastcgi-php.conf;' >> \$${app_name}_nginx_site"
+        echo "        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> \$${app_name}_nginx_site"
+        echo "        echo '    fastcgi_read_timeout 30;' >> \$${app_name}_nginx_site"
+        echo "        echo '  }' >> \$${app_name}_nginx_site"
+        echo "        echo '' >> \$${app_name}_nginx_site"
+    else
+        echo "        echo '  index index.html;' >> \$${app_name}_nginx_site"
+    fi
+    echo "        echo '  # Location' >> \$${app_name}_nginx_site"
+    echo "        echo '  location / {' >> \$${app_name}_nginx_site"
+    echo "        nginx_limits \$${app_name_upper}_DOMAIN_NAME '15m'"
+    echo "        echo '    try_files \$uri \$uri/ @${app_name};' >> \$${app_name}_nginx_site"
+    echo "        echo '  }' >> \$${app_name}_nginx_site"
+    echo "        echo '}' >> \$${app_name}_nginx_site"
+    echo '    else'
+    echo "        echo -n '' > \$${app_name}_nginx_site"
+    echo '    fi'
 else
-    echo "        echo '  index index.html;' >> \$${app_name}_nginx_site"
+    echo "    echo -n '' > \$${app_name}_nginx_site"
 fi
-echo "        echo '  # Location' >> \$${app_name}_nginx_site"
-echo "        echo '  location / {' >> \$${app_name}_nginx_site"
-echo "        nginx_limits \$${app_name_upper}_DOMAIN_NAME '15m'"
-echo "        echo '    try_files \$uri \$uri/ @${app_name};' >> \$${app_name}_nginx_site"
-echo "        echo '  }' >> \$${app_name}_nginx_site"
-echo "        echo '}' >> \$${app_name}_nginx_site"
-echo '    else'
-echo "        echo -n '' > \$${app_name}_nginx_site"
-echo '    fi'
 echo "    echo 'server {' >> \$${app_name}_nginx_site"
 echo "    echo \"    listen 127.0.0.1:\$${app_name_upper}_ONION_PORT default_server;\" >> \$${app_name}_nginx_site"
 echo "    echo \"    server_name \$${app_name_upper}_ONION_HOSTNAME;\" >> \$${app_name}_nginx_site"
