@@ -141,8 +141,45 @@ function expire_pleroma_posts {
     pleroma_expire_script=/etc/cron.daily/pleroma-expire
     echo '#!/bin/bash' > $pleroma_expire_script
     echo 'cd /etc/postgresql' >> $pleroma_expire_script
+    echo 'if [ -d /etc/pleroma/tempfiles ]; then' >> $pleroma_expire_script
+    echo '    rm -rf /etc/pleroma/tempfiles' >> $pleroma_expire_script
+    echo 'fi' >> $pleroma_expire_script
+    echo '' >> $pleroma_expire_script
+    echo '# make directory to temporarily store local avatars' >> $pleroma_expire_script
+    echo 'mkdir /etc/pleroma/tempfiles' >> $pleroma_expire_script
+    echo '' >> $pleroma_expire_script
+    echo '# get the local avatar files' >> $pleroma_expire_script
+    echo "avatars=\$(sudo -u postgres psql -d pleroma -c \"select avatar->>'url' from users where avatar->>'url' like '%${domain_name}%'\")" >> $pleroma_expire_script
+    echo '' >> $pleroma_expire_script
+    echo '# copy the avatar files to a temporary directory' >> $pleroma_expire_script
+    echo 'arr=( $avatars )' >> $pleroma_expire_script
+    echo 'for i in "${arr[@]}"; do' >> $pleroma_expire_script
+    echo '    if [[ "$i" == *'/media/'* ]]; then' >> $pleroma_expire_script
+    echo "        imagefile=/etc/pleroma/uploads/\$(echo \$i | sed 's|\"||g' | sed 's|,||g' | awk -F '/media/' '{print \$2}');" >> $pleroma_expire_script
+    echo '        if [ -f $imagefile ]; then' >> $pleroma_expire_script
+    echo "            imagedir=/etc/pleroma/uploads/\$(echo \$i | sed 's|\"||g' | sed 's|,||g' | awk -F '/media/' '{print \$2}' | awk -F '/' '{print \$1}')" >> $pleroma_expire_script
+    echo '            nowdate=$(date +%s)' >> $pleroma_expire_script
+    echo '            sinceepoch=$(date +%s -r $imagefile)' >> $pleroma_expire_script
+    echo '            daysold=$((($nowdate - $sinceepoch) / 86400))' >> $pleroma_expire_script
+    echo "            if [ \$daysold -ge ${expire_days_files} ]; then" >> $pleroma_expire_script
+    echo '                if [ ! -d /etc/pleroma/tempfiles/$imagedir ]; then' >> $pleroma_expire_script
+    echo '                    mkdir /etc/pleroma/tempfiles/$imagedir' >> $pleroma_expire_script
+    echo '                fi' >> $pleroma_expire_script
+    echo '                cp -rp $imagefile /etc/pleroma/tempfiles/$imagedir' >> $pleroma_expire_script
+    echo '            fi' >> $pleroma_expire_script
+    echo '        fi' >> $pleroma_expire_script
+    echo '    fi' >> $pleroma_expire_script
+    echo 'done' >> $pleroma_expire_script
+    echo '' >> $pleroma_expire_script
+    echo '# delete old files' >> $pleroma_expire_script
     echo "find /etc/pleroma/uploads/* -mtime +${expire_days_files} -exec rm -rf {} +" >> $pleroma_expire_script
-    echo "$pleroma_expire_posts_script 2> /dev/null" >> $pleroma_expire_script
+    echo '' >> $pleroma_expire_script
+    echo '# copy avatar files back to uploads' >> $pleroma_expire_script
+    echo 'chown -R pleroma:pleroma /etc/pleroma/tempfiles' >> $pleroma_expire_script
+    echo 'cp -rp /etc/pleroma/tempfiles/* /etc/pleroma/uploads' >> $pleroma_expire_script
+    echo 'rm -rf /etc/pleroma/tempfiles' >> $pleroma_expire_script
+    echo '' >> $pleroma_expire_script
+    echo '/usr/bin/pleroma-expire-posts 2> /dev/null' >> $pleroma_expire_script
     chmod +x $pleroma_expire_script
 
     # remove any old cron job
