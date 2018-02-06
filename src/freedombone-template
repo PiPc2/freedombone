@@ -40,6 +40,7 @@ app_php=
 app_node=
 app_onion_only=
 app_port=''
+app_daemon=
 your_name=''
 your_email=''
 SHOW_ON_ABOUT=1
@@ -62,6 +63,7 @@ function show_help {
     echo $'     --node [yes|no]                   Is this a nodejs app?'
     echo $'  -o --onion [yes|no]                  Is this app only available on an onion address?'
     echo $'  -p --php [yes|no]                    Is this a PHP app?'
+    echo $'  -s --daemon [yes|no]                 Add a daemon'
     echo $'  -d --database [mariadb|postgresql]   Type of database'
     echo ''
     exit 0
@@ -109,6 +111,12 @@ do
         --node|--nodejs)
             shift
             app_node="$1"
+            ;;
+        -s|--daemon|--systemd)
+            shift
+            if [[ "$1" == 'yes' ]]; then
+                app_daemon=1
+            fi
             ;;
         -o|--onion)
             shift
@@ -484,11 +492,14 @@ fi
 echo "    nginx_dissite \$${app_name_upper}_DOMAIN_NAME"
 echo "    remove_certs \$${app_name_upper}_DOMAIN_NAME"
 echo ''
-echo "    if [ -f /etc/systemd/system/${app_name}.service ]; then"
-echo "        systemctl stop ${app_name}"
-echo "        systemctl disable ${app_name}"
-echo "        rm /etc/systemd/system/${app_name}.service"
-echo '    fi'
+if [ $app_daemon ]; then
+    echo "    if [ -f /etc/systemd/system/${app_name}.service ]; then"
+    echo "        systemctl stop ${app_name}"
+    echo "        systemctl disable ${app_name}"
+    echo "        rm /etc/systemd/system/${app_name}.service"
+    echo '    fi'
+    echo "    userdel -r ${app_name}"
+fi
 echo ''
 echo "    if [ -d /var/www/\$${app_name_upper}_DOMAIN_NAME ]; then"
 echo "        rm -rf /var/www/\$${app_name_upper}_DOMAIN_NAME"
@@ -659,6 +670,29 @@ echo "    echo '}' >> \$${app_name}_nginx_site"
 if [[ "$app_php" == 'yes' ]]; then
     echo ''
     echo '    configure_php'
+fi
+if [ $app_daemon ]; then
+    echo ''
+    echo "    useradd -d TODO_PATH_TO_INSTALL -s /bin/false ${app_name}"
+    echo ''
+    echo "    echo '[Unit]' > /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Description=${app_name}' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'After=syslog.target' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'After=network.target' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '[Service]' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Type=simple' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'User=${app_name}' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Group=${app_name}' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'WorkingDirectory=TODO' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'ExecStart=TODO' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Restart=always' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Environment=\"USER=${app_name}\"' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '[Install]' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/${app_name}.service"
+    echo "    systemctl enable ${app_name}"
+    echo "    systemctl start ${app_name}"
 fi
 echo ''
 echo "    create_site_certificate \$${app_name_upper}_DOMAIN_NAME 'yes'"
