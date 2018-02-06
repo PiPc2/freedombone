@@ -144,10 +144,18 @@ function gpg_set_permissions {
     if [[ "$key_username" != 'root' ]]; then
         chmod 700 /home/$key_username/.gnupg
         chmod -R 600 /home/$key_username/.gnupg/*
+        printf '%%Assuan%%\nsocket=/dev/shm/S.dirmngr\n' > /home/$key_username/.gnupg/S.dirmngr
+        if [ -d /home/$key_username/.gnupg/crls.d ]; then
+            chmod +x /home/$key_username/.gnupg/crls.d
+        fi
         chown -R $key_username:$key_username /home/$key_username/.gnupg
     else
         chmod 700 /root/.gnupg
         chmod -R 600 /root/.gnupg/*
+        printf '%%Assuan%%\nsocket=/dev/shm/S.dirmngr\n' > /root/.gnupg/S.dirmngr
+        if [ -d /root/.gnupg/crls.d ]; then
+            chmod +x /root/.gnupg/crls.d
+        fi
         chown -R $key_username:$key_username /root/.gnupg
     fi
 }
@@ -252,7 +260,38 @@ function gpg_agent_setup {
         if ! grep -q 'allow-loopback-pinentry' /home/$gpg_username/.gnupg/gpg-agent.conf; then
             echo 'allow-loopback-pinentry' >> /home/$gpg_username/.gnupg/gpg-agent.conf
         fi
-        su -c "echo RELOADAGENT | gpg-connect-agent" - $gpg_username
+        if [[ "$gpg_username" != "$USER" ]]; then
+            su -c "echo RELOADAGENT | gpg-connect-agent" - $gpg_username
+        else
+            echo RELOADAGENT | gpg-connect-agent
+        fi
+    fi
+}
+
+function gpg_agent_enable {
+    gpg_username=$1
+
+    if [[ $gpg_username == 'root' ]]; then
+        return
+    else
+        if grep -q 'GPG_TTY' /home/$gpg_username/.bashrc; then
+            sed -i '/GPG_TTY/d' /home/$gpg_username/.bashrc
+            chown $gpg_username:$gpg_username /home/$gpg_username/.bashrc
+        fi
+        if grep -q 'use-agent' /home/$gpg_username/.gnupg/gpg.conf; then
+           sed -i '/use-agent/d' /home/$gpg_username/.gnupg/gpg.conf
+        fi
+        if grep -q 'pinentry-mode loopback' /home/$gpg_username/.gnupg/gpg.conf; then
+            sed -i '/pinentry-mode loopback/d' /home/$gpg_username/.gnupg/gpg.conf
+        fi
+        if [ -f /home/$gpg_username/.gnupg/gpg-agent.conf ]; then
+            rm /home/$gpg_username/.gnupg/gpg-agent.conf
+        fi
+        if [[ "$gpg_username" != "$USER" ]]; then
+            su -c "echo RELOADAGENT | gpg-connect-agent" - $gpg_username
+        else
+            echo RELOADAGENT | gpg-connect-agent
+        fi
     fi
 }
 
