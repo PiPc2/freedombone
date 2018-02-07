@@ -31,13 +31,19 @@
 PROJECT_NAME='freedombone'
 
 app_name='noapp'
-app_name_lower="$(tr '[:upper:]' '[:lower:]' <<< ${app_name:0:1})${app_name:1}"
+app_name_lower=$(echo ${app_name} | tr '[:upper:]' '[:lower:]')
 app_name=$app_name_lower
-app_name_upper="$(tr '[:lower:]' '[:upper:]' <<< ${app_name:0:1})${app_name:1}"
+app_name_upper=$(echo ${app_name} | tr '[:lower:]' '[:upper:]')
+echo "test: $app_name_upper"
 app_repo="TODO"
 app_repo_commit='TODO'
 app_php=
 app_node=
+app_onion_only=
+app_port=
+app_port_internal=
+app_daemon=
+app_dir=
 your_name=''
 your_email=''
 SHOW_ON_ABOUT=1
@@ -56,9 +62,14 @@ function show_help {
     echo $'  -e --email [address]                 Your email address'
     echo $'  -r --repo [url]                      Git repo url for the app'
     echo $'  -c --commit [hash]                   Git commit'
+    echo $'     --port [number]                   Port number for the app'
+    echo $'     --portinternal [number]           Internal port between a daemon and the web server'
     echo $'     --node [yes|no]                   Is this a nodejs app?'
+    echo $'  -o --onion [yes|no]                  Is this app only available on an onion address?'
     echo $'  -p --php [yes|no]                    Is this a PHP app?'
+    echo $'  -s --daemon [yes|no]                 Add a daemon'
     echo $'  -d --database [mariadb|postgresql]   Type of database'
+    echo $'     --dir [directory]                 Where to install to'
     echo ''
     exit 0
 }
@@ -74,9 +85,9 @@ do
         -a|--app|--appname)
             shift
             app_name="$1"
-            app_name_lower="$(tr '[:upper:]' '[:lower:]' <<< ${app_name:0:1})${app_name:1}"
+            app_name_lower=$(echo ${app_name} | tr '[:upper:]' '[:lower:]')
             app_name=$app_name_lower
-            app_name_upper="$(tr '[:lower:]' '[:upper:]' <<< ${app_name:0:1})${app_name:1}"
+            app_name_upper=$(echo ${app_name} | tr '[:lower:]' '[:upper:]')
             ;;
         -r|--repo)
             shift
@@ -105,6 +116,30 @@ do
         --node|--nodejs)
             shift
             app_node="$1"
+            ;;
+        -s|--daemon|--systemd)
+            shift
+            if [[ "$1" == 'yes' ]]; then
+                app_daemon=1
+            fi
+            ;;
+        -o|--onion)
+            shift
+            if [[ "$1" == 'yes' ]]; then
+                app_onion_only=1
+            fi
+            ;;
+        --port)
+            shift
+            app_port="$1"
+            ;;
+        --portinternal|--portint)
+            shift
+            app_port_internal="$1"
+            ;;
+        --dir)
+            shift
+            app_dir="$1"
             ;;
         *)
             # unknown option
@@ -185,12 +220,25 @@ echo "VARIANTS='full full-vim'"
 echo ''
 echo 'IN_DEFAULT_INSTALL=0'
 echo "SHOW_ON_ABOUT=${SHOW_ON_ABOUT}"
+if [ $app_onion_only ]; then
+    echo 'SHOW_ICANN_ADDRESS_ON_ABOUT=0'
+fi
 echo ''
 echo "${app_name_upper}_DOMAIN_NAME="
 echo "${app_name_upper}_CODE="
+if [ $app_port ]; then
+    echo "${app_name_upper}_PORT=$app_port"
+fi
 echo "${app_name_upper}_ONION_PORT=$(( ( RANDOM % 1000 )  + 9010 ))"
 echo "${app_name_upper}_REPO=\"${app_repo}\""
 echo "${app_name_upper}_COMMIT='${app_repo_commit}'"
+if [ $app_daemon ]; then
+    if [ ! $app_port_internal ]; then
+        echo "${app_name_upper}_PORT_INTERNAL=TODO"
+    else
+        echo "${app_name_upper}_PORT_INTERNAL=$app_port_internal"
+    fi
+fi
 echo ''
 echo "${app_name}=(ONION_ONLY"
 echo "             ${app_name_upper}_DOMAIN_NAME"
@@ -221,16 +269,20 @@ echo "    echo '0'"
 echo '}'
 echo ''
 echo "function install_interactive_${app_name} {"
-echo '    if [ ! $ONION_ONLY ]; then'
-echo "        ONION_ONLY='no'"
-echo '    fi'
-echo ''
-echo '    if [[ $ONION_ONLY != "no" ]]; then'
-echo "        ${app_name_upper}_DOMAIN_NAME='${app_name}.local'"
-echo "        write_config_param \"${app_name_upper}_DOMAIN_NAME\" \"\$${app_name_upper}_DOMAIN_NAME\""
-echo '    else'
-echo "        interactive_site_details \"${app_name}\" \"${app_name_upper}_DOMAIN_NAME\" \"${app_name}_CODE\""
-echo '    fi'
+if [ ! $app_onion_only ]; then
+    echo '    if [ ! $ONION_ONLY ]; then'
+    echo "        ONION_ONLY='no'"
+    echo '    fi'
+    echo ''
+    echo '    if [[ $ONION_ONLY != "no" ]]; then'
+    echo "        ${app_name_upper}_DOMAIN_NAME='${app_name}.local'"
+    echo "        write_config_param \"${app_name_upper}_DOMAIN_NAME\" \"\$${app_name_upper}_DOMAIN_NAME\""
+    echo '    else'
+    echo "        interactive_site_details \"${app_name}\" \"${app_name_upper}_DOMAIN_NAME\" \"${app_name}_CODE\""
+    echo '    fi'
+else
+    echo "    echo -n ''"
+fi
 echo '    APP_INSTALLED=1'
 echo '}'
 echo ''
@@ -311,8 +363,13 @@ echo "        ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name
 echo '    fi'
 echo ''
 echo '    # update to the next commit'
-echo "    set_repo_commit /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\" \$${app_name_upper}_REPO"
-echo "    chown -R www-data:www-data /var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+if [ ! $app_dir ]; then
+    echo "    set_repo_commit /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\" \$${app_name_upper}_REPO"
+    echo "    chown -R www-data:www-data /var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+else
+    echo "    set_repo_commit ${app_dir} \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\" \$${app_name_upper}_REPO"
+    echo "    chown -R ${app_name}:${app_name} ${app_dir}"
+fi
 echo '}'
 echo ''
 echo "function backup_local_${app_name} {"
@@ -321,7 +378,11 @@ echo "    if grep -q \"${app_name} domain\" \$COMPLETION_FILE; then"
 echo "        ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
 echo '    fi'
 echo ''
-echo "    source_directory=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+if [ ! $app_dir ]; then
+    echo "    source_directory=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+else
+    echo "    source_directory=${app_dir}"
+fi
 echo ''
 echo "    suspend_site \${${app_name_upper}_DOMAIN_NAME}"
 echo ''
@@ -347,7 +408,11 @@ echo '    fi'
 echo "    ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
 echo "    if [ \$${app_name_upper}_DOMAIN_NAME ]; then"
 echo "        temp_restore_dir=/root/temp${app_name}"
-echo "        ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+if [ ! $app_dir ]; then
+    echo "        ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+else
+    echo "        ${app_name}_dir=${app_dir}"
+fi
 echo ''
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
     echo "        ${app_name}_create_database"
@@ -391,7 +456,11 @@ echo "    if grep -q \"${app_name} domain\" \$COMPLETION_FILE; then"
 echo "        ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
 echo '    fi'
 echo ''
-echo "    source_directory=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+if [ ! $app_dir ]; then
+    echo "    source_directory=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+else
+    echo "    source_directory=${app_dir}"
+fi
 echo ''
 echo "    suspend_site \${${app_name_upper}_DOMAIN_NAME}"
 echo ''
@@ -417,7 +486,11 @@ echo '    fi'
 echo "    ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
 echo "    if [ \$${app_name_upper}_DOMAIN_NAME ]; then"
 echo "        temp_restore_dir=/root/temp${app_name}"
-echo "        ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+if [ ! $app_dir ]; then
+    echo "        ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+else
+    echo "        ${app_name}_dir=${app_dir}"
+fi
 echo ''
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
     echo "        ${app_name}_create_database"
@@ -463,6 +536,15 @@ fi
 echo "    nginx_dissite \$${app_name_upper}_DOMAIN_NAME"
 echo "    remove_certs \$${app_name_upper}_DOMAIN_NAME"
 echo ''
+if [ $app_daemon ]; then
+    echo "    if [ -f /etc/systemd/system/${app_name}.service ]; then"
+    echo "        systemctl stop ${app_name}"
+    echo "        systemctl disable ${app_name}"
+    echo "        rm /etc/systemd/system/${app_name}.service"
+    echo '    fi'
+    echo "    userdel -r ${app_name}"
+fi
+echo ''
 echo "    if [ -d /var/www/\$${app_name_upper}_DOMAIN_NAME ]; then"
 echo "        rm -rf /var/www/\$${app_name_upper}_DOMAIN_NAME"
 echo '    fi'
@@ -482,10 +564,10 @@ echo '    fi'
 echo "    remove_app ${app_name}"
 echo "    remove_completion_param install_${app_name}"
 echo "    sed -i '/${app_name}/d' \$COMPLETION_FILE"
-echo ''
-echo "    if grep -q '${app_name}-firewall' /etc/crontab; then"
-echo "        sed -i '/${app_name}-firewall/d' /etc/crontab"
-echo '    fi'
+if [ $app_port ]; then
+    echo ''
+    echo "    firewall_remove ${app_port} tcp"
+fi
 echo ''
 echo "    remove_ddns_domain \$${app_name_upper}_DOMAIN_NAME"
 echo '}'
@@ -515,27 +597,44 @@ echo '    fi'
 echo "    if [ ! -d /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs ]; then"
 echo "        if [ -d /repos/${app_name} ]; then"
 echo "            mkdir /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
-echo "            cp -r -p /repos/${app_name}/. /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
-echo "            cd /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
+if [ ! $app_dir ]; then
+    echo "            cp -r -p /repos/${app_name}/. /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
+    echo "            cd /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
+else
+    echo "            cp -r -p /repos/${app_name}/. ${app_dir}"
+    echo "            cd ${app_dir}"
+fi
 echo '            git pull'
 echo '        else'
-echo "            git_clone \$${app_name_upper}_REPO /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
+if [ ! $app_dir ]; then
+    echo "            git_clone \$${app_name_upper}_REPO /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
+else
+    echo "            git_clone \$${app_name_upper}_REPO ${app_dir}"
+fi
 echo '        fi'
 echo ''
-echo "        if [ ! -d /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs ]; then"
+if [ ! $app_dir ]; then
+    echo "        if [ ! -d /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs ]; then"
+else
+    echo "        if [ ! -d ${app_dir} ]; then"
+fi
 echo "            echo \$'Unable to clone ${app_name} repo'"
 echo '            exit 87525'
 echo '        fi'
 echo '    fi'
 echo ''
-echo "    cd /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
+if [ ! $app_dir ]; then
+    echo "    cd /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
+else
+    echo "    cd ${app_dir}"
+fi
 echo "    git checkout \$${app_name_upper}_COMMIT -b \$${app_name_upper}_COMMIT"
 echo "    set_completion_param \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\""
 echo ''
 echo "    chmod g+w /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
 echo "    chown -R www-data:www-data /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs"
 
-if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
+if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" || "$database_type" == "postgres"*  ]]; then
     echo ''
     echo "    ${app_name}_create_database"
 fi
@@ -545,53 +644,62 @@ echo ''
 echo "    ${app_name_upper}_ONION_HOSTNAME=\$(add_onion_service ${app_name} 80 \${${app_name_upper}_ONION_PORT})"
 echo ''
 echo "    ${app_name}_nginx_site=/etc/nginx/sites-available/\$${app_name_upper}_DOMAIN_NAME"
-echo '    if [[ $ONION_ONLY == "no" ]]; then'
-if [[ "$app_php" == 'yes' ]]; then
-    echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.php\""
-else
-    echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.html\""
-fi
-echo "        echo 'server {' >> \$${app_name}_nginx_site"
-echo "        echo '  listen 443 ssl;' >> \$${app_name}_nginx_site"
-echo "        echo '  listen [::]:443 ssl;' >> \$${app_name}_nginx_site"
-echo "        echo \"  server_name \$${app_name_upper}_DOMAIN_NAME;\" >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        nginx_compress \$${app_name_upper}_DOMAIN_NAME"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        echo '  # Security' >> \$${app_name}_nginx_site"
-echo "        nginx_ssl \$${app_name_upper}_DOMAIN_NAME"
-echo ''
-echo "        nginx_disable_sniffing \$${app_name_upper}_DOMAIN_NAME"
-echo ''
-echo "        echo '  add_header Strict-Transport-Security max-age=15768000;' >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        echo '  # Logs' >> \$${app_name}_nginx_site"
-echo "        echo '  access_log /dev/null;' >> \$${app_name}_nginx_site"
-echo "        echo '  error_log /dev/null;' >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-echo "        echo '  # Root' >> \$${app_name}_nginx_site"
-echo "        echo \"  root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\" >> \$${app_name}_nginx_site"
-echo "        echo '' >> \$${app_name}_nginx_site"
-if [[ "$app_php" == 'yes' ]]; then
-    echo "        echo '  index index.php;' >> \$${app_name}_nginx_site"
-    echo "        echo '  location ~ \.php {' >> \$${app_name}_nginx_site"
-    echo "        echo '    include snippets/fastcgi-php.conf;' >> \$${app_name}_nginx_site"
-    echo "        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> \$${app_name}_nginx_site"
-    echo "        echo '    fastcgi_read_timeout 30;' >> \$${app_name}_nginx_site"
-    echo "        echo '  }' >> \$${app_name}_nginx_site"
+
+if [ $app_onion_only ]; then
+    echo '    if [[ $ONION_ONLY == "no" ]]; then'
+    if [[ "$app_php" == 'yes' ]]; then
+        echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.php\""
+    else
+        echo "        nginx_http_redirect \$${app_name_upper}_DOMAIN_NAME \"index index.html\""
+    fi
+    echo "        echo 'server {' >> \$${app_name}_nginx_site"
+    echo "        echo '  listen 443 ssl;' >> \$${app_name}_nginx_site"
+    echo "        echo '  listen [::]:443 ssl;' >> \$${app_name}_nginx_site"
+    echo "        echo \"  server_name \$${app_name_upper}_DOMAIN_NAME;\" >> \$${app_name}_nginx_site"
     echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        nginx_compress \$${app_name_upper}_DOMAIN_NAME"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        echo '  # Security' >> \$${app_name}_nginx_site"
+    echo "        nginx_ssl \$${app_name_upper}_DOMAIN_NAME"
+    echo ''
+    echo "        nginx_disable_sniffing \$${app_name_upper}_DOMAIN_NAME"
+    echo ''
+    echo "        echo '  add_header Strict-Transport-Security max-age=15768000;' >> \$${app_name}_nginx_site"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        echo '  # Logs' >> \$${app_name}_nginx_site"
+    echo "        echo '  access_log /dev/null;' >> \$${app_name}_nginx_site"
+    echo "        echo '  error_log /dev/null;' >> \$${app_name}_nginx_site"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    echo "        echo '  # Root' >> \$${app_name}_nginx_site"
+    echo "        echo \"  root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\" >> \$${app_name}_nginx_site"
+    echo "        echo '' >> \$${app_name}_nginx_site"
+    if [[ "$app_php" == 'yes' ]]; then
+        echo "        echo '  index index.php;' >> \$${app_name}_nginx_site"
+        echo "        echo '  location ~ \.php {' >> \$${app_name}_nginx_site"
+        echo "        echo '    include snippets/fastcgi-php.conf;' >> \$${app_name}_nginx_site"
+        echo "        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> \$${app_name}_nginx_site"
+        echo "        echo '    fastcgi_read_timeout 30;' >> \$${app_name}_nginx_site"
+        echo "        echo '  }' >> \$${app_name}_nginx_site"
+        echo "        echo '' >> \$${app_name}_nginx_site"
+    else
+        echo "        echo '  index index.html;' >> \$${app_name}_nginx_site"
+    fi
+    echo "        echo '  # Location' >> \$${app_name}_nginx_site"
+    echo "        echo '  location / {' >> \$${app_name}_nginx_site"
+    echo "        nginx_limits \$${app_name_upper}_DOMAIN_NAME '15m'"
+    if [ ! $app_daemon ]; then
+        echo "        echo '    try_files \$uri \$uri/ /index.html;' >> \$${app_name}_nginx_site"
+    else
+        echo "        echo \"    proxy_pass http://localhost:\$${app_name_upper}_PORT_INTERNAL;\" >> \$${app_name}_nginx_site"
+    fi
+    echo "        echo '  }' >> \$${app_name}_nginx_site"
+    echo "        echo '}' >> \$${app_name}_nginx_site"
+    echo '    else'
+    echo "        echo -n '' > \$${app_name}_nginx_site"
+    echo '    fi'
 else
-    echo "        echo '  index index.html;' >> \$${app_name}_nginx_site"
+    echo "    echo -n '' > \$${app_name}_nginx_site"
 fi
-echo "        echo '  # Location' >> \$${app_name}_nginx_site"
-echo "        echo '  location / {' >> \$${app_name}_nginx_site"
-echo "        nginx_limits \$${app_name_upper}_DOMAIN_NAME '15m'"
-echo "        echo '    try_files \$uri \$uri/ @${app_name};' >> \$${app_name}_nginx_site"
-echo "        echo '  }' >> \$${app_name}_nginx_site"
-echo "        echo '}' >> \$${app_name}_nginx_site"
-echo '    else'
-echo "        echo -n '' > \$${app_name}_nginx_site"
-echo '    fi'
 echo "    echo 'server {' >> \$${app_name}_nginx_site"
 echo "    echo \"    listen 127.0.0.1:\$${app_name_upper}_ONION_PORT default_server;\" >> \$${app_name}_nginx_site"
 echo "    echo \"    server_name \$${app_name_upper}_ONION_HOSTNAME;\" >> \$${app_name}_nginx_site"
@@ -621,12 +729,46 @@ fi
 echo "    echo '  # Location' >> \$${app_name}_nginx_site"
 echo "    echo '  location / {' >> \$${app_name}_nginx_site"
 echo "    nginx_limits \$${app_name_upper}_DOMAIN_NAME '15m'"
-echo "    echo '    try_files \$uri \$uri/ @${app_name};' >> \$${app_name}_nginx_site"
+if [ ! $app_daemon ]; then
+    echo "    echo '    try_files \$uri \$uri/ index.html;' >> \$${app_name}_nginx_site"
+else
+    echo "    echo \"    proxy_pass http://localhost:\$${app_name_upper}_PORT_INTERNAL;\" >> \$${app_name}_nginx_site"
+fi
 echo "    echo '  }' >> \$${app_name}_nginx_site"
 echo "    echo '}' >> \$${app_name}_nginx_site"
 if [[ "$app_php" == 'yes' ]]; then
     echo ''
     echo '    configure_php'
+fi
+if [ $app_daemon ]; then
+    echo ''
+    echo "    useradd -d TODO_PATH_TO_INSTALL -s /bin/false ${app_name}"
+    echo ''
+    echo "    echo '[Unit]' > /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Description=${app_name}' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'After=syslog.target' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'After=network.target' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '[Service]' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Type=simple' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'User=${app_name}' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Group=${app_name}' >> /etc/systemd/system/${app_name}.service"
+    if [ ! $app_dir ]; then
+        echo "    echo 'WorkingDirectory=TODO' >> /etc/systemd/system/${app_name}.service"
+    else
+        echo "    echo 'WorkingDirectory=${app_dir}' >> /etc/systemd/system/${app_name}.service"
+    fi
+    echo "    echo 'ExecStart=TODO' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Restart=always' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'Environment=\"USER=${app_name}\"' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo '[Install]' >> /etc/systemd/system/${app_name}.service"
+    echo "    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/${app_name}.service"
+    echo "    systemctl enable ${app_name}"
+    if [ $app_dir ]; then
+        echo "    chown -R ${app_name}:${app_name} ${app_dir}"
+    fi
+    echo "    systemctl start ${app_name}"
 fi
 echo ''
 echo "    create_site_certificate \$${app_name_upper}_DOMAIN_NAME 'yes'"
@@ -643,6 +785,10 @@ echo '    systemctl restart nginx'
 echo ''
 echo "    \${PROJECT_NAME}-pass -u \$MY_USERNAME -a ${app_name} -p \"\$${app_name_upper}_ADMIN_PASSWORD\""
 echo "    set_completion_param \"${app_name} domain\" \"\$${app_name_upper}_DOMAIN_NAME\""
+if [ $app_port ]; then
+    echo ''
+    echo "    firewall_add ${app_name} ${app_port} tcp"
+fi
 echo ''
 echo '    APP_INSTALLED=1'
 echo '}'
