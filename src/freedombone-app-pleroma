@@ -85,19 +85,42 @@ function create_pleroma_blocklist {
     echo '    fi' >> $blocking_script_file
     echo 'fi' >> $blocking_script_file
     echo 'touch /tmp/pleroma-blocking.lock' >> $blocking_script_file
-    echo 'cd /etc/postgresql' >> $blocking_script_file
+    echo 'objects_query="DELETE FROM objects WHERE"' >> $blocking_script_file
+    echo 'objects_updated=' >> $blocking_script_file
+    echo 'users_query="DELETE FROM users WHERE"' >> $blocking_script_file
+    echo 'websub_server_subscriptions_query="DELETE FROM websub_server_subscriptions WHERE"' >> $blocking_script_file
+    echo 'websub_server_subscriptions_updated=' >> $blocking_script_file
     echo 'while read blocked; do' >> $blocking_script_file
     echo '    if [[ "$blocked" == *"."* || "$blocked" == *"@"* ]]; then' >> $blocking_script_file
     echo '        if [ ${#blocked} -gt 4 ]; then' >> $blocking_script_file
-    echo "            sudo -u postgres psql -d pleroma -c \"DELETE FROM objects WHERE data->>'content' ilike '%\${blocked}%' or data->>'actor' ilike '%\${blocked}%' or data->>'to' ilike '%\${blocked}%' or data->>'id' ilike '%\${blocked}%' or data->>'external_url' ilike '%\${blocked}%'\"" >> $blocking_script_file
-    echo "            sudo -u postgres psql -d pleroma -c \"DELETE FROM users WHERE nickname ilike '%\${blocked}%'\"" >> $blocking_script_file
+    echo '          if [ $objects_updated ]; then' >> $blocking_script_file
+    echo '              objects_query="${objects_query} or"' >> $blocking_script_file
+    echo '              users_query="${users_query} or"' >> $blocking_script_file
+    echo '          fi' >> $blocking_script_file
+    echo "          objects_query=\"\${objects_query} data->>'content' ilike '%\${blocked}%' or data->>'actor' ilike '%\${blocked}%' or data->>'to' ilike '%\${blocked}%' or data->>'id' ilike '%\${blocked}%' or data->>'external_url' ilike '%\${blocked}%'\"" >> $blocking_script_file
+    echo "          users_query=\"\${users_query} nickname ilike '%\${blocked}%'\"" >> $blocking_script_file
+    echo '          objects_updated=1' >> $blocking_script_file
     echo '            if [[ "$blocked" != *"@"* ]]; then' >> $blocking_script_file
-    echo "                sudo -u postgres psql -d pleroma -c \"DELETE FROM websub_server_subscriptions WHERE callback like '%\${blocked}%'\"" >> $blocking_script_file
+    echo '              if [ $websub_server_subscriptions_updated ]; then' >> $blocking_script_file
+    echo '                  websub_server_subscriptions_query="${websub_server_subscriptions_query} or"' >> $blocking_script_file
+    echo '              fi' >> $blocking_script_file
+    echo "              websub_server_subscriptions_query=\"\${websub_server_subscriptions_query} callback like '%\${blocked}%'\"" >> $blocking_script_file
+    echo '              websub_server_subscriptions_updated=1' >> $blocking_script_file
     echo '            fi' >> $blocking_script_file
     echo '        fi' >> $blocking_script_file
     echo '    fi' >> $blocking_script_file
-    echo "done </root/${PROJECT_NAME}-firewall-domains.cfg" >> $blocking_script_file
+    echo 'done </root/freedombone-firewall-domains.cfg' >> $blocking_script_file
+    echo '' >> $blocking_script_file
+    echo 'cd /etc/postgresql' >> $blocking_script_file
+    echo 'if [ $objects_updated ]; then' >> $blocking_script_file
+    echo '    sudo -u postgres psql -d pleroma -c "$objects_query"' >> $blocking_script_file
+    echo '    sudo -u postgres psql -d pleroma -c "$users_query"' >> $blocking_script_file
+    echo 'fi' >> $blocking_script_file
+    echo 'if [ $websub_server_subscriptions_updated ]; then' >> $blocking_script_file
+    echo '    sudo -u postgres psql -d pleroma -c "$websub_server_subscriptions_query"' >> $blocking_script_file
+    echo 'fi' >> $blocking_script_file
     echo 'rm /tmp/pleroma-blocking.lock' >> $blocking_script_file
+
     chmod +x $blocking_script_file
 
     if ! grep -q "$blocking_script_file" /etc/crontab; then
