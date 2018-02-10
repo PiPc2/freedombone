@@ -39,13 +39,11 @@ SHOW_ON_ABOUT=1
 PEERTUBE_DOMAIN_NAME=
 PEERTUBE_CODE=
 PEERTUBE_REPO="https://github.com/Chocobozzz/PeerTube"
-PEERTUBE_COMMIT='a7fea183f0f69104b209e7bfdd6435be28165f22'
+PEERTUBE_COMMIT='fef2c7164e025b12a64185dbab058ef4129733c6'
 PEERTUBE_ONION_PORT=8136
 PEERTUBE_PORT=9004
 MESH_PEERTUBE_PORT=8500
 PEERTUBE_DIR=/etc/peertube
-peertube_npm_version='5.3.0'
-peertube_node_version='8.6.0'
 
 peertube_variables=(PEERTUBE_DOMAIN_NAME
                     PEERTUBE_CODE
@@ -53,7 +51,6 @@ peertube_variables=(PEERTUBE_DOMAIN_NAME
                     ONION_ONLY
                     DDNS_PROVIDER
                     MY_USERNAME
-                    ARCHITECTURE
                     MY_EMAIL_ADDRESS)
 
 function peertube_create_database {
@@ -202,11 +199,7 @@ function upgrade_peertube {
     function_check set_repo_commit
     set_repo_commit $PEERTUBE_DIR "peertube commit" "$PEERTUBE_COMMIT" $PEERTUBE_REPO
 
-    PREV_PATH=$PATH
-    PATH=$(npm bin):$PATH
     npm run upgrade-peertube
-    PATH=$PREV_PATH
-
     chown -R peertube:peertube $PEERTUBE_DIR
     systemctl start peertube
 }
@@ -776,68 +769,29 @@ function install_peertube {
     git checkout $PEERTUBE_COMMIT -b $PEERTUBE_COMMIT
     set_completion_param "peertube commit" "$PEERTUBE_COMMIT"
 
-    npm install npm@$peertube_npm_version
-    if [ ! "$?" = "0" ]; then
-        echo $"Failed to install local npm version $peertube_npm_version"
-        exit 45465774
-    fi
-    PREV_PATH=$PATH
-    PATH=$(npm bin):$PATH
-    npm install node@$peertube_node_version
-    if [ ! "$?" = "0" ]; then
-        PATH=$PREV_PATH
-        echo $"Failed to install local nodejs version $peertube_node_version"
-        exit 54875459
-    fi
-    PATH=$PREV_PATH
-    npm install npm@$peertube_npm_version
-    if [ ! "$?" = "0" ]; then
-        echo $"Failed to install local npm version $peertube_npm_version"
-        exit 678356845684
-    fi
-    npm install yarn@1.3.2
+    npm install -g yarn
     if [ ! "$?" = "0" ]; then
         echo $'Failed to install yarn'
-        exit 578947946
+        exit 79353234
     fi
-    PATH=$(npm bin):$PATH
     yarn add -D webpack --network-concurrency 1
-    #yarn install --non-interactive
-    #if [ ! "$?" = "0" ]; then
-    #    echo $'Failed to run yarn install'
-    #    exit 63754235
-    #fi
+    yarn install
+    if [ ! "$?" = "0" ]; then
+        echo $'Failed to run yarn install'
+        exit 63754235
+    fi
     npm install
     if [ ! "$?" = "0" ]; then
-        PATH=$PREV_PATH
         echo $'Failed to install peertube'
         exit 7835243
     fi
     npm run build
     if [ ! "$?" = "0" ]; then
-        PATH=$PREV_PATH
         echo $'Failed to build peertube'
         exit 5293593
     fi
-    PATH=$PREV_PATH
-    npm install npm@$peertube_npm_version
-    if [ ! "$?" = "0" ]; then
-        echo $"Failed to install local npm version $peertube_npm_version"
-        exit 678356845684
-    fi
-
-    # Hacky stuff to fix runtime errors
-    sed -i 's|const url_1 = require("url");|const url_1 = require("url").Url;|g' dist/server/helpers/core-utils.js
-    sed -i 's|const urlObject = new url_1.URL(url);|const urlObject = new url_1(url);|g' dist/server/helpers/core-utils.js
-    sed -i 's|return urlObject.href.replace.*|return urlObject.href;|g' dist/server/helpers/core-utils.js
 
     PEERTUBE_ONION_HOSTNAME=$(add_onion_service peertube 80 ${PEERTUBE_ONION_PORT})
-
-    echo '#!/bin/bash' > $PEERTUBE_DIR/start
-    echo "cd $PEERTUBE_DIR" >> $PEERTUBE_DIR/start
-    echo 'PATH=$(npm bin):$PATH' >> $PEERTUBE_DIR/start
-    echo 'npm start' >> $PEERTUBE_DIR/start
-    chmod +x $PEERTUBE_DIR/start
 
     echo '[Unit]' > /etc/systemd/system/peertube.service
     echo 'Description=PeerTube Decentralized video streaming platform' >> /etc/systemd/system/peertube.service
@@ -848,13 +802,13 @@ function install_peertube {
     echo 'User=peertube' >> /etc/systemd/system/peertube.service
     echo 'Group=peertube' >> /etc/systemd/system/peertube.service
     echo "WorkingDirectory=$PEERTUBE_DIR" >> /etc/systemd/system/peertube.service
-    echo "ExecStart=$PEERTUBE_DIR/start" >> /etc/systemd/system/peertube.service
+    echo "ExecStart=/usr/local/bin/npm start" >> /etc/systemd/system/peertube.service
+    echo "ExecStop=/usr/local/bin/npm stop" >> /etc/systemd/system/peertube.service
     echo 'StandardOutput=syslog' >> /etc/systemd/system/peertube.service
     echo 'StandardError=syslog' >> /etc/systemd/system/peertube.service
     echo 'SyslogIdentifier=peertube' >> /etc/systemd/system/peertube.service
     echo 'Restart=always' >> /etc/systemd/system/peertube.service
-    echo 'Environment=NODE_ENV=production' >> /etc/systemd/system/peertube.service
-    echo "Environment=NODE_CONFIG_DIR=$PEERTUBE_DIR/config" >> /etc/systemd/system/peertube.service
+    echo "Environment=NODE_ENV=production" >> /etc/systemd/system/peertube.service
     echo '' >> /etc/systemd/system/peertube.service
     echo '[Install]' >> /etc/systemd/system/peertube.service
     echo 'WantedBy=multi-user.target' >> /etc/systemd/system/peertube.service
