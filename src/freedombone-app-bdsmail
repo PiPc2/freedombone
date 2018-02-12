@@ -38,6 +38,36 @@ BDSMAIL_COMMIT='6a2296b0b8e6c3da61081b85802e7b1cc88ca285'
 
 bdsmail=(MY_USERNAME)
 
+function bdsmail_configure_users {
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+            if [ -f /home/$USERNAME/.muttrc ]; then
+                # Create a mutt i2p folder
+                if ! grep -q ' =i2p' /home/$USERNAME/.muttrc; then
+                    MUTT_MAILBOXES=$(grep "mailboxes =" /home/$USERNAME/.muttrc)
+                    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =i2p|g" /home/$USERNAME/.muttrc
+                fi
+
+                # Create a mutt folder hook to the i2p config
+                if ! grep -q 'folder-hook !i2p' /home/$USERNAME/.muttrc; then
+                    echo 'folder-hook !i2p/*     source ~/.muttrc' >> /home/$USERNAME/.muttrc
+                fi
+                if ! grep -q 'folder-hook i2p' /home/$USERNAME/.muttrc; then
+                    echo 'folder-hook i2p/*     source ~/.mutt/bdsmail' >> /home/$USERNAME/.muttrc
+                fi
+            fi
+
+            # Create a directory where i2p mail will be stored
+            if [ ! -d /home/$USERNAME/Maildir/i2p/cur ]; then
+                mkdir -p /home/$USERNAME/Maildir/i2p/cur
+                mkdir -p /home/$USERNAME/Maildir/i2p/new
+                chown -R $USERNAME:$USERNAME /home/$USERNAME/Maildir/i2p
+            fi
+        fi
+    done
+}
+
 function logging_on_bdsmail {
     echo -n ''
 }
@@ -59,6 +89,7 @@ function add_user_bdsmail {
         cp /etc/skel/.mutt/bdsmail /home/$new_username/.mutt
     fi
     sed -i "s|username|$new_username|g" /home/$new_username/.mutt/bdsmail
+    bdsmail_configure_users
     chown -R $new_username:$new_username /home/$new_username/.mutt
     echo '0'
 }
@@ -176,6 +207,29 @@ function remove_bdsmail {
     if [ -d /etc/bdsmail ]; then
         rm -rf /etc/bdsmail
     fi
+
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+            # Remove mutt folder hook to the i2p config
+            if [ -f /home/$USERNAME/.muttrc ]; then
+                if grep -q 'folder-hook !i2p' /home/$USERNAME/.muttrc; then
+                    sed -i '/folder-hook !i2p/d' /home/$USERNAME/.muttrc
+                fi
+                if grep -q 'folder-hook i2p' /home/$USERNAME/.muttrc; then
+                    sed -i '/folder-hook i2p/d' /home/$USERNAME/.muttrc
+                fi
+            fi
+
+            # Remove folder
+            if grep -q ' =i2p' /home/$USERNAME/.muttrc; then
+                sed -i 's| =i2p||g' /home/$USERNAME/.muttrc
+            fi
+
+            # NOTE: leave Maildir/i2p. We might want to archive that
+            # or just be reinstalling the system without losing mail
+        fi
+    done
 }
 
 function install_bdsmail {
