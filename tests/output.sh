@@ -119,6 +119,11 @@ Check_content: Verify the SSH private host key files have mode "0600" or less pe
                   printf '\n######################\n\nThis system is not intended to support graphical output\n\n######################\n\n' >> $LOG
               fi
               ;;
+    SV-86724r2_rule) log_msg $2 'Dont allow pam_python.'
+              if [ $2 -ne 0 ];then
+                  printf '\n######################\n\npam_python within /etc/pam.d/sshd could indicate a possible attack on ssh logins.\n\n######################\n\n' >> $LOG
+              fi
+              ;;
     V-38455)  if [ "$3" = "en" ]; then
                   log_msg $2 'The system must use a separate file system for /tmp.'
               else

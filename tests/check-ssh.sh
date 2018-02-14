@@ -194,4 +194,9 @@ case $1 in
             exit 1
         fi
         ;;
+    pam_python)
+        if grep -q 'pam_python' /etc/pam.d/sshd; then
+            exit 1
+        fi
+        ;;
 esac
