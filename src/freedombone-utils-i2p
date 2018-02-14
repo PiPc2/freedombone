@@ -1,0 +1,101 @@
+#!/bin/bash
+#
+# .---.                  .              .
+# |                      |              |
+# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
+# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
+# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
+#
+#                    Freedom in the Cloud
+#
+# i2p functions
+#
+# There's a problem with installing this onto mesh images, which is
+# that qemu appears to run out of RAM when using yarn to add webpack.
+#
+# License
+# =======
+#
+# Copyright (C) 2017-2018 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+I2P_DOMAIN='deb.i2p2.de'
+
+function install_i2p {
+    if [ ! -d $INSTALL_DIR ]; then
+       mkdir -p $INSTALL_DIR
+    fi
+
+    # install the gpg key
+    cd $INSTALL_DIR
+    if [ -f i2p-debian-repo.key.asc ]; then
+        rm i2p-debian-repo.key.asc
+    fi
+    wget https://geti2p.net/_static/i2p-debian-repo.key.asc
+    if [ ! -f i2p-debian-repo.key.asc ]; then
+        echo $'failed to ontain i2p repo gpg key'
+        exit 7834627345
+    fi
+    apt-key add i2p-debian-repo.key.asc
+
+    echo "deb https://${I2P_DOMAIN}/ stretch main" > /etc/apt/sources.list.d/i2p.list
+    echo "deb-src https://${I2P_DOMAIN}/ stretch main" >> /etc/apt/sources.list.d/i2p.list
+
+    # i2p needs ipv6 to be enabled
+    sed -i 's|net.ipv6.conf.all.disable_ipv6.*|net.ipv6.conf.all.disable_ipv6 = 0|g' /etc/sysctl.conf
+    /sbin/sysctl -p -q
+
+    apt-get update
+    apt-get -yq install i2p i2p-keyring
+    systemctl restart i2p
+}
+
+function remove_i2p {
+    apt-get -yq remove i2p-router --purge
+    apt-get -yq remove i2p --purge
+    apt-get -yq remove i2p-keyring --purge
+    apt-get -yq autoremove
+
+    # It's assumed here that ipv6 is only needed for i2p
+    # This might not be true in future
+    sed -i 's|net.ipv6.conf.all.disable_ipv6.*|net.ipv6.conf.all.disable_ipv6 = 1|g' /etc/sysctl.conf
+    /sbin/sysctl -p -q
+
+    if [ -d /var/lib/i2p ]; then
+        rm -rf /var/lib/i2p
+    fi
+    if [ -d /etc/i2p ]; then
+        rm -rf /etc/i2p
+    fi
+    if [ -d /usr/share/i2p ]; then
+        rm -rf /usr/share/i2p
+    fi
+}
+
+function i2p_enable_sam {
+    if [ ! -f /var/lib/i2p/i2p-config/clients.config ]; then
+        apt-get -yq remove i2p --purge
+        apt-get -yq remove i2p-router --purge
+        apt-get -yq install i2p
+        apt-get -yq install i2p-router
+        sleep 2
+    fi
+    if [ ! -f /var/lib/i2p/i2p-config/clients.config ]; then
+        echo $'File not found /var/lib/i2p/i2p-config/clients.config'
+        exit 483648364834
+    fi
+    sed -i 's|clientApp.1.startOnLoad=.*|clientApp.1.startOnLoad=true|g' /var/lib/i2p/i2p-config/clients.config
+    systemctl restart i2p
+}

@@ -51,6 +51,7 @@ peertube_variables=(PEERTUBE_DOMAIN_NAME
                     ONION_ONLY
                     DDNS_PROVIDER
                     MY_USERNAME
+                    ARCHITECTURE
                     MY_EMAIL_ADDRESS)
 
 function peertube_create_database {
@@ -140,8 +141,8 @@ function peertube_disable_signups {
            --yesno $"\nDo you wish to disable further PeerTube signups?" 8 75
     sel=$?
     case $sel in
-        0) sed "0,/RE/s/enabled:.*/enabled: false/" $PEERTUBE_DIR/config/production.yaml;;
-        1) sed "0,/RE/s/enabled:.*/enabled: true/" $PEERTUBE_DIR/config/production.yaml;;
+        0) sed -i "0,/enabled:.*/s//enabled: false/" $PEERTUBE_DIR/config/production.yaml;;
+        1) sed -i "0,/enabled:.*/s//enabled: true/" $PEERTUBE_DIR/config/production.yaml;;
         255) return;;
     esac
 
@@ -341,9 +342,8 @@ function remove_peertube {
     sed -i '/peertube/d' $COMPLETION_FILE
 
     function_check drop_database_postgresql
-    drop_database_postgresql peertube
+    drop_database_postgresql peertube peertube
 
-    remove_postgresql_user peertube
     groupdel -f peertube
     userdel -r peertube
 
@@ -589,11 +589,12 @@ function peertube_create_config {
     echo '    size: 10 # Max number of previews you want to cache' >> $peertube_config_file
     echo '' >> $peertube_config_file
     echo 'admin:' >> $peertube_config_file
-    echo "  email: 'root@local'" >> $peertube_config_file
+    # This is deliberately a dummy email address
+    echo "  email: 'testuser@testdomain.net'" >> $peertube_config_file
     echo '' >> $peertube_config_file
     echo 'signup:' >> $peertube_config_file
     echo '  enabled: true' >> $peertube_config_file
-    echo '  limit: 2 # When the limit is reached, registrations are disabled. -1 == unlimited' >> $peertube_config_file
+    echo '  limit: 5 # When the limit is reached, registrations are disabled. -1 == unlimited' >> $peertube_config_file
     echo '' >> $peertube_config_file
     echo 'user:' >> $peertube_config_file
     echo '  # Default value of maximum video BYTES the user can upload (does not take into account transcoded files).' >> $peertube_config_file
@@ -828,6 +829,12 @@ function install_peertube {
     systemctl daemon-reload
     systemctl start peertube
     systemctl restart nginx
+
+    # wait for the database to get generated after initial peertube daemon start
+    sleep 10
+
+    # update the admin email address after creation of the database
+    sed -i "s|email: .*|email: '$MY_EMAIL_ADDRESS'|g" $PEERTUBE_DIR/config/production.yaml
 
     set_completion_param "peertube domain" "$PEERTUBE_DOMAIN_NAME"
     APP_INSTALLED=1
