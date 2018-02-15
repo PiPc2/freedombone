@@ -95,10 +95,13 @@ function add_user_bdsmail {
         mkdir /home/$new_username/.mutt
         cp /etc/skel/.mutt/bdsmail /home/$new_username/.mutt
     fi
+    read_config_param MY_USERNAME
+    BDSMAIL_PASSWORD=$(${PROJECT_NAME}-pass -u $MY_USERNAME -a bdsmail)
     sed -i "s|username|$new_username|g" /home/$new_username/.mutt/bdsmail
+    sed -i "s|password|$BDSMAIL_PASSWORD|g" /home/$new_username/.mutt/bdsmail
     bdsmail_configure_users
     cd $BDSMAIL_DIR
-    $BDSMAIL_DIR/bin/mailtool $BDSMAIL_DIR/config.ini $new_username /home/$new_username/Maildir/i2p
+    $BDSMAIL_DIR/bin/mailtool $BDSMAIL_DIR/config.ini $new_username /home/$new_username/Maildir/i2p "$BDSMAIL_PASSWORD"
     chown -R $new_username:$new_username /home/$new_username/.mutt
     echo '0'
 }
@@ -111,6 +114,19 @@ function install_interactive_bdsmail {
 function change_password_bdsmail {
     curr_username="$1"
     new_user_password="$2"
+
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a bdsmail -p "$new_user_password"
+
+    for d in /home/*/ ; do
+        USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
+        if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
+            sed -i "s|set smtp_url=.*|set smtp_url=smtp://${curr_username}:${new_user_password}@127.0.0.1:$I2P_SMTP_PORT/" /home/${USERNAME}/.mutt/bdsmail
+            sed -i "s|set from=.*|set from=${USERNAME}@$(bdsmail_domain)|g" /home/${USERNAME}/.mutt/bdsmail
+            chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.mutt/bdsmail
+            cd $BDSMAIL_DIR
+            $BDSMAIL_DIR/bin/mailtool $BDSMAIL_DIR/config.ini $curr_username /home/$curr_username/Maildir/i2p "$new_user_password"
+        fi
+    done
 }
 
 function bdsmail_update_domain {
@@ -412,17 +428,17 @@ function install_bdsmail {
         exit 8934638
     fi
 
-    bdsmail_admin_password="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a bdsmail -p "$bdsmail_admin_password"
+    BDSMAIL_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+    ${PROJECT_NAME}-pass -u $MY_USERNAME -a bdsmail -p "$BDSMAIL_PASSWORD"
     cd $BDSMAIL_DIR
-    $BDSMAIL_DIR/bin/mailtool $BDSMAIL_DIR/config.ini admin $BDSMAIL_DIR/Maildir/i2p/admin "$bdsmail_admin_password"
+    $BDSMAIL_DIR/bin/mailtool $BDSMAIL_DIR/config.ini admin $BDSMAIL_DIR/Maildir/i2p/admin "$BDSMAIL_PASSWORD"
 
     # Create mutt configuration
     if [ ! -d /etc/skel/.mutt ]; then
         mkdir /etc/skel/.mutt
     fi
     echo 'set mbox_type=Maildir' > /etc/skel/.mutt/bdsmail
-    echo "set smtp_url=smtp://admin:${bdsmail_admin_password}@127.0.0.1:$I2P_SMTP_PORT/" >> /etc/skel/.mutt/bdsmail
+    echo "set smtp_url=smtp://username:password@127.0.0.1:$I2P_SMTP_PORT/" >> /etc/skel/.mutt/bdsmail
     echo 'set use_from=yes' >> /etc/skel/.mutt/bdsmail
     echo "set from=username@${bds_domain}" >> /etc/skel/.mutt/bdsmail
     echo "set spoolfile=~/Maildir/i2p" >> /etc/skel/.mutt/bdsmail
@@ -437,12 +453,13 @@ function install_bdsmail {
     fi
     cp /etc/skel/.mutt/bdsmail /home/$MY_USERNAME/.mutt
     sed -i "s|username|$MY_USERNAME|g" /home/$MY_USERNAME/.mutt/bdsmail
+    sed -i "s|password|$BDSMAIL_PASSWORD|g" /home/$MY_USERNAME/.mutt/bdsmail
     chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.mutt
 
     bdsmail_configure_users
 
     cd $BDSMAIL_DIR
-    $BDSMAIL_DIR/bin/mailtool $BDSMAIL_DIR/config.ini $MY_USERNAME /home/$MY_USERNAME/Maildir/i2p
+    $BDSMAIL_DIR/bin/mailtool $BDSMAIL_DIR/config.ini $MY_USERNAME /home/$MY_USERNAME/Maildir/i2p "$BDSMAIL_PASSWORD"
 
     APP_INSTALLED=1
 }
