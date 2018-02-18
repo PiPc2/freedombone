@@ -37,11 +37,10 @@ HUBZILLA_DOMAIN_NAME=
 HUBZILLA_CODE=
 HUBZILLA_ONION_PORT=8085
 HUBZILLA_REPO="https://github.com/redmatrix/hubzilla.git"
-HUBZILLA_THEMES_REPO="https://github.com/DeadSuperHero/redmatrix-themes"
+HUBZILLA_COMMIT='577da0eb9eb1f90a4cf7a70cfb3582cfb49007ac'
 HUBZILLA_ADDONS_REPO="https://github.com/redmatrix/hubzilla-addons.git"
+HUBZILLA_ADDONS_COMMIT='be9dcd044b9326c3bd9301d7c4b375a2c2f54663'
 HUBZILLA_ADMIN_PASSWORD=
-HUBZILLA_COMMIT='bc2b948f1f6e62b1c277a4042200bb6678956f3f'
-HUBZILLA_ADDONS_COMMIT='f08ef6b93e9580bf241ad60c09f4e5162d04475f'
 
 hubzilla_variables=(ONION_ONLY
                     HUBZILLA_DOMAIN_NAME
@@ -127,12 +126,12 @@ function hubzilla_channel_directory_server {
             fi
             if [[ $hubzilla_domain_server != "https"* ]]; then
                 dialog --title $"Hubzilla channel directory server" \
-                       --msgbox $"Invalid domain - include the https://" 6 40
+                       --msgbox $"\nInvalid domain - include the https://" 7 60
                 return
             fi
             ./var/www/$HUBZILLA_DOMAIN_NAME/htdocs/util/config system directory_server $hubzilla_domain_server
             dialog --title $"Hubzilla channel directory server" \
-                   --msgbox $"Domain channel directory server changed to $hubzilla_domain_server" 6 40
+                   --msgbox $"\nDomain channel directory server changed to\n\n  $hubzilla_domain_server" 10 60
             ;;
     esac
 }
@@ -336,6 +335,10 @@ function install_hubzilla {
     function_check install_mariadb
     install_mariadb
 
+    if [ -d /var/www/$HUBZILLA_DOMAIN_NAME ]; then
+        remove_hubzilla
+    fi
+
     function_check get_mariadb_password
     get_mariadb_password
 
@@ -350,27 +353,22 @@ function install_hubzilla {
         mkdir /var/www/$HUBZILLA_DOMAIN_NAME
     fi
     if [ ! -d $HUBZILLA_PATH ]; then
-        mkdir $HUBZILLA_PATH
+        mkdir -p $HUBZILLA_PATH
     fi
 
     if [ ! -f $HUBZILLA_PATH/index.php ]; then
-        cd $INSTALL_DIR
-
         if [ -d /repos/hubzilla ]; then
-            mkdir hubzilla
-            cp -r -p /repos/hubzilla/. hubzilla
-            cd hubzilla
+            mkdir $HUBZILLA_PATH
+            cp -r -p /repos/hubzilla/. $HUBZILLA_PATH
+            cd $HUBZILLA_PATH
             git pull
         else
             function_check git_clone
-            git_clone $HUBZILLA_REPO hubzilla
+            git_clone $HUBZILLA_REPO $HUBZILLA_PATH
         fi
 
         git checkout $HUBZILLA_COMMIT -b $HUBZILLA_COMMIT
         set_completion_param "hubzilla commit" "$HUBZILLA_COMMIT"
-
-        rm -rf $HUBZILLA_PATH
-        mv hubzilla $HUBZILLA_PATH
 
         if [ -d /repos/hubzilla-addons ]; then
             mkdir $HUBZILLA_PATH/addon
@@ -385,11 +383,12 @@ function install_hubzilla {
         git checkout $HUBZILLA_ADDONS_COMMIT -b $HUBZILLA_ADDONS_COMMIT
         set_completion_param "hubzilla addons commit" "$HUBZILLA_ADDONS_COMMIT"
 
-        # some extra themes
-        #git_clone $HUBZILLA_THEMES_REPO $HUBZILLA_PATH/redmatrix-themes1
-        #cp -r $HUBZILLA_PATH/redmatrix-themes1/* $HUBZILLA_PATH/view/theme/
-
         chown -R www-data:www-data $HUBZILLA_PATH
+    fi
+
+    if [ ! -f $HUBZILLA_PATH/install/schema_mysql.sql ]; then
+        echo $'No database schema found for hubzilla'
+        exit 252782
     fi
 
     HUBZILLA_ONION_HOSTNAME=
@@ -464,7 +463,6 @@ function install_hubzilla {
         echo '        # With php-fpm:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-        echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
@@ -531,7 +529,6 @@ function install_hubzilla {
         echo '        # With php-fpm:' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        include fastcgi_params;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
-        echo '        fastcgi_read_timeout 30;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_index index.php;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
         echo '        fastcgi_read_timeout 300;' >> /etc/nginx/sites-available/$HUBZILLA_DOMAIN_NAME
@@ -584,11 +581,6 @@ function install_hubzilla {
     function_check nginx_ensite
     nginx_ensite $HUBZILLA_DOMAIN_NAME
 
-    # initialize the database
-    if [ ! -f $HUBZILLA_PATH/install/schema_mysql.sql ]; then
-        echo $'No database schema found for hubzilla'
-        exit 252782
-    fi
     function_check initialise_database
     initialise_database hubzilla $HUBZILLA_PATH/install/schema_mysql.sql
 
