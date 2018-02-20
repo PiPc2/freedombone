@@ -32,4 +32,4 @@ While this code of conduct should be adhered to by participants, we recognize th
 
 Serious or persistent offenders will be kicked from chat rooms and any of their subsequent patches will be unlikely to be upstreamed. In this context "serious" means that someone is causing others to feel unsafe or be unable to contribute, for whatever reason.
 
-This is not a big project and so there is no division of labor or special enforcement committee or bureaucratic process. Complaints should be made (in private) to the maintainer or chat room admin. The typical email address can be found in the source code headers. Preferably use GPG/OpenPGP if you can, or XMPP with OTR/OMEMO to bob@freedombone.net. XMPP messages are likely to get a quicker response.
+This is not a big project and so there is no division of labor or special enforcement committee or bureaucratic process. Complaints should be made (in private) to the maintainer or chat room admin. The typical email address can be found in the source code headers. Preferably use GPG if you can, or XMPP with OpenPGP/OMEMO to bob@freedombone.net. XMPP messages are likely to get a quicker response.
