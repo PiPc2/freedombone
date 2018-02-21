@@ -202,13 +202,14 @@ function configure_interactive_xmpp {
 
 function remove_user_xmpp {
     remove_username="$1"
-    ${PROJECT_NAME}-pass -u $remove_username --rmapp xmpp
-    XMPP_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_xmpp/hostname)
+
+    ${PROJECT_NAME}-pass -u "$remove_username" --rmapp xmpp
     if [[ $ONION_ONLY != "no" ]]; then
-        ${PROJECT_NAME}-rmxmpp -e "${remove_username}@${XMPP_ONION_HOSTNAME}"
+        DOMAIN=$(cat /var/lib/tor/hidden_service_xmpp/hostname)
     else
-        ${PROJECT_NAME}-rmxmpp -e "${remove_username}@${HOSTNAME}"
+        DOMAIN=${HOSTNAME}
     fi
+    prosodyctl deluser "${remove_username}@${DOMAIN}"
 }
 
 function add_user_xmpp_client {
@@ -271,16 +272,31 @@ function add_user_xmpp {
     new_user_password="$2"
 
     XMPP_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_xmpp/hostname)
-    ${PROJECT_NAME}-pass -u $new_username -a xmpp -p "$new_user_password"
+    ${PROJECT_NAME}-pass -u "$new_username" -a xmpp -p "$new_user_password"
 
     if [[ $ONION_ONLY != "no" ]]; then
-        ${PROJECT_NAME}-addxmpp -e "$new_username@$XMPP_ONION_HOSTNAME" -p "$new_user_password"
+        DOMAIN_NAME=$XMPP_ONION_HOSTNAME
     else
-        ${PROJECT_NAME}-addxmpp -e "$new_username@$HOSTNAME" -p "$new_user_password"
+        DOMAIN_NAME=$HOSTNAME
     fi
-    if [ ! "$?" = "0" ]; then
-        echo '1'
-        return
+    EMAIL_ADDRESS="$new_username@$DOMAIN_NAME"
+
+    if [ ${#new_user_password} -eq 0 ]; then
+        prosodyctl adduser $EMAIL_ADDRESS
+    else
+        prosodyctl register "$new_username" $DOMAIN_NAME "$new_user_password"
+        if [ ! "$?" = "0" ]; then
+            exit 653456375
+        fi
+    fi
+
+    # add the xmpp address to email headers
+    if [ -f /home/$new_username/.muttrc ]; then
+        if ! grep -q "Jabber-ID" /home/$new_username/.muttrc; then
+            echo "my_hdr Jabber-ID: $EMAIL_ADDRESS" >> /home/$new_username/.muttrc
+        else
+            sed -i "s|my_hdr Jabber-ID.*|my_hdr Jabber-ID: $EMAIL_ADDRESS|g" /home/$new_username/.muttrc
+        fi
     fi
 
     add_user_xmpp_client "$new_username" "$new_user_password"
