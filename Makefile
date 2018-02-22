@@ -39,6 +39,7 @@ install:
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-app-* ${DESTDIR}/usr/share/${APP}/apps
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-utils-* ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
+	rm ${DESTDIR}${PREFIX}/share/man/man1/${APP}*.1.gz
 	cp man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	cp man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
 	cp man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
