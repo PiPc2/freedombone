@@ -485,19 +485,48 @@ configure_wifi() {
         return
     fi
 
+    wifi_setup_service=setupwififirstboot
+    wifi_setup_file=$rootdir/root/setup_wifi_firstboot
+    echo '#!/bin/bash' > $wifi_setup_file
+
     if [ -f $WIFI_NETWORKS_FILE ]; then
-        chroot "$rootdir" ${PROJECT_NAME}-wifi --networks $WIFI_NETWORKS_FILE
-        return
+        echo "${PROJECT_NAME}-wifi --networks $WIFI_NETWORKS_FILE" >> $wifi_setup_file
+    else
+        if [[ $WIFI_TYPE != 'none' ]]; then
+            if [ ${#WIFI_PASSPHRASE} -lt 2 ]; then
+                return
+            fi
+            echo "${PROJECT_NAME}-wifi -s $WIFI_SSID -t $WIFI_TYPE -p $WIFI_PASSPHRASE --hotspot $WIFI_HOTSPOT" >> $wifi_setup_file
+        else
+            echo "${PROJECT_NAME}-wifi -s $WIFI_SSID -t $WIFI_TYPE --hotspot $WIFI_HOTSPOT" >> $wifi_setup_file
+        fi
     fi
 
-    if [[ $WIFI_TYPE != 'none' ]]; then
-        if [ ${#WIFI_PASSPHRASE} -lt 2 ]; then
-            return
-        fi
-        chroot "$rootdir" ${PROJECT_NAME}-wifi -s $WIFI_SSID -t $WIFI_TYPE -p $WIFI_PASSPHRASE --hotspot $WIFI_HOTSPOT
-    else
-        chroot "$rootdir" ${PROJECT_NAME}-wifi -s $WIFI_SSID -t $WIFI_TYPE --hotspot $WIFI_HOTSPOT
-    fi
+    echo "systemctl stop ${wifi_setup_service}" >> $wifi_setup_file
+    echo "systemctl disable ${wifi_setup_service}" >> $wifi_setup_file
+    echo "rm /etc/systemd/system/${wifi_setup_service}.service" >> $wifi_setup_file
+    echo 'systemctl reboot -i' >> $wifi_setup_file
+    chmod +x $wifi_setup_file
+
+
+    echo '[Unit]' > $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'Description=Initial wifi configuration' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'After=syslog.target' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'After=network.target' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo '' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo '[Service]' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'Type=simple' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'User=root' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'Group=root' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'WorkingDirectory=/root' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo "ExecStart=/root/setup_wifi_firstboot > /var/log/wifi_setup.log" >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo '' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'TimeoutSec=99999' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo '' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo '[Install]' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    echo 'WantedBy=multi-user.target' >> $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    chmod +x $rootdir/etc/systemd/system/${wifi_setup_service}.service
+    chroot "$rootdir" systemctl enable ${wifi_setup_service}
 }
 
 ##############################################################################
