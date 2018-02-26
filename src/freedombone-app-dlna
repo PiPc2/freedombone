@@ -49,24 +49,27 @@ function logging_off_dlna {
 function configure_interactive_dlna {
     while true
     do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
+        data=$(mktemp 2>/dev/null)
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Media Menu" \
                --radiolist $"Choose an operation:" 13 70 3 \
                1 $"Attach a drive containing playable media" off \
                2 $"Remove a drive containing playable media" off \
-               3 $"Exit" on 2> $data
+               3 $"Exit" on 2> "$data"
         sel=$?
         case $sel in
-            1) break;;
-            255) break;;
+            1) rm -f "$data"
+               break;;
+            255) rm -f "$data"
+                 break;;
         esac
         case $(cat $data) in
             1) attach-music;;
             2) remove-music;;
-            3) break;;
+            3) rm -f "$data"
+               break;;
         esac
+        rm -f "$data"
     done
 }
 
@@ -95,19 +98,19 @@ function configure_firewall_for_dlna {
     firewall_add DLNA 1900 udp
     firewall_add DLNA 8200 tcp
 
-    echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->' > /etc/avahi/services/dlna.service
-    echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">' >> /etc/avahi/services/dlna.service
-    echo '<service-group>' >> /etc/avahi/services/dlna.service
-    echo '  <name replace-wildcards="yes">%h DLNA</name>' >> /etc/avahi/services/dlna.service
-    echo '  <service>' >> /etc/avahi/services/dlna.service
-    echo '    <type>_dlna._tcp</type>' >> /etc/avahi/services/dlna.service
-    echo "    <port>8200</port>" >> /etc/avahi/services/dlna.service
-    echo '  </service>' >> /etc/avahi/services/dlna.service
-    echo '  <service>' >> /etc/avahi/services/dlna.service
-    echo '    <type>_dlna._udp</type>' >> /etc/avahi/services/dlna.service
-    echo "    <port>1900</port>" >> /etc/avahi/services/dlna.service
-    echo '  </service>' >> /etc/avahi/services/dlna.service
-    echo '</service-group>' >> /etc/avahi/services/dlna.service
+    { echo '<?xml version="1.0" standalone="no"?><!--*-nxml-*-->';
+      echo '<!DOCTYPE service-group SYSTEM "avahi-service.dtd">';
+      echo '<service-group>';
+      echo '  <name replace-wildcards="yes">%h DLNA</name>';
+      echo '  <service>';
+      echo '    <type>_dlna._tcp</type>';
+      echo "    <port>8200</port>";
+      echo '  </service>';
+      echo '  <service>';
+      echo '    <type>_dlna._udp</type>';
+      echo "    <port>1900</port>";
+      echo '  </service>';
+      echo '</service-group>'; } > /etc/avahi/services/dlna.service
 
     systemctl restart avahi-daemon
 
@@ -125,7 +128,7 @@ function backup_local_dlna {
 
 function restore_local_dlna {
     if [ -d /var/cache/minidlna ]; then
-        if [ -d $USB_MOUNT_DLNA/backup/dlna ]; then
+        if [ -d "$USB_MOUNT_DLNA/backup/dlna" ]; then
             echo $"Restoring DLNA cache"
             temp_restore_dir=/root/tempdlna
             function_check restore_directory_from_usb
@@ -135,6 +138,7 @@ function restore_local_dlna {
             else
                 cp -r $temp_restore_dir/* /var/cache/minidlna/
             fi
+            # shellcheck disable=SC2181
             if [ ! "$?" = "0" ]; then
                 rm -rf $temp_restore_dir
                 function_check set_user_permissions
@@ -156,7 +160,7 @@ function backup_remote_dlna {
 
 function restore_remote_dlna {
     if [ -d /var/cache/minidlna ]; then
-        if [ -d $SERVER_DIRECTORY/backup/dlna ]; then
+        if [ -d "$SERVER_DIRECTORY/backup/dlna" ]; then
             temp_restore_dir=/root/tempdlna
             function_check restore_directory_from_friend
             restore_directory_from_friend $temp_restore_dir dlna
@@ -165,6 +169,7 @@ function restore_remote_dlna {
             else
                 cp -r $temp_restore_dir/* /var/cache/minidlna/
             fi
+            # shellcheck disable=SC2181
             if [ ! "$?" = "0" ]; then
                 exit 982
             fi
@@ -201,7 +206,7 @@ function install_dlna_main {
         exit 55
     fi
 
-    if [ ! $USB_MOUNT_DLNA ]; then
+    if [ ! "$USB_MOUNT_DLNA" ]; then
         USB_MOUNT_DLNA=/mnt/dlna
     fi
     if [ ${#USB_MOUNT_DLNA} -eq 0 ]; then
@@ -242,7 +247,7 @@ function install_dlna_main {
     systemctl reload minidlna
 
     sed -i 's/fs.inotify.max_user_watches*/fs.inotify.max_user_watches=65536/g' /etc/sysctl.conf
-    if ! grep -q "max_user_watches" $COMPLETION_FILE; then
+    if ! grep -q "max_user_watches" "$COMPLETION_FILE"; then
         echo 'fs.inotify.max_user_watches=65536' >> /etc/sysctl.conf
     fi
     /sbin/sysctl -p -q
@@ -256,37 +261,37 @@ function script_for_attaching_usb_drive {
     if [[ $(is_completed "${FUNCNAME[0]}") == "1" ]]; then
         return
     fi
-    echo '#!/bin/bash' > /usr/bin/attach-music
-    echo "source /usr/local/bin/${PROJECT_NAME}-vars" >> /usr/bin/attach-music
-    echo "UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*" >> /usr/bin/attach-music
-    echo '' >> /usr/bin/attach-music
-    echo 'for f in $UTILS_FILES' >> /usr/bin/attach-music
-    echo 'do' >> /usr/bin/attach-music
-    echo '    source $f' >> /usr/bin/attach-music
-    echo 'done' >> /usr/bin/attach-music
-    echo '' >> /usr/bin/attach-music
-    echo 'USB_DRIVE=/dev/sda1' >> /usr/bin/attach-music
-    echo 'detect_usb_drive' >> /usr/bin/attach-music
-    echo '' >> /usr/bin/attach-music
-    echo 'remove-music' >> /usr/bin/attach-music
-    echo "if [ ! -d $USB_MOUNT_DLNA ]; then" >> /usr/bin/attach-music
-    echo "    mkdir $USB_MOUNT_DLNA" >> /usr/bin/attach-music
-    echo 'fi' >> /usr/bin/attach-music
-    echo -n 'mount $USB_DRIVE ' >> /usr/bin/attach-music
-    echo "$USB_MOUNT_DLNA" >> /usr/bin/attach-music
-    echo "chown root:root $USB_MOUNT_DLNA" >> /usr/bin/attach-music
-    echo "chown -R minidlna:minidlna $USB_MOUNT_DLNA/*" >> /usr/bin/attach-music
-    echo 'systemctl restart minidlna' >> /usr/bin/attach-music
-    echo 'minidlnad -R' >> /usr/bin/attach-music
-    echo 'exit 0' >> /usr/bin/attach-music
+    { echo '#!/bin/bash';
+      echo "source /usr/local/bin/${PROJECT_NAME}-vars";
+      echo "UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*";
+      echo '';
+      echo "for f in \$UTILS_FILES";
+      echo 'do';
+      echo "    source \$f";
+      echo 'done';
+      echo '';
+      echo 'USB_DRIVE=/dev/sda1';
+      echo 'detect_usb_drive';
+      echo '';
+      echo 'remove-music';
+      echo "if [ ! -d $USB_MOUNT_DLNA ]; then";
+      echo "    mkdir $USB_MOUNT_DLNA";
+      echo 'fi';
+      echo -n "mount \$USB_DRIVE ";
+      echo "$USB_MOUNT_DLNA";
+      echo "chown root:root $USB_MOUNT_DLNA";
+      echo "chown -R minidlna:minidlna $USB_MOUNT_DLNA/*";
+      echo 'systemctl restart minidlna';
+      echo 'minidlnad -R';
+      echo 'exit 0'; } > /usr/bin/attach-music
     chmod +x /usr/bin/attach-music
 
-    echo '#!/bin/bash' > /usr/bin/remove-music
-    echo "if [ -d $USB_MOUNT_DLNA ]; then" >> /usr/bin/remove-music
-    echo "  umount $USB_MOUNT_DLNA" >> /usr/bin/remove-music
-    echo "  rm -rf $USB_MOUNT_DLNA" >> /usr/bin/remove-music
-    echo 'fi' >> /usr/bin/remove-music
-    echo 'exit 0' >> /usr/bin/remove-music
+    { echo '#!/bin/bash';
+      echo "if [ -d $USB_MOUNT_DLNA ]; then";
+      echo "  umount $USB_MOUNT_DLNA";
+      echo "  rm -rf $USB_MOUNT_DLNA";
+      echo 'fi';
+      echo 'exit 0'; } > /usr/bin/remove-music
     chmod +x /usr/bin/remove-music
 
     mark_completed "${FUNCNAME[0]}"
