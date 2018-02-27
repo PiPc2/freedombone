@@ -49,7 +49,7 @@ keyserver_variables=(ONION_ONLY
 function check_keyserver_directory_size {
     dirsize=$(du /var/lib/sks/DB | awk -F ' ' '{print $1}')
     # 500M
-    if [ $dirsize -gt 500000 ]; then
+    if [ "$dirsize" -gt 500000 ]; then
         echo "1"
         return
     fi
@@ -57,7 +57,7 @@ function check_keyserver_directory_size {
 }
 
 function keyserver_watchdog {
-    ADMIN_USERNAME=$(cat $COMPLETION_FILE | grep "Admin user" | awk -F ':' '{print $2}')
+    ADMIN_USERNAME=$(grep "Admin user" "$COMPLETION_FILE" | awk -F ':' '{print $2}')
     ADMIN_EMAIL_ADDRESS=${ADMIN_USERNAME}@${HOSTNAME}
     keyserver_size_warning=$"The SKS keyserver database is getting large. Check that you aren't being spammed"
     keyserver_disabled_warning=$"The SKS keyserver has been disabled because it is getting too large. This is to prevent flooding attacks from crashing the server. You may need to restore the keyserver from backup."
@@ -67,19 +67,19 @@ function keyserver_watchdog {
 
     # check database size hourly
     keyserver_watchdog_script=/tmp/keyserver-watchdog
-    echo '#!/bin/bash' > $keyserver_watchdog_script
-    echo "dirsize=\$(du /var/lib/sks/DB | awk -F ' ' '{print \$1}')" >> $keyserver_watchdog_script
-    echo 'if [ $dirsize -gt 450000 ]; then' >> $keyserver_watchdog_script
+    { echo '#!/bin/bash';
+      echo "dirsize=\$(du /var/lib/sks/DB | awk -F ' ' '{print \$1}')";
+      echo "if [ \$dirsize -gt 450000 ]; then";
 
-    echo "  echo \"$keyserver_size_warning\" | mail -s \"$keyserver_mail_subject_line\" $ADMIN_EMAIL_ADDRESS" >> $keyserver_watchdog_script
+      echo "  echo \"$keyserver_size_warning\" | mail -s \"$keyserver_mail_subject_line\" $ADMIN_EMAIL_ADDRESS";
 
-    echo '  if [ $dirsize -gt 500000 ]; then' >> $keyserver_watchdog_script
-    echo "    nginx_dissite $KEYSERVER_DOMAIN_NAME" >> $keyserver_watchdog_script
-    echo '    systemctl stop sks' >> $keyserver_watchdog_script
-    echo '    systemctl disable sks' >> $keyserver_watchdog_script
-    echo "    echo \"$keyserver_disabled_warning\" | mail -s \"$keyserver_mail_subject_line_disabled\" $ADMIN_EMAIL_ADDRESS" >> $keyserver_watchdog_script
-    echo '  fi' >> $keyserver_watchdog_script
-    echo 'fi' >> $keyserver_watchdog_script
+      echo "  if [ \$dirsize -gt 500000 ]; then";
+      echo "    nginx_dissite $KEYSERVER_DOMAIN_NAME";
+      echo '    systemctl stop sks';
+      echo '    systemctl disable sks';
+      echo "    echo \"$keyserver_disabled_warning\" | mail -s \"$keyserver_mail_subject_line_disabled\" $ADMIN_EMAIL_ADDRESS";
+      echo '  fi';
+      echo 'fi'; } > $keyserver_watchdog_script
     chmod +x $keyserver_watchdog_script
 
     if [ ! -f /etc/cron.hourly/keyserver-watchdog ]; then
@@ -134,18 +134,18 @@ function upgrade_keyserver {
         return
     fi
 
-    if grep -q "keyserver domain" $COMPLETION_FILE; then
+    if grep -q "keyserver domain" "$COMPLETION_FILE"; then
         KEYSERVER_DOMAIN_NAME=$(get_completion_param "keyserver domain")
     fi
 
     # update to the next commit
     function_check set_repo_commit
-    set_repo_commit /var/www/$KEYSERVER_DOMAIN_NAME/htdocs "keyserver web commit" "$KEYSERVER_WEB_COMMIT" $KEYSERVER_WEB_REPO
+    set_repo_commit "/var/www/$KEYSERVER_DOMAIN_NAME/htdocs" "keyserver web commit" "$KEYSERVER_WEB_COMMIT" $KEYSERVER_WEB_REPO
 
     read_config_param MY_USERNAME
-    USER_EMAIL_ADDRESS=$MY_USERNAME@$HOSTNAME
-    GPG_ID=$(su -m root -c "gpg --list-keys $USER_EMAIL_ADDRESS | sed -n '2p' | sed 's/^[ \t]*//'" - $MY_USERNAME)
-    if [ ! $GPG_ID ]; then
+    USER_EMAIL_ADDRESS="$MY_USERNAME@$HOSTNAME"
+    GPG_ID=$(su -m root -c "gpg --list-keys \"$USER_EMAIL_ADDRESS\" | sed -n '2p' | sed 's/^[ \\t]*//'" - "$MY_USERNAME")
+    if [ ! "$GPG_ID" ]; then
         echo $'No GPG ID for admin user'
         exit 846336
     fi
@@ -157,17 +157,17 @@ function upgrade_keyserver {
         echo $'GPG ID not retrieved for admin user due to error'
         exit 74825
     fi
-    sed -i "s|###ENTERPUBLICKEYHERE###|$GPG_ID|g" /var/www/$KEYSERVER_DOMAIN_NAME/htdocs/404.html
-    sed -i "s|###ENTERPUBLICKEYHERE###|$GPG_ID|g" /var/www/$KEYSERVER_DOMAIN_NAME/htdocs/index.html
-    sed -i "s|###ENTERNAMEHERE###|$USER_EMAIL_ADDRESS|g" /var/www/$KEYSERVER_DOMAIN_NAME/htdocs/404.html
-    sed -i "s|###ENTERNAMEHERE###|$USER_EMAIL_ADDRESS|g" /var/www/$KEYSERVER_DOMAIN_NAME/htdocs/index.html
+    sed -i "s|###ENTERPUBLICKEYHERE###|$GPG_ID|g" "/var/www/$KEYSERVER_DOMAIN_NAME/htdocs/404.html"
+    sed -i "s|###ENTERPUBLICKEYHERE###|$GPG_ID|g" "/var/www/$KEYSERVER_DOMAIN_NAME/htdocs/index.html"
+    sed -i "s|###ENTERNAMEHERE###|$USER_EMAIL_ADDRESS|g" "/var/www/$KEYSERVER_DOMAIN_NAME/htdocs/404.html"
+    sed -i "s|###ENTERNAMEHERE###|$USER_EMAIL_ADDRESS|g" "/var/www/$KEYSERVER_DOMAIN_NAME/htdocs/index.html"
 
-    chown -R www-data:www-data /var/www/$KEYSERVER_DOMAIN_NAME/htdocs
+    chown -R www-data:www-data "/var/www/$KEYSERVER_DOMAIN_NAME/htdocs"
 }
 
 function backup_local_keyserver {
     # remove any unused log files
-    cd /var/lib/sks/DB
+    cd /var/lib/sks/DB || exit 2468245
     db_archive -d
 
     source_directory=/etc/sks
@@ -223,6 +223,7 @@ function restore_local_keyserver {
         fi
         cp -r $temp_restore_dir/* /var/lib/sks/DB
     fi
+    # shellcheck disable=SC2181
     if [ ! "$?" = "0" ]; then
         # restore the old database
         rm -rf /var/lib/sks/DB
@@ -243,12 +244,12 @@ function restore_local_keyserver {
 
     systemctl enable sks
     systemctl start sks
-    nginx_ensite $KEYSERVER_DOMAIN_NAME
+    nginx_ensite "$KEYSERVER_DOMAIN_NAME"
 }
 
 function backup_remote_keyserver {
     # remove any unused log files
-    cd /var/lib/sks/DB
+    cd /var/lib/sks/DB || exit 734624
     db_archive -d
 
     source_directory=/etc/sks
@@ -304,6 +305,7 @@ function restore_remote_keyserver {
         fi
         cp -r $temp_restore_dir/* /var/lib/sks/DB
     fi
+    # shellcheck disable=SC2181
     if [ ! "$?" = "0" ]; then
         # restore the old database
         rm -rf /var/lib/sks/DB
@@ -322,7 +324,7 @@ function restore_remote_keyserver {
 
     systemctl enable sks
     systemctl start sks
-    nginx_ensite $KEYSERVER_DOMAIN_NAME
+    nginx_ensite "$KEYSERVER_DOMAIN_NAME"
 }
 
 function remove_keyserver {
@@ -333,21 +335,21 @@ function remove_keyserver {
     apt-get -qy remove sks dirmngr
 
     read_config_param "KEYSERVER_DOMAIN_NAME"
-    nginx_dissite $KEYSERVER_DOMAIN_NAME
-    remove_certs ${KEYSERVER_DOMAIN_NAME}
-    if [ -f /etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME ]; then
-        rm -f /etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME
+    nginx_dissite "$KEYSERVER_DOMAIN_NAME"
+    remove_certs "${KEYSERVER_DOMAIN_NAME}"
+    if [ -f "/etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME" ]; then
+        rm -f "/etc/nginx/sites-available/$KEYSERVER_DOMAIN_NAME"
     fi
-    if [ -d /var/www/$KEYSERVER_DOMAIN_NAME ]; then
-        rm -rf /var/www/$KEYSERVER_DOMAIN_NAME
+    if [ -d "/var/www/$KEYSERVER_DOMAIN_NAME" ]; then
+        rm -rf "/var/www/$KEYSERVER_DOMAIN_NAME"
     fi
     function_check remove_ddns_domain
-    remove_ddns_domain $KEYSERVER_DOMAIN_NAME
+    remove_ddns_domain "$KEYSERVER_DOMAIN_NAME"
 
     remove_config_param KEYSERVER_DOMAIN_NAME
     remove_config_param KEYSERVER_CODE
     function_check remove_onion_service
-    remove_onion_service keyserver ${KEYSERVER_ONION_PORT}
+    remove_onion_service keyserver "${KEYSERVER_ONION_PORT}"
     remove_onion_service sks 11370 11371 11372
     remove_completion_param "install_keyserver"
 
@@ -355,15 +357,15 @@ function remove_keyserver {
     firewall_remove 11371 tcp
     firewall_remove 11372 tcp
 
-    sed -i '/keyserver/d' $COMPLETION_FILE
-    sed -i '/sks onion/d' $COMPLETION_FILE
+    sed -i '/keyserver/d' "$COMPLETION_FILE"
+    sed -i '/sks onion/d' "$COMPLETION_FILE"
     if [ -d /var/lib/sks ]; then
         rm -rf /var/lib/sks
     fi
 }
 
 function install_interactive_keyserver {
-    if [ ! $ONION_ONLY ]; then
+    if [ ! "$ONION_ONLY" ]; then
         ONION_ONLY='no'
     fi
 
@@ -388,12 +390,12 @@ function keyserver_create_membership {
         return
     fi
     systemctl stop sks
-    echo $"# List of other $PROJECT_NAME SKS Keyservers to sync with." > /etc/sks/membership
-    echo '#' >> /etc/sks/membership
-    echo $"# Don't add major keyservers here, because it will take an" >> /etc/sks/membership
-    echo $'# Infeasible amount of time to sync and backups will become' >> /etc/sks/membership
-    echo $'# absurdly long and probably break your system. You have been warned.' >> /etc/sks/membership
-    echo '' >> /etc/sks/membership
+    { echo $"# List of other $PROJECT_NAME SKS Keyservers to sync with.";
+      echo '#';
+      echo $"# Don't add major keyservers here, because it will take an";
+      echo $'# Infeasible amount of time to sync and backups will become';
+      echo $'# absurdly long and probably break your system. You have been warned.';
+      echo ''; } > /etc/sks/membership
     chown -Rc debian-sks: /etc/sks/membership
     systemctl start sks
 }
@@ -403,7 +405,7 @@ function keyserver_import_keys {
     dialog --title $"Import public keys database" \
            --backtitle $"Freedombone Control Panel" \
            --defaultno \
-           --yesno $"\nThis will download many gigabytes of data and so depending on your bandwidth it could take several days.\n\nContinue?" 10 60
+           --yesno $"\\nThis will download many gigabytes of data and so depending on your bandwidth it could take several days.\\n\\nContinue?" 10 60
     sel=$?
     case $sel in
         1) return;;
@@ -412,36 +414,38 @@ function keyserver_import_keys {
     if [ ! -d /var/lib/sks/dump ]; then
         mkdir -p /var/lib/sks/dump
     fi
-    cd /var/lib/sks/dump
+    cd /var/lib/sks/dump || exit 59242684
     echo $'Getting keyserver dump. This may take a few days or longer, so be patient.'
     rm -rf /var/lib/sks/dump/*
     KEYSERVER_DUMP_URL="https://keyserver.mattrude.com/dump/$(date +%F)/"
     wget -crp -e robots=off --level=1 --cut-dirs=3 -nH \
-         -A pgp,txt $KEYSERVER_DUMP_URL
+         -A pgp,txt "$KEYSERVER_DUMP_URL"
 
-    cd /var/lib/sks
+    cd /var/lib/sks || exit 936572424
     echo $'Building the keyserver database from the downloaded dump'
     keyserver_reset_database
 }
 
 function keyserver_sync {
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
+    data=$(mktemp 2>/dev/null)
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Sync with other keyserver" \
            --form $"\nEnter details for the other server. Please be aware that it's not a good idea to sync with major keyservers which have exceptionally large databases. This is intended to sync with other $PROJECT_NAME systems each having a small database for a particular community." 16 60 3 \
            $"Domain:" 1 1 "" 1 25 32 64 \
            $"Port:" 2 1 "11370" 2 25 6 6 \
            $"Sync Email (optional):" 3 1 "pgp-public-keys@" 3 25 32 64 \
-           2> $data
+           2> "$data"
     sel=$?
     case $sel in
-        1) return;;
-        255) return;;
+        1) rm -f "$data"
+           return;;
+        255) rm -f "$data"
+             return;;
     esac
-    other_keyserver_domain=$(cat $data | sed -n 1p)
-    other_keyserver_port=$(cat $data | sed -n 2p)
-    other_keyserver_email=$(cat $data | sed -n 3p)
+    other_keyserver_domain=$(sed -n 1p < "$data")
+    other_keyserver_port=$(sed -n 2p < "$data")
+    other_keyserver_email=$(sed -n 3p < "$data")
+    rm -f "$data"
     if [[ "$other_keyserver_domain" != *'.'* ]]; then
         return
     fi
@@ -464,7 +468,7 @@ function keyserver_sync {
     # Warn if trying to sync
     if [[ "$other_keyserver_domain" == *"sks-keyservers.net" || "$other_keyserver_domain" == *"gnupg.net" || "$other_keyserver_domain" == *"pgp.com" || "$other_keyserver_domain" == *"pgp.mit.edu" || "$other_keyserver_domain" == *"the.earth.li" || "$other_keyserver_domain" == *"mayfirst.org" || "$other_keyserver_domain" == *"ubuntu.com" ]]; then
         dialog --title $"Sync with other keyserver" \
-               --msgbox $"\nDon't try to sync with the major keyservers. Your system will be overloaded with an infeasible database size." 8 60
+               --msgbox $"\\nDon't try to sync with the major keyservers. Your system will be overloaded with an infeasible database size." 8 60
         return
     fi
 
@@ -508,47 +512,50 @@ function keyserver_edit {
 }
 
 function keyserver_remove_key {
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
+    data=$(mktemp 2>/dev/null)
     dialog --title $"Remove a key" \
            --backtitle $"Freedombone Control Panel" \
-           --inputbox $"Enter the ID of the key which you wish to remove:" 12 60 2>$data
+           --inputbox $"Enter the ID of the key which you wish to remove:" 12 60 2>"$data"
     sel=$?
     case $sel in
         0)
-            remove_key_id=$(<$data)
+            remove_key_id=$(<"$data")
             if [ ${#remove_key_id} -gt 8 ]; then
-                sks drop $remove_key_id
+                sks drop "$remove_key_id"
                 dialog --title $"Remove a key" \
                        --msgbox $"The key was removed" 6 40
             fi
             ;;
     esac
+    rm -f "$data"
 }
 
 function configure_interactive_keyserver {
     while true
     do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
+        data=$(mktemp 2>/dev/null)
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"SKS Keyserver" \
                --radiolist $"Choose an operation:" 12 70 4 \
                1 $"Remove a key" off \
                2 $"Sync with other keyserver" off \
                3 $"Edit sync keyservers" off \
-               4 $"Exit" on 2> $data
+               4 $"Exit" on 2> "$data"
         sel=$?
         case $sel in
-            1) return;;
-            255) return;;
+            1) rm -f "$data"
+               return;;
+            255) rm -f "$data"
+                 return;;
         esac
-        case $(cat $data) in
+        case $(cat "$data") in
             1) keyserver_remove_key;;
             2) keyserver_sync;;
             3) keyserver_edit;;
-            4) break;;
+            4) rm -f "$data"
+               break;;
         esac
+        rm -f "$data"
     done
 }
 
@@ -563,7 +570,7 @@ function install_keyserver {
         mkdir /var/www/$KEYSERVER_DOMAIN_NAME
     fi
 
-    cd /var/www/$KEYSERVER_DOMAIN_NAME
+    cd "/var/www/$KEYSERVER_DOMAIN_NAME" || exit 25427642847
     if [ -d /var/www/$KEYSERVER_DOMAIN_NAME/htdocs ]; then
         rm -rf /var/www/$KEYSERVER_DOMAIN_NAME/htdocs
     fi
@@ -571,7 +578,7 @@ function install_keyserver {
     if [ -d /repos/keyserverweb ]; then
         mkdir htdocs
         cp -r -p /repos/keyserverweb/. htdocs
-        cd htdocs
+        cd htdocs || exit 379584659
         git pull
     else
         git_clone $KEYSERVER_WEB_REPO htdocs
@@ -581,14 +588,14 @@ function install_keyserver {
         exit 6539230
     fi
 
-    cd /var/www/$KEYSERVER_DOMAIN_NAME/htdocs
+    cd "/var/www/$KEYSERVER_DOMAIN_NAME/htdocs" || exit 264824528
     git checkout $KEYSERVER_WEB_COMMIT -b $KEYSERVER_WEB_COMMIT
     set_completion_param "keyserver web commit" "$KEYSERVER_WEB_COMMIT"
 
 
     USER_EMAIL_ADDRESS=$MY_USERNAME@$HOSTNAME
-    GPG_ID=$(su -m root -c "gpg --list-keys $USER_EMAIL_ADDRESS | sed -n '2p' | sed 's/^[ \t]*//'" - $MY_USERNAME)
-    if [ ! $GPG_ID ]; then
+    GPG_ID=$(su -m root -c "gpg --list-keys \"$USER_EMAIL_ADDRESS\" | sed -n '2p' | sed 's/^[ \\t]*//'" - "$MY_USERNAME")
+    if [ ! "$GPG_ID" ]; then
         echo $'No GPG ID for admin user'
         exit 846336
     fi
@@ -659,11 +666,11 @@ function install_keyserver {
     chown debian-sks: $sksconf_file
 
     if ! grep -q "hidden_service_sks" /etc/tor/torrc; then
-        echo 'HiddenServiceDir /var/lib/tor/hidden_service_sks/' >> /etc/tor/torrc
-        echo 'HiddenServiceVersion 3' >> /etc/tor/torrc
-        echo "HiddenServicePort 11370 127.0.0.1:11370" >> /etc/tor/torrc
-        echo "HiddenServicePort 11373 127.0.0.1:11371" >> /etc/tor/torrc
-        echo "HiddenServicePort 11372 127.0.0.1:11372" >> /etc/tor/torrc
+        { echo 'HiddenServiceDir /var/lib/tor/hidden_service_sks/';
+          echo 'HiddenServiceVersion 3';
+          echo "HiddenServicePort 11370 127.0.0.1:11370";
+          echo "HiddenServicePort 11373 127.0.0.1:11371";
+          echo "HiddenServicePort 11372 127.0.0.1:11372"; } >> /etc/tor/torrc
         echo $'Added onion site for sks'
     fi
 
@@ -682,141 +689,141 @@ function install_keyserver {
     if [[ $ONION_ONLY == "no" ]]; then
         # NOTE: without http active on port 80 the keyserver doesn't work
         #       from the commandline
-        echo 'server {' > $keyserver_nginx_site
-        echo '  listen 80;' >> $keyserver_nginx_site
-        echo '  listen 0.0.0.0:11371;' >> $keyserver_nginx_site
-        echo '  listen [::]:80;' >> $keyserver_nginx_site
-        echo "  server_name $KEYSERVER_DOMAIN_NAME;" >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  # Logs' >> $keyserver_nginx_site
-        echo '  access_log /dev/null;' >> $keyserver_nginx_site
-        echo '  error_log /dev/null;' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  # Root' >> $keyserver_nginx_site
-        echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/htdocs;" >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  rewrite ^/stats /pks/lookup?op=stats;' >> $keyserver_nginx_site
-        echo '  rewrite ^/s/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/search/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/g/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/get/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  location / {' >> $keyserver_nginx_site
+        { echo 'server {';
+          echo '  listen 80;';
+          echo '  listen 0.0.0.0:11371;';
+          echo '  listen [::]:80;';
+          echo "  server_name $KEYSERVER_DOMAIN_NAME;";
+          echo '';
+          echo '  # Logs';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo '  # Root';
+          echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  rewrite ^/stats /pks/lookup?op=stats;';
+          echo "  rewrite ^/s/(.*) /pks/lookup?search=\$1;";
+          echo "  rewrite ^/search/(.*) /pks/lookup?search=\$1;";
+          echo "  rewrite ^/g/(.*) /pks/lookup?op=get&search=\$1;";
+          echo "  rewrite ^/get/(.*) /pks/lookup?op=get&search=\$1;";
+          echo "  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=\$1;";
+          echo "  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=\$1;";
+          echo '';
+          echo '  location / {'; } > $keyserver_nginx_site
         function_check nginx_limits
-        nginx_limits $KEYSERVER_DOMAIN_NAME '128k'
-        echo '  }' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  location /pks {' >> $keyserver_nginx_site
-        echo '    proxy_pass         http://127.0.0.1:11373;' >> $keyserver_nginx_site
-        echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
-        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11371 (nginx)\";" >> $keyserver_nginx_site
-        echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
-        echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
-        echo '    client_body_buffer_size 128k;' >> $keyserver_nginx_site
-        echo '  }' >> $keyserver_nginx_site
-        echo '}' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo 'server {' >> $keyserver_nginx_site
-        echo '  listen 443 ssl;' >> $keyserver_nginx_site
-        echo '  listen 0.0.0.0:11372 ssl;' >> $keyserver_nginx_site
-        echo '  #listen [::]:443 ssl;' >> $keyserver_nginx_site
-        echo "  server_name $KEYSERVER_DOMAIN_NAME;" >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  error_page 404 /404.html;' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  location ~ (.git|LICENSE|readme.md) {' >> $keyserver_nginx_site
-        echo '    deny all;' >> $keyserver_nginx_site
-        echo '    return 404;' >> $keyserver_nginx_site
-        echo '  }' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  # Security' >> $keyserver_nginx_site
+        nginx_limits "$KEYSERVER_DOMAIN_NAME" '128k'
+        { echo '  }';
+          echo '';
+          echo '  location /pks {';
+          echo '    proxy_pass         http://127.0.0.1:11373;';
+          echo '    proxy_pass_header  Server;';
+          echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11371 (nginx)\";";
+          echo '    proxy_ignore_client_abort on;';
+          echo '    client_max_body_size 8m;';
+          echo '    client_body_buffer_size 128k;';
+          echo '  }';
+          echo '}';
+          echo '';
+          echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  listen 0.0.0.0:11372 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $KEYSERVER_DOMAIN_NAME;";
+          echo '';
+          echo '  error_page 404 /404.html;';
+          echo '';
+          echo '  location ~ (.git|LICENSE|readme.md) {';
+          echo '    deny all;';
+          echo '    return 404;';
+          echo '  }';
+          echo '';
+          echo '  # Security'; } >> $keyserver_nginx_site
         function_check nginx_ssl
         nginx_ssl $KEYSERVER_DOMAIN_NAME
 
         function_check nginx_disable_sniffing
         nginx_disable_sniffing $KEYSERVER_DOMAIN_NAME
 
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  # Logs' >> $keyserver_nginx_site
-        echo '  access_log /dev/null;' >> $keyserver_nginx_site
-        echo '  error_log /dev/null;' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  # Root' >> $keyserver_nginx_site
-        echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/htdocs;" >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '  # Logs';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo '  # Root';
+          echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/htdocs;";
+          echo '';
 
-        echo '  rewrite ^/stats /pks/lookup?op=stats;' >> $keyserver_nginx_site
-        echo '  rewrite ^/s/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/search/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/g/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/get/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
-        echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  location / {' >> $keyserver_nginx_site
+          echo '  rewrite ^/stats /pks/lookup?op=stats;';
+          echo "  rewrite ^/s/(.*) /pks/lookup?search=\$1;";
+          echo "  rewrite ^/search/(.*) /pks/lookup?search=\$1;";
+          echo "  rewrite ^/g/(.*) /pks/lookup?op=get&search=\$1;";
+          echo "  rewrite ^/get/(.*) /pks/lookup?op=get&search=\$1;";
+          echo "  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=\$1;";
+          echo "  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=\$1;";
+          echo '';
+          echo '  location / {'; } >> $keyserver_nginx_site
         function_check nginx_limits
         nginx_limits $KEYSERVER_DOMAIN_NAME '128k'
-        echo '  }' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
-        echo '  location /pks {' >> $keyserver_nginx_site
-        echo "    proxy_pass         http://127.0.0.1:11373;" >> $keyserver_nginx_site
-        echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
-        echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11372 (nginx)\";" >> $keyserver_nginx_site
-        echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
-        echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
-        echo '    client_body_buffer_size 128k;' >> $keyserver_nginx_site
-        echo '  }' >> $keyserver_nginx_site
-        echo '}' >> $keyserver_nginx_site
-        echo '' >> $keyserver_nginx_site
+        { echo '  }';
+          echo '';
+          echo '  location /pks {';
+          echo "    proxy_pass         http://127.0.0.1:11373;";
+          echo '    proxy_pass_header  Server;';
+          echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:11372 (nginx)\";";
+          echo '    proxy_ignore_client_abort on;';
+          echo '    client_max_body_size 8m;';
+          echo '    client_body_buffer_size 128k;';
+          echo '  }';
+          echo '}';
+          echo ''; } >> $keyserver_nginx_site
     else
         echo -n '' > $keyserver_nginx_site
     fi
-    echo 'server {' >> $keyserver_nginx_site
-    echo "  listen 127.0.0.1:$KEYSERVER_ONION_PORT default_server;" >> $keyserver_nginx_site
-    echo "  server_name $KEYSERVER_ONION_HOSTNAME;" >> $keyserver_nginx_site
-    echo '' >> $keyserver_nginx_site
-    echo '  error_page 404 /404.html;' >> $keyserver_nginx_site
-    echo '' >> $keyserver_nginx_site
-    echo '  location ~ (.git|LICENSE|readme.md) {' >> $keyserver_nginx_site
-    echo '    deny all;' >> $keyserver_nginx_site
-    echo '    return 404;' >> $keyserver_nginx_site
-    echo '  }' >> $keyserver_nginx_site
-    echo '' >> $keyserver_nginx_site
+    { echo 'server {';
+      echo "  listen 127.0.0.1:$KEYSERVER_ONION_PORT default_server;";
+      echo "  server_name $KEYSERVER_ONION_HOSTNAME;";
+      echo '';
+      echo '  error_page 404 /404.html;';
+      echo '';
+      echo '  location ~ (.git|LICENSE|readme.md) {';
+      echo '    deny all;';
+      echo '    return 404;';
+      echo '  }';
+      echo ''; } >> $keyserver_nginx_site
     function_check nginx_disable_sniffing
     nginx_disable_sniffing $KEYSERVER_DOMAIN_NAME
-    echo '' >> $keyserver_nginx_site
-    echo '  # Logs' >> $keyserver_nginx_site
-    echo '  access_log /dev/null;' >> $keyserver_nginx_site
-    echo '  error_log /dev/null;' >> $keyserver_nginx_site
-    echo '' >> $keyserver_nginx_site
-    echo '  # Root' >> $keyserver_nginx_site
-    echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/mail;" >> $keyserver_nginx_site
-    echo '' >> $keyserver_nginx_site
-    echo '  rewrite ^/stats /pks/lookup?op=stats;' >> $keyserver_nginx_site
-    echo '  rewrite ^/s/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
-    echo '  rewrite ^/search/(.*) /pks/lookup?search=$1;' >> $keyserver_nginx_site
-    echo '  rewrite ^/g/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
-    echo '  rewrite ^/get/(.*) /pks/lookup?op=get&search=$1;' >> $keyserver_nginx_site
-    echo '  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
-    echo '  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=$1;' >> $keyserver_nginx_site
-    echo '' >> $keyserver_nginx_site
-    echo '  location / {' >> $keyserver_nginx_site
+    { echo '';
+      echo '  # Logs';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  # Root';
+      echo "  root /var/www/$KEYSERVER_DOMAIN_NAME/mail;";
+      echo '';
+      echo '  rewrite ^/stats /pks/lookup?op=stats;';
+      echo "  rewrite ^/s/(.*) /pks/lookup?search=\$1;";
+      echo "  rewrite ^/search/(.*) /pks/lookup?search=\$1;";
+      echo "  rewrite ^/g/(.*) /pks/lookup?op=get&search=\$1;";
+      echo "  rewrite ^/get/(.*) /pks/lookup?op=get&search=\$1;";
+      echo "  rewrite ^/d/(.*) /pks/lookup?op=get&options=mr&search=\$1;";
+      echo "  rewrite ^/download/(.*) /pks/lookup?op=get&options=mr&search=\$1;";
+      echo '';
+      echo '  location / {'; } >> $keyserver_nginx_site
     function_check nginx_limits
     nginx_limits $KEYSERVER_DOMAIN_NAME '128k'
-    echo '  }' >> $keyserver_nginx_site
-    echo '' >> $keyserver_nginx_site
-    echo '  location /pks {' >> $keyserver_nginx_site
-    echo "    proxy_pass         http://127.0.0.1:11373;" >> $keyserver_nginx_site
-    echo '    proxy_pass_header  Server;' >> $keyserver_nginx_site
-    echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:$KEYSERVER_ONION_PORT (nginx)\";" >> $keyserver_nginx_site
-    echo '    proxy_ignore_client_abort on;' >> $keyserver_nginx_site
-    echo '    client_max_body_size 8m;' >> $keyserver_nginx_site
-    echo '    client_body_buffer_size 128k;' >> $keyserver_nginx_site
-    echo '  }' >> $keyserver_nginx_site
-    echo '}' >> $keyserver_nginx_site
+    { echo '  }';
+      echo '';
+      echo '  location /pks {';
+      echo "    proxy_pass         http://127.0.0.1:11373;";
+      echo '    proxy_pass_header  Server;';
+      echo "    add_header         Via \"1.1 $KEYSERVER_DOMAIN_NAME:$KEYSERVER_ONION_PORT (nginx)\";";
+      echo '    proxy_ignore_client_abort on;';
+      echo '    client_max_body_size 8m;';
+      echo '    client_body_buffer_size 128k;';
+      echo '  }';
+      echo '}'; } >> $keyserver_nginx_site
 
     function_check create_site_certificate
     if [ ! -f /etc/ssl/certs/${KEYSERVER_DOMAIN_NAME}.pem ]; then

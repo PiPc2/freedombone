@@ -70,19 +70,19 @@ function logging_off_kanboard {
 function remove_user_kanboard {
     remove_username="$1"
 
-    ${PROJECT_NAME}-pass -u $remove_username --rmapp kanboard
+    "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp kanboard
 }
 
 function add_user_kanboard {
     new_username="$1"
     new_user_password="$2"
 
-    ${PROJECT_NAME}-pass -u $new_username -a kanboard -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$new_username" -a kanboard -p "$new_user_password"
     echo '0'
 }
 
 function install_interactive_kanboard {
-    if [ ! $ONION_ONLY ]; then
+    if [ ! "$ONION_ONLY" ]; then
         ONION_ONLY='no'
     fi
 
@@ -92,42 +92,43 @@ function install_interactive_kanboard {
         KANBOARD_DETAILS_COMPLETE=
         while [ ! $KANBOARD_DETAILS_COMPLETE ]
         do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
+            data=$(mktemp 2>/dev/null)
             if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"KanBoard Configuration" \
-                       --form $"\nPlease enter your KanBoard details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt." 13 55 2 \
+                       --form $"\\nPlease enter your KanBoard details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt." 13 55 2 \
                        $"Domain:" 1 1 "$(grep 'KANBOARD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 15 33 40 \
                        $"Code:" 2 1 "$(grep 'KANBOARD_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 15 33 255 \
-                       2> $data
+                       2> "$data"
             else
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"KanBoard Configuration" \
-                       --form $"\nPlease enter your KanBoard details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt." 13 55 2 \
+                       --form $"\\nPlease enter your KanBoard details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt." 13 55 2 \
                        $"Domain:" 1 1 "$(grep 'KANBOARD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 15 33 40 \
-                       2> $data
+                       2> "$data"
             fi
             sel=$?
             case $sel in
-                1) exit 1;;
-                255) exit 1;;
+                1) rm -f "$data"
+                   exit 1;;
+                255) rm -f "$data"
+                     exit 1;;
             esac
-            KANBOARD_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $KANBOARD_DOMAIN_NAME ]; then
+            KANBOARD_DOMAIN_NAME=$(sed -n 1p < "$data")
+            if [ "$KANBOARD_DOMAIN_NAME" ]; then
                 if [[ $KANBOARD_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
                     KANBOARD_DOMAIN_NAME=""
                 fi
                 TEST_DOMAIN_NAME=$KANBOARD_DOMAIN_NAME
                 validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $KANBOARD_DOMAIN_NAME ]]; then
+                if [[ "$TEST_DOMAIN_NAME" != "$KANBOARD_DOMAIN_NAME" ]]; then
                     KANBOARD_DOMAIN_NAME=
                     dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
                 else
                     if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        KANBOARD_CODE=$(cat $data | sed -n 2p)
+                        KANBOARD_CODE=$(sed -n 2p < "$data")
                         validate_freedns_code "$KANBOARD_CODE"
-                        if [ ! $VALID_CODE ]; then
+                        if [ ! "$VALID_CODE" ]; then
                             KANBOARD_DOMAIN_NAME=
                         fi
                     fi
@@ -136,6 +137,7 @@ function install_interactive_kanboard {
             if [ $KANBOARD_DOMAIN_NAME ]; then
                 KANBOARD_DETAILS_COMPLETE="yes"
             fi
+            rm -f "$data"
         done
 
         # save the results in the config file
@@ -151,23 +153,23 @@ function change_password_kanboard {
 
     read_config_param 'KANBOARD_DOMAIN_NAME'
 
-    ${PROJECT_NAME}-pass -u "$curr_username" -a kanboard -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$curr_username" -a kanboard -p "$new_user_password"
 }
 
 function kanboard_create_database {
-    if [ -f $IMAGE_PASSWORD_FILE ]; then
-        KANBOARD_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    if [ -f "$IMAGE_PASSWORD_FILE" ]; then
+        KANBOARD_ADMIN_PASSWORD="$(printf "%s" "$(cat "$IMAGE_PASSWORD_FILE")")"
     else
-        if [ ! $KANBOARD_ADMIN_PASSWORD ]; then
-            KANBOARD_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        if [ ! "$KANBOARD_ADMIN_PASSWORD" ]; then
+            KANBOARD_ADMIN_PASSWORD="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
         fi
     fi
-    if [ ! $KANBOARD_ADMIN_PASSWORD ]; then
+    if [ ! "$KANBOARD_ADMIN_PASSWORD" ]; then
         return
     fi
 
     function_check create_database
-    create_database kanboard "$KANBOARD_ADMIN_PASSWORD" $MY_USERNAME
+    create_database kanboard "$KANBOARD_ADMIN_PASSWORD" "$MY_USERNAME"
 }
 
 function reconfigure_kanboard {
@@ -180,40 +182,40 @@ function upgrade_kanboard {
         return
     fi
 
-    if grep -q "kanboard domain" $COMPLETION_FILE; then
+    if grep -q "kanboard domain" "$COMPLETION_FILE"; then
         KANBOARD_DOMAIN_NAME=$(get_completion_param "kanboard domain")
     fi
 
     # update to the next commit
     function_check set_repo_commit
-    set_repo_commit /var/www/$KANBOARD_DOMAIN_NAME/htdocs "kanboard commit" "$KANBOARD_COMMIT" $KANBOARD_REPO
+    set_repo_commit "/var/www/$KANBOARD_DOMAIN_NAME/htdocs" "kanboard commit" "$KANBOARD_COMMIT" $KANBOARD_REPO
 
-    chown -R www-data:www-data /var/www/${KANBOARD_DOMAIN_NAME}/htdocs
+    chown -R www-data:www-data "/var/www/${KANBOARD_DOMAIN_NAME}/htdocs"
 }
 
 
 function backup_local_kanboard {
     KANBOARD_DOMAIN_NAME='kanboard'
-    if grep -q "kanboard domain" $COMPLETION_FILE; then
+    if grep -q "kanboard domain" "$COMPLETION_FILE"; then
         KANBOARD_DOMAIN_NAME=$(get_completion_param "kanboard domain")
     fi
 
     source_directory=/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/backup
-    if [ ! -d $source_directory ]; then
-        mkdir $source_directory
+    if [ ! -d "$source_directory" ]; then
+        mkdir "$source_directory"
     fi
-    cp -p /var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.php $source_directory
+    cp -p "/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.php" "$source_directory"
 
     function_check suspend_site
-    suspend_site ${KANBOARD_DOMAIN_NAME}
+    suspend_site "${KANBOARD_DOMAIN_NAME}"
 
     function_check backup_directory_to_usb
     dest_directory=kanboardconfig
-    backup_directory_to_usb $source_directory $dest_directory
+    backup_directory_to_usb "$source_directory" "$dest_directory"
 
     source_directory=/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/data
     dest_directory=kanboardfile
-    backup_directory_to_usb $source_directory $dest_directory
+    backup_directory_to_usb "$source_directory" "$dest_directory"
 
     function_check backup_database_to_usb
     backup_database_to_usb kanboard
@@ -223,11 +225,11 @@ function backup_local_kanboard {
 }
 
 function restore_local_kanboard {
-    if ! grep -q "kanboard domain" $COMPLETION_FILE; then
+    if ! grep -q "kanboard domain" "$COMPLETION_FILE"; then
         return
     fi
     KANBOARD_DOMAIN_NAME=$(get_completion_param "kanboard domain")
-    if [ $KANBOARD_DOMAIN_NAME ]; then
+    if [ "$KANBOARD_DOMAIN_NAME" ]; then
         echo $"Restoring kanboard"
         temp_restore_dir=/root/tempkanboard
         kanboard_dir=/var/www/${KANBOARD_DOMAIN_NAME}/htdocs
@@ -243,30 +245,30 @@ function restore_local_kanboard {
         function_check restore_directory_from_usb
         restore_directory_from_usb $temp_restore_dir kanboardconfig
         if [ -d $temp_restore_dir ]; then
-            if [ -d $temp_restore_dir$kanboard_dir/backup ]; then
-                cp $temp_restore_dir$kanboard_dir/backup/config.php $kanboard_dir/
+            if [ -d "$temp_restore_dir$kanboard_dir/backup" ]; then
+                cp "$temp_restore_dir$kanboard_dir/backup/config.php" "$kanboard_dir/"
             else
-                cp $temp_restore_dir/config.php $kanboard_dir/
+                cp "$temp_restore_dir/config.php" "$kanboard_dir/"
             fi
-            chown www-data:www-data $kanboard_dir/config.php
+            chown www-data:www-data "$kanboard_dir/config.php"
             rm -rf $temp_restore_dir
         fi
 
         restore_directory_from_usb $temp_restore_dir kanboardfile
         if [ -d $temp_restore_dir ]; then
-            if [ -d $temp_restore_dir$kanboard_dir/data ]; then
-                cp -rp $temp_restore_dir$kanboard_dir/data $kanboard_dir/
+            if [ -d "$temp_restore_dir$kanboard_dir/data" ]; then
+                cp -rp "$temp_restore_dir$kanboard_dir/data" "$kanboard_dir/"
             else
-                if [ ! -d $kanboard_dir/data ]; then
-                    mkdir $kanboard_dir/data
+                if [ ! -d "$kanboard_dir/data" ]; then
+                    mkdir "$kanboard_dir/data"
                 fi
-                cp -rp $temp_restore_dir/* $kanboard_dir/data/
+                cp -rp "$temp_restore_dir/*" "$kanboard_dir/data/"
             fi
-            chown -R www-data:www-data $kanboard_dir/data
+            chown -R www-data:www-data "$kanboard_dir/data"
             rm -rf $temp_restore_dir
         fi
 
-        kanboard_update_after_restore kanboard ${KANBOARD_DOMAIN_NAME}
+        kanboard_update_after_restore kanboard "${KANBOARD_DOMAIN_NAME}"
 
         echo $"Restore of kanboard complete"
     fi
@@ -274,26 +276,26 @@ function restore_local_kanboard {
 
 function backup_remote_kanboard {
     KANBOARD_DOMAIN_NAME='kanboard'
-    if grep -q "kanboard domain" $COMPLETION_FILE; then
+    if grep -q "kanboard domain" "$COMPLETION_FILE"; then
         KANBOARD_DOMAIN_NAME=$(get_completion_param "kanboard domain")
     fi
 
     source_directory=/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/backup
-    if [ ! -d $source_directory ]; then
-        mkdir $source_directory
+    if [ ! -d "$source_directory" ]; then
+        mkdir "$source_directory"
     fi
-    cp -p /var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.php $source_directory
+    cp -p "/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.php" "$source_directory"
 
     function_check suspend_site
-    suspend_site ${KANBOARD_DOMAIN_NAME}
+    suspend_site "${KANBOARD_DOMAIN_NAME}"
 
     function_check backup_directory_to_friend
     dest_directory=kanboardconfig
-    backup_directory_to_friend $source_directory $dest_directory
+    backup_directory_to_friend "$source_directory" "$dest_directory"
 
     source_directory=/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/data
     dest_directory=kanboardfile
-    backup_directory_to_friend $source_directory $dest_directory
+    backup_directory_to_friend "$source_directory" "$dest_directory"
 
     function_check backup_database_to_friend
     backup_database_to_friend kanboard
@@ -303,11 +305,11 @@ function backup_remote_kanboard {
 }
 
 function restore_remote_kanboard {
-    if ! grep -q "kanboard domain" $COMPLETION_FILE; then
+    if ! grep -q "kanboard domain" "$COMPLETION_FILE"; then
         return
     fi
     KANBOARD_DOMAIN_NAME=$(get_completion_param "kanboard domain")
-    if [ $KANBOARD_DOMAIN_NAME ]; then
+    if [ "$KANBOARD_DOMAIN_NAME" ]; then
         echo $"Restoring kanboard"
         temp_restore_dir=/root/tempkanboard
         kanboard_dir=/var/www/${KANBOARD_DOMAIN_NAME}/htdocs
@@ -324,30 +326,30 @@ function restore_remote_kanboard {
         function_check restore_directory_from_friend
         restore_directory_from_friend $temp_restore_dir kanboardconfig
         if [ -d $temp_restore_dir ]; then
-            if [ -d $temp_restore_dir$kanboard_dir/backup ]; then
-                cp $temp_restore_dir$kanboard_dir/backup/config.php $kanboard_dir/
+            if [ -d "$temp_restore_dir$kanboard_dir/backup" ]; then
+                cp "$temp_restore_dir$kanboard_dir/backup/config.php" "$kanboard_dir/"
             else
-                cp $temp_restore_dir/config.php $kanboard_dir/
+                cp "$temp_restore_dir/config.php" "$kanboard_dir/"
             fi
-            chown www-data:www-data $kanboard_dir/config.php
+            chown www-data:www-data "$kanboard_dir/config.php"
             rm -rf $temp_restore_dir
         fi
 
         restore_directory_from_friend $temp_restore_dir kanboardfile
         if [ -d $temp_restore_dir ]; then
-            if [ -d $temp_restore_dir$kanboard_dir/data ]; then
-                cp -rp $temp_restore_dir$kanboard_dir/data $kanboard_dir/
+            if [ -d "$temp_restore_dir$kanboard_dir/data" ]; then
+                cp -rp "$temp_restore_dir$kanboard_dir/data" "$kanboard_dir/"
             else
-                if [ ! -d $kanboard_dir/data ]; then
-                    mkdir $kanboard_dir/data
+                if [ ! -d "$kanboard_dir/data" ]; then
+                    mkdir "$kanboard_dir/data"
                 fi
-                cp -rp $temp_restore_dir/* $kanboard_dir/data/
+                cp -rp "$temp_restore_dir/*" "$kanboard_dir/data/"
             fi
-            chown -R www-data:www-data $kanboard_dir/data
+            chown -R www-data:www-data "$kanboard_dir/data"
             rm -rf $temp_restore_dir
         fi
 
-        kanboard_update_after_restore kanboard ${KANBOARD_DOMAIN_NAME}
+        kanboard_update_after_restore kanboard "${KANBOARD_DOMAIN_NAME}"
 
         echo $"Restore of kanboard complete"
     fi
@@ -360,14 +362,14 @@ function remove_kanboard {
     read_config_param "KANBOARD_DOMAIN_NAME"
     read_config_param "MY_USERNAME"
     echo "Removing $KANBOARD_DOMAIN_NAME"
-    nginx_dissite $KANBOARD_DOMAIN_NAME
-    remove_certs $KANBOARD_DOMAIN_NAME
+    nginx_dissite "$KANBOARD_DOMAIN_NAME"
+    remove_certs "$KANBOARD_DOMAIN_NAME"
 
-    if [ -d /var/www/$KANBOARD_DOMAIN_NAME ]; then
-        rm -rf /var/www/$KANBOARD_DOMAIN_NAME
+    if [ -d "/var/www/$KANBOARD_DOMAIN_NAME" ]; then
+        rm -rf "/var/www/$KANBOARD_DOMAIN_NAME"
     fi
-    if [ -f /etc/nginx/sites-available/$KANBOARD_DOMAIN_NAME ]; then
-        rm /etc/nginx/sites-available/$KANBOARD_DOMAIN_NAME
+    if [ -f "/etc/nginx/sites-available/$KANBOARD_DOMAIN_NAME" ]; then
+        rm "/etc/nginx/sites-available/$KANBOARD_DOMAIN_NAME"
     fi
     function_check drop_database
     drop_database kanboard
@@ -375,11 +377,11 @@ function remove_kanboard {
     remove_onion_service kanboard ${KANBOARD_ONION_PORT}
     remove_app kanboard
     remove_completion_param install_kanboard
-    sed -i '/kanboard/d' $COMPLETION_FILE
+    sed -i '/kanboard/d' "$COMPLETION_FILE"
     remove_backup_database_local kanboard
 
     function_check remove_ddns_domain
-    remove_ddns_domain $KANBOARD_DOMAIN_NAME
+    remove_ddns_domain "$KANBOARD_DOMAIN_NAME"
 }
 
 function install_kanboard {
@@ -387,12 +389,12 @@ function install_kanboard {
         ONION_ONLY='no'
     fi
 
-    if [ ! $KANBOARD_DOMAIN_NAME ]; then
+    if [ ! "$KANBOARD_DOMAIN_NAME" ]; then
         echo $'No domain name was given for kanboard'
         exit 73478
     fi
 
-    kanboard_hourly_script kanboard $KANBOARD_DOMAIN_NAME
+    kanboard_hourly_script kanboard "$KANBOARD_DOMAIN_NAME"
 
     function_check install_mariadb
     install_mariadb
@@ -406,34 +408,34 @@ function install_kanboard {
     apt-get -yq install php-gettext php-curl php-gd php-mysql git curl
     apt-get -yq install memcached php-memcached php-intl exiftool libfcgi0ldbl
 
-    if [ ! -d /var/www/$KANBOARD_DOMAIN_NAME ]; then
-        mkdir /var/www/$KANBOARD_DOMAIN_NAME
+    if [ ! -d "/var/www/$KANBOARD_DOMAIN_NAME" ]; then
+        mkdir "/var/www/$KANBOARD_DOMAIN_NAME"
     fi
-    if [ ! -d /var/www/$KANBOARD_DOMAIN_NAME/htdocs ]; then
+    if [ ! -d "/var/www/$KANBOARD_DOMAIN_NAME/htdocs" ]; then
 
         if [ -d /repos/kanboard ]; then
-            mkdir /var/www/$KANBOARD_DOMAIN_NAME/htdocs
-            cp -r -p /repos/kanboard/. /var/www/$KANBOARD_DOMAIN_NAME/htdocs
-            cd /var/www/$KANBOARD_DOMAIN_NAME/htdocs
+            mkdir "/var/www/$KANBOARD_DOMAIN_NAME/htdocs"
+            cp -r -p /repos/kanboard/. "/var/www/$KANBOARD_DOMAIN_NAME/htdocs"
+            cd "/var/www/$KANBOARD_DOMAIN_NAME/htdocs" || exit 2468274
             git pull
         else
             function_check git_clone
-            git_clone $KANBOARD_REPO /var/www/$KANBOARD_DOMAIN_NAME/htdocs
+            git_clone "$KANBOARD_REPO" "/var/www/$KANBOARD_DOMAIN_NAME/htdocs"
         fi
 
-        if [ ! -d /var/www/$KANBOARD_DOMAIN_NAME/htdocs ]; then
+        if [ ! -d "/var/www/$KANBOARD_DOMAIN_NAME/htdocs" ]; then
             echo $'Unable to clone kanboard repo'
             exit 89365
         fi
     fi
 
-    cd /var/www/$KANBOARD_DOMAIN_NAME/htdocs
+    cd "/var/www/$KANBOARD_DOMAIN_NAME/htdocs" || exit 234682642
     git checkout $KANBOARD_COMMIT -b $KANBOARD_COMMIT
     set_completion_param "kanboard commit" "$KANBOARD_COMMIT"
 
-    chmod g+w /var/www/$KANBOARD_DOMAIN_NAME/htdocs
-    chmod a+w /var/www/$KANBOARD_DOMAIN_NAME/htdocs/data
-    chown -R www-data:www-data /var/www/$KANBOARD_DOMAIN_NAME/htdocs
+    chmod g+w "/var/www/$KANBOARD_DOMAIN_NAME/htdocs"
+    chmod a+w "/var/www/$KANBOARD_DOMAIN_NAME/htdocs/data"
+    chown -R www-data:www-data "/var/www/$KANBOARD_DOMAIN_NAME/htdocs"
 
     function_check kanboard_create_database
     kanboard_create_database
@@ -446,118 +448,118 @@ function install_kanboard {
     fi
 
     function_check add_ddns_domain
-    add_ddns_domain $KANBOARD_DOMAIN_NAME
+    add_ddns_domain "$KANBOARD_DOMAIN_NAME"
 
     KANBOARD_ONION_HOSTNAME=$(add_onion_service kanboard 80 ${KANBOARD_ONION_PORT})
 
     kanboard_nginx_site=/etc/nginx/sites-available/$KANBOARD_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
         function_check nginx_http_redirect
-        nginx_http_redirect $KANBOARD_DOMAIN_NAME "index index.php"
-        echo 'server {' >> $kanboard_nginx_site
-        echo '  listen 443 ssl;' >> $kanboard_nginx_site
-        echo '  #listen [::]:443 ssl;' >> $kanboard_nginx_site
-        echo "  server_name $KANBOARD_DOMAIN_NAME;" >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
+        nginx_http_redirect "$KANBOARD_DOMAIN_NAME" "index index.php"
+        { echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $KANBOARD_DOMAIN_NAME;";
+          echo ''; } >> "$kanboard_nginx_site"
         function_check nginx_compress
-        nginx_compress $KANBOARD_DOMAIN_NAME
-        echo '' >> $kanboard_nginx_site
-        echo '  # Security' >> $kanboard_nginx_site
+        nginx_compress "$KANBOARD_DOMAIN_NAME"
+        echo '' >> "$kanboard_nginx_site"
+        echo '  # Security' >> "$kanboard_nginx_site"
         function_check nginx_ssl
-        nginx_ssl $KANBOARD_DOMAIN_NAME
+        nginx_ssl "$KANBOARD_DOMAIN_NAME"
 
         function_check nginx_disable_sniffing
-        nginx_disable_sniffing $KANBOARD_DOMAIN_NAME
+        nginx_disable_sniffing "$KANBOARD_DOMAIN_NAME"
 
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
-        echo '  # Logs' >> $kanboard_nginx_site
-        echo '  access_log /dev/null;' >> $kanboard_nginx_site
-        echo '  error_log /dev/null;' >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
-        echo '  # Root' >> $kanboard_nginx_site
-        echo "  root /var/www/$KANBOARD_DOMAIN_NAME/htdocs;" >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
-        echo '  # Index' >> $kanboard_nginx_site
-        echo '  index index.php;' >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
-        echo '  # PHP' >> $kanboard_nginx_site
-        echo '  location ~ \.php {' >> $kanboard_nginx_site
-        echo '    include snippets/fastcgi-php.conf;' >> $kanboard_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $kanboard_nginx_site
-        echo '    fastcgi_read_timeout 30;' >> $kanboard_nginx_site
-        echo '  }' >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
-        echo '  # Location' >> $kanboard_nginx_site
-        echo '  location / {' >> $kanboard_nginx_site
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '  # Logs';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo '  # Root';
+          echo "  root /var/www/$KANBOARD_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  # Index';
+          echo '  index index.php;';
+          echo '';
+          echo '  # PHP';
+          echo '  location ~ \.php {';
+          echo '    include snippets/fastcgi-php.conf;';
+          echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+          echo '    fastcgi_read_timeout 30;';
+          echo '  }';
+          echo '';
+          echo '  # Location';
+          echo '  location / {'; } >> "$kanboard_nginx_site"
         function_check nginx_limits
-        nginx_limits $KANBOARD_DOMAIN_NAME '15m'
-        echo '    try_files $uri $uri/ @kanboard;' >> $kanboard_nginx_site
-        echo '  }' >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
-        echo '  # Fancy URLs' >> $kanboard_nginx_site
-        echo '  location @kanboard {' >> $kanboard_nginx_site
-        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $kanboard_nginx_site
-        echo '  }' >> $kanboard_nginx_site
-        echo '' >> $kanboard_nginx_site
-        echo '  # Restrict access that is unnecessary anyway' >> $kanboard_nginx_site
-        echo '  location ~ /\.(ht|git) {' >> $kanboard_nginx_site
-        echo '    deny all;' >> $kanboard_nginx_site
-        echo '  }' >> $kanboard_nginx_site
-        echo '}' >> $kanboard_nginx_site
+        nginx_limits "$KANBOARD_DOMAIN_NAME" '15m'
+        { echo "    try_files \$uri \$uri/ @kanboard;";
+          echo '  }';
+          echo '';
+          echo '  # Fancy URLs';
+          echo '  location @kanboard {';
+          echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+          echo '  }';
+          echo '';
+          echo '  # Restrict access that is unnecessary anyway';
+          echo '  location ~ /\.(ht|git) {';
+          echo '    deny all;';
+          echo '  }';
+          echo '}'; } >> "$kanboard_nginx_site"
     else
-        echo -n '' > $kanboard_nginx_site
+        echo -n '' > "$kanboard_nginx_site"
     fi
-    echo 'server {' >> $kanboard_nginx_site
-    echo "    listen 127.0.0.1:$KANBOARD_ONION_PORT default_server;" >> $kanboard_nginx_site
-    echo "    server_name $KANBOARD_ONION_HOSTNAME;" >> $kanboard_nginx_site
-    echo '' >> $kanboard_nginx_site
+    { echo 'server {';
+      echo "    listen 127.0.0.1:$KANBOARD_ONION_PORT default_server;";
+      echo "    server_name $KANBOARD_ONION_HOSTNAME;";
+      echo ''; } >> "$kanboard_nginx_site"
     function_check nginx_compress
-    nginx_compress $KANBOARD_DOMAIN_NAME
-    echo '' >> $kanboard_nginx_site
+    nginx_compress "$KANBOARD_DOMAIN_NAME"
+    echo '' >> "$kanboard_nginx_site"
     function_check nginx_disable_sniffing
-    nginx_disable_sniffing $KANBOARD_DOMAIN_NAME
-    echo '' >> $kanboard_nginx_site
-    echo '  # Logs' >> $kanboard_nginx_site
-    echo '  access_log /dev/null;' >> $kanboard_nginx_site
-    echo '  error_log /dev/null;' >> $kanboard_nginx_site
-    echo '' >> $kanboard_nginx_site
-    echo '  # Root' >> $kanboard_nginx_site
-    echo "  root /var/www/$KANBOARD_DOMAIN_NAME/htdocs;" >> $kanboard_nginx_site
-    echo '' >> $kanboard_nginx_site
-    echo '  # Index' >> $kanboard_nginx_site
-    echo '  index index.php;' >> $kanboard_nginx_site
-    echo '' >> $kanboard_nginx_site
-    echo '  # PHP' >> $kanboard_nginx_site
-    echo '  location ~ \.php {' >> $kanboard_nginx_site
-    echo '    include snippets/fastcgi-php.conf;' >> $kanboard_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $kanboard_nginx_site
-    echo '    fastcgi_read_timeout 30;' >> $kanboard_nginx_site
-    echo '  }' >> $kanboard_nginx_site
-    echo '' >> $kanboard_nginx_site
-    echo '  # Location' >> $kanboard_nginx_site
-    echo '  location / {' >> $kanboard_nginx_site
+    nginx_disable_sniffing "$KANBOARD_DOMAIN_NAME"
+    { echo '';
+      echo '  # Logs';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  # Root';
+      echo "  root /var/www/$KANBOARD_DOMAIN_NAME/htdocs;";
+      echo '';
+      echo '  # Index';
+      echo '  index index.php;';
+      echo '';
+      echo '  # PHP';
+      echo '  location ~ \.php {';
+      echo '    include snippets/fastcgi-php.conf;';
+      echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+      echo '    fastcgi_read_timeout 30;';
+      echo '  }';
+      echo '';
+      echo '  # Location';
+      echo '  location / {'; } >> "$kanboard_nginx_site"
     function_check nginx_limits
-    nginx_limits $KANBOARD_DOMAIN_NAME '15m'
-    echo '    try_files $uri $uri/ @kanboard;' >> $kanboard_nginx_site
-    echo '  }' >> $kanboard_nginx_site
-    echo '' >> $kanboard_nginx_site
-    echo '  # Fancy URLs' >> $kanboard_nginx_site
-    echo '  location @kanboard {' >> $kanboard_nginx_site
-    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $kanboard_nginx_site
-    echo '  }' >> $kanboard_nginx_site
-    echo '' >> $kanboard_nginx_site
-    echo '  # Restrict access that is unnecessary anyway' >> $kanboard_nginx_site
-    echo '  location ~ /\.(ht|git) {' >> $kanboard_nginx_site
-    echo '    deny all;' >> $kanboard_nginx_site
-    echo '  }' >> $kanboard_nginx_site
-    echo '}' >> $kanboard_nginx_site
+    nginx_limits "$KANBOARD_DOMAIN_NAME" '15m'
+    { echo "    try_files \$uri \$uri/ @kanboard;";
+      echo '  }';
+      echo '';
+      echo '  # Fancy URLs';
+      echo '  location @kanboard {';
+      echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+      echo '  }';
+      echo '';
+      echo '  # Restrict access that is unnecessary anyway';
+      echo '  location ~ /\.(ht|git) {';
+      echo '    deny all;';
+      echo '  }';
+      echo '}'; } >> "$kanboard_nginx_site"
 
     function_check configure_php
     configure_php
 
     function_check create_site_certificate
-    create_site_certificate $KANBOARD_DOMAIN_NAME 'yes'
+    create_site_certificate "$KANBOARD_DOMAIN_NAME" 'yes'
 
     # Ensure that the database gets backed up locally, if remote
     # backups are not being used
@@ -568,36 +570,31 @@ function install_kanboard {
     backup_database_local kanboard
 
     function_check nginx_ensite
-    nginx_ensite $KANBOARD_DOMAIN_NAME
-
-    KANBOARD_SERVER=${KANBOARD_DOMAIN_NAME}
-    if [[ $ONION_ONLY != 'no' ]]; then
-        KANBOARD_SERVER=${KANBOARD_ONION_HOSTNAME}
-    fi
+    nginx_ensite "$KANBOARD_DOMAIN_NAME"
 
     # Create the configuration
-    kanboard_configfile=/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.php
-    cp /var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.default.php $kanboard_configfile
-    sed -i "s|define('MAIL_FROM'.*|define('MAIL_FROM', '$MY_EMAIL_ADDRESS');|g" $kanboard_configfile
-    sed -i "s|define('DB_DRIVER'.*|define('DB_DRIVER', 'mysql');|g" $kanboard_configfile
-    sed -i "s|define('DB_USERNAME'.*|define('DB_USERNAME', 'root');|g" $kanboard_configfile
-    sed -i "s|define('DB_PASSWORD'.*|define('DB_PASSWORD', '$MARIADB_PASSWORD');|g" $kanboard_configfile
-    sed -i "s|define('DB_HOSTNAME'.*|define('DB_HOSTNAME', 'localhost');|g" $kanboard_configfile
-    sed -i "s|define('DB_NAME'.*|define('DB_NAME', 'kanboard');|g" $kanboard_configfile
-    sed -i "s|define('DB_PORT'.*|define('DB_PORT', null);|g" $kanboard_configfile
+    kanboard_configfile="/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.php"
+    cp "/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/config.default.php" "$kanboard_configfile"
+    sed -i "s|define('MAIL_FROM'.*|define('MAIL_FROM', '$MY_EMAIL_ADDRESS');|g" "$kanboard_configfile"
+    sed -i "s|define('DB_DRIVER'.*|define('DB_DRIVER', 'mysql');|g" "$kanboard_configfile"
+    sed -i "s|define('DB_USERNAME'.*|define('DB_USERNAME', 'root');|g" "$kanboard_configfile"
+    sed -i "s|define('DB_PASSWORD'.*|define('DB_PASSWORD', '$MARIADB_PASSWORD');|g" "$kanboard_configfile"
+    sed -i "s|define('DB_HOSTNAME'.*|define('DB_HOSTNAME', 'localhost');|g" "$kanboard_configfile"
+    sed -i "s|define('DB_NAME'.*|define('DB_NAME', 'kanboard');|g" "$kanboard_configfile"
+    sed -i "s|define('DB_PORT'.*|define('DB_PORT', null);|g" "$kanboard_configfile"
     logging_off_kanboard
 
-    initialise_database kanboard /var/www/${KANBOARD_DOMAIN_NAME}/htdocs/app/Schema/Sql/mysql.sql
-    chown -R www-data:www-data /var/www/${KANBOARD_DOMAIN_NAME}/htdocs
+    initialise_database kanboard "/var/www/${KANBOARD_DOMAIN_NAME}/htdocs/app/Schema/Sql/mysql.sql"
+    chown -R www-data:www-data "/var/www/${KANBOARD_DOMAIN_NAME}/htdocs"
 
-    cd /var/www/${KANBOARD_DOMAIN_NAME}/htdocs
+    cd "/var/www/${KANBOARD_DOMAIN_NAME}/htdocs" || exit 24582468
     install_composer
 
     systemctl restart mariadb
     systemctl restart php7.0-fpm
     systemctl restart nginx
 
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a kanboard -p "$KANBOARD_ADMIN_PASSWORD"
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a kanboard -p "$KANBOARD_ADMIN_PASSWORD"
 
     set_completion_param "kanboard domain" "$KANBOARD_DOMAIN_NAME"
 
