@@ -61,8 +61,8 @@ function searx_set_default_background {
         cp ~/freedombone/img/backgrounds/searx.jpg /etc/searx/searx/static/themes/courgette/img/bg-body-index.jpg
         chown -R searx:searx ${SEARX_PATH}/searx
     else
-        if [ -f /home/$MY_USERNAME/freedombone/img/backgrounds/searx.jpg ]; then
-            cp /home/$MY_USERNAME/freedombone/img/backgrounds/searx.jpg /etc/searx/searx/static/themes/courgette/img/bg-body-index.jpg
+        if [ -f "/home/$MY_USERNAME/freedombone/img/backgrounds/searx.jpg" ]; then
+            cp "/home/$MY_USERNAME/freedombone/img/backgrounds/searx.jpg" "/etc/searx/searx/static/themes/courgette/img/bg-body-index.jpg"
             chown -R searx:searx ${SEARX_PATH}/searx
         fi
     fi
@@ -91,7 +91,7 @@ function searx_set_background_image_from_url {
 
     if [ ${#ext} -gt 0 ]; then
         if [ -d /etc/searx/searx/static/themes/courgette/img ]; then
-            cd /etc/searx/searx/static/themes/courgette/img
+            cd "/etc/searx/searx/static/themes/courgette/img" || exit 37853539539
 
 
             # remove any existing image
@@ -126,15 +126,14 @@ function searx_set_background_image_from_url {
 }
 
 function searx_set_background_image {
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
+    data=$(mktemp 2>/dev/null)
     dialog --title $"SearX Metasearch" \
            --backtitle $"Freedombone Control Panel" \
-           --inputbox $'Set a background image URL' 10 60 2>$data
+           --inputbox $'Set a background image URL' 10 60 2>"$data"
     sel=$?
     case $sel in
         0)
-            temp_background=$(<$data)
+            temp_background=$(<"$data")
             if [ ${#temp_background} -gt 0 ]; then
                 SEARX_BACKGROUND_IMAGE_URL="$temp_background"
                 write_config_param "SEARX_BACKGROUND_IMAGE_URL" "$SEARX_BACKGROUND_IMAGE_URL"
@@ -145,21 +144,22 @@ function searx_set_background_image {
             fi
            ;;
     esac
+    rm -f "$data"
 }
 
 function searx_enable_login {
     dialog --title $"Enable Searx login" \
            --backtitle $"Freedombone Control Panel" \
            --defaultno \
-           --yesno $"\nDo you want to add a login so that random web users can't use your metasearch engine?" 10 60
+           --yesno $"\\nDo you want to add a login so that random web users can't use your metasearch engine?" 10 60
     sel=$?
     case $sel in
         0) if grep -q '#auth_basic' /etc/nginx/sites-available/searx; then
                sed -i 's|#auth_basic|auth_basic|g' /etc/nginx/sites-available/searx
                systemctl restart nginx
            fi
-           read_config_param $MY_USERNAME
-           SEARX_LOGIN_PASS=$(${PROJECT_NAME}-pass -u $MY_USERNAME -a searx)
+           read_config_param "$MY_USERNAME"
+           SEARX_LOGIN_PASS=$("${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a searx)
            dialog --title $"Enable Searx login" \
                   --msgbox $"Searx logins are now enabled with the password $SEARX_LOGIN_PASS" 6 65
            SEARX_LOGIN_PASS=
@@ -177,31 +177,34 @@ function searx_enable_login {
 function configure_interactive_searx {
     while true
     do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
+        data=$(mktemp 2>/dev/null)
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"SearX Metasearch" \
                --radiolist $"Choose an operation:" 12 70 3 \
                1 $"Set a background image" off \
                2 $"Enable login" off \
-               3 $"Exit" on 2> $data
+               3 $"Exit" on 2> "$data"
         sel=$?
         case $sel in
-            1) return;;
-            255) return;;
+            1) rm -f "$data"
+               return;;
+            255) rm -f "$data"
+                 return;;
         esac
-        case $(cat $data) in
+        case $(cat "$data") in
             1) searx_set_background_image;;
             2) searx_enable_login;;
-            3) break;;
+            3) rm -f "$data"
+               break;;
         esac
+        rm -f "$data"
     done
 }
 
 function remove_user_searx {
     remove_username="$1"
 
-    ${PROJECT_NAME}-pass -u $remove_username --rmapp searx
+    "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp searx
     if grep -q "$remove_username:" /etc/nginx/.htpasswd; then
         sed -i "/$remove_username:/d" /etc/nginx/.htpasswd
     fi
@@ -216,12 +219,12 @@ function add_user_searx {
     new_username="$1"
     new_user_password="$2"
 
-    ${PROJECT_NAME}-pass -u $new_username -a searx -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$new_username" -a searx -p "$new_user_password"
 
     if grep -q "$new_username:" /etc/nginx/.htpasswd; then
         sed -i "/$new_username:/d" /etc/nginx/.htpasswd
     fi
-    echo "$new_user_password" | htpasswd -i -s -c /etc/nginx/.htpasswd $new_username
+    echo "$new_user_password" | htpasswd -i -s -c /etc/nginx/.htpasswd "$new_username"
 
     echo '0'
 }
@@ -237,8 +240,8 @@ function change_password_searx {
 
     if grep -q "$new_username:" /etc/nginx/.htpasswd; then
         sed -i "/$new_username:/d" /etc/nginx/.htpasswd
-        echo "$new_user_password" | htpasswd -i -s -c /etc/nginx/.htpasswd $new_username
-        ${PROJECT_NAME}-pass -u $curr_username -a searx -p "$new_user_password"
+        echo "$new_user_password" | htpasswd -i -s -c /etc/nginx/.htpasswd "$new_username"
+        "${PROJECT_NAME}-pass" -u "$new_username" -a searx -p "$new_user_password"
         echo '0'
     fi
     echo '1'
@@ -254,531 +257,531 @@ function create_searx_config {
     SEARX_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_searx/hostname)
     SEARX_SECRET_KEY=$(get_completion_param "searx key")
 
-    echo 'general:' > $settings_file
-    echo '    debug : False' >> $settings_file
-    echo '    instance_name : "Freedombone Metasearch"' >> $settings_file
-    echo '' >> $settings_file
-    echo 'search:' >> $settings_file
-    echo '    safe_search : 0 # Filter results. 0: None, 1: Moderate, 2: Strict' >> $settings_file
-    echo '    autocomplete : "" # Existing autocomplete backends: "dbpedia", "duckduckgo", "startpage", "wikipedia" - leave blank to turn it off by default' >> $settings_file
-    echo '    language : "all"' >> $settings_file
-    echo '' >> $settings_file
-    echo 'server:' >> $settings_file
-    echo '    port : 8888' >> $settings_file
-    echo '    bind_address : "127.0.0.1" # address to listen on' >> $settings_file
-    echo "    secret_key : \"${SEARX_SECRET_KEY}\"" >> $settings_file
-    echo "    base_url : http://${SEARX_ONION_HOSTNAME}/" >> $settings_file
-    echo '    image_proxy : True # Proxying image results through searx' >> $settings_file
-    echo '    http_protocol_version : "1.1"  # 1.0 and 1.1 are supported' >> $settings_file
-    echo '' >> $settings_file
-    echo 'ui:' >> $settings_file
-    echo '    static_path : "" # Custom static path - leave it blank if you didnt change' >> $settings_file
-    echo '    templates_path : "" # Custom templates path - leave it blank if you didnt change' >> $settings_file
-    echo '    themes_path : "" # Custom ui themes path' >> $settings_file
-    echo '    default_theme : courgette # ui theme' >> $settings_file
-    echo '    default_locale : "" # Default interface locale - leave blank to detect from browser information or use codes from the 'locales' config section' >> $settings_file
-    echo '' >> $settings_file
-    echo 'outgoing: # communication with search engines' >> $settings_file
-    echo '    request_timeout : 10.0 # seconds' >> $settings_file
-    echo '    useragent_suffix : "" # suffix of searx_useragent, could contain informations like an email address to the administrator' >> $settings_file
-    echo '    pool_connections : 100 # Number of different hosts' >> $settings_file
-    echo '    pool_maxsize : 10 # Number of simultaneous requests by host' >> $settings_file
-    echo '    proxies :' >> $settings_file
-    echo '        http : socks5://127.0.0.1:9050' >> $settings_file
-    echo '' >> $settings_file
-    echo 'engines:' >> $settings_file
-    echo '  - name : arch linux wiki' >> $settings_file
-    echo '    engine : archlinux' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '    shortcut : al' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : archive is' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    search_url : https://archive.is/{query}' >> $settings_file
-    echo '    url_xpath : (//div[@class="TEXT-BLOCK"]/a)/@href' >> $settings_file
-    echo '    title_xpath : (//div[@class="TEXT-BLOCK"]/a)' >> $settings_file
-    echo '    content_xpath : //div[@class="TEXT-BLOCK"]/ul/li' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '    timeout : 7.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '    shortcut : ai' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : base' >> $settings_file
-    echo '    engine : base' >> $settings_file
-    echo '    shortcut : bs' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : wikipedia' >> $settings_file
-    echo '    engine : wikipedia' >> $settings_file
-    echo '    shortcut : wp' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '    base_url : "https://{language}.wikipedia.org/"' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : bitbucket' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : https://bitbucket.org/repo/all/{pageno}?name={query}' >> $settings_file
-    echo '    url_xpath : //article[@class="repo-summary"]//a[@class="repo-link"]/@href' >> $settings_file
-    echo '    title_xpath : //article[@class="repo-summary"]//a[@class="repo-link"]' >> $settings_file
-    echo '    content_xpath : //article[@class="repo-summary"]/p' >> $settings_file
-    echo '    categories : code' >> $settings_file
-    echo '    timeout : 4.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '    shortcut : bb' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : ccc-tv' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : False' >> $settings_file
-    echo '    search_url : https://media.ccc.de/search/?q={query}' >> $settings_file
-    echo '    url_xpath : //div[@class="caption"]/h3/a/@href' >> $settings_file
-    echo '    title_xpath : //div[@class="caption"]/h3/a/text()' >> $settings_file
-    echo '    content_xpath : //div[@class="caption"]/h4/@title' >> $settings_file
-    echo '    categories : videos' >> $settings_file
-    echo '    shortcut : c3tv' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : crossref' >> $settings_file
-    echo '    engine : json_engine' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : http://search.crossref.org/dois?q={query}&page={pageno}' >> $settings_file
-    echo '    url_query : doi' >> $settings_file
-    echo '    title_query : title' >> $settings_file
-    echo '    content_query : fullCitation' >> $settings_file
-    echo '    categories : science' >> $settings_file
-    echo '    shortcut : cr' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : currency' >> $settings_file
-    echo '    engine : currency_convert' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '    shortcut : cc' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : deezer' >> $settings_file
-    echo '    engine : deezer' >> $settings_file
-    echo '    shortcut : dz' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : deviantart' >> $settings_file
-    echo '    engine : deviantart' >> $settings_file
-    echo '    shortcut : da' >> $settings_file
-    echo '    timeout: 3.0' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : ddg definitions' >> $settings_file
-    echo '    engine : duckduckgo_definitions' >> $settings_file
-    echo '    shortcut : ddd' >> $settings_file
-    echo '    weight : 2' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : digbt' >> $settings_file
-    echo '    engine : digbt' >> $settings_file
-    echo '    shortcut : dbt' >> $settings_file
-    echo '    timeout : 6.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : erowid' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    first_page_num : 0' >> $settings_file
-    echo '    page_size : 30' >> $settings_file
-    echo '    search_url : https://www.erowid.org/search.php?q={query}&s={pageno}' >> $settings_file
-    echo '    url_xpath : //dl[@class="results-list"]/dt[@class="result-title"]/a/@href' >> $settings_file
-    echo '    title_xpath : //dl[@class="results-list"]/dt[@class="result-title"]/a/text()' >> $settings_file
-    echo '    content_xpath : //dl[@class="results-list"]/dd[@class="result-details"]' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '    shortcut : ew' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : wikidata' >> $settings_file
-    echo '    engine : wikidata' >> $settings_file
-    echo '    shortcut : wd' >> $settings_file
-    echo '    weight : 2' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : duckduckgo' >> $settings_file
-    echo '    engine : duckduckgo' >> $settings_file
-    echo '    shortcut : ddg' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : etymonline' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : http://etymonline.com/?search={query}&p={pageno}' >> $settings_file
-    echo '    url_xpath : //dt/a[1]/@href' >> $settings_file
-    echo '    title_xpath : //dt' >> $settings_file
-    echo '    content_xpath : //dd' >> $settings_file
-    echo '    suggestion_xpath : //a[@class="crossreference"]' >> $settings_file
-    echo '    first_page_num : 0' >> $settings_file
-    echo '    shortcut : et' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : 500px' >> $settings_file
-    echo '    engine : www500px' >> $settings_file
-    echo '    shortcut : px' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : 1x' >> $settings_file
-    echo '    engine : www1x' >> $settings_file
-    echo '    shortcut : 1x' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : fdroid' >> $settings_file
-    echo '    engine : fdroid' >> $settings_file
-    echo '    shortcut : fd' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : flickr' >> $settings_file
-    echo '    categories : images' >> $settings_file
-    echo '    shortcut : fl' >> $settings_file
-    echo '# You can use the engine using the official stable API, but you need an API key' >> $settings_file
-    echo '# See : https://www.flickr.com/services/apps/create/' >> $settings_file
-    echo '#    engine : flickr' >> $settings_file
-    echo '#    api_key: 'apikey' # required!' >> $settings_file
-    echo '# Or you can use the html non-stable engine, activated by default' >> $settings_file
-    echo '    engine : flickr_noapi' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : frinkiac' >> $settings_file
-    echo '    engine : frinkiac' >> $settings_file
-    echo '    shortcut : frk' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : gigablast' >> $settings_file
-    echo '    engine : gigablast' >> $settings_file
-    echo '    shortcut : gb' >> $settings_file
-    echo '    timeout : 3.0' >> $settings_file
-    echo '    disabled: True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : gitlab' >> $settings_file
-    echo '    engine : json_engine' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : https://gitlab.com/api/v4/projects?search={query}&page={pageno}' >> $settings_file
-    echo '    url_query : web_url' >> $settings_file
-    echo '    title_query : name_with_namespace' >> $settings_file
-    echo '    content_query : description' >> $settings_file
-    echo '    page_size : 20' >> $settings_file
-    echo '    categories : code' >> $settings_file
-    echo '    shortcut : gl' >> $settings_file
-    echo '    timeout : 10.0' >> $settings_file
-    echo '    disabled : False' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : github' >> $settings_file
-    echo '    engine : github' >> $settings_file
-    echo '    shortcut : gh' >> $settings_file
-    echo '    categories : code' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : geektimes' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : https://geektimes.ru/search/page{pageno}/?q={query}' >> $settings_file
-    echo '    url_xpath : //div[@class="search_results"]//a[@class="post__title_link"]/@href' >> $settings_file
-    echo '    title_xpath : //div[@class="search_results"]//a[@class="post__title_link"]' >> $settings_file
-    echo '    content_xpath : //div[@class="search_results"]//div[contains(@class, "content")]' >> $settings_file
-    echo '    categories : code' >> $settings_file
-    echo '    timeout : 4.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '    shortcut : gt' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : habrahabr' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : https://habrahabr.ru/search/page{pageno}/?q={query}' >> $settings_file
-    echo '    url_xpath : //div[@class="search_results"]//a[contains(@class, "post__title_link")]/@href' >> $settings_file
-    echo '    title_xpath : //div[@class="search_results"]//a[contains(@class, "post__title_link")]' >> $settings_file
-    echo '    content_xpath : //div[@class="search_results"]//div[contains(@class, "content")]' >> $settings_file
-    echo '    categories : code' >> $settings_file
-    echo '    timeout : 4.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '    shortcut : habr' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : hoogle' >> $settings_file
-    echo '    engine : json_engine' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : https://www.haskell.org/hoogle/?mode=json&hoogle={query}&start={pageno}' >> $settings_file
-    echo '    results_query : results' >> $settings_file
-    echo '    url_query : location' >> $settings_file
-    echo '    title_query : self' >> $settings_file
-    echo '    content_query : docs' >> $settings_file
-    echo '    page_size : 20' >> $settings_file
-    echo '    categories : code' >> $settings_file
-    echo '    shortcut : ho' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : ina' >> $settings_file
-    echo '    engine : ina' >> $settings_file
-    echo '    shortcut : in' >> $settings_file
-    echo '    timeout : 6.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name: kickass' >> $settings_file
-    echo '    engine : kickass' >> $settings_file
-    echo '    shortcut : kc' >> $settings_file
-    echo '    timeout : 4.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : library genesis' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    search_url : http://libgen.io/search.php?req={query}' >> $settings_file
-    echo '    url_xpath : //a[contains(@href,"bookfi.net")]/@href' >> $settings_file
-    echo '    title_xpath : //a[contains(@href,"book/")]/text()[1]' >> $settings_file
-    echo '    content_xpath : //td/a[1][contains(@href,"=author")]/text()' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '    timeout : 7.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '    shortcut : lg' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : lobste.rs' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    search_url : https://lobste.rs/search?utf8=%E2%9C%93&q={query}&what=stories&order=relevance' >> $settings_file
-    echo '    results_xpath : //li[contains(@class, "story")]' >> $settings_file
-    echo '    url_xpath : .//span[@class="link"]/a/@href' >> $settings_file
-    echo '    title_xpath : .//span[@class="link"]/a' >> $settings_file
-    echo '    content_xpath : .//a[@class="domain"]' >> $settings_file
-    echo '    categories : code' >> $settings_file
-    echo '    shortcut : lo' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : mixcloud' >> $settings_file
-    echo '    engine : mixcloud' >> $settings_file
-    echo '    shortcut : mc' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : nyaa' >> $settings_file
-    echo '    engine : nyaa' >> $settings_file
-    echo '    shortcut : nt' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : openstreetmap' >> $settings_file
-    echo '    engine : openstreetmap' >> $settings_file
-    echo '    shortcut : osm' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : openrepos' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : https://openrepos.net/search/node/{query}?page={pageno}' >> $settings_file
-    echo '    url_xpath : //li[@class="search-result"]//h3[@class="title"]/a/@href' >> $settings_file
-    echo '    title_xpath : //li[@class="search-result"]//h3[@class="title"]/a' >> $settings_file
-    echo '    content_xpath : //li[@class="search-result"]//div[@class="search-snippet-info"]//p[@class="search-snippet"]' >> $settings_file
-    echo '    categories : files' >> $settings_file
-    echo '    timeout : 4.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '    shortcut : or' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : pdbe' >> $settings_file
-    echo '    engine : pdbe' >> $settings_file
-    echo '    shortcut : pdb' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : photon' >> $settings_file
-    echo '    engine : photon' >> $settings_file
-    echo '    shortcut : ph' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : piratebay' >> $settings_file
-    echo '    engine : piratebay' >> $settings_file
-    echo '    shortcut : tpb' >> $settings_file
-    echo '    url: https://pirateproxy.red/' >> $settings_file
-    echo '    timeout : 3.0' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : qwant' >> $settings_file
-    echo '    engine : qwant' >> $settings_file
-    echo '    shortcut : qw' >> $settings_file
-    echo '    categories : general' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : qwant images' >> $settings_file
-    echo '    engine : qwant' >> $settings_file
-    echo '    shortcut : qwi' >> $settings_file
-    echo '    categories : images' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : qwant news' >> $settings_file
-    echo '    engine : qwant' >> $settings_file
-    echo '    shortcut : qwn' >> $settings_file
-    echo '    categories : news' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : qwant social' >> $settings_file
-    echo '    engine : qwant' >> $settings_file
-    echo '    shortcut : qws' >> $settings_file
-    echo '    categories : social media' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : reddit' >> $settings_file
-    echo '    engine : reddit' >> $settings_file
-    echo '    shortcut : re' >> $settings_file
-    echo '    page_size : 25' >> $settings_file
-    echo '    timeout : 10.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : scanr structures' >> $settings_file
-    echo '    shortcut: scs' >> $settings_file
-    echo '    engine : scanr_structures' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : soundcloud' >> $settings_file
-    echo '    engine : soundcloud' >> $settings_file
-    echo '    shortcut : sc' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : stackoverflow' >> $settings_file
-    echo '    engine : stackoverflow' >> $settings_file
-    echo '    shortcut : st' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : searchcode doc' >> $settings_file
-    echo '    engine : searchcode_doc' >> $settings_file
-    echo '    shortcut : scd' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : searchcode code' >> $settings_file
-    echo '    engine : searchcode_code' >> $settings_file
-    echo '    shortcut : scc' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : framalibre' >> $settings_file
-    echo '    engine : framalibre' >> $settings_file
-    echo '    shortcut : frl' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : semantic scholar' >> $settings_file
-    echo '    engine : xpath' >> $settings_file
-    echo '    paging : True' >> $settings_file
-    echo '    search_url : https://www.semanticscholar.org/search?q={query}&sort=relevance&page={pageno}&ae=false' >> $settings_file
-    echo '    results_xpath : //article' >> $settings_file
-    echo '    url_xpath : .//div[@class="search-result-title"]/a/@href' >> $settings_file
-    echo '    title_xpath : .//div[@class="search-result-title"]/a' >> $settings_file
-    echo '    content_xpath : .//div[@class="search-result-abstract"]' >> $settings_file
-    echo '    shortcut : se' >> $settings_file
-    echo '    categories : science' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : spotify' >> $settings_file
-    echo '    engine : spotify' >> $settings_file
-    echo '    shortcut : stf' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : subtitleseeker' >> $settings_file
-    echo '    engine : subtitleseeker' >> $settings_file
-    echo '    shortcut : ss' >> $settings_file
-    echo '# The language is an option. You can put any language written in english' >> $settings_file
-    echo '# Examples : English, French, German, Hungarian, Chinese...' >> $settings_file
-    echo '#    language : English' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : startpage' >> $settings_file
-    echo '    engine : startpage' >> $settings_file
-    echo '    shortcut : sp' >> $settings_file
-    echo '    timeout : 6.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : ixquick' >> $settings_file
-    echo '    engine : startpage' >> $settings_file
-    echo "    base_url : 'https://www.ixquick.eu/'" >> $settings_file
-    echo "    search_url : 'https://www.ixquick.eu/do/search'" >> $settings_file
-    echo '    shortcut : iq' >> $settings_file
-    echo '    timeout : 6.0' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : swisscows' >> $settings_file
-    echo '    engine : swisscows' >> $settings_file
-    echo '    shortcut : sw' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : tokyotoshokan' >> $settings_file
-    echo '    engine : tokyotoshokan' >> $settings_file
-    echo '    shortcut : tt' >> $settings_file
-    echo '    timeout : 6.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : twitter' >> $settings_file
-    echo '    engine : twitter' >> $settings_file
-    echo '    shortcut : tw' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : urbandictionary' >> $settings_file
-    echo '    engine        : xpath' >> $settings_file
-    echo '    search_url    : http://www.urbandictionary.com/define.php?term={query}' >> $settings_file
-    echo '    url_xpath     : //*[@class="word"]/@href' >> $settings_file
-    echo '    title_xpath   : //*[@class="def-header"]' >> $settings_file
-    echo '    content_xpath : //*[@class="meaning"]' >> $settings_file
-    echo '    shortcut : ud' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : yandex' >> $settings_file
-    echo '    engine : yandex' >> $settings_file
-    echo '    shortcut : yn' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : youtube' >> $settings_file
-    echo '    shortcut : yt' >> $settings_file
-    echo '    # You can use the engine using the official stable API, but you need an API key' >> $settings_file
-    echo '    # See : https://console.developers.google.com/project' >> $settings_file
-    echo '    #    engine : youtube_api' >> $settings_file
-    echo '    #    api_key: apikey # required!' >> $settings_file
-    echo '    # Or you can use the html non-stable engine, activated by default' >> $settings_file
-    echo '    engine : youtube_noapi' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : dailymotion' >> $settings_file
-    echo '    engine : dailymotion' >> $settings_file
-    echo '    shortcut : dm' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : vimeo' >> $settings_file
-    echo '    engine : vimeo' >> $settings_file
-    echo '    shortcut : vm' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : wolframalpha' >> $settings_file
-    echo '    shortcut : wa' >> $settings_file
-    echo '    # You can use the engine using the official stable API, but you need an API key' >> $settings_file
-    echo '    # See : http://products.wolframalpha.com/api/' >> $settings_file
-    echo '    # engine : wolframalpha_api' >> $settings_file
-    echo '    # api_key: '' # required!' >> $settings_file
-    echo '    engine : wolframalpha_noapi' >> $settings_file
-    echo '    timeout: 6.0' >> $settings_file
-    echo '    categories : science' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : seedpeer' >> $settings_file
-    echo '    engine : seedpeer' >> $settings_file
-    echo '    shortcut: speu'
-    echo '    categories: files, music, videos'
-    echo '    disabled: True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : dictzone' >> $settings_file
-    echo '    engine : dictzone' >> $settings_file
-    echo '    shortcut : dc' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : mymemory translated' >> $settings_file
-    echo '    engine : translated' >> $settings_file
-    echo '    shortcut : tl' >> $settings_file
-    echo '    timeout : 5.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '    # You can use without an API key, but you are limited to 1000 words/day' >> $settings_file
-    echo '    # See : http://mymemory.translated.net/doc/usagelimits.php' >> $settings_file
-    echo '    # api_key : ""' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : voat' >> $settings_file
-    echo '    engine: xpath' >> $settings_file
-    echo '    shortcut: vo' >> $settings_file
-    echo '    categories: social media' >> $settings_file
-    echo '    search_url : https://voat.co/search?q={query}' >> $settings_file
-    echo '    url_xpath : //p[contains(@class, "title")]/a/@href' >> $settings_file
-    echo '    title_xpath : //p[contains(@class, "title")]/a' >> $settings_file
-    echo '    content_xpath : //span[@class="domain"]' >> $settings_file
-    echo '    timeout : 10.0' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo '  - name : 1337x' >> $settings_file
-    echo '    engine : 1337x' >> $settings_file
-    echo '    shortcut : 1337x' >> $settings_file
-    echo '    disabled : True' >> $settings_file
-    echo '' >> $settings_file
-    echo 'locales:' >> $settings_file
-    echo '    en : English' >> $settings_file
-    echo '    bg : Български (Bulgarian)' >> $settings_file
-    echo '    cs : Čeština (Czech)' >> $settings_file
-    echo '    de : Deutsch (German)' >> $settings_file
-    echo '    de_DE : Deutsch (German_Germany)' >> $settings_file
-    echo '    el_GR : Ελληνικά (Greek_Greece)' >> $settings_file
-    echo '    eo : Esperanto (Esperanto)' >> $settings_file
-    echo '    es : Español (Spanish)' >> $settings_file
-    echo '    fi : Suomi (Finnish)' >> $settings_file
-    echo '    fr : Français (French)' >> $settings_file
-    echo '    he : עברית (Hebrew)' >> $settings_file
-    echo '    hu : Magyar (Hungarian)' >> $settings_file
-    echo '    it : Italiano (Italian)' >> $settings_file
-    echo '    ja : 日本語 (Japanese)' >> $settings_file
-    echo '    nl : Nederlands (Dutch)' >> $settings_file
-    echo '    pt : Português (Portuguese)' >> $settings_file
-    echo '    pt_BR : Português (Portuguese_Brazil)' >> $settings_file
-    echo '    ro : Română (Romanian)' >> $settings_file
-    echo '    ru : Русский (Russian)' >> $settings_file
-    echo '    sk : Slovenčina (Slovak)' >> $settings_file
-    echo '    sv : Svenska (Swedish)' >> $settings_file
-    echo '    tr : Türkçe (Turkish)' >> $settings_file
-    echo '    uk : українська мова (Ukrainian)' >> $settings_file
-    echo '    zh : 中文 (Chinese)' >> $settings_file
-    echo '' >> $settings_file
-    echo 'doi_resolvers :' >> $settings_file
-    echo "    oadoi.org : 'https://oadoi.org/'" >> $settings_file
-    echo "    doi.org : 'https://doi.org/'" >> $settings_file
-    echo "    doai.io : 'http://doai.io/'" >> $settings_file
-    echo '' >> $settings_file
-    echo "default_doi_resolver : 'oadoi.org'" >> $settings_file
+    { echo 'general:';
+      echo '    debug : False';
+      echo '    instance_name : "Freedombone Metasearch"';
+      echo '';
+      echo 'search:';
+      echo '    safe_search : 0 # Filter results. 0: None, 1: Moderate, 2: Strict';
+      echo '    autocomplete : "" # Existing autocomplete backends: "dbpedia", "duckduckgo", "startpage", "wikipedia" - leave blank to turn it off by default';
+      echo '    language : "all"';
+      echo '';
+      echo 'server:';
+      echo '    port : 8888';
+      echo '    bind_address : "127.0.0.1" # address to listen on';
+      echo "    secret_key : \"${SEARX_SECRET_KEY}\"";
+      echo "    base_url : http://${SEARX_ONION_HOSTNAME}/";
+      echo '    image_proxy : True # Proxying image results through searx';
+      echo '    http_protocol_version : "1.1"  # 1.0 and 1.1 are supported';
+      echo '';
+      echo 'ui:';
+      echo '    static_path : "" # Custom static path - leave it blank if you didnt change';
+      echo '    templates_path : "" # Custom templates path - leave it blank if you didnt change';
+      echo '    themes_path : "" # Custom ui themes path';
+      echo '    default_theme : courgette # ui theme';
+      echo '    default_locale : "" # Default interface locale - leave blank to detect from browser information or use codes from the 'locales' config section';
+      echo '';
+      echo 'outgoing: # communication with search engines';
+      echo '    request_timeout : 10.0 # seconds';
+      echo '    useragent_suffix : "" # suffix of searx_useragent, could contain informations like an email address to the administrator';
+      echo '    pool_connections : 100 # Number of different hosts';
+      echo '    pool_maxsize : 10 # Number of simultaneous requests by host';
+      echo '    proxies :';
+      echo '        http : socks5://127.0.0.1:9050';
+      echo '';
+      echo 'engines:';
+      echo '  - name : arch linux wiki';
+      echo '    engine : archlinux';
+      echo '    categories : general';
+      echo '    shortcut : al';
+      echo '';
+      echo '  - name : archive is';
+      echo '    engine : xpath';
+      echo '    search_url : https://archive.is/{query}';
+      echo '    url_xpath : (//div[@class="TEXT-BLOCK"]/a)/@href';
+      echo '    title_xpath : (//div[@class="TEXT-BLOCK"]/a)';
+      echo '    content_xpath : //div[@class="TEXT-BLOCK"]/ul/li';
+      echo '    categories : general';
+      echo '    timeout : 7.0';
+      echo '    disabled : True';
+      echo '    shortcut : ai';
+      echo '';
+      echo '  - name : base';
+      echo '    engine : base';
+      echo '    shortcut : bs';
+      echo '';
+      echo '  - name : wikipedia';
+      echo '    engine : wikipedia';
+      echo '    shortcut : wp';
+      echo '    categories : general';
+      echo '    base_url : "https://{language}.wikipedia.org/"';
+      echo '';
+      echo '  - name : bitbucket';
+      echo '    engine : xpath';
+      echo '    paging : True';
+      echo '    search_url : https://bitbucket.org/repo/all/{pageno}?name={query}';
+      echo '    url_xpath : //article[@class="repo-summary"]//a[@class="repo-link"]/@href';
+      echo '    title_xpath : //article[@class="repo-summary"]//a[@class="repo-link"]';
+      echo '    content_xpath : //article[@class="repo-summary"]/p';
+      echo '    categories : code';
+      echo '    timeout : 4.0';
+      echo '    disabled : True';
+      echo '    shortcut : bb';
+      echo '';
+      echo '  - name : ccc-tv';
+      echo '    engine : xpath';
+      echo '    paging : False';
+      echo '    search_url : https://media.ccc.de/search/?q={query}';
+      echo '    url_xpath : //div[@class="caption"]/h3/a/@href';
+      echo '    title_xpath : //div[@class="caption"]/h3/a/text()';
+      echo '    content_xpath : //div[@class="caption"]/h4/@title';
+      echo '    categories : videos';
+      echo '    shortcut : c3tv';
+      echo '';
+      echo '  - name : crossref';
+      echo '    engine : json_engine';
+      echo '    paging : True';
+      echo '    search_url : http://search.crossref.org/dois?q={query}&page={pageno}';
+      echo '    url_query : doi';
+      echo '    title_query : title';
+      echo '    content_query : fullCitation';
+      echo '    categories : science';
+      echo '    shortcut : cr';
+      echo '';
+      echo '  - name : currency';
+      echo '    engine : currency_convert';
+      echo '    categories : general';
+      echo '    shortcut : cc';
+      echo '';
+      echo '  - name : deezer';
+      echo '    engine : deezer';
+      echo '    shortcut : dz';
+      echo '';
+      echo '  - name : deviantart';
+      echo '    engine : deviantart';
+      echo '    shortcut : da';
+      echo '    timeout: 3.0';
+      echo '';
+      echo '  - name : ddg definitions';
+      echo '    engine : duckduckgo_definitions';
+      echo '    shortcut : ddd';
+      echo '    weight : 2';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : digbt';
+      echo '    engine : digbt';
+      echo '    shortcut : dbt';
+      echo '    timeout : 6.0';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : erowid';
+      echo '    engine : xpath';
+      echo '    paging : True';
+      echo '    first_page_num : 0';
+      echo '    page_size : 30';
+      echo '    search_url : https://www.erowid.org/search.php?q={query}&s={pageno}';
+      echo '    url_xpath : //dl[@class="results-list"]/dt[@class="result-title"]/a/@href';
+      echo '    title_xpath : //dl[@class="results-list"]/dt[@class="result-title"]/a/text()';
+      echo '    content_xpath : //dl[@class="results-list"]/dd[@class="result-details"]';
+      echo '    categories : general';
+      echo '    shortcut : ew';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : wikidata';
+      echo '    engine : wikidata';
+      echo '    shortcut : wd';
+      echo '    weight : 2';
+      echo '';
+      echo '  - name : duckduckgo';
+      echo '    engine : duckduckgo';
+      echo '    shortcut : ddg';
+      echo '    categories : general';
+      echo '';
+      echo '  - name : etymonline';
+      echo '    engine : xpath';
+      echo '    paging : True';
+      echo '    search_url : http://etymonline.com/?search={query}&p={pageno}';
+      echo '    url_xpath : //dt/a[1]/@href';
+      echo '    title_xpath : //dt';
+      echo '    content_xpath : //dd';
+      echo '    suggestion_xpath : //a[@class="crossreference"]';
+      echo '    first_page_num : 0';
+      echo '    shortcut : et';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : 500px';
+      echo '    engine : www500px';
+      echo '    shortcut : px';
+      echo '';
+      echo '  - name : 1x';
+      echo '    engine : www1x';
+      echo '    shortcut : 1x';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : fdroid';
+      echo '    engine : fdroid';
+      echo '    shortcut : fd';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : flickr';
+      echo '    categories : images';
+      echo '    shortcut : fl';
+      echo '# You can use the engine using the official stable API, but you need an API key';
+      echo '# See : https://www.flickr.com/services/apps/create/';
+      echo '#    engine : flickr';
+      echo "#    api_key: 'apikey' # required!";
+      echo '# Or you can use the html non-stable engine, activated by default';
+      echo '    engine : flickr_noapi';
+      echo '';
+      echo '  - name : frinkiac';
+      echo '    engine : frinkiac';
+      echo '    shortcut : frk';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : gigablast';
+      echo '    engine : gigablast';
+      echo '    shortcut : gb';
+      echo '    timeout : 3.0';
+      echo '    disabled: True';
+      echo '';
+      echo '  - name : gitlab';
+      echo '    engine : json_engine';
+      echo '    paging : True';
+      echo '    search_url : https://gitlab.com/api/v4/projects?search={query}&page={pageno}';
+      echo '    url_query : web_url';
+      echo '    title_query : name_with_namespace';
+      echo '    content_query : description';
+      echo '    page_size : 20';
+      echo '    categories : code';
+      echo '    shortcut : gl';
+      echo '    timeout : 10.0';
+      echo '    disabled : False';
+      echo '';
+      echo '  - name : github';
+      echo '    engine : github';
+      echo '    shortcut : gh';
+      echo '    categories : code';
+      echo '';
+      echo '  - name : geektimes';
+      echo '    engine : xpath';
+      echo '    paging : True';
+      echo '    search_url : https://geektimes.ru/search/page{pageno}/?q={query}';
+      echo '    url_xpath : //div[@class="search_results"]//a[@class="post__title_link"]/@href';
+      echo '    title_xpath : //div[@class="search_results"]//a[@class="post__title_link"]';
+      echo '    content_xpath : //div[@class="search_results"]//div[contains(@class, "content")]';
+      echo '    categories : code';
+      echo '    timeout : 4.0';
+      echo '    disabled : True';
+      echo '    shortcut : gt';
+      echo '';
+      echo '  - name : habrahabr';
+      echo '    engine : xpath';
+      echo '    paging : True';
+      echo '    search_url : https://habrahabr.ru/search/page{pageno}/?q={query}';
+      echo '    url_xpath : //div[@class="search_results"]//a[contains(@class, "post__title_link")]/@href';
+      echo '    title_xpath : //div[@class="search_results"]//a[contains(@class, "post__title_link")]';
+      echo '    content_xpath : //div[@class="search_results"]//div[contains(@class, "content")]';
+      echo '    categories : code';
+      echo '    timeout : 4.0';
+      echo '    disabled : True';
+      echo '    shortcut : habr';
+      echo '';
+      echo '  - name : hoogle';
+      echo '    engine : json_engine';
+      echo '    paging : True';
+      echo '    search_url : https://www.haskell.org/hoogle/?mode=json&hoogle={query}&start={pageno}';
+      echo '    results_query : results';
+      echo '    url_query : location';
+      echo '    title_query : self';
+      echo '    content_query : docs';
+      echo '    page_size : 20';
+      echo '    categories : code';
+      echo '    shortcut : ho';
+      echo '';
+      echo '  - name : ina';
+      echo '    engine : ina';
+      echo '    shortcut : in';
+      echo '    timeout : 6.0';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name: kickass';
+      echo '    engine : kickass';
+      echo '    shortcut : kc';
+      echo '    timeout : 4.0';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : library genesis';
+      echo '    engine : xpath';
+      echo '    search_url : http://libgen.io/search.php?req={query}';
+      echo '    url_xpath : //a[contains(@href,"bookfi.net")]/@href';
+      echo '    title_xpath : //a[contains(@href,"book/")]/text()[1]';
+      echo '    content_xpath : //td/a[1][contains(@href,"=author")]/text()';
+      echo '    categories : general';
+      echo '    timeout : 7.0';
+      echo '    disabled : True';
+      echo '    shortcut : lg';
+      echo '';
+      echo '  - name : lobste.rs';
+      echo '    engine : xpath';
+      echo '    search_url : https://lobste.rs/search?utf8=%E2%9C%93&q={query}&what=stories&order=relevance';
+      echo '    results_xpath : //li[contains(@class, "story")]';
+      echo '    url_xpath : .//span[@class="link"]/a/@href';
+      echo '    title_xpath : .//span[@class="link"]/a';
+      echo '    content_xpath : .//a[@class="domain"]';
+      echo '    categories : code';
+      echo '    shortcut : lo';
+      echo '';
+      echo '  - name : mixcloud';
+      echo '    engine : mixcloud';
+      echo '    shortcut : mc';
+      echo '';
+      echo '  - name : nyaa';
+      echo '    engine : nyaa';
+      echo '    shortcut : nt';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : openstreetmap';
+      echo '    engine : openstreetmap';
+      echo '    shortcut : osm';
+      echo '';
+      echo '  - name : openrepos';
+      echo '    engine : xpath';
+      echo '    paging : True';
+      echo '    search_url : https://openrepos.net/search/node/{query}?page={pageno}';
+      echo '    url_xpath : //li[@class="search-result"]//h3[@class="title"]/a/@href';
+      echo '    title_xpath : //li[@class="search-result"]//h3[@class="title"]/a';
+      echo '    content_xpath : //li[@class="search-result"]//div[@class="search-snippet-info"]//p[@class="search-snippet"]';
+      echo '    categories : files';
+      echo '    timeout : 4.0';
+      echo '    disabled : True';
+      echo '    shortcut : or';
+      echo '';
+      echo '  - name : pdbe';
+      echo '    engine : pdbe';
+      echo '    shortcut : pdb';
+      echo '';
+      echo '  - name : photon';
+      echo '    engine : photon';
+      echo '    shortcut : ph';
+      echo '';
+      echo '  - name : piratebay';
+      echo '    engine : piratebay';
+      echo '    shortcut : tpb';
+      echo '    url: https://pirateproxy.red/';
+      echo '    timeout : 3.0';
+      echo '';
+      echo '  - name : qwant';
+      echo '    engine : qwant';
+      echo '    shortcut : qw';
+      echo '    categories : general';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : qwant images';
+      echo '    engine : qwant';
+      echo '    shortcut : qwi';
+      echo '    categories : images';
+      echo '';
+      echo '  - name : qwant news';
+      echo '    engine : qwant';
+      echo '    shortcut : qwn';
+      echo '    categories : news';
+      echo '';
+      echo '  - name : qwant social';
+      echo '    engine : qwant';
+      echo '    shortcut : qws';
+      echo '    categories : social media';
+      echo '';
+      echo '  - name : reddit';
+      echo '    engine : reddit';
+      echo '    shortcut : re';
+      echo '    page_size : 25';
+      echo '    timeout : 10.0';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : scanr structures';
+      echo '    shortcut: scs';
+      echo '    engine : scanr_structures';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : soundcloud';
+      echo '    engine : soundcloud';
+      echo '    shortcut : sc';
+      echo '';
+      echo '  - name : stackoverflow';
+      echo '    engine : stackoverflow';
+      echo '    shortcut : st';
+      echo '';
+      echo '  - name : searchcode doc';
+      echo '    engine : searchcode_doc';
+      echo '    shortcut : scd';
+      echo '';
+      echo '  - name : searchcode code';
+      echo '    engine : searchcode_code';
+      echo '    shortcut : scc';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : framalibre';
+      echo '    engine : framalibre';
+      echo '    shortcut : frl';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : semantic scholar';
+      echo '    engine : xpath';
+      echo '    paging : True';
+      echo '    search_url : https://www.semanticscholar.org/search?q={query}&sort=relevance&page={pageno}&ae=false';
+      echo '    results_xpath : //article';
+      echo '    url_xpath : .//div[@class="search-result-title"]/a/@href';
+      echo '    title_xpath : .//div[@class="search-result-title"]/a';
+      echo '    content_xpath : .//div[@class="search-result-abstract"]';
+      echo '    shortcut : se';
+      echo '    categories : science';
+      echo '';
+      echo '  - name : spotify';
+      echo '    engine : spotify';
+      echo '    shortcut : stf';
+      echo '';
+      echo '  - name : subtitleseeker';
+      echo '    engine : subtitleseeker';
+      echo '    shortcut : ss';
+      echo '# The language is an option. You can put any language written in english';
+      echo '# Examples : English, French, German, Hungarian, Chinese...';
+      echo '#    language : English';
+      echo '';
+      echo '  - name : startpage';
+      echo '    engine : startpage';
+      echo '    shortcut : sp';
+      echo '    timeout : 6.0';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : ixquick';
+      echo '    engine : startpage';
+      echo "    base_url : 'https://www.ixquick.eu/'";
+      echo "    search_url : 'https://www.ixquick.eu/do/search'";
+      echo '    shortcut : iq';
+      echo '    timeout : 6.0';
+      echo '';
+      echo '  - name : swisscows';
+      echo '    engine : swisscows';
+      echo '    shortcut : sw';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : tokyotoshokan';
+      echo '    engine : tokyotoshokan';
+      echo '    shortcut : tt';
+      echo '    timeout : 6.0';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : twitter';
+      echo '    engine : twitter';
+      echo '    shortcut : tw';
+      echo '';
+      echo '  - name : urbandictionary';
+      echo '    engine        : xpath';
+      echo '    search_url    : http://www.urbandictionary.com/define.php?term={query}';
+      echo '    url_xpath     : //*[@class="word"]/@href';
+      echo '    title_xpath   : //*[@class="def-header"]';
+      echo '    content_xpath : //*[@class="meaning"]';
+      echo '    shortcut : ud';
+      echo '';
+      echo '  - name : yandex';
+      echo '    engine : yandex';
+      echo '    shortcut : yn';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : youtube';
+      echo '    shortcut : yt';
+      echo '    # You can use the engine using the official stable API, but you need an API key';
+      echo '    # See : https://console.developers.google.com/project';
+      echo '    #    engine : youtube_api';
+      echo '    #    api_key: apikey # required!';
+      echo '    # Or you can use the html non-stable engine, activated by default';
+      echo '    engine : youtube_noapi';
+      echo '';
+      echo '  - name : dailymotion';
+      echo '    engine : dailymotion';
+      echo '    shortcut : dm';
+      echo '';
+      echo '  - name : vimeo';
+      echo '    engine : vimeo';
+      echo '    shortcut : vm';
+      echo '';
+      echo '  - name : wolframalpha';
+      echo '    shortcut : wa';
+      echo '    # You can use the engine using the official stable API, but you need an API key';
+      echo '    # See : http://products.wolframalpha.com/api/';
+      echo '    # engine : wolframalpha_api';
+      echo '    # api_key: '' # required!';
+      echo '    engine : wolframalpha_noapi';
+      echo '    timeout: 6.0';
+      echo '    categories : science';
+      echo '';
+      echo '  - name : seedpeer';
+      echo '    engine : seedpeer';
+      echo '    shortcut: speu'
+      echo '    categories: files, music, videos'
+      echo '    disabled: True';
+      echo '';
+      echo '  - name : dictzone';
+      echo '    engine : dictzone';
+      echo '    shortcut : dc';
+      echo '';
+      echo '  - name : mymemory translated';
+      echo '    engine : translated';
+      echo '    shortcut : tl';
+      echo '    timeout : 5.0';
+      echo '    disabled : True';
+      echo '    # You can use without an API key, but you are limited to 1000 words/day';
+      echo '    # See : http://mymemory.translated.net/doc/usagelimits.php';
+      echo '    # api_key : ""';
+      echo '';
+      echo '  - name : voat';
+      echo '    engine: xpath';
+      echo '    shortcut: vo';
+      echo '    categories: social media';
+      echo '    search_url : https://voat.co/search?q={query}';
+      echo '    url_xpath : //p[contains(@class, "title")]/a/@href';
+      echo '    title_xpath : //p[contains(@class, "title")]/a';
+      echo '    content_xpath : //span[@class="domain"]';
+      echo '    timeout : 10.0';
+      echo '    disabled : True';
+      echo '';
+      echo '  - name : 1337x';
+      echo '    engine : 1337x';
+      echo '    shortcut : 1337x';
+      echo '    disabled : True';
+      echo '';
+      echo 'locales:';
+      echo '    en : English';
+      echo '    bg : Български (Bulgarian)';
+      echo '    cs : Čeština (Czech)';
+      echo '    de : Deutsch (German)';
+      echo '    de_DE : Deutsch (German_Germany)';
+      echo '    el_GR : Ελληνικά (Greek_Greece)';
+      echo '    eo : Esperanto (Esperanto)';
+      echo '    es : Español (Spanish)';
+      echo '    fi : Suomi (Finnish)';
+      echo '    fr : Français (French)';
+      echo '    he : עברית (Hebrew)';
+      echo '    hu : Magyar (Hungarian)';
+      echo '    it : Italiano (Italian)';
+      echo '    ja : 日本語 (Japanese)';
+      echo '    nl : Nederlands (Dutch)';
+      echo '    pt : Português (Portuguese)';
+      echo '    pt_BR : Português (Portuguese_Brazil)';
+      echo '    ro : Română (Romanian)';
+      echo '    ru : Русский (Russian)';
+      echo '    sk : Slovenčina (Slovak)';
+      echo '    sv : Svenska (Swedish)';
+      echo '    tr : Türkçe (Turkish)';
+      echo '    uk : українська мова (Ukrainian)';
+      echo '    zh : 中文 (Chinese)';
+      echo '';
+      echo 'doi_resolvers :';
+      echo "    oadoi.org : 'https://oadoi.org/'";
+      echo "    doi.org : 'https://doi.org/'";
+      echo "    doai.io : 'http://doai.io/'";
+      echo '';
+      echo "default_doi_resolver : 'oadoi.org'"; } > $settings_file
 }
 
 function upgrade_searx {
@@ -852,8 +855,8 @@ function remove_searx {
         rm -rf ${SEARX_PATH}/searx
     fi
     remove_completion_param install_searx
-    sed -i '/Search engine /d' $COMPLETION_FILE
-    sed -i '/searx /d' $COMPLETION_FILE
+    sed -i '/Search engine /d' "$COMPLETION_FILE"
+    sed -i '/searx /d' "$COMPLETION_FILE"
 }
 
 function install_searx {
@@ -876,44 +879,37 @@ function install_searx {
 
     pip install --upgrade pip
 
-    pip install certifi
-    if [ ! "$?" = "0" ]; then
+    if ! pip install certifi; then
         echo $'Failed to install certifi'
         exit 737692
     fi
 
-    pip install pyyaml
-    if [ ! "$?" = "0" ]; then
+    if ! pip install pyyaml; then
         echo $'Failed to install pyyaml'
         exit 469242
     fi
 
-    pip install flask --upgrade
-    if [ ! "$?" = "0" ]; then
+    if ! pip install flask --upgrade; then
         echo $'Failed to install flask'
         exit 888575
     fi
 
-    pip install flask_restless --upgrade
-    if [ ! "$?" = "0" ]; then
+    if ! pip install flask_restless --upgrade; then
         echo $'Failed to install flask_restless'
         exit 54835
     fi
 
-    pip install flask_babel --upgrade
-    if [ ! "$?" = "0" ]; then
+    if ! pip install flask_babel --upgrade; then
         echo $'Failed to install flask_babel'
         exit 63738
     fi
 
-    pip install requests --upgrade
-    if [ ! "$?" = "0" ]; then
+    if ! pip install requests --upgrade; then
         echo $'Failed to install requests'
         exit 357282
     fi
 
-    pip install pygments --upgrade
-    if [ ! "$?" = "0" ]; then
+    if ! pip install pygments --upgrade; then
         echo $'Failed to install pygments'
         exit 357282
     fi
@@ -923,12 +919,12 @@ function install_searx {
     fi
 
     # clone the repo
-    cd $SEARX_PATH
+    cd $SEARX_PATH || exit 26482468
 
     if [ -d /repos/searx ]; then
         mkdir searx
         cp -r -p /repos/searx/. searx
-        cd searx
+        cd searx || exit 2468246
         git pull
     else
         function_check git_clone
@@ -946,57 +942,57 @@ function install_searx {
     adduser searx debian-tor
 
     # daemon
-    echo '[Unit]' > /etc/systemd/system/searx.service
-    echo 'Description=Searx (search engine)' >> /etc/systemd/system/searx.service
-    echo 'After=syslog.target' >> /etc/systemd/system/searx.service
-    echo 'After=network.target' >> /etc/systemd/system/searx.service
-    echo '' >> /etc/systemd/system/searx.service
-    echo '[Service]' >> /etc/systemd/system/searx.service
-    echo 'Type=simple' >> /etc/systemd/system/searx.service
-    echo 'User=searx' >> /etc/systemd/system/searx.service
-    echo 'Group=searx' >> /etc/systemd/system/searx.service
-    echo "WorkingDirectory=${SEARX_PATH}/searx" >> /etc/systemd/system/searx.service
-    echo "ExecStart=/usr/bin/python ${SEARX_PATH}/searx/searx/webapp.py" >> /etc/systemd/system/searx.service
-    echo 'Restart=always' >> /etc/systemd/system/searx.service
-    echo 'Environment="USER=searx"' >> /etc/systemd/system/searx.service
-    echo '' >> /etc/systemd/system/searx.service
-    echo '[Install]' >> /etc/systemd/system/searx.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/searx.service
+    { echo '[Unit]';
+      echo 'Description=Searx (search engine)';
+      echo 'After=syslog.target';
+      echo 'After=network.target';
+      echo '';
+      echo '[Service]';
+      echo 'Type=simple';
+      echo 'User=searx';
+      echo 'Group=searx';
+      echo "WorkingDirectory=${SEARX_PATH}/searx";
+      echo "ExecStart=/usr/bin/python ${SEARX_PATH}/searx/searx/webapp.py";
+      echo 'Restart=always';
+      echo 'Environment="USER=searx"';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/searx.service
 
     # create a webserver file
-    echo 'server {' > /etc/nginx/sites-available/searx
-    echo "    listen 127.0.0.1:${SEARX_ONION_PORT} default_server;" >> /etc/nginx/sites-available/searx
-    echo "    root ${SEARX_PATH}/searx;" >> /etc/nginx/sites-available/searx
-    echo "    server_name ${SEARX_ONION_HOSTNAME};" >> /etc/nginx/sites-available/searx
-    echo '    access_log /dev/null;' >> /etc/nginx/sites-available/searx
-    echo "    error_log /var/log/searx_error.log $WEBSERVER_LOG_LEVEL;" >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
+    { echo 'server {';
+      echo "    listen 127.0.0.1:${SEARX_ONION_PORT} default_server;";
+      echo "    root ${SEARX_PATH}/searx;";
+      echo "    server_name ${SEARX_ONION_HOSTNAME};";
+      echo '    access_log /dev/null;';
+      echo "    error_log /var/log/searx_error.log $WEBSERVER_LOG_LEVEL;";
+      echo ''; } > /etc/nginx/sites-available/searx
     function_check nginx_disable_sniffing
     nginx_disable_sniffing searx
-    echo '    add_header Strict-Transport-Security max-age=0;' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    location / {' >> /etc/nginx/sites-available/searx
+    { echo '    add_header Strict-Transport-Security max-age=0;';
+      echo '';
+      echo '    location / {'; } >> /etc/nginx/sites-available/searx
     function_check nginx_limits
     nginx_limits searx '1M'
-    echo '        proxy_pass http://localhost:8888;' >> /etc/nginx/sites-available/searx
-    echo "        #auth_basic \"${SEARX_LOGIN_TEXT}\";" >> /etc/nginx/sites-available/searx
-    echo '        #auth_basic_user_file /etc/nginx/.htpasswd;' >> /etc/nginx/sites-available/searx
-    echo '    }' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    fastcgi_buffers 64 4K;' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    error_page 403 /core/templates/403.php;' >> /etc/nginx/sites-available/searx
-    echo '    error_page 404 /core/templates/404.php;' >> /etc/nginx/sites-available/searx
-    echo '' >> /etc/nginx/sites-available/searx
-    echo '    location = /robots.txt {' >> /etc/nginx/sites-available/searx
-    echo '        allow all;' >> /etc/nginx/sites-available/searx
-    echo '        log_not_found off;' >> /etc/nginx/sites-available/searx
-    echo '        access_log /dev/null;' >> /etc/nginx/sites-available/searx
-    echo '    }' >> /etc/nginx/sites-available/searx
-    echo '}' >> /etc/nginx/sites-available/searx
+    { echo '        proxy_pass http://localhost:8888;';
+      echo "        #auth_basic \"${SEARX_LOGIN_TEXT}\";";
+      echo '        #auth_basic_user_file /etc/nginx/.htpasswd;';
+      echo '    }';
+      echo '';
+      echo '    fastcgi_buffers 64 4K;';
+      echo '';
+      echo '    error_page 403 /core/templates/403.php;';
+      echo '    error_page 404 /core/templates/404.php;';
+      echo '';
+      echo '    location = /robots.txt {';
+      echo '        allow all;';
+      echo '        log_not_found off;';
+      echo '        access_log /dev/null;';
+      echo '    }';
+      echo '}'; } >> /etc/nginx/sites-available/searx
 
     # replace the secret key
-    if ! grep -q "searx key" $COMPLETION_FILE; then
+    if ! grep -q "searx key" "$COMPLETION_FILE"; then
         SEARX_SECRET_KEY="$(create_password 30)"
         set_completion_param "searx key" "${SEARX_SECRET_KEY}"
     fi
@@ -1019,12 +1015,12 @@ function install_searx {
     systemctl daemon-reload
     systemctl start searx.service
 
-    SEARX_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a searx -p "$SEARX_PASSWORD"
+    SEARX_PASSWORD="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a searx -p "$SEARX_PASSWORD"
     if grep -q "$MY_USERNAME:" /etc/nginx/.htpasswd; then
         sed -i "/$MY_USERNAME:/d" /etc/nginx/.htpasswd
     fi
-    echo "$SEARX_PASSWORD" | htpasswd -i -s -c /etc/nginx/.htpasswd $MY_USERNAME
+    echo "$SEARX_PASSWORD" | htpasswd -i -s -c /etc/nginx/.htpasswd "$MY_USERNAME"
 
     APP_INSTALLED=1
 }
