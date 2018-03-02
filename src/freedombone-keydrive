@@ -87,17 +87,17 @@ do
     shift
 done
 
-if [ ! $MY_USERNAME ]; then
+if [ ! "$MY_USERNAME" ]; then
     echo $'No username given'
     exit 69350
 fi
 
-if [ ! -d /home/$MY_USERNAME ]; then
+if [ ! -d "/home/$MY_USERNAME" ]; then
     echo $"Home directory for $MY_USERNAME not found. This user may not exist on the system"
     exit 72378
 fi
 
-if [ ! -b $USB_DRIVE ]; then
+if [ ! -b "$USB_DRIVE" ]; then
     echo $'Please attach a USB drive'
     exit 65743
 fi
@@ -113,18 +113,15 @@ cryptsetup luksClose encrypted_usb
 
 # optionally format the drive
 if [[ $FORMAT == "yes" ]]; then
-    ${PROJECT_NAME}-format ${USB_DRIVE::-1}
-    if [ ! "$?" = "0" ]; then
+    if ! "${PROJECT_NAME}-format" "${USB_DRIVE::-1}"; then
         exit 36823
     fi
 fi
 
-cryptsetup luksOpen $USB_DRIVE encrypted_usb
-if [ "$?" = "0" ]; then
+if cryptsetup luksOpen "$USB_DRIVE" encrypted_usb; then
     USB_DRIVE=/dev/mapper/encrypted_usb
 fi
-mount $USB_DRIVE $USB_MOUNT
-if [ ! "$?" = "0" ]; then
+if ! mount $USB_DRIVE $USB_MOUNT; then
     echo $"There was a problem mounting the USB drive to $USB_MOUNT"
     rm -rf $USB_MOUNT
     exit 78543
@@ -132,7 +129,7 @@ fi
 
 # optionally create a master drive which contains the full GPG keyring
 if [[ $MASTER_DRIVE == "yes" || $MASTER_DRIVE == "y" || $MASTER_DRIVE == "1" ]]; then
-    if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
+    if [ ! -d "/home/$MY_USERNAME/.gnupg" ]; then
         echo $"No .gnupg directory was found for $MY_USERNAME"
         umount -f $USB_MOUNT
         rm -rf $USB_MOUNT
@@ -149,7 +146,7 @@ if [[ $MASTER_DRIVE == "yes" || $MASTER_DRIVE == "y" || $MASTER_DRIVE == "1" ]];
     GPG_BACKUP_ID=$(su -m root -c "gpg --list-keys \"(backup key)\" | sed -n '2p' | sed 's/^[ \t]*//'" - $MY_USERNAME)
 
     gpgerrstr=$'error'
-    gpgkey=$(gpg --homedir=/home/$MY_USERNAME/.gnupg --armor --export $GPG_ID)
+    gpgkey=$(gpg --homedir="/home/$MY_USERNAME/.gnupg" --armor --export "$GPG_ID")
     if [[ "$gpgkey" == *"$gpgerrstr"* ]]; then
         echo $'Problem exporting public gpg key'
         echo "$gpgkey"
@@ -157,7 +154,7 @@ if [[ $MASTER_DRIVE == "yes" || $MASTER_DRIVE == "y" || $MASTER_DRIVE == "1" ]];
     fi
     echo ''
     echo $'Enter your gpg private key passphrase:'
-    gpgprivkey=$(gpg --homedir=/home/$MY_USERNAME/.gnupg --armor --export-secret-key $GPG_ID)
+    gpgprivkey=$(gpg --homedir="/home/$MY_USERNAME/.gnupg" --armor --export-secret-key "$GPG_ID")
     if [[ "$gpgprivkey" == *"$gpgerrstr"* ]]; then
         echo $'Problem exporting private gpg key'
         echo "$gpgprivkey"
@@ -168,13 +165,13 @@ if [[ $MASTER_DRIVE == "yes" || $MASTER_DRIVE == "y" || $MASTER_DRIVE == "1" ]];
     # Dummy password to get around not being able to create a key without passphrase
     BACKUP_DUMMY_PASSWORD='backup'
 
-    backupgpgkey=$(gpg --homedir=/home/$MY_USERNAME/.gnupg --armor --export $GPG_BACKUP_ID)
+    backupgpgkey=$(gpg --homedir="/home/$MY_USERNAME/.gnupg" --armor --export "$GPG_BACKUP_ID")
     if [[ "$backupgpgkey" == *"$gpgerrstr"* ]]; then
         echo $'Problem exporting public gpg backup key'
         echo "$backupgpgkey"
         exit 735282
     fi
-    backupgpgprivkey=$(echo "$BACKUP_DUMMY_PASSWORD" | gpg --batch --passphrase-fd 0 --homedir=/home/$MY_USERNAME/.gnupg --armor --export-secret-key $GPG_BACKUP_ID)
+    backupgpgprivkey=$(echo "$BACKUP_DUMMY_PASSWORD" | gpg --batch --passphrase-fd 0 --homedir="/home/$MY_USERNAME/.gnupg" --armor --export-secret-key "$GPG_BACKUP_ID")
     if [[ "$backupgpgprivkey" == *"$gpgerrstr"* ]]; then
         echo $'Problem exporting private gpg backup key'
         echo "$backupgpgprivkey"
@@ -187,7 +184,7 @@ if [[ $MASTER_DRIVE == "yes" || $MASTER_DRIVE == "y" || $MASTER_DRIVE == "1" ]];
     echo "$backupgpgkey" > $USB_MOUNT/.backupgpgkey
     echo "$backupgpgprivkey" >> $USB_MOUNT/.backupgpgkey
 
-    cp -rf /home/$MY_USERNAME/.gnupg $USB_MOUNT
+    cp -rf "/home/$MY_USERNAME/.gnupg" $USB_MOUNT
 
     if [ -d /etc/letsencrypt ]; then
         cp -rf /etc/letsencrypt $USB_MOUNT
@@ -220,25 +217,25 @@ fi
 FRAGMENTS_DIR=$FRAGMENTS_DIR/$MY_USERNAME
 
 # make a directory to contain the fragments
-if [ ! -d $FRAGMENTS_DIR ]; then
-    mkdir -p $FRAGMENTS_DIR
+if [ ! -d "$FRAGMENTS_DIR" ]; then
+    mkdir -p "$FRAGMENTS_DIR"
     echo $"Made directory $FRAGMENTS_DIR"
 fi
-if [ ! -d $FRAGMENTS_DIR ]; then
+if [ ! -d "$FRAGMENTS_DIR" ]; then
     echo $"There was a problem making the directory $FRAGMENTS_DIR"
     umount -f $USB_MOUNT
     rm -rf $USB_MOUNT
     exit 6843
 fi
 
-cd $FRAGMENTS_DIR
-no_of_usb_shares=$(ls -afq keyshare.asc.* | wc -l)
-if [ ! "$?" = "0" ]; then
+cd "$FRAGMENTS_DIR" || exit 13389478368
+# shellcheck disable=SC2012
+if ! no_of_usb_shares=$(ls -afq keyshare.asc.* | wc -l); then
     no_of_usb_shares=0
 fi
 if (( no_of_usb_shares > 0 )); then
     echo $"A key fragment already exists on the drive for the user $MY_USERNAME"
-    cd ~/
+    cd ~/ || exit 34678264583
     umount -f $USB_MOUNT
     rm -rf $USB_MOUNT
     exit 58945
@@ -247,43 +244,44 @@ fi
 # copy a random fragment to the drive
 LOCAL_FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
 
-if [ ! -d $LOCAL_FRAGMENTS_DIR ]; then
-    ${PROJECT_NAME}-splitkey -u $MY_USERNAME -n $KEY_FRAGMENTS
+if [ ! -d "$LOCAL_FRAGMENTS_DIR" ]; then
+    "${PROJECT_NAME}-splitkey" -u "$MY_USERNAME" -n "$KEY_FRAGMENTS"
 fi
 
-cd $LOCAL_FRAGMENTS_DIR
-no_of_local_shares=$(ls -afq keyshare.asc.* | wc -l)
-if [ ! "$?" = "0" ]; then
+cd "$LOCAL_FRAGMENTS_DIR" || exit 7822452644
+# shellcheck disable=SC2012
+if ! no_of_local_shares=$(ls -afq keyshare.asc.* | wc -l); then
     no_of_local_shares=0
 fi
 if (( no_of_local_shares < 3 )); then
-    ${PROJECT_NAME}-splitkey -u $MY_USERNAME -n $KEY_FRAGMENTS
-    cd $LOCAL_FRAGMENTS_DIR
-    no_of_local_shares=$(ls -afq keyshare.asc.* | wc -l)
-    if [ ! "$?" = "0" ]; then
+    "${PROJECT_NAME}-splitkey" -u "$MY_USERNAME" -n "$KEY_FRAGMENTS"
+    cd "$LOCAL_FRAGMENTS_DIR" || exit 724524242
+    # shellcheck disable=SC2012
+    if ! no_of_local_shares=$(ls -afq keyshare.asc.* | wc -l); then
         no_of_local_shares=0
     fi
 fi
 
 if (( no_of_local_shares < 3 )); then
     echo $"Not enough key fragments available ${no_of_local_shares}"
-    cd ~/
+    cd ~/ || exit 7245267457
     umount -f $USB_MOUNT
     rm -rf $USB_MOUNT
     exit 63386
 fi
 
-share_files=($LOCAL_FRAGMENTS_DIR/keyshare.asc.*)
+share_files=("$LOCAL_FRAGMENTS_DIR/keyshare.asc.*")
 SHARE_FILENAME=${share_files[RANDOM % ${#share_files[@]}]}
 
-cp -f $SHARE_FILENAME $FRAGMENTS_DIR
-cd $FRAGMENTS_DIR
+cp -f "$SHARE_FILENAME" "$FRAGMENTS_DIR"
+cd "$FRAGMENTS_DIR" || exit 2543244726
+# shellcheck disable=SC2012
 no_of_usb_shares=$(ls -afq keyshare.asc.* | wc -l)
 echo $"Number of fragments on the drive: ${no_of_usb_shares}"
 if (( no_of_usb_shares > 1 )); then
     echo $"Too many key fragments exist in $FRAGMENTS_DIR"
-    ls $FRAGMENTS_DIR
-    cd ~/
+    ls "$FRAGMENTS_DIR"
+    cd ~/ || 357836582645
     umount -f $USB_MOUNT
     rm -rf $USB_MOUNT
     exit 54292
@@ -291,14 +289,14 @@ fi
 if (( no_of_usb_shares <= 0 )); then
     echo $"There was a problem copying the key fragment to $USB_DRIVE"
     echo $"Files found: ${no_of_usb_shares}"
-    ls $FRAGMENTS_DIR
-    cd ~/
+    ls "$FRAGMENTS_DIR"
+    cd ~/ || exit 743452452
     umount -f $USB_MOUNT
     rm -rf $USB_MOUNT
     exit 54292
 fi
 
-cd ~/
+cd ~/ || exit 245672457
 umount -f $USB_MOUNT
 rm -rf $USB_MOUNT
 echo $"Key fragment copied to $USB_DRIVE. You may now remove the drive."

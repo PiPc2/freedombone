@@ -37,19 +37,19 @@ BACKUP_EXTRA_DIRECTORIES=/root/backup-extra-dirs.csv
 export TEXTDOMAIN=${PROJECT_NAME}-restore-remote
 export TEXTDOMAINDIR="/usr/share/locale"
 
-UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+UTILS_FILES="/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*"
 for f in $UTILS_FILES
 do
-    source $f
+    source "$f"
 done
 
-SERVER_NAME=$1
+SERVER_NAME="$1"
 
 # whether to restore everything or just a specific application
 RESTORE_APP='all'
 
-if [ ${2} ]; then
-    RESTORE_APP=${2}
+if [ "${2}" ]; then
+    RESTORE_APP="${2}"
 fi
 
 ADMIN_USERNAME=$(get_completion_param "Admin user")
@@ -60,46 +60,45 @@ SERVER_DIRECTORY=/root/remoterestore
 
 BACKUP_LIST=/home/${ADMIN_USERNAME}/backup.list
 
-if [ ! $SERVER_NAME ]; then
+if [ ! "$SERVER_NAME" ]; then
     echo $'restorefromfriend [server]'
     exit 1
 fi
 
-if [ ! -f $BACKUP_LIST ]; then
+if [ ! -f "$BACKUP_LIST" ]; then
     echo $"No friends list found at $BACKUP_LIST"
     exit 2
 fi
 
-if ! grep -q "$SERVER_NAME" $BACKUP_LIST; then
+if ! grep -q "$SERVER_NAME" "$BACKUP_LIST"; then
     echo $"Server not found within the friends list"
     exit 3
 fi
 
-REMOTE_SERVER=$(grep -i "$SERVER_NAME" $BACKUP_LIST | awk -F ' ' '{print $1}')
-REMOTE_SSH_PORT=$(grep -i "$SERVER_NAME" $BACKUP_LIST | awk -F ' ' '{print $2}')
-REMOTE_DIRECTORY=$(grep -i "$SERVER_NAME" $BACKUP_LIST | awk -F ' ' '{print $3}')
-REMOTE_PASSWORD=$(grep -i "$SERVER_NAME" $BACKUP_LIST | awk -F ' ' '{print $4}')
+REMOTE_SERVER=$(grep -i "$SERVER_NAME" "$BACKUP_LIST" | awk -F ' ' '{print $1}')
+REMOTE_SSH_PORT=$(grep -i "$SERVER_NAME" "$BACKUP_LIST" | awk -F ' ' '{print $2}')
+REMOTE_DIRECTORY=$(grep -i "$SERVER_NAME" "$BACKUP_LIST" | awk -F ' ' '{print $3}')
+REMOTE_PASSWORD=$(grep -i "$SERVER_NAME" "$BACKUP_LIST" | awk -F ' ' '{print $4}')
 REMOTE_SERVER=$REMOTE_SERVER:$REMOTE_DIRECTORY
 
 NOW=$(date +"%Y-%m-%d %H:%M:%S")
 
 echo "$NOW Starting restore from $REMOTE_SERVER" >> /var/log/remotebackups.log
-rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" $REMOTE_SERVER/backup $SERVER_DIRECTORY
-if [ ! "$?" = "0" ]; then
+if ! rsync -ratlzv --rsh="/usr/bin/sshpass -p $REMOTE_PASSWORD ssh -p $REMOTE_SSH_PORT -o StrictHostKeyChecking=no" "$REMOTE_SERVER/backup" "$SERVER_DIRECTORY"; then
     echo "$NOW Restore from $REMOTE_SERVER failed" >> /var/log/remotebackups.log
     # Send a warning email
-    echo "Restore from $REMOTE_SERVER failed" | mail -s "${PROJECT_NAME} restore from friend" $ADMIN_EMAIL_ADDRESS
+    echo "Restore from $REMOTE_SERVER failed" | mail -s "${PROJECT_NAME} restore from friend" "$ADMIN_EMAIL_ADDRESS"
     exit 790
 else
     echo "$NOW Restored encrypted data from $REMOTE_SERVER" >> /var/log/remotebackups.log
 fi
 
 # MariaDB password
-DATABASE_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+DATABASE_PASSWORD=$("${PROJECT_NAME}-pass" -u root -a mariadb)
 
 function copy_gpg_keys {
     echo $"Copying GPG keys from admin user to root"
-    cp -r /home/$ADMIN_USERNAME/.gnupg /root
+    cp -r "/home/$ADMIN_USERNAME/.gnupg" /root
     gpg_set_permissions root
 }
 
@@ -110,7 +109,7 @@ function restore_blocklist {
         fi
     fi
 
-    if [ -d $USB_MOUNT/backup/blocklist ]; then
+    if [ -d "$USB_MOUNT/backup/blocklist" ]; then
         echo $"Restoring blocklist"
         temp_restore_dir=/root/tempblocklist
         restore_directory_from_friend $temp_restore_dir blocklist
@@ -173,9 +172,8 @@ function restore_configfiles {
         #    fi
         #fi
 
-        if [ -f $temp_restore_dir$MONGODB_APPS_FILE ]; then
-            cp -f $temp_restore_dir$MONGODB_APPS_FILE $MONGODB_APPS_FILE
-            if [ ! "$?" = "0" ]; then
+        if [ -f "$temp_restore_dir$MONGODB_APPS_FILE" ]; then
+            if ! cp -f "$temp_restore_dir$MONGODB_APPS_FILE" "$MONGODB_APPS_FILE"; then
                 unmount_drive
                 rm -rf $temp_restore_dir
                 exit 7835335
@@ -196,9 +194,8 @@ function restore_configfiles {
         #    fi
         #fi
 
-        if [ -f ${temp_restore_dir}${BACKUP_EXTRA_DIRECTORIES} ]; then
-            cp -f ${temp_restore_dir}${BACKUP_EXTRA_DIRECTORIES} ${BACKUP_EXTRA_DIRECTORIES}
-            if [ ! "$?" = "0" ]; then
+        if [ -f "${temp_restore_dir}${BACKUP_EXTRA_DIRECTORIES}" ]; then
+            if ! cp -f "${temp_restore_dir}${BACKUP_EXTRA_DIRECTORIES}" "${BACKUP_EXTRA_DIRECTORIES}"; then
                 unmount_drive
                 rm -rf $temp_restore_dir
                 exit 62121
@@ -242,6 +239,7 @@ function restore_mariadb {
             else
                 mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}/mysql.sql)
             fi
+            # shellcheck disable=SC2181
             if [ ! "$?" = "0" ]; then
                 echo $"Try again using the password obtained from backup"
                 db_pass=$(${PROJECT_NAME}-pass -u root -a mariadb)
@@ -251,6 +249,7 @@ function restore_mariadb {
                     mysqlsuccess=$(mysql -u root --password="$db_pass" mysql -o < ${temp_restore_dir}/mysql.sql)
                 fi
             fi
+            # shellcheck disable=SC2181
             if [ ! "$?" = "0" ]; then
                 echo "$mysqlsuccess"
                 exit 962
@@ -258,7 +257,7 @@ function restore_mariadb {
             echo $"Restarting database"
             systemctl restart mariadb
             echo $"Ensure MariaDB handles authentication"
-            MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
+            MARIADB_PASSWORD=$("${PROJECT_NAME}-pass" -u root -a mariadb)
             mariadb_fix_authentication
         fi
         rm -rf ${temp_restore_dir}
@@ -293,15 +292,17 @@ function restore_postgresql {
             else
                 mysqlsuccess=$(sudo -u postgres pg_restore ${temp_restore_dir}/postgresql.sql)
             fi
+            # shellcheck disable=SC2181
             if [ ! "$?" = "0" ]; then
                 echo $"Try again using the password obtained from backup"
-                db_pass=$(${PROJECT_NAME}-pass -u root -a postgresql)
+                db_pass=$("${PROJECT_NAME}-pass" -u root -a postgresql)
                 if [ -d ${temp_restore_dir}${temp_restore_dir} ]; then
                     mysqlsuccess=$(sudo -u postgres pg_restore ${temp_restore_dir}${temp_restore_dir}/postgresql.sql)
                 else
                     mysqlsuccess=$(sudo -u postgres pg_restore ${temp_restore_dir}/postgresql.sql)
                 fi
             fi
+            # shellcheck disable=SC2181
             if [ ! "$?" = "0" ]; then
                 echo "$mysqlsuccess"
                 exit 962
@@ -309,7 +310,7 @@ function restore_postgresql {
             echo $"Restarting database"
             systemctl restart postgresql
             echo $"Ensure postgresql handles authentication"
-            POSTGRESQL_PASSWORD=$(${PROJECT_NAME}-pass -u root -a postgresql)
+            POSTGRESQL_PASSWORD=$("${PROJECT_NAME}-pass" -u root -a postgresql)
         fi
         rm -rf ${temp_restore_dir}
     fi
@@ -367,31 +368,31 @@ function restore_mutt_settings {
         fi
 
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/mutt/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/mutt/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring Mutt configurations for $USERNAME"
-                restore_directory_from_friend /home/$USERNAME/.mutt mutt/${USERNAME}configs
+                restore_directory_from_friend "/home/$USERNAME/.mutt" "mutt/${USERNAME}configs"
                 echo $"Restoring Mutt settings for $USERNAME"
                 temp_restore_dir=/root/tempmutt
-                restore_directory_from_friend ${temp_restore_dir} mutt/$USERNAME
-                if [ -d ${temp_restore_dir}/home/$USERNAME/tempbackup ]; then
-                    if [ -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc ]; then
-                        cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc /home/$USERNAME/.muttrc
-                        sed -i '/set sidebar_delim/d' /home/$USERNAME/.muttrc
-                        sed -i '/set sidebar_sort/d' /home/$USERNAME/.muttrc
+                restore_directory_from_friend ${temp_restore_dir} "mutt/$USERNAME"
+                if [ -d "${temp_restore_dir}/home/$USERNAME/tempbackup" ]; then
+                    if [ -f "${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc" ]; then
+                        cp -f "${temp_restore_dir}/home/$USERNAME/tempbackup/.muttrc" "/home/$USERNAME/.muttrc"
+                        sed -i '/set sidebar_delim/d' "/home/$USERNAME/.muttrc"
+                        sed -i '/set sidebar_sort/d' "/home/$USERNAME/.muttrc"
                     fi
-                    if [ -f ${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc ]; then
-                        cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc /etc/Muttrc
+                    if [ -f "${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc" ]; then
+                        cp -f "${temp_restore_dir}/home/$USERNAME/tempbackup/Muttrc" /etc/Muttrc
                         sed -i '/set sidebar_delim/d' /etc/Muttrc
                         sed -i '/set sidebar_sort/d' /etc/Muttrc
                     fi
                 else
                     if [ -f ${temp_restore_dir}/.muttrc ]; then
-                        cp -f ${temp_restore_dir}/.muttrc /home/$USERNAME/.muttrc
-                        sed -i '/set sidebar_delim/d' /home/$USERNAME/.muttrc
-                        sed -i '/set sidebar_sort/d' /home/$USERNAME/.muttrc
+                        cp -f "${temp_restore_dir}/.muttrc" "/home/$USERNAME/.muttrc"
+                        sed -i '/set sidebar_delim/d' "/home/$USERNAME/.muttrc"
+                        sed -i '/set sidebar_sort/d' "/home/$USERNAME/.muttrc"
                     fi
                     if [ -f ${temp_restore_dir}/Muttrc ]; then
                         cp -f ${temp_restore_dir}/Muttrc /etc/Muttrc
@@ -399,6 +400,7 @@ function restore_mutt_settings {
                         sed -i '/set sidebar_sort/d' /etc/Muttrc
                     fi
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf ${temp_restore_dir}
                     exit 276
@@ -417,29 +419,29 @@ function restore_gpg {
     for d in $SERVER_DIRECTORY/backup/gnupg/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/gnupg/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/gnupg/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring gnupg settings for $USERNAME"
                 temp_restore_dir=/root/tempgnupg
-                restore_directory_from_friend ${temp_restore_dir} gnupg/$USERNAME
-                if [ -d ${temp_restore_dir}/home/$USERNAME/.gnupg ]; then
-                    cp -r ${temp_restore_dir}/home/$USERNAME/.gnupg /home/$USERNAME/
+                restore_directory_from_friend ${temp_restore_dir} "gnupg/$USERNAME"
+                if [ -d "${temp_restore_dir}/home/$USERNAME/.gnupg" ]; then
+                    cp -r "${temp_restore_dir}/home/$USERNAME/.gnupg" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/.gnupg ]; then
-                        mkdir /home/$USERNAME/.gnupg
+                    if [ ! -d "/home/$USERNAME/.gnupg" ]; then
+                        mkdir "/home/$USERNAME/.gnupg"
                     fi
-                    cp -r ${temp_restore_dir}/* /home/$USERNAME/.gnupg/
+                    cp -r "${temp_restore_dir}/*" "/home/$USERNAME/.gnupg/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf ${temp_restore_dir}
                     exit 276
                 fi
                 rm -rf ${temp_restore_dir}
                 if [[ "$USERNAME" == "$ADMIN_USERNAME" ]]; then
-                    cp -r /home/$USERNAME/.gnupg /root
-                    if [ ! "$?" = "0" ]; then
+                    if ! cp -r "/home/$USERNAME/.gnupg" /root; then
                         exit 283
                     fi
                     gpg_set_permissions root
@@ -458,18 +460,19 @@ function restore_procmail {
     for d in $SERVER_DIRECTORY/backup/procmail/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/procmail/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/procmail/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring procmail settings for $USERNAME"
                 temp_restore_dir=/root/tempprocmail
-                restore_directory_from_friend ${temp_restore_dir} procmail/$USERNAME
-                if [ -d ${temp_restore_dir}/home/$USERNAME/tempbackup ]; then
-                    cp -f ${temp_restore_dir}/home/$USERNAME/tempbackup/.procmailrc /home/$USERNAME/
+                restore_directory_from_friend ${temp_restore_dir} "procmail/$USERNAME"
+                if [ -d "${temp_restore_dir}/home/$USERNAME/tempbackup" ]; then
+                    cp -f "${temp_restore_dir}/home/$USERNAME/tempbackup/.procmailrc" "/home/$USERNAME/"
                 else
-                    cp -f ${temp_restore_dir}/.procmailrc /home/$USERNAME/.procmailrc
+                    cp -f "${temp_restore_dir}/.procmailrc" "/home/$USERNAME/.procmailrc"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf ${temp_restore_dir}
                     exit 276
@@ -489,21 +492,22 @@ function restore_spamassassin {
     for d in $SERVER_DIRECTORY/backup/spamassassin/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/spamassassin/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/spamassassin/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring spamassassin settings for $USERNAME"
                 temp_restore_dir=/root/tempspamassassin
-                restore_directory_from_friend $temp_restore_dir spamassassin/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME ]; then
-                    cp -rf $temp_restore_dir/home/$USERNAME/.spamassassin /home/$USERNAME/
+                restore_directory_from_friend $temp_restore_dir "spamassassin/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME" ]; then
+                    cp -rf "$temp_restore_dir/home/$USERNAME/.spamassassin" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/.spamassassin ]; then
-                        mkdir /home/$USERNAME/.spamassassin
+                    if [ ! -d "/home/$USERNAME/.spamassassin" ]; then
+                        mkdir "/home/$USERNAME/.spamassassin"
                     fi
-                    cp -rf $temp_restore_dir/* /home/$USERNAME/.spamassassin/
+                    cp -rf $temp_restore_dir/* "/home/$USERNAME/.spamassassin/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 276
@@ -524,11 +528,12 @@ function restore_admin_readme {
         echo $"Restoring README"
         temp_restore_dir=/root/tempreadme
         restore_directory_from_friend $temp_restore_dir readme
-        if [ -d $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup ]; then
-            cp -f $temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/README /home/$ADMIN_USERNAME/
+        if [ -d "$temp_restore_dir/home/$ADMIN_USERNAME/tempbackup" ]; then
+            cp -f "$temp_restore_dir/home/$ADMIN_USERNAME/tempbackup/README" "/home/$ADMIN_USERNAME/"
         else
-            cp -f $temp_restore_dir/README /home/$ADMIN_USERNAME/README
+            cp -f "$temp_restore_dir/README" "/home/$ADMIN_USERNAME/README"
         fi
+        # shellcheck disable=SC2181
         if [ ! "$?" = "0" ]; then
             rm -rf $temp_restore_dir
             exit 276
@@ -546,21 +551,22 @@ function restore_ssh_keys {
     for d in $SERVER_DIRECTORY/backup/ssh/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/ssh/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/ssh/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring ssh keys for $USERNAME"
                 temp_restore_dir=/root/tempssh
-                restore_directory_from_friend $temp_restore_dir ssh/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME/.ssh ]; then
-                    cp -r $temp_restore_dir/home/$USERNAME/.ssh /home/$USERNAME/
+                restore_directory_from_friend $temp_restore_dir "ssh/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME/.ssh" ]; then
+                    cp -r "$temp_restore_dir/home/$USERNAME/.ssh" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/.ssh ]; then
-                        mkdir /home/$USERNAME/.ssh
+                    if [ ! -d "/home/$USERNAME/.ssh" ]; then
+                        mkdir "/home/$USERNAME/.ssh"
                     fi
-                    cp -r $temp_restore_dir/* /home/$USERNAME/.ssh/
+                    cp -r $temp_restore_dir/* "/home/$USERNAME/.ssh/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -580,21 +586,22 @@ function restore_user_config {
     for d in $SERVER_DIRECTORY/backup/config/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/config/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/config/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring config files for $USERNAME"
                 temp_restore_dir=/root/tempconfig
-                restore_directory_from_friend $temp_restore_dir config/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME ]; then
-                    cp -r $temp_restore_dir/home/$USERNAME/.config /home/$USERNAME/
+                restore_directory_from_friend $temp_restore_dir "config/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME" ]; then
+                    cp -r "$temp_restore_dir/home/$USERNAME/.config" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/.config ]; then
-                        mkdir /home/$USERNAME/.config
+                    if [ ! -d "/home/$USERNAME/.config" ]; then
+                        mkdir "/home/$USERNAME/.config"
                     fi
-                    cp -r $temp_restore_dir/* /home/$USERNAME/.config/
+                    cp -r "$temp_restore_dir/*" "/home/$USERNAME/.config/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -614,21 +621,22 @@ function restore_user_monkeysphere {
     for d in $SERVER_DIRECTORY/backup/monkeysphere/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/monkeysphere/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/monkeysphere/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring monkeysphere ids for $USERNAME"
                 temp_restore_dir=/root/tempmonkeysphere
-                restore_directory_from_friend $temp_restore_dir monkeysphere/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME/.monkeysphere ]; then
-                    cp -r $temp_restore_dir/home/$USERNAME/.monkeysphere /home/$USERNAME/
+                restore_directory_from_friend $temp_restore_dir "monkeysphere/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME/.monkeysphere" ]; then
+                    cp -r "$temp_restore_dir/home/$USERNAME/.monkeysphere" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/.monkeysphere ]; then
-                        mkdir /home/$USERNAME/.monkeysphere
+                    if [ ! -d "/home/$USERNAME/.monkeysphere" ]; then
+                        mkdir "/home/$USERNAME/.monkeysphere"
                     fi
-                    cp -r $temp_restore_dir/* /home/$USERNAME/.monkeysphere/
+                    cp -r $temp_restore_dir/* "/home/$USERNAME/.monkeysphere/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -641,8 +649,8 @@ function restore_user_monkeysphere {
         MY_EMAIL_ADDRESS="${ADMIN_USERNAME}@${HOSTNAME}"
         read_config_param MY_EMAIL_ADDRESS
         MY_GPG_PUBLIC_KEY_ID=$(gpg_pubkey_from_email "$ADMIN_USERNAME" "$MY_EMAIL_ADDRESS")
-        fpr=$(gpg --with-colons --fingerprint $MY_GPG_PUBLIC_KEY_ID | grep fpr | head -n 1 | awk -F ':' '{print $10}')
-        monkeysphere-authentication add-identity-certifier $fpr
+        fpr=$(gpg --with-colons --fingerprint "$MY_GPG_PUBLIC_KEY_ID" | grep fpr | head -n 1 | awk -F ':' '{print $10}')
+        monkeysphere-authentication add-identity-certifier "$fpr"
         monkeysphere-authentication update-users
     done
 }
@@ -656,21 +664,22 @@ function restore_user_fin {
     for d in $SERVER_DIRECTORY/backup/fin/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/fin/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/fin/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring fin files for $USERNAME"
                 temp_restore_dir=/root/tempfin
-                restore_directory_from_friend $temp_restore_dir fin/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME/.fin ]; then
-                    cp -r $temp_restore_dir/home/$USERNAME/.fin /home/$USERNAME/
+                restore_directory_from_friend $temp_restore_dir "fin/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME/.fin" ]; then
+                    cp -r "$temp_restore_dir/home/$USERNAME/.fin" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/.fin ]; then
-                        mkdir /home/$USERNAME/.fin
+                    if [ ! -d "/home/$USERNAME/.fin" ]; then
+                        mkdir "/home/$USERNAME/.fin"
                     fi
-                    cp -r $temp_restore_dir/* /home/$USERNAME/.fin/
+                    cp -r $temp_restore_dir/* "/home/$USERNAME/.fin/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -690,21 +699,22 @@ function restore_user_local {
     for d in $SERVER_DIRECTORY/backup/local/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/local/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/local/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring local files for $USERNAME"
                 temp_restore_dir=/root/templocal
-                restore_directory_from_friend $temp_restore_dir local/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME/.local ]; then
-                    cp -r $temp_restore_dir/home/$USERNAME/.local /home/$USERNAME/
+                restore_directory_from_friend $temp_restore_dir "local/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME/.local" ]; then
+                    cp -r "$temp_restore_dir/home/$USERNAME/.local" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/.local ]; then
-                        mkdir /home/$USERNAME/.local
+                    if [ ! -d "/home/$USERNAME/.local" ]; then
+                        mkdir "/home/$USERNAME/.local"
                     fi
-                    cp -r $temp_restore_dir/* /home/$USERNAME/.local/
+                    cp -r $temp_restore_dir/* "/home/$USERNAME/.local/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     exit 664
@@ -729,6 +739,7 @@ function restore_certs {
         else
             cp -r /root/tempssl/* /etc/ssl/
         fi
+        # shellcheck disable=SC2181
         if [ ! "$?" = "0" ]; then
             exit 276
         fi
@@ -770,24 +781,25 @@ function restore_personal_settings {
     for d in $SERVER_DIRECTORY/backup/personal/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/personal/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/personal/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring personal settings for $USERNAME"
                 temp_restore_dir=/root/temppersonal
-                restore_directory_from_friend $temp_restore_dir personal/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME/personal ]; then
-                    if [ -d /home/$USERNAME/personal ]; then
-                        rm -rf /home/$USERNAME/personal
+                restore_directory_from_friend $temp_restore_dir "personal/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME/personal" ]; then
+                    if [ -d "/home/$USERNAME/personal" ]; then
+                        rm -rf "/home/$USERNAME/personal"
                     fi
-                    mv $temp_restore_dir/home/$USERNAME/personal /home/$USERNAME
+                    mv "$temp_restore_dir/home/$USERNAME/personal" "/home/$USERNAME"
                 else
-                    if [ ! -d /home/$USERNAME/personal ]; then
-                        mkdir /home/$USERNAME/personal
+                    if [ ! -d "/home/$USERNAME/personal" ]; then
+                        mkdir "/home/$USERNAME/personal"
                     fi
-                    cp -r $temp_restore_dir/* /home/$USERNAME/personal/
+                    cp -r $temp_restore_dir/* "/home/$USERNAME/personal/"
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     exit 18437643
                 fi
@@ -812,6 +824,7 @@ function restore_mailing_list {
         else
             cp -r $temp_restore_dir/* /var/spool/mlmmj/
         fi
+        # shellcheck disable=SC2181
         if [ ! "$?" = "0" ]; then
             exit 526
         fi
@@ -828,21 +841,22 @@ function restore_email {
     for d in $SERVER_DIRECTORY/backup/mail/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d $SERVER_DIRECTORY/backup/mail/$USERNAME ]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+            if [ -d "$SERVER_DIRECTORY/backup/mail/$USERNAME" ]; then
+                if [ ! -d "/home/$USERNAME" ]; then
+                    ${PROJECT_NAME}-adduser "$USERNAME"
                 fi
                 echo $"Restoring emails for $USERNAME"
                 temp_restore_dir=/root/tempmail
-                restore_directory_from_friend $temp_restore_dir mail/$USERNAME
-                if [ ! -d /home/$USERNAME/Maildir ]; then
-                    mkdir /home/$USERNAME/Maildir
+                restore_directory_from_friend $temp_restore_dir "mail/$USERNAME"
+                if [ ! -d "/home/$USERNAME/Maildir" ]; then
+                    mkdir "/home/$USERNAME/Maildir"
                 fi
-                if [ -d $temp_restore_dir/root/tempbackupemail/$USERNAME ]; then
-                    tar -xzvf $temp_restore_dir/root/tempbackupemail/$USERNAME/maildir.tar.gz -C /
+                if [ -d "$temp_restore_dir/root/tempbackupemail/$USERNAME" ]; then
+                    tar -xzvf "$temp_restore_dir/root/tempbackupemail/$USERNAME/maildir.tar.gz" -C /
                 else
                     tar -xzvf $temp_restore_dir/maildir.tar.gz -C /
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     exit 927
                 fi
@@ -854,7 +868,7 @@ function restore_email {
 
 # Social key management
 # Recover any key fragments and reconstruct the gpg key
-${PROJECT_NAME}-recoverkey -u ${ADMIN_USERNAME} -l $BACKUP_LIST
+${PROJECT_NAME}-recoverkey -u "${ADMIN_USERNAME}" -l "$BACKUP_LIST"
 
 copy_gpg_keys
 gpg_agent_setup root

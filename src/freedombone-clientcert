@@ -59,34 +59,34 @@ function show_help {
 
 while [ $# -gt 1 ]
 do
-key="$1"
+    key="$1"
 
-case $key in
-    --help)
-    show_help
-    ;;
-    -u|--username)
+    case $key in
+        --help)
+            show_help
+            ;;
+        -u|--username)
+            shift
+            USERNAME="$1"
+            ;;
+        *)
+            # unknown option
+            ;;
+    esac
     shift
-    USERNAME="$1"
-    ;;
-    *)
-    # unknown option
-    ;;
-esac
-shift
 done
 
-if [ ! $USERNAME ]; then
+if [ ! "$USERNAME" ]; then
     echo $'No username specified'
     exit 5748
 fi
 
-if [ ! -d /home/$USERNAME ]; then
+if [ ! -d "/home/$USERNAME" ]; then
     echo $"User $USERNAME not found"
     exit 76239
 fi
 
-if [ -d /home/$USERNAME/emailcert ]; then
+if [ -d "/home/$USERNAME/emailcert" ]; then
     echo $'Client certs were already for created'
     exit 2953
 fi
@@ -97,75 +97,71 @@ fi
 
 # Add a user password
 if ! grep -q "$USERNAME:{plain}" /etc/dovecot/passwd-file; then
-  echo "$USERNAME:{plain}::::::nopassword" >> /etc/dovecot/passwd-file
+    echo "$USERNAME:{plain}::::::nopassword" >> /etc/dovecot/passwd-file
 fi
 
 chmod 600 /etc/dovecot/passwd-file
 
 # create a user cert
-${PROJECT_NAME}-addcert -h $USERNAME --nodh ""
+"${PROJECT_NAME}-addcert" -h "$USERNAME" --nodh ""
 
-if [ ! -f /etc/ssl/private/$USERNAME.key ]; then
+if [ ! -f "/etc/ssl/private/$USERNAME.key" ]; then
     echo $'User certificates were not created'
-    rm -rf /home/$USERNAME/emailcert
+    rm -rf "/home/$USERNAME/emailcert"
     exit 74835
 fi
 
 # create a certificate request
 openssl req -new -sha256 -subj \
         "/O=$ORGANISATION/OU=$UNIT/C=$COUNTRY_CODE/ST=$AREA/L=$LOCATION/CN=$USERNAME" \
-        -key /etc/ssl/private/$USERNAME.key \
-        -out /etc/ssl/requests/$USERNAME.csr
+        -key "/etc/ssl/private/$USERNAME.key" \
+        -out "/etc/ssl/requests/$USERNAME.csr"
 
-if [ ! -f /etc/ssl/requests/$USERNAME.csr ]; then
+if [ ! -f "/etc/ssl/requests/$USERNAME.csr" ]; then
     echo $'Certificate request was not created'
-    rm -rf /home/$USERNAME/emailcert
+    rm -rf "/home/$USERNAME/emailcert"
     exit 83520
 fi
 
 # sign the certificate request
-cd /etc/ssl
+cd /etc/ssl || exit 742742542
 openssl ca -config /etc/ssl/dovecot-ca.cnf \
-        -in /etc/ssl/requests/$USERNAME.csr \
-        -out /etc/ssl/certs/$USERNAME.cer
+        -in "/etc/ssl/requests/$USERNAME.csr" \
+        -out "/etc/ssl/certs/$USERNAME.cer"
 
-if [ ! -f /etc/ssl/certs/$USERNAME.cer ]; then
+if [ ! -f "/etc/ssl/certs/$USERNAME.cer" ]; then
     echo $'Authentication certificate was not created'
-    rm -rf /home/$USERNAME/emailcert
+    rm -rf "/home/$USERNAME/emailcert"
     exit 343569
 fi
 
 # move the cert to the user's home
-mkdir /home/$USERNAME/emailcert
-mv /etc/ssl/certs/$USERNAME.cer /home/$USERNAME/emailcert
-cp /etc/ssl/certs/dovecot.crt /home/$USERNAME/emailcert
-cp /etc/ssl/certs/ca-$HOSTNAME.crt /home/$USERNAME/emailcert
-mv /etc/ssl/private/$USERNAME.key /home/$USERNAME/emailcert
-mv /etc/ssl/certs/$USERNAME.crt /home/$USERNAME/emailcert
-openssl pkcs12 -export -in /home/$USERNAME/emailcert/$USERNAME.cer \
-        -out /home/$USERNAME/emailcert/$USERNAME.p12 \
-        -inkey /home/$USERNAME/emailcert/$USERNAME.key \
-        -certfile /home/$USERNAME/emailcert/ca-$HOSTNAME.crt \
+mkdir "/home/$USERNAME/emailcert"
+mv "/etc/ssl/certs/$USERNAME.cer" "/home/$USERNAME/emailcert"
+cp "/etc/ssl/certs/dovecot.crt" "/home/$USERNAME/emailcert"
+cp "/etc/ssl/certs/ca-$HOSTNAME.crt" "/home/$USERNAME/emailcert"
+mv "/etc/ssl/private/$USERNAME.key" "/home/$USERNAME/emailcert"
+mv "/etc/ssl/certs/$USERNAME.crt" "/home/$USERNAME/emailcert"
+openssl pkcs12 -export -in "/home/$USERNAME/emailcert/$USERNAME.cer" \
+        -out "/home/$USERNAME/emailcert/$USERNAME.p12" \
+        -inkey "/home/$USERNAME/emailcert/$USERNAME.key" \
+        -certfile "/home/$USERNAME/emailcert/ca-$HOSTNAME.crt" \
         -password pass:""
 
 # make an install script
-echo '#!/bin/bash' > /home/$USERNAME/emailcert/install.sh
-echo "sudo mv ca-$HOSTNAME.crt /etc/ssl/certs" >> \
-     /home/$USERNAME/emailcert/install.sh
-echo "sudo mv $USERNAME.crt /etc/ssl/certs" >> \
-     /home/$USERNAME/emailcert/install.sh
-echo "sudo mv dovecot.crt /etc/ssl/certs" >> \
-     /home/$USERNAME/emailcert/install.sh
-echo "sudo mv $USERNAME.key /etc/ssl/private" >> \
-     /home/$USERNAME/emailcert/install.sh
-echo 'exit 0' >> /home/$USERNAME/emailcert/install.sh
+{ echo '#!/bin/bash';
+  echo "sudo mv ca-$HOSTNAME.crt /etc/ssl/certs";
+  echo "sudo mv $USERNAME.crt /etc/ssl/certs";
+  echo "sudo mv dovecot.crt /etc/ssl/certs";
+  echo "sudo mv $USERNAME.key /etc/ssl/private";
+  echo 'exit 0'; } > "/home/$USERNAME/emailcert/install.sh"
 
 # set permissions for the user
-chmod -R 755 /home/$USERNAME/emailcert
-chown -R $USERNAME:$USERNAME /home/$USERNAME/emailcert
-chmod +x /home/$USERNAME/emailcert/install.sh
+chmod -R 755 "/home/$USERNAME/emailcert"
+chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME/emailcert"
+chmod +x "/home/$USERNAME/emailcert/install.sh"
 
-shred -zu /etc/ssl/requests/$USERNAME.csr
+shred -zu "/etc/ssl/requests/$USERNAME.csr"
 
 echo $'Email authentication certificate created. You can obtain it on the client with:'
 echo ''

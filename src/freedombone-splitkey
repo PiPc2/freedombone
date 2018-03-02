@@ -90,37 +90,37 @@ esac
 shift
 done
 
-if [ ! $MY_USERNAME ]; then
+if [ ! "$MY_USERNAME" ]; then
     show_help
 fi
-if [ ! -d /home/$MY_USERNAME ]; then
+if [ ! -d "/home/$MY_USERNAME" ]; then
     echo $"User $MY_USERNAME does not exist on the system"
     exit 7270
 fi
 
-if [ ! -d /home/$MY_USERNAME/.gnupg ]; then
+if [ ! -d "/home/$MY_USERNAME/.gnupg" ]; then
     echo $'No gpg key found'
     exit 5393
 fi
 
-if [ $PASSWORD_FILE ]; then
-    if [ ! -f $PASSWORD_FILE ]; then
+if [ "$PASSWORD_FILE" ]; then
+    if [ ! -f "$PASSWORD_FILE" ]; then
         echo $'Password file not found'
         exit 62952
     fi
 fi
 
 FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
-if [ -d $FRAGMENTS_DIR ]; then
+if [ -d "$FRAGMENTS_DIR" ]; then
     exit 0
 fi
 
 # get the gpg key ID
-if [ ! $MY_EMAIL_ADDRESS ]; then
+if [ ! "$MY_EMAIL_ADDRESS" ]; then
     MY_EMAIL_ADDRESS=$MY_USERNAME@$HOSTNAME
 fi
 
-KEYID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS" - $MY_USERNAME | sed -n '2p' | sed 's/^[ \t]*//')
+KEYID=$(su -c "gpg --list-keys $MY_EMAIL_ADDRESS" - "$MY_USERNAME" | sed -n '2p' | sed 's/^[ \t]*//')
 if [ ${#KEYID} -lt 4 ]; then
     echo $"gpg key for $MY_EMAIL_ADDRESS was not found"
     exit 3682
@@ -133,72 +133,70 @@ if [ ${#MY_BACKUP_KEY_ID} -lt 4 ]; then
 fi
 
 # create the key file
-mkdir -p $FRAGMENTS_DIR
-chown $MY_USERNAME:$MY_USERNAME $FRAGMENTS_DIR
-KEYS_FILE=$FRAGMENTS_DIR/keyshare.asc
-gpg --output $FRAGMENTS_DIR/pubkey.txt --armor --export $KEYID
-if [ ! "$?" = "0" ]; then
+mkdir -p "$FRAGMENTS_DIR"
+chown "$MY_USERNAME":"$MY_USERNAME" "$FRAGMENTS_DIR"
+KEYS_FILE="$FRAGMENTS_DIR/keyshare.asc"
+if ! gpg --output "$FRAGMENTS_DIR/pubkey.txt" --armor --export "$KEYID"; then
     echo $"Unable to extract public key for $KEYID"
     exit 7835
 fi
-if [ ! $PASSWORD_FILE ]; then
-    gpg --output $FRAGMENTS_DIR/privkey.txt \
-        --armor --export-secret-key $KEYID
+if [ ! "$PASSWORD_FILE" ]; then
+    gpg --output "$FRAGMENTS_DIR/privkey.txt" \
+        --armor --export-secret-key "$KEYID"
 else
-    echo "$(printf `cat $PASSWORD_FILE`)" | \
+    # shellcheck disable=SC2005
+    echo "$(printf "%s" "$(cat "$PASSWORD_FILE")")" | \
         gpg --batch --passphrase-fd 0 \
-        --output $FRAGMENTS_DIR/privkey.txt \
-        --armor --export-secret-key $KEYID
+        --output "$FRAGMENTS_DIR/privkey.txt" \
+        --armor --export-secret-key "$KEYID"
 fi
+# shellcheck disable=SC2181
 if [ ! "$?" = "0" ]; then
     echo $"Unable to extract private key for $KEYID"
     exit 7823
 fi
-gpg --output $FRAGMENTS_DIR/backup_pubkey.txt \
-    --armor --export $MY_BACKUP_KEY_ID
-if [ ! "$?" = "0" ]; then
-    shred -zu $FRAGMENTS_DIR/privkey.txt
+if ! gpg --output "$FRAGMENTS_DIR/backup_pubkey.txt" \
+    --armor --export "$MY_BACKUP_KEY_ID"; then
+    shred -zu "$FRAGMENTS_DIR/privkey.txt"
     echo $"Unable to extract backup public key for $MY_BACKUP_KEY_ID"
     exit 62928
 fi
 echo "$BACKUP_DUMMY_PASSWORD" | \
-    gpg --output $FRAGMENTS_DIR/backup_privkey.txt \
+if ! gpg --output "$FRAGMENTS_DIR/backup_privkey.txt" \
         --batch --passphrase-fd 0 \
-        --armor --export-secret-key $MY_BACKUP_KEY_ID
-if [ ! "$?" = "0" ]; then
-    shred -zu $FRAGMENTS_DIR/privkey.txt
+        --armor --export-secret-key "$MY_BACKUP_KEY_ID"; then
+    shred -zu "$FRAGMENTS_DIR/privkey.txt"
     echo $"Unable to extract backup private key for $MY_BACKUP_KEY_ID"
     exit 13783
 fi
 
 # Ensure there aren't any permissions problems when running cat
-chmod +r $FRAGMENTS_DIR/privkey.txt
-chmod +r $FRAGMENTS_DIR/backup_privkey.txt
+chmod +r "$FRAGMENTS_DIR/privkey.txt"
+chmod +r "$FRAGMENTS_DIR/backup_privkey.txt"
 
-cat $FRAGMENTS_DIR/pubkey.txt \
-    $FRAGMENTS_DIR/privkey.txt \
-    $FRAGMENTS_DIR/backup_pubkey.txt \
-    $FRAGMENTS_DIR/backup_privkey.txt > $KEYS_FILE
-shred -zu $FRAGMENTS_DIR/privkey.txt
-shred -zu $FRAGMENTS_DIR/pubkey.txt
-shred -zu $FRAGMENTS_DIR/backup_privkey.txt
-shred -zu $FRAGMENTS_DIR/backup_pubkey.txt
+cat "$FRAGMENTS_DIR/pubkey.txt" \
+    "$FRAGMENTS_DIR/privkey.txt" \
+    "$FRAGMENTS_DIR/backup_pubkey.txt" \
+    "$FRAGMENTS_DIR/backup_privkey.txt" > "$KEYS_FILE"
+shred -zu "$FRAGMENTS_DIR/privkey.txt"
+shred -zu "$FRAGMENTS_DIR/pubkey.txt"
+shred -zu "$FRAGMENTS_DIR/backup_privkey.txt"
+shred -zu "$FRAGMENTS_DIR/backup_pubkey.txt"
 
 KEY_SHARES=$((KEY_FRAGMENTS * 2))
-gfsplit -n $KEY_FRAGMENTS -m $KEY_SHARES $KEYS_FILE
-if [ ! "$?" = "0" ]; then
+if ! gfsplit -n "$KEY_FRAGMENTS" -m "$KEY_SHARES $KEYS_FILE"; then
     echo $"Unable to split the gpg key"
-    rm -rf $FRAGMENTS_DIR
-    if [ -f $KEYS_FILE ]; then
-        shred -zu $KEYS_FILE
+    rm -rf "$FRAGMENTS_DIR"
+    if [ -f "$KEYS_FILE" ]; then
+        shred -zu "$KEYS_FILE"
     fi
     exit 63028
 fi
-shred -zu $KEYS_FILE
+shred -zu "$KEYS_FILE"
 
 # set permissions
-chown -R $MY_USERNAME:$MY_USERNAME $FRAGMENTS_DIR
-chmod -R 600 $FRAGMENTS_DIR
+chown -R "$MY_USERNAME":"$MY_USERNAME" "$FRAGMENTS_DIR"
+chmod -R 600 "$FRAGMENTS_DIR"
 
 echo $"$KEY_SHARES key shares created"
 
