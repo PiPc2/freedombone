@@ -23,6 +23,7 @@ install:
 	mkdir -p ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -p ${DESTDIR}/usr/share/${APP}/avatars
 	mkdir -p ${DESTDIR}/etc/${APP}
+	rm -f ${DESTDIR}/${PREFIX}/bin/${APP}-*
 	cp -r image_build/* ${DESTDIR}/etc/${APP}
 	cp img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
 	cp img/avatars/* ${DESTDIR}/usr/share/${APP}/avatars
