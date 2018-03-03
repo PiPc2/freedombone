@@ -76,39 +76,40 @@ function install_interactive_riot {
         RIOT_DETAILS_COMPLETE=
         while [ ! $RIOT_DETAILS_COMPLETE ]
         do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
+            data=$(mktemp 2>/dev/null)
             if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"Riot Web user interface for Matrix" \
-                       --form $"\nPlease enter your details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 3 \
+                       --form $"\\nPlease enter your details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 3 \
                        $"Domain:" 1 1 "$(grep 'RIOT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 15 40 40 \
                        $"Code:" 2 1 "$(grep 'RIOT_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 15 40 255 \
-                       2> $data
+                       2> "$data"
             else
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"Riot Web user interface for Matrix" \
-                       --form $"\nPlease enter your details. The background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 2 \
+                       --form $"\\nPlease enter your details. The background image URL can be left blank.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 2 \
                        $"Domain:" 1 1 "$(grep 'RIOT_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 15 40 40 \
-                       2> $data
+                       2> "$data"
             fi
             sel=$?
             case $sel in
-                1) exit 1;;
-                255) exit 1;;
+                1) rm -f "$data"
+                   exit 1;;
+                255) rm -f "$data"
+                     exit 1;;
             esac
-            RIOT_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $RIOT_DOMAIN_NAME ]; then
+            RIOT_DOMAIN_NAME=$(sed -n 1p < "$data")
+            if [ "$RIOT_DOMAIN_NAME" ]; then
                 TEST_DOMAIN_NAME=$RIOT_DOMAIN_NAME
                 validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $RIOT_DOMAIN_NAME ]]; then
+                if [[ "$TEST_DOMAIN_NAME" != "$RIOT_DOMAIN_NAME" ]]; then
                     RIOT_DOMAIN_NAME=
                     dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
                 else
                     if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        RIOT_CODE=$(cat $data | sed -n 2p)
+                        RIOT_CODE=$(sed -n 2p < "$data")
                         validate_freedns_code "$RIOT_CODE"
-                        if [ ! $VALID_CODE ]; then
+                        if [ ! "$VALID_CODE" ]; then
                             RIOT_DOMAIN_NAME=
                         fi
                     fi
@@ -117,6 +118,7 @@ function install_interactive_riot {
             if [ $RIOT_DOMAIN_NAME ]; then
                 RIOT_DETAILS_COMPLETE="yes"
             fi
+            rm -f "$data"
         done
 
         # save the results in the config file
@@ -132,14 +134,14 @@ function reconfigure_riot {
 
 function riot_download {
     # download
-    if [ ! -f $INSTALL_DIR/${RIOT_FILENAME}.tar.gz ]; then
-        wget ${RIOT_DOWNLOAD_URL}/${RIOT_FILENAME}.tar.gz -O $INSTALL_DIR/${RIOT_FILENAME}.tar.gz
+    if [ ! -f "$INSTALL_DIR/${RIOT_FILENAME}.tar.gz" ]; then
+        wget "${RIOT_DOWNLOAD_URL}/${RIOT_FILENAME}.tar.gz" -O "$INSTALL_DIR/${RIOT_FILENAME}.tar.gz"
     fi
-    if [ ! -f $INSTALL_DIR/${RIOT_FILENAME}.tar.gz ]; then
+    if [ ! -f "$INSTALL_DIR/${RIOT_FILENAME}.tar.gz" ]; then
         echo $'Unable to download Riot Web from releases'
         exit 62836
     fi
-    cd $INSTALL_DIR
+    cd "$INSTALL_DIR" || exit 2468724628
 
     # check the hash
     curr_hash=$(sha256sum ${RIOT_FILENAME}.tar.gz | awk -F ' ' '{print $1}')
@@ -149,17 +151,17 @@ function riot_download {
     fi
 
     tar -xzvf ${RIOT_FILENAME}.tar.gz
-    if [ ! -d $INSTALL_DIR/${RIOT_FILENAME} ]; then
+    if [ ! -d "$INSTALL_DIR/${RIOT_FILENAME}" ]; then
         echo $'Unable to extract Riot Web tarball'
         exit 542826
     fi
-    cp -r $INSTALL_DIR/${RIOT_FILENAME}/* /var/www/$RIOT_DOMAIN_NAME/htdocs
+    cp -r "$INSTALL_DIR/${RIOT_FILENAME}/*" "/var/www/$RIOT_DOMAIN_NAME/htdocs"
 
-    chown -R www-data:www-data /var/www/$RIOT_DOMAIN_NAME/htdocs
+    chown -R www-data:www-data "/var/www/$RIOT_DOMAIN_NAME/htdocs"
 }
 
 function upgrade_riot {
-    if ! grep -q 'riot version:' $COMPLETION_FILE; then
+    if ! grep -q 'riot version:' "$COMPLETION_FILE"; then
         return
     fi
 
@@ -171,7 +173,7 @@ function upgrade_riot {
     fi
 
     riot_download
-    sed -i "s|riot version.*|riot version:$RIOT_VERSION|g" ${COMPLETION_FILE}
+    sed -i "s|riot version.*|riot version:$RIOT_VERSION|g" "${COMPLETION_FILE}"
     riot_remove_bad_links
 
     systemctl restart nginx
@@ -207,7 +209,7 @@ function remove_riot {
     fi
 
     remove_completion_param install_riot
-    sed -i '/riot /d' $COMPLETION_FILE
+    sed -i '/riot /d' "$COMPLETION_FILE"
 }
 
 function install_riot {
@@ -216,7 +218,7 @@ function install_riot {
     fi
 
     # check that matrix has been installed
-    if [ ! $MATRIX_DOMAIN_NAME ]; then
+    if [ ! "$MATRIX_DOMAIN_NAME" ]; then
         exit 687292
     fi
     if [[ "$MATRIX_DOMAIN_NAME" != *'.'* ]]; then
@@ -235,32 +237,32 @@ function install_riot {
         mkdir -p /var/www/$RIOT_DOMAIN_NAME/htdocs
     fi
 
-    if [ ! -d $INSTALL_DIR ]; then
-        mkdir $INSTALL_DIR
+    if [ ! -d "$INSTALL_DIR" ]; then
+        mkdir "$INSTALL_DIR"
     fi
 
     riot_download
 
-    cd /var/www/$RIOT_DOMAIN_NAME/htdocs
+    cd "/var/www/$RIOT_DOMAIN_NAME/htdocs" || exit 4628462876
 
-    if [[ $ONION_ONLY == 'no' ]]; then
+    if [[ "$ONION_ONLY" == 'no' ]]; then
         riot_config_file="config.${RIOT_DOMAIN_NAME}.json"
         cp config.sample.json $riot_config_file
-        sed -i "s|\"default_hs_url\":.*|\"default_hs_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" $riot_config_file
-        sed -i "s|\"default_is_url\":.*|\"default_is_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" $riot_config_file
-        sed -i "s|\"bug_report_endpoint_url\":.*|\"bug_report_endpoint_url\": \"https://${MATRIX_DOMAIN_NAME}/bugs\",|g" $riot_config_file
-        sed -i "/\"servers\":/a \"${MATRIX_DOMAIN_NAME}\"," $riot_config_file
+        sed -i "s|\"default_hs_url\":.*|\"default_hs_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" "$riot_config_file"
+        sed -i "s|\"default_is_url\":.*|\"default_is_url\": \"https://${MATRIX_DOMAIN_NAME}\",|g" "$riot_config_file"
+        sed -i "s|\"bug_report_endpoint_url\":.*|\"bug_report_endpoint_url\": \"https://${MATRIX_DOMAIN_NAME}/bugs\",|g" "$riot_config_file"
+        sed -i "/\"servers\":/a \"${MATRIX_DOMAIN_NAME}\"," "$riot_config_file"
     else
         riot_config_file="config.${MATRIX_ONION_DOMAIN_NAME}.json"
-        cp config.sample.json $riot_config_file
-        sed -i "s|\"default_hs_url\":.*|\"default_hs_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}\",|g" $riot_config_file
-        sed -i "s|\"default_is_url\":.*|\"default_is_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}\",|g" $riot_config_file
-        sed -i "s|\"bug_report_endpoint_url\":.*|\"bug_report_endpoint_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}/bugs\",|g" $riot_config_file
-        sed -i "/\"servers\":/a \"${MATRIX_ONION_DOMAIN_NAME}\"," $riot_config_file
+        cp config.sample.json "$riot_config_file"
+        sed -i "s|\"default_hs_url\":.*|\"default_hs_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}\",|g" "$riot_config_file"
+        sed -i "s|\"default_is_url\":.*|\"default_is_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}\",|g" "$riot_config_file"
+        sed -i "s|\"bug_report_endpoint_url\":.*|\"bug_report_endpoint_url\": \"http://${MATRIX_ONION_DOMAIN_NAME}/bugs\",|g" "$riot_config_file"
+        sed -i "/\"servers\":/a \"${MATRIX_ONION_DOMAIN_NAME}\"," "$riot_config_file"
     fi
-    sed -i "s|\"integrations_ui_url\":.*|\"integrations_ui_url\": \"\",|g" $riot_config_file
-    sed -i "s|\"integrations_rest_url\":.*|\"integrations_rest_url\": \"\",|g" $riot_config_file
-    sed -i 's|https://piwik.riot.im/||g' $riot_config_file
+    sed -i "s|\"integrations_ui_url\":.*|\"integrations_ui_url\": \"\",|g" "$riot_config_file"
+    sed -i "s|\"integrations_rest_url\":.*|\"integrations_rest_url\": \"\",|g" "$riot_config_file"
+    sed -i 's|https://piwik.riot.im/||g' "$riot_config_file"
 
     RIOT_ONION_HOSTNAME=$(add_onion_service riot 80 ${RIOT_ONION_PORT})
 
@@ -268,68 +270,68 @@ function install_riot {
     if [[ $ONION_ONLY == "no" ]]; then
         function_check nginx_http_redirect
         nginx_http_redirect $RIOT_DOMAIN_NAME
-        echo 'server {' >> $riot_nginx_site
-        echo '  listen 443 ssl;' >> $riot_nginx_site
-        echo '  #listen [::]:443 ssl;' >> $riot_nginx_site
-        echo "  server_name $RIOT_DOMAIN_NAME;" >> $riot_nginx_site
-        echo '' >> $riot_nginx_site
-        echo '  # Security' >> $riot_nginx_site
+        { echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $RIOT_DOMAIN_NAME;";
+          echo '';
+          echo '  # Security'; } >> $riot_nginx_site
         function_check nginx_ssl
         nginx_ssl $RIOT_DOMAIN_NAME
 
         function_check nginx_disable_sniffing
         nginx_disable_sniffing $RIOT_DOMAIN_NAME
 
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $riot_nginx_site
-        echo '' >> $riot_nginx_site
-        echo '  # Logs' >> $riot_nginx_site
-        echo '  access_log /dev/null;' >> $riot_nginx_site
-        echo '  error_log /dev/null;' >> $riot_nginx_site
-        echo '' >> $riot_nginx_site
-        echo '  # Root' >> $riot_nginx_site
-        echo "  root /var/www/$RIOT_DOMAIN_NAME/htdocs;" >> $riot_nginx_site
-        echo '' >> $riot_nginx_site
-        echo '  index index.html;' >> $riot_nginx_site
-        echo '' >> $riot_nginx_site
-        echo '  location / {' >> $riot_nginx_site
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '  # Logs';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo '  # Root';
+          echo "  root /var/www/$RIOT_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  index index.html;';
+          echo '';
+          echo '  location / {'; } >> $riot_nginx_site
         function_check nginx_limits
         nginx_limits $RIOT_DOMAIN_NAME '15m'
-        echo '  }' >> $riot_nginx_site
-        echo '}' >> $riot_nginx_site
-        echo '' >> $riot_nginx_site
+        { echo '  }';
+          echo '}';
+          echo ''; } >> $riot_nginx_site
     else
         echo -n '' > $riot_nginx_site
     fi
-    echo 'server {' >> $riot_nginx_site
-    echo "    listen 127.0.0.1:$RIOT_ONION_PORT default_server;" >> $riot_nginx_site
-    echo "    server_name $RIOT_ONION_HOSTNAME;" >> $riot_nginx_site
-    echo '' >> $riot_nginx_site
+    { echo 'server {';
+      echo "    listen 127.0.0.1:$RIOT_ONION_PORT default_server;";
+      echo "    server_name $RIOT_ONION_HOSTNAME;";
+      echo ''; } >> $riot_nginx_site
     function_check nginx_disable_sniffing
     nginx_disable_sniffing $RIOT_DOMAIN_NAME
-    echo '' >> $riot_nginx_site
-    echo '  # Logs' >> $riot_nginx_site
-    echo '  access_log /dev/null;' >> $riot_nginx_site
-    echo '  error_log /dev/null;' >> $riot_nginx_site
-    echo '' >> $riot_nginx_site
-    echo '  # Root' >> $riot_nginx_site
-    echo "  root /var/www/$RIOT_DOMAIN_NAME/htdocs;" >> $riot_nginx_site
-    echo '' >> $riot_nginx_site
-    echo '  index index.html;' >> $riot_nginx_site
-    echo '' >> $riot_nginx_site
-    echo '  location / {' >> $riot_nginx_site
+    { echo '';
+      echo '  # Logs';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  # Root';
+      echo "  root /var/www/$RIOT_DOMAIN_NAME/htdocs;";
+      echo '';
+      echo '  index index.html;';
+      echo '';
+      echo '  location / {'; } >> $riot_nginx_site
     function_check nginx_limits
     nginx_limits $RIOT_DOMAIN_NAME '15m'
-    echo '  }' >> $riot_nginx_site
-    echo '}' >> $riot_nginx_site
+    echo '  }' >> "$riot_nginx_site"
+    echo '}' >> "$riot_nginx_site"
 
-    sed '/Content-Security-Policy/d' $riot_nginx_site
-    sed -i 's| DENY;| SAMEORIGIN;|g' $riot_nginx_site
-    sed -i 's|limit_conn conn_limit_per_ip.*|limit_conn conn_limit_per_ip 50;|g' $riot_nginx_site
-    sed -i 's|limit_req zone.*|limit_req zone=req_limit_per_ip burst=20 nodelay;|g' $riot_nginx_site
+    sed '/Content-Security-Policy/d' "$riot_nginx_site"
+    sed -i 's| DENY;| SAMEORIGIN;|g' "$riot_nginx_site"
+    sed -i 's|limit_conn conn_limit_per_ip.*|limit_conn conn_limit_per_ip 50;|g' "$riot_nginx_site"
+    sed -i 's|limit_req zone.*|limit_req zone=req_limit_per_ip burst=20 nodelay;|g' "$riot_nginx_site"
 
     function_check create_site_certificate
-    if [ ! -f /etc/ssl/certs/${RIOT_DOMAIN_NAME}.pem ]; then
-        create_site_certificate $RIOT_DOMAIN_NAME 'yes'
+    if [ ! -f "/etc/ssl/certs/${RIOT_DOMAIN_NAME}.pem" ]; then
+        create_site_certificate "$RIOT_DOMAIN_NAME" 'yes'
     fi
 
     function_check nginx_ensite
@@ -344,10 +346,10 @@ function install_riot {
     systemctl restart nginx
 
     set_completion_param "riot domain" "$RIOT_DOMAIN_NAME"
-    if ! grep -q "riot version:" ${COMPLETION_FILE}; then
-        echo "riot version:${RIOT_VERSION}" >> ${COMPLETION_FILE}
+    if ! grep -q "riot version:" "${COMPLETION_FILE}"; then
+        echo "riot version:${RIOT_VERSION}" >> "${COMPLETION_FILE}"
     else
-        sed -i "s|riot version.*|riot version:${RIOT_VERSION}|g" ${COMPLETION_FILE}
+        sed -i "s|riot version.*|riot version:${RIOT_VERSION}|g" "${COMPLETION_FILE}"
     fi
     APP_INSTALLED=1
 }

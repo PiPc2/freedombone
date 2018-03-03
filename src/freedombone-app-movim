@@ -58,19 +58,19 @@ function logging_off_movim {
 function remove_user_movim {
     remove_username="$1"
 
-    ${PROJECT_NAME}-pass -u $remove_username --rmapp movim
+    "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp movim
 }
 
 function add_user_movim {
     new_username="$1"
     new_user_password="$2"
 
-    ${PROJECT_NAME}-pass -u $new_username -a movim -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$new_username" -a movim -p "$new_user_password"
     echo '0'
 }
 
 function install_interactive_movim {
-    if [ ! $ONION_ONLY ]; then
+    if [ ! "$ONION_ONLY" ]; then
         ONION_ONLY='no'
     fi
 
@@ -80,39 +80,38 @@ function install_interactive_movim {
         MOVIM_DETAILS_COMPLETE=
         while [ ! $MOVIM_DETAILS_COMPLETE ]
         do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
+            data=$(mktemp 2>/dev/null)
             if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"Movim Configuration" \
-                       --form $"\nPlease enter your Movim details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 12 65 2 \
+                       --form $"\\nPlease enter your Movim details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 12 65 2 \
                        $"Domain:" 1 1 "$(grep 'MOVIM_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
                        $"Code:" 2 1 "$(grep 'MOVIM_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 25 33 255 \
-                       2> $data
+                       2> "$data"
             else
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"Movim Configuration" \
-                       --form $"\nPlease enter your Movim details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 12 65 2 \
+                       --form $"\\nPlease enter your Movim details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 12 65 2 \
                        $"Domain:" 1 1 "$(grep 'MOVIM_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
-                       2> $data
+                       2> "$data"
             fi
             sel=$?
             case $sel in
                 1) exit 1;;
                 255) exit 1;;
             esac
-            MOVIM_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $MOVIM_DOMAIN_NAME ]; then
+            MOVIM_DOMAIN_NAME=$(sed -n 1p < "$data")
+            if [ "$MOVIM_DOMAIN_NAME" ]; then
                 TEST_DOMAIN_NAME=$MOVIM_DOMAIN_NAME
                 validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $MOVIM_DOMAIN_NAME ]]; then
+                if [[ "$TEST_DOMAIN_NAME" != "$MOVIM_DOMAIN_NAME" ]]; then
                     MOVIM_DOMAIN_NAME=
                     dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
                 else
                     if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        MOVIM_CODE=$(cat $data | sed -n 2p)
+                        MOVIM_CODE=$(sed -n 2p < "$data")
                         validate_freedns_code "$MOVIM_CODE"
-                        if [ ! $VALID_CODE ]; then
+                        if [ ! "$VALID_CODE" ]; then
                             MOVIM_DOMAIN_NAME=
                         fi
                     fi
@@ -121,6 +120,7 @@ function install_interactive_movim {
             if [ $MOVIM_DOMAIN_NAME ]; then
                 MOVIM_DETAILS_COMPLETE="yes"
             fi
+            rm -f "$data"
         done
 
         # save the results in the config file
@@ -136,23 +136,23 @@ function change_password_movim {
 
     read_config_param 'MOVIM_DOMAIN_NAME'
 
-    ${PROJECT_NAME}-pass -u "$curr_username" -a movim -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$curr_username" -a movim -p "$new_user_password"
 }
 
 function movim_create_database {
-    if [ -f $IMAGE_PASSWORD_FILE ]; then
-        MOVIM_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    if [ -f "$IMAGE_PASSWORD_FILE" ]; then
+        MOVIM_ADMIN_PASSWORD="$(printf "%s" "$(cat "$IMAGE_PASSWORD_FILE")")"
     else
-        if [ ! $MOVIM_ADMIN_PASSWORD ]; then
-            MOVIM_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        if [ ! "$MOVIM_ADMIN_PASSWORD" ]; then
+            MOVIM_ADMIN_PASSWORD="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
         fi
     fi
-    if [ ! $MOVIM_ADMIN_PASSWORD ]; then
+    if [ ! "$MOVIM_ADMIN_PASSWORD" ]; then
         return
     fi
 
     function_check create_database
-    create_database movim "$MOVIM_ADMIN_PASSWORD" $MY_USERNAME
+    create_database movim "$MOVIM_ADMIN_PASSWORD" "$MY_USERNAME"
 }
 
 function reconfigure_movim {
@@ -165,35 +165,35 @@ function upgrade_movim {
         return
     fi
 
-    if grep -q "movim domain" $COMPLETION_FILE; then
+    if grep -q "movim domain" "$COMPLETION_FILE"; then
         MOVIM_DOMAIN_NAME=$(get_completion_param "movim domain")
     fi
 
     # update to the next commit
     function_check set_repo_commit
-    set_repo_commit /var/www/$MOVIM_DOMAIN_NAME/htdocs "movim commit" "$MOVIM_COMMIT" $MOVIM_REPO
+    set_repo_commit "/var/www/$MOVIM_DOMAIN_NAME/htdocs" "movim commit" "$MOVIM_COMMIT" "$MOVIM_REPO"
 
-    cd /var/www/${MOVIM_DOMAIN_NAME}/htdocs
+    cd "/var/www/${MOVIM_DOMAIN_NAME}/htdocs" || exit 6734824522
     php composer.phar install
     php mud.php db --set
-    chown -R www-data:www-data /var/www/${MOVIM_DOMAIN_NAME}/htdocs
+    chown -R www-data:www-data "/var/www/${MOVIM_DOMAIN_NAME}/htdocs"
 }
 
 
 function backup_local_movim {
     MOVIM_DOMAIN_NAME='movim'
-    if grep -q "movim domain" $COMPLETION_FILE; then
+    if grep -q "movim domain" "$COMPLETION_FILE"; then
         MOVIM_DOMAIN_NAME=$(get_completion_param "movim domain")
     fi
 
-    source_directory=/var/www/${MOVIM_DOMAIN_NAME}/htdocs
-    if [ -d $source_directory ]; then
+    source_directory="/var/www/${MOVIM_DOMAIN_NAME}/htdocs"
+    if [ -d "$source_directory" ]; then
         dest_directory=movim
         function_check suspend_site
-        suspend_site ${MOVIM_DOMAIN_NAME}
+        suspend_site "${MOVIM_DOMAIN_NAME}"
 
         function_check backup_directory_to_usb
-        backup_directory_to_usb $source_directory $dest_directory
+        backup_directory_to_usb "$source_directory" "$dest_directory"
 
         function_check backup_database_to_usb
         backup_database_to_usb movim
@@ -204,28 +204,28 @@ function backup_local_movim {
 }
 
 function restore_local_movim {
-    if ! grep -q "movim domain" $COMPLETION_FILE; then
+    if ! grep -q "movim domain" "$COMPLETION_FILE"; then
         return
     fi
     MOVIM_DOMAIN_NAME=$(get_completion_param "movim domain")
-    if [ $MOVIM_DOMAIN_NAME ]; then
+    if [ "$MOVIM_DOMAIN_NAME" ]; then
         echo $"Restoring movim"
         temp_restore_dir=/root/tempmovim
         movim_dir=/var/www/${MOVIM_DOMAIN_NAME}/htdocs
         # stop the daemons
-        cd $movim_dir
+        cd "$movim_dir" || exit 7856724252
         su -c "sh scripts/stopdaemons.sh" -s /bin/sh www-data
 
         function_check movim_create_database
         movim_create_database
 
-        restore_database movim ${MOVIM_DOMAIN_NAME}
+        restore_database movim "${MOVIM_DOMAIN_NAME}"
         if [ -d $temp_restore_dir ]; then
             rm -rf $temp_restore_dir
         fi
 
-        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
-        cd /var/www/$MOVIM_DOMAIN_NAME/htdocs/config
+        MARIADB_PASSWORD=$("${PROJECT_NAME}-pass" -u root -a mariadb)
+        cd "/var/www/$MOVIM_DOMAIN_NAME/htdocs/config" || exit 2468724682
         sed -i "s|'password'.*|'password'    => '$MARIADB_PASSWORD',|g" db.inc.php
         MARIADB_PASSWORD=
 
@@ -234,18 +234,18 @@ function restore_local_movim {
 }
 
 function backup_remote_movim {
-    if grep -q "movim domain" $COMPLETION_FILE; then
+    if grep -q "movim domain" "$COMPLETION_FILE"; then
         MOVIM_DOMAIN_NAME=$(get_completion_param "movim domain")
         temp_backup_dir=/var/www/${MOVIM_DOMAIN_NAME}/htdocs
-        if [ -d $temp_backup_dir ]; then
+        if [ -d "$temp_backup_dir" ]; then
             function_check suspend_site
-            suspend_site ${MOVIM_DOMAIN_NAME}
+            suspend_site "${MOVIM_DOMAIN_NAME}"
 
             function_check backup_database_to_friend
             backup_database_to_friend movim
 
             function_check backup_directory_to_friend
-            backup_directory_to_friend $temp_backup_dir movim
+            backup_directory_to_friend "$temp_backup_dir" movim
 
             function_check restart_site
             restart_site
@@ -256,25 +256,25 @@ function backup_remote_movim {
 }
 
 function restore_remote_movim {
-    if grep -q "movim domain" $COMPLETION_FILE; then
+    if grep -q "movim domain" "$COMPLETION_FILE"; then
         echo $"Restoring movim"
         MOVIM_DOMAIN_NAME=$(get_completion_param "movim domain")
 
         # stop the daemons
-        cd /var/www/${MOVIM_DOMAIN_NAME}/htdocs
+        cd "/var/www/${MOVIM_DOMAIN_NAME}/htdocs" || exit 524792846827
         su -c "sh scripts/stopdaemons.sh" -s /bin/sh www-data
 
         function_check movim_create_database
         movim_create_database
 
         function_check restore_database_from_friend
-        restore_database_from_friend movim ${MOVIM_DOMAIN_NAME}
+        restore_database_from_friend movim "${MOVIM_DOMAIN_NAME}"
         if [ -d /root/tempmovim ]; then
             rm -rf /root/tempmovim
         fi
 
-        MARIADB_PASSWORD=$(${PROJECT_NAME}-pass -u root -a mariadb)
-        cd /var/www/$MOVIM_DOMAIN_NAME/htdocs/config
+        MARIADB_PASSWORD=$("${PROJECT_NAME}-pass" -u root -a mariadb)
+        cd "/var/www/$MOVIM_DOMAIN_NAME/htdocs/config" || exit 4242462487
         sed -i "s|'password'.*|'password'    => '$MARIADB_PASSWORD',|g" db.inc.php
         MARIADB_PASSWORD=
 
@@ -298,14 +298,14 @@ function remove_movim {
 
     read_config_param "MY_USERNAME"
     echo "Removing $MOVIM_DOMAIN_NAME"
-    nginx_dissite $MOVIM_DOMAIN_NAME
-    remove_certs $MOVIM_DOMAIN_NAME
+    nginx_dissite "$MOVIM_DOMAIN_NAME"
+    remove_certs "$MOVIM_DOMAIN_NAME"
 
-    if [ -d /var/www/$MOVIM_DOMAIN_NAME ]; then
-        rm -rf /var/www/$MOVIM_DOMAIN_NAME
+    if [ -d "/var/www/$MOVIM_DOMAIN_NAME" ]; then
+        rm -rf "/var/www/$MOVIM_DOMAIN_NAME"
     fi
-    if [ -f /etc/nginx/sites-available/$MOVIM_DOMAIN_NAME ]; then
-        rm /etc/nginx/sites-available/$MOVIM_DOMAIN_NAME
+    if [ -f "/etc/nginx/sites-available/$MOVIM_DOMAIN_NAME" ]; then
+        rm "/etc/nginx/sites-available/$MOVIM_DOMAIN_NAME"
     fi
     function_check drop_database
     drop_database movim
@@ -316,15 +316,15 @@ function remove_movim {
     fi
     remove_app movim
     remove_completion_param install_movim
-    sed -i '/movim/d' $COMPLETION_FILE
+    sed -i '/movim/d' "$COMPLETION_FILE"
     remove_backup_database_local movim
 
     function_check remove_ddns_domain
-    remove_ddns_domain $MOVIM_DOMAIN_NAME
+    remove_ddns_domain "$MOVIM_DOMAIN_NAME"
 }
 
 function install_movim {
-    if [ ! $MOVIM_DOMAIN_NAME ]; then
+    if [ ! "$MOVIM_DOMAIN_NAME" ]; then
         echo $'No domain name was given for movim'
         exit 72572
     fi
@@ -333,7 +333,7 @@ function install_movim {
         return
     fi
 
-    movim_hourly_script movim $MOVIM_DOMAIN_NAME
+    movim_hourly_script movim "$MOVIM_DOMAIN_NAME"
 
     function_check install_mariadb
     install_mariadb
@@ -347,221 +347,221 @@ function install_movim {
     apt-get -yq install php-gettext php-curl php-gd php-mysql git curl
     apt-get -yq install php-memcached php-intl exiftool php-imagick libfcgi0ldbl
 
-    if [ ! -d /var/www/$MOVIM_DOMAIN_NAME ]; then
-        mkdir /var/www/$MOVIM_DOMAIN_NAME
+    if [ ! -d "/var/www/$MOVIM_DOMAIN_NAME" ]; then
+        mkdir "/var/www/$MOVIM_DOMAIN_NAME"
     fi
-    if [ ! -d /var/www/$MOVIM_DOMAIN_NAME/htdocs ]; then
+    if [ ! -d "/var/www/$MOVIM_DOMAIN_NAME/htdocs" ]; then
 
         if [ -d /repos/movim ]; then
-            mkdir /var/www/$MOVIM_DOMAIN_NAME/htdocs
-            cp -r -p /repos/movim/. /var/www/$MOVIM_DOMAIN_NAME/htdocs
-            cd /var/www/$MOVIM_DOMAIN_NAME/htdocs
+            mkdir "/var/www/$MOVIM_DOMAIN_NAME/htdocs"
+            cp -r -p /repos/movim/. "/var/www/$MOVIM_DOMAIN_NAME/htdocs"
+            cd "/var/www/$MOVIM_DOMAIN_NAME/htdocs" || exit 3768568325
             git pull
         else
             function_check git_clone
-            git_clone $MOVIM_REPO /var/www/$MOVIM_DOMAIN_NAME/htdocs
+            git_clone "$MOVIM_REPO" "/var/www/$MOVIM_DOMAIN_NAME/htdocs"
         fi
 
-        if [ ! -d /var/www/$MOVIM_DOMAIN_NAME/htdocs ]; then
+        if [ ! -d "/var/www/$MOVIM_DOMAIN_NAME/htdocs" ]; then
             echo $'Unable to clone movim repo'
             exit 76285
         fi
     fi
 
-    cd /var/www/$MOVIM_DOMAIN_NAME/htdocs
+    cd "/var/www/$MOVIM_DOMAIN_NAME/htdocs" || exit 7345247242
     git checkout $MOVIM_COMMIT -b $MOVIM_COMMIT
     set_completion_param "movim commit" "$MOVIM_COMMIT"
 
     # default login
-    if [ ! -f /var/www/$MOVIM_DOMAIN_NAME/htdocs/app/models/config/Config.php ]; then
+    if [ ! -f "/var/www/$MOVIM_DOMAIN_NAME/htdocs/app/models/config/Config.php" ]; then
         echo $'Unable to find Config.php'
         exit 72352
     fi
-    sed -i "s|'admin'|'${MY_USERNAME}'|g" /var/www/$MOVIM_DOMAIN_NAME/htdocs/app/models/config/Config.php
-    sed -i "s|'password'|'${MOVIM_ADMIN_PASSWORD}'|g" /var/www/$MOVIM_DOMAIN_NAME/htdocs/app/models/config/Config.php
+    sed -i "s|'admin'|'${MY_USERNAME}'|g" "/var/www/$MOVIM_DOMAIN_NAME/htdocs/app/models/config/Config.php"
+    sed -i "s|'password'|'${MOVIM_ADMIN_PASSWORD}'|g" "/var/www/$MOVIM_DOMAIN_NAME/htdocs/app/models/config/Config.php"
 
     # Fix typo
     sed -i 's|weksocket|websocket|g' app/widgets/AdminTest/admintest.js
 
-    cd /var/www/$MOVIM_DOMAIN_NAME/htdocs
+    cd "/var/www/$MOVIM_DOMAIN_NAME/htdocs" || exit 784368245224
     install_composer
 
-    cd /var/www/$MOVIM_DOMAIN_NAME/htdocs/config
+    cd "/var/www/$MOVIM_DOMAIN_NAME/htdocs/config" || exit 6428764224
     cp db.example.inc.php db.inc.php
     sed -i "s|'username'.*|'username'    => 'root',|g" db.inc.php
     sed -i "s|'password'.*|'password'    => '$MARIADB_PASSWORD',|g" db.inc.php
     sed -i "s|'database'.*|'database'    => 'movim'|g" db.inc.php
     php mud.php db --set
 
-    chmod u+rwx /var/www/$MOVIM_DOMAIN_NAME/htdocs
-    chown -R www-data:www-data /var/www/$MOVIM_DOMAIN_NAME/htdocs
+    chmod u+rwx "/var/www/$MOVIM_DOMAIN_NAME/htdocs"
+    chown -R www-data:www-data "/var/www/$MOVIM_DOMAIN_NAME/htdocs"
 
     function_check movim_create_database
     movim_create_database
 
     function_check add_ddns_domain
-    add_ddns_domain $MOVIM_DOMAIN_NAME
+    add_ddns_domain "$MOVIM_DOMAIN_NAME"
 
     MOVIM_ONION_HOSTNAME=$(add_onion_service movim 80 ${MOVIM_ONION_PORT})
 
-    echo '[Unit]' > /etc/systemd/system/movim.service
-    echo 'Description=Movim daemon' >> /etc/systemd/system/movim.service
-    echo 'After=network.target nginx.target' >> /etc/systemd/system/movim.service
-    echo '' >> /etc/systemd/system/movim.service
-    echo '[Service]' >> /etc/systemd/system/movim.service
-    echo 'Type=simple' >> /etc/systemd/system/movim.service
-    echo 'User=www-data' >> /etc/systemd/system/movim.service
-    echo "WorkingDirectory=/var/www/$MOVIM_DOMAIN_NAME/htdocs" >> /etc/systemd/system/movim.service
+    { echo '[Unit]';
+      echo 'Description=Movim daemon';
+      echo 'After=network.target nginx.target';
+      echo '';
+      echo '[Service]';
+      echo 'Type=simple';
+      echo 'User=www-data';
+      echo "WorkingDirectory=/var/www/$MOVIM_DOMAIN_NAME/htdocs"; } > /etc/systemd/system/movim.service
     if [[ $ONION_ONLY == 'no' ]]; then
         echo "ExecStart=/usr/bin/php /var/www/$MOVIM_DOMAIN_NAME/htdocs/daemon.php start --url=https://$MOVIM_DOMAIN_NAME --port=$MOVIM_DAEMON_PORT" >> /etc/systemd/system/movim.service
     else
         echo "ExecStart=/usr/bin/php /var/www/$MOVIM_DOMAIN_NAME/htdocs/daemon.php start --url=http://$MOVIM_ONION_HOSTNAME --port=$MOVIM_DAEMON_PORT" >> /etc/systemd/system/movim.service
     fi
-    echo 'StandardOutput=syslog' >> /etc/systemd/system/movim.service
-    echo 'SyslogIdentifier=movim' >> /etc/systemd/system/movim.service
-    echo 'PIDFile=/run/movim.pid' >> /etc/systemd/system/movim.service
-    echo 'Restart=on-failure' >> /etc/systemd/system/movim.service
-    echo 'RestartSec=10' >> /etc/systemd/system/movim.service
-    echo '' >> /etc/systemd/system/movim.service
-    echo '[Install]' >> /etc/systemd/system/movim.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/movim.service
+    { echo 'StandardOutput=syslog';
+      echo 'SyslogIdentifier=movim';
+      echo 'PIDFile=/run/movim.pid';
+      echo 'Restart=on-failure';
+      echo 'RestartSec=10';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } >> /etc/systemd/system/movim.service
     systemctl enable movim
     systemctl daemon-reload
 
     movim_nginx_site=/etc/nginx/sites-available/$MOVIM_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
         function_check nginx_http_redirect
-        nginx_http_redirect $MOVIM_DOMAIN_NAME "index index.php"
-        echo 'server {' >> $movim_nginx_site
-        echo '  listen 443 ssl;' >> $movim_nginx_site
-        echo '  #listen [::]:443 ssl;' >> $movim_nginx_site
-        echo "  server_name $MOVIM_DOMAIN_NAME;" >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
+        nginx_http_redirect "$MOVIM_DOMAIN_NAME" "index index.php"
+        { echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $MOVIM_DOMAIN_NAME;";
+          echo ''; } >> "$movim_nginx_site"
         function_check nginx_compress
-        nginx_compress $MOVIM_DOMAIN_NAME
-        echo '' >> $movim_nginx_site
-        echo '  # Security' >> $movim_nginx_site
+        nginx_compress "$MOVIM_DOMAIN_NAME"
+        echo '' >> "$movim_nginx_site"
+        echo '  # Security' >> "$movim_nginx_site"
         function_check nginx_ssl
-        nginx_ssl $MOVIM_DOMAIN_NAME
+        nginx_ssl "$MOVIM_DOMAIN_NAME"
 
         function_check nginx_disable_sniffing
-        nginx_disable_sniffing $MOVIM_DOMAIN_NAME
+        nginx_disable_sniffing "$MOVIM_DOMAIN_NAME"
 
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  # Logs' >> $movim_nginx_site
-        echo '  access_log /dev/null;' >> $movim_nginx_site
-        echo '  error_log /dev/null;' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  # Root' >> $movim_nginx_site
-        echo "  root /var/www/$MOVIM_DOMAIN_NAME/htdocs;" >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  # Index' >> $movim_nginx_site
-        echo '  index index.php;' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  # PHP' >> $movim_nginx_site
-        echo '  location ~ \.php {' >> $movim_nginx_site
-        echo '    include snippets/fastcgi-php.conf;' >> $movim_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $movim_nginx_site
-        echo '    fastcgi_read_timeout 30;' >> $movim_nginx_site
-        echo '  }' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  # Location' >> $movim_nginx_site
-        echo '  location / {' >> $movim_nginx_site
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '  # Logs';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo '  # Root';
+          echo "  root /var/www/$MOVIM_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  # Index';
+          echo '  index index.php;';
+          echo '';
+          echo '  # PHP';
+          echo '  location ~ \.php {';
+          echo '    include snippets/fastcgi-php.conf;';
+          echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+          echo '    fastcgi_read_timeout 30;';
+          echo '  }';
+          echo '';
+          echo '  # Location';
+          echo '  location / {'; } >> "$movim_nginx_site"
         function_check nginx_limits
-        nginx_limits $MOVIM_DOMAIN_NAME '15m'
-        echo '    try_files $uri $uri/ @movim;' >> $movim_nginx_site
-        echo '  }' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  location /ws/ {' >> $movim_nginx_site
-        echo "    proxy_pass http://localhost:${MOVIM_DAEMON_PORT}/;" >> $movim_nginx_site
-        echo '    proxy_http_version 1.1;' >> $movim_nginx_site
-        echo '    proxy_set_header Upgrade $http_upgrade;' >> $movim_nginx_site
-        echo '    proxy_set_header Connection "Upgrade";' >> $movim_nginx_site
-        echo '    proxy_set_header Host $host;' >> $movim_nginx_site
-        echo '    proxy_set_header X-Real-IP $remote_addr;' >> $movim_nginx_site
-        echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $movim_nginx_site
-        echo '    proxy_set_header X-Forwarded-Proto https;' >> $movim_nginx_site
-        echo '    proxy_redirect off;' >> $movim_nginx_site
-        echo '  }' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  # Fancy URLs' >> $movim_nginx_site
-        echo '  location @movim {' >> $movim_nginx_site
-        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $movim_nginx_site
-        echo '  }' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '  # Restrict access that is unnecessary anyway' >> $movim_nginx_site
-        echo '  location ~ /\.(ht|git) {' >> $movim_nginx_site
-        echo '    deny all;' >> $movim_nginx_site
-        echo '  }' >> $movim_nginx_site
-        echo '' >> $movim_nginx_site
-        echo '}' >> $movim_nginx_site
+        nginx_limits "$MOVIM_DOMAIN_NAME" '15m'
+        { echo "    try_files \$uri \$uri/ @movim;";
+          echo '  }';
+          echo '';
+          echo '  location /ws/ {';
+          echo "    proxy_pass http://localhost:${MOVIM_DAEMON_PORT}/;";
+          echo '    proxy_http_version 1.1;';
+          echo "    proxy_set_header Upgrade \$http_upgrade;";
+          echo '    proxy_set_header Connection "Upgrade";';
+          echo "    proxy_set_header Host \$host;";
+          echo "    proxy_set_header X-Real-IP \$remote_addr;";
+          echo "    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;";
+          echo '    proxy_set_header X-Forwarded-Proto https;';
+          echo '    proxy_redirect off;';
+          echo '  }';
+          echo '';
+          echo '  # Fancy URLs';
+          echo '  location @movim {';
+          echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+          echo '  }';
+          echo '';
+          echo '  # Restrict access that is unnecessary anyway';
+          echo '  location ~ /\.(ht|git) {';
+          echo '    deny all;';
+          echo '  }';
+          echo '';
+          echo '}'; } >> "$movim_nginx_site"
     else
-        echo -n '' > $movim_nginx_site
+        echo -n '' > "$movim_nginx_site"
     fi
-    echo 'server {' >> $movim_nginx_site
-    echo "    listen 127.0.0.1:$MOVIM_ONION_PORT default_server;" >> $movim_nginx_site
-    echo "    server_name $MOVIM_DOMAIN_NAME;" >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
+    { echo 'server {';
+      echo "    listen 127.0.0.1:$MOVIM_ONION_PORT default_server;";
+      echo "    server_name $MOVIM_DOMAIN_NAME;";
+      echo ''; } >> "$movim_nginx_site"
     function_check nginx_compress
-    nginx_compress $MOVIM_DOMAIN_NAME
-    echo '' >> $movim_nginx_site
+    nginx_compress "$MOVIM_DOMAIN_NAME"
+    echo '' >> "$movim_nginx_site"
     function_check nginx_disable_sniffing
-    nginx_disable_sniffing $MOVIM_DOMAIN_NAME
-    echo '' >> $movim_nginx_site
-    echo '  # Logs' >> $movim_nginx_site
-    echo '  access_log /dev/null;' >> $movim_nginx_site
-    echo '  error_log /dev/null;' >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '  # Root' >> $movim_nginx_site
-    echo "  root /var/www/$MOVIM_DOMAIN_NAME/htdocs;" >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '  # Index' >> $movim_nginx_site
-    echo '  index index.php;' >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '  # PHP' >> $movim_nginx_site
-    echo '  location ~ \.php {' >> $movim_nginx_site
-    echo '    include snippets/fastcgi-php.conf;' >> $movim_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $movim_nginx_site
-    echo '    fastcgi_read_timeout 30;' >> $movim_nginx_site
-    echo '  }' >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '  # Location' >> $movim_nginx_site
-    echo '  location / {' >> $movim_nginx_site
+    nginx_disable_sniffing "$MOVIM_DOMAIN_NAME"
+    { echo '';
+      echo '  # Logs';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  # Root';
+      echo "  root /var/www/$MOVIM_DOMAIN_NAME/htdocs;";
+      echo '';
+      echo '  # Index';
+      echo '  index index.php;';
+      echo '';
+      echo '  # PHP';
+      echo '  location ~ \.php {';
+      echo '    include snippets/fastcgi-php.conf;';
+      echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+      echo '    fastcgi_read_timeout 30;';
+      echo '  }';
+      echo '';
+      echo '  # Location';
+      echo '  location / {'; } >> "$movim_nginx_site"
     function_check nginx_limits
-    nginx_limits $MOVIM_DOMAIN_NAME '15m'
-    echo '    try_files $uri $uri/ @movim;' >> $movim_nginx_site
-    echo '  }' >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '  location /ws/ {' >> $movim_nginx_site
-    echo "    proxy_pass http://localhost:${MOVIM_DAEMON_PORT}/;" >> $movim_nginx_site
-    echo '    proxy_http_version 1.1;' >> $movim_nginx_site
-    echo '    proxy_set_header Upgrade $http_upgrade;' >> $movim_nginx_site
-    echo '    proxy_set_header Connection "Upgrade";' >> $movim_nginx_site
-    echo '    proxy_set_header Host $host;' >> $movim_nginx_site
-    echo '    proxy_set_header X-Real-IP $remote_addr;' >> $movim_nginx_site
-    echo '    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> $movim_nginx_site
-    echo '    proxy_set_header X-Forwarded-Proto https;' >> $movim_nginx_site
-    echo '    proxy_redirect off;' >> $movim_nginx_site
-    echo '  }' >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '  # Fancy URLs' >> $movim_nginx_site
-    echo '  location @movim {' >> $movim_nginx_site
-    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $movim_nginx_site
-    echo '  }' >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '  # Restrict access that is unnecessary anyway' >> $movim_nginx_site
-    echo '  location ~ /\.(ht|git) {' >> $movim_nginx_site
-    echo '    deny all;' >> $movim_nginx_site
-    echo '  }' >> $movim_nginx_site
-    echo '' >> $movim_nginx_site
-    echo '}' >> $movim_nginx_site
+    nginx_limits "$MOVIM_DOMAIN_NAME" '15m'
+    { echo "    try_files \$uri \$uri/ @movim;";
+      echo '  }';
+      echo '';
+      echo '  location /ws/ {';
+      echo "    proxy_pass http://localhost:${MOVIM_DAEMON_PORT}/;";
+      echo '    proxy_http_version 1.1;';
+      echo "    proxy_set_header Upgrade \$http_upgrade;";
+      echo '    proxy_set_header Connection "Upgrade";';
+      echo "    proxy_set_header Host \$host;";
+      echo "    proxy_set_header X-Real-IP \$remote_addr;";
+      echo "    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;";
+      echo '    proxy_set_header X-Forwarded-Proto https;';
+      echo '    proxy_redirect off;';
+      echo '  }';
+      echo '';
+      echo '  # Fancy URLs';
+      echo '  location @movim {';
+      echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+      echo '  }';
+      echo '';
+      echo '  # Restrict access that is unnecessary anyway';
+      echo '  location ~ /\.(ht|git) {';
+      echo '    deny all;';
+      echo '  }';
+      echo '';
+      echo '}'; } >> "$movim_nginx_site"
 
     function_check configure_php
     configure_php
 
     function_check create_site_certificate
-    create_site_certificate $MOVIM_DOMAIN_NAME 'yes'
+    create_site_certificate "$MOVIM_DOMAIN_NAME" 'yes'
 
     # Ensure that the database gets backed up locally, if remote
     # backups are not being used
@@ -572,9 +572,9 @@ function install_movim {
     backup_database_local movim
 
     function_check nginx_ensite
-    nginx_ensite $MOVIM_DOMAIN_NAME
+    nginx_ensite "$MOVIM_DOMAIN_NAME"
 
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a movim -p "$MOVIM_ADMIN_PASSWORD"
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a movim -p "$MOVIM_ADMIN_PASSWORD"
 
     set_completion_param "movim domain" "$MOVIM_DOMAIN_NAME"
 

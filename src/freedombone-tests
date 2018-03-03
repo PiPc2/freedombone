@@ -56,8 +56,8 @@ function test_app_function_type {
     filename=$1
     fn_type=$2
     app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
-    app_function=$(cat "${filename}" | grep "function ${fn_type}_${app_name} {" | awk -F "${fn_type}_" '{print $2}' | awk -F ' ' '{print $1}')
-    if [ ! ${app_function} ]; then
+    app_function=$(grep "function ${fn_type}_${app_name} {" "${filename}" | awk -F "${fn_type}_" '{print $2}' | awk -F ' ' '{print $1}')
+    if [ ! "${app_function}" ]; then
         echo $"Application ${app_name} does not contain a function called '${fn_type}_${app_name}'"
         echo ''
         echo "See ${filename}"
@@ -65,11 +65,56 @@ function test_app_function_type {
     fi
 }
 
+function test_static_analysis {
+    if [ ! -f /usr/bin/shellcheck ]; then
+        apt-get -yq install shellcheck
+    fi
+
+    STATIC_ANALYSIS_EXCLUDED='SC2034,SC1090'
+
+    FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-*"
+
+    for filename in $FILES
+    do
+        if ! shellcheck --exclude "$STATIC_ANALYSIS_EXCLUDED" "$filename"; then
+            echo ''
+            echo $"${filename} failed static analysis"
+            exit 24687242
+        fi
+    done
+
+    FILES="/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-*"
+
+    for filename in $FILES
+    do
+        if ! shellcheck --exclude "$STATIC_ANALYSIS_EXCLUDED" "$filename"; then
+            echo ''
+            echo $"${filename} failed static analysis"
+            exit 3857395935
+        fi
+    done
+
+    FILES="/usr/local/bin/${PROJECT_NAME}-*"
+
+    for filename in $FILES
+    do
+        if [[ "$filename" == *"-config-qtox" || "$filename" == *"-image-make"* ]]; then
+           continue
+        fi
+
+        if ! shellcheck --exclude "$STATIC_ANALYSIS_EXCLUDED" "$filename"; then
+            echo ''
+            echo $"${filename} failed static analysis"
+            exit 784243468435
+        fi
+    done
+}
+
 function test_app_functions {
     if [ $RUN_STIG ]; then
         return
     fi
-    FILES=/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*
+    FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*"
 
     # check that these functions exist
     interface_functions=( install remove backup_local backup_remote restore_local restore_remote upgrade reconfigure )
@@ -80,7 +125,7 @@ function test_app_functions {
         # for each expected interface function
         for f in "${interface_functions[@]}"
         do
-            test_app_function_type ${filename} $f
+            test_app_function_type "${filename}" "$f"
         done
     done
 }
@@ -91,11 +136,14 @@ function test_unique_onion_ports {
     fi
 
     # test that some services are not assigned the same onion port
-    FILES=src/${PROJECT_NAME}-app-*
+    FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-*"
+    # shellcheck disable=SC2086
     ports=$(grep -r "_ONION_PORT=" $FILES | awk -F ':' '{print $2}' | uniq | awk -F '=' '{print $2}')
+    # shellcheck disable=SC2086
     unique_ports=$(grep -r "_ONION_PORT=" $FILES | awk -F ':' '{print $2}' | uniq | awk -F '=' '{print $2}' | uniq)
     if [[ "$ports" != "$unique_ports" ]]; then
         echo $'Some onion ports are clashing'
+        # shellcheck disable=SC2086
         grep -r "_ONION_PORT=" $FILES | awk -F ':' '{print $2}' | uniq
         exit 637252
     fi
@@ -110,7 +158,7 @@ function stig_log_msg {
     NORMAL=$(tput sgr0)
     MSG="$2"
 
-    if [ $ESTATUS -eq 0 ];then
+    if [ "$ESTATUS" -eq 0 ];then
         printf "%s %s"  "$GREEN$BOLD[ PASS ]$NORMAL" "$MSG"
         echo
     else
@@ -123,19 +171,20 @@ function stig_spinner {
 
     local pid=$1
     local delay=0.1
+    # shellcheck disable=SC2143
     while [ "$(ps -a | awk '{print $1}' | grep "$pid")" ];
     do
         sleep $delay
     done
-    printf " \b"
-    wait $1
+    printf " \\b"
+    wait "$1"
 }
 
 function disallow_package {
     package_name=$1
 
     if service --status-all | grep "+.*${package_name}";then
-        apt-get -yq remove --purge ${package_name}
+        apt-get -yq remove --purge "${package_name}"
         apt -yq autoremove
     fi
 }
@@ -164,7 +213,7 @@ function test_stig {
     CATCOLOR=1
     SETLANG="en"
 
-    source $STIG_TESTS_DIR/output.sh
+    source "$STIG_TESTS_DIR/output.sh"
 
     ##RHEL-06-000001
     ##The system must use a separate file system for /tmp.
@@ -249,6 +298,7 @@ function test_stig {
     ##RHEL-06-000033
     ##The /etc/shadow file must be owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/shadow | awk '{print $3}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -258,6 +308,7 @@ function test_stig {
     ##RHEL-06-000034
     ##The /etc/shadow file must be group-owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/shadow | awk '{print $4}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -267,6 +318,7 @@ function test_stig {
     ##RHEL-06-000035
     ##The /etc/shadow file must have mode 0000.
 
+    # shellcheck disable=SC2012
     ls -l /etc/shadow | awk '{print $1}' | grep "^----------$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -276,6 +328,7 @@ function test_stig {
     ##RHEL-06-000036
     ##The /etc/gshadow file must be owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/gshadow | awk '{print $3}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -285,6 +338,7 @@ function test_stig {
     ##RHEL-06-000037
     ##The /etc/gshadow file must be group-owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/gshadow | awk '{print $4}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -294,6 +348,7 @@ function test_stig {
     ##RHEL-06-000038
     ##The /etc/gshadow file must have mode 0000.
 
+    # shellcheck disable=SC2012
     ls -l /etc/gshadow | awk '{print $1}' | grep "^----------$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -303,6 +358,7 @@ function test_stig {
     ##RHEL-06-000039
     ##The /etc/passwd file must be owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/passwd | awk '{print $3}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -312,6 +368,7 @@ function test_stig {
     ##RHEL-06-000040
     ##The /etc/passwd file must be group-owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/passwd | awk '{print $4}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -330,6 +387,7 @@ function test_stig {
     ##RHEL-06-000042
     ##The /etc/group file must be owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/group | awk '{print $3}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -339,6 +397,7 @@ function test_stig {
     ##RHEL-06-000043
     ##The /etc/group file must be group-owned by root.
 
+    # shellcheck disable=SC2012
     ls -l /etc/group | awk '{print $4}' | grep "^root$" > /dev/null 2>&1 &
 
     stig_spinner $!
@@ -1202,7 +1261,7 @@ function test_stig {
     if [ $SHOW_ALL_TESTS ]; then
         show_passes_fails=1
     else
-        if [ $FAILS -gt 0 ]; then
+        if [ "$FAILS" -gt 0 ]; then
             show_passes_fails=1
         fi
     fi
@@ -1211,13 +1270,13 @@ function test_stig {
         echo ''
         echo $"Passes: $PASSES"
         echo $"Fails:  $FAILS"
-        if [ $FAILS -gt 0 ]; then
+        if [ "$FAILS" -gt 0 ]; then
             exit 792353
         fi
     fi
 }
 
-while [[ $# > 1 ]]
+while [ $# -gt 1 ]
 do
     key="$1"
 
@@ -1239,18 +1298,19 @@ do
     shift
 done
 
-if [ ! $RUN_STIG ]; then
+if [ ! "$RUN_STIG" ]; then
     echo $'Running tests'
 fi
 
 test_app_functions
+test_static_analysis
 test_unique_onion_ports
 remove_management_engine_interface
 freedombone-pass --test yes
 fix_stig
 test_stig
 
-if [ ! $RUN_STIG ]; then
+if [ ! "$RUN_STIG" ]; then
     echo $'All tests passed'
 fi
 

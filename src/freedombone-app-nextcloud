@@ -60,14 +60,14 @@ function logging_off_nextcloud {
 function remove_user_nextcloud {
     remove_username="$1"
 
-    ${PROJECT_NAME}-pass -u $remove_username --rmapp nextcloud
+    "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp nextcloud
 }
 
 function add_user_nextcloud {
     new_username="$1"
     new_user_password="$2"
 
-    ${PROJECT_NAME}-pass -u $new_username -a nextcloud -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$new_username" -a nextcloud -p "$new_user_password"
     echo '0'
 }
 
@@ -76,12 +76,12 @@ function change_password_nextcloud {
 
     export OC_PASS="$2"
     su -s /bin/sh www-data -c "php occ user:resetpassword --password-from-env $curr_username"
-    ${PROJECT_NAME}-pass -u $curr_username -a nextcloud -p "$OC_PASS"
+    "${PROJECT_NAME}-pass" -u "$curr_username" -a nextcloud -p "$OC_PASS"
     export OC_PASS=""
 }
 
 function install_interactive_nextcloud {
-    if [ ! $ONION_ONLY ]; then
+    if [ ! "$ONION_ONLY" ]; then
         ONION_ONLY='no'
     fi
 
@@ -91,42 +91,40 @@ function install_interactive_nextcloud {
         NEXTCLOUD_DETAILS_COMPLETE=
         while [ ! $NEXTCLOUD_DETAILS_COMPLETE ]
         do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
+            data=$(mktemp 2>/dev/null)
             if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"NextCloud Configuration" \
-                       --form $"\nPlease enter your NextCloud details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 3 \
+                       --form $"\\nPlease enter your NextCloud details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 3 \
                        $"Domain:" 1 1 "$(grep 'NEXTCLOUD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 15 40 40 \
                        $"Code:" 2 1 "$(grep 'NEXTCLOUD_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 15 40 255 \
-                       2> $data
+                       2> "$data"
             else
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"NextCloud Configuration" \
-                       --form $"\nPlease enter your NextCloud details. The background image URL can be left blank.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 2 \
+                       --form $"\\nPlease enter your NextCloud details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 2 \
                        $"Domain:" 1 1 "$(grep 'NEXTCLOUD_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 15 40 40 \
-                       2> $data
+                       2> "$data"
             fi
             sel=$?
             case $sel in
-                1) exit 1;;
-                255) exit 1;;
+                1) rm -f "$data"
+                   exit 1;;
+                255) rm -f "$data"
+                     exit 1;;
             esac
-            NEXTCLOUD_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ ${#img_url} -gt 1 ]; then
-                NEXTCLOUD_BACKGROUND_IMAGE_URL=$img_url
-            fi
-            if [ $NEXTCLOUD_DOMAIN_NAME ]; then
+            NEXTCLOUD_DOMAIN_NAME=$(sed -n 1p < "$data")
+            if [ "$NEXTCLOUD_DOMAIN_NAME" ]; then
                 TEST_DOMAIN_NAME=$NEXTCLOUD_DOMAIN_NAME
                 validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $NEXTCLOUD_DOMAIN_NAME ]]; then
+                if [[ "$TEST_DOMAIN_NAME" != "$NEXTCLOUD_DOMAIN_NAME" ]]; then
                     NEXTCLOUD_DOMAIN_NAME=
                     dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
                 else
                     if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        NEXTCLOUD_CODE=$(cat $data | sed -n 2p)
+                        NEXTCLOUD_CODE=$(sed -n 2p < "$data")
                         validate_freedns_code "$NEXTCLOUD_CODE"
-                        if [ ! $VALID_CODE ]; then
+                        if [ ! "$VALID_CODE" ]; then
                             NEXTCLOUD_DOMAIN_NAME=
                         fi
                     fi
@@ -135,11 +133,12 @@ function install_interactive_nextcloud {
             if [ $NEXTCLOUD_DOMAIN_NAME ]; then
                 NEXTCLOUD_DETAILS_COMPLETE="yes"
             fi
+            rm -f "$data"
         done
 
         # remove any invalid characters
         if [ ${#NEXTCLOUD_TITLE} -gt 0 ]; then
-            new_title=$(echo "$NEXTCLOUD_TITLE" | sed "s|'||g")
+            new_title=${"$NEXTCLOUD_TITLE"//\'//}
             NEXTCLOUD_TITLE="$new_title"
         fi
 
@@ -156,23 +155,23 @@ function change_password_nextcloud {
 
     read_config_param ${NEXTCLOUD_DOMAIN_NAME}
 
-    ${PROJECT_NAME}-pass -u "$curr_username" -a nextcloud -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$curr_username" -a nextcloud -p "$new_user_password"
 }
 
 function nextcloud_create_database {
-    if [ -f $IMAGE_PASSWORD_FILE ]; then
-        NEXTCLOUD_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    if [ -f "$IMAGE_PASSWORD_FILE" ]; then
+        NEXTCLOUD_ADMIN_PASSWORD="$(printf "%s" "$(cat "$IMAGE_PASSWORD_FILE")")"
     else
-        if [ ! $NEXTCLOUD_ADMIN_PASSWORD ]; then
-            NEXTCLOUD_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        if [ ! "$NEXTCLOUD_ADMIN_PASSWORD" ]; then
+            NEXTCLOUD_ADMIN_PASSWORD="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
         fi
     fi
-    if [ ! $NEXTCLOUD_ADMIN_PASSWORD ]; then
+    if [ ! "$NEXTCLOUD_ADMIN_PASSWORD" ]; then
         return
     fi
 
     function_check create_database
-    create_database nextcloud "$NEXTCLOUD_ADMIN_PASSWORD" $MY_USERNAME
+    create_database nextcloud "$NEXTCLOUD_ADMIN_PASSWORD" "$MY_USERNAME"
 }
 
 function reconfigure_nextcloud {
@@ -186,7 +185,7 @@ function configure_interactive_nextcloud {
 function upgrade_nextcloud_base {
     chown -R www-data:www-data /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
     chown -R www-data:www-data /var/www/$NEXTCLOUD_DOMAIN_NAME/data
-    cd /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
+    cd "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs" || exit 232547985
     sudo -u www-data ./occ maintenance:repair
     sudo -u www-data ./occ files:cleanup
     sudo -u www-data ./occ files:scan --all
@@ -200,13 +199,13 @@ function upgrade_nextcloud {
         return
     fi
 
-    if grep -q "nextcloud domain" $COMPLETION_FILE; then
+    if grep -q "nextcloud domain" "$COMPLETION_FILE"; then
         NEXTCLOUD_DOMAIN_NAME=$(get_completion_param "nextcloud domain")
     fi
 
     # update to the next commit
     function_check set_repo_commit
-    set_repo_commit /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs "nextcloud commit" "$NEXTCLOUD_COMMIT" $NEXTCLOUD_REPO
+    set_repo_commit "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs" "nextcloud commit" "$NEXTCLOUD_COMMIT" "$NEXTCLOUD_REPO"
 
     upgrade_nextcloud_base
     sudo -u www-data ./occ upgrade
@@ -215,22 +214,22 @@ function upgrade_nextcloud {
 
 function backup_local_nextcloud {
     NEXTCLOUD_DOMAIN_NAME='nextcloud'
-    if grep -q "nextcloud domain" $COMPLETION_FILE; then
+    if grep -q "nextcloud domain" "$COMPLETION_FILE"; then
         NEXTCLOUD_DOMAIN_NAME=$(get_completion_param "nextcloud domain")
     fi
 
     source_directory=/var/www/${NEXTCLOUD_DOMAIN_NAME}/data
-    if [ -d $source_directory ]; then
+    if [ -d "$source_directory" ]; then
         function_check suspend_site
-        suspend_site ${NEXTCLOUD_DOMAIN_NAME}
+        suspend_site "${NEXTCLOUD_DOMAIN_NAME}"
 
         dest_directory=nextcloudfiles
         function_check backup_directory_to_usb
-        backup_directory_to_usb $source_directory $dest_directory
+        backup_directory_to_usb "$source_directory" "$dest_directory"
 
         source_directory=/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config
         dest_directory=nextcloudconfig
-        backup_directory_to_usb $source_directory $dest_directory
+        backup_directory_to_usb "$source_directory" "$dest_directory"
 
         function_check backup_database_to_usb
         backup_database_to_usb nextcloud
@@ -241,26 +240,26 @@ function backup_local_nextcloud {
 }
 
 function restore_local_nextcloud {
-    if ! grep -q "nextcloud domain" $COMPLETION_FILE; then
+    if ! grep -q "nextcloud domain" "$COMPLETION_FILE"; then
         return
     fi
     NEXTCLOUD_DOMAIN_NAME=$(get_completion_param "nextcloud domain")
-    if [ $NEXTCLOUD_DOMAIN_NAME ]; then
+    if [ "$NEXTCLOUD_DOMAIN_NAME" ]; then
 
         temp_restore_dir=/root/tempnextcloud
         function_check nextcloud_create_database
         nextcloud_create_database
-        restore_database nextcloud ${NEXTCLOUD_DOMAIN_NAME}
+        restore_database nextcloud "${NEXTCLOUD_DOMAIN_NAME}"
 
         temp_restore_dir=/root/tempnextcloudfiles
         restore_directory_from_usb $temp_restore_dir nextcloudfiles
 
-        if [ -d $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data ]; then
-            cp -r $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data /var/www/${NEXTCLOUD_DOMAIN_NAME}/
+        if [ -d "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data" ]; then
+            cp -r "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data" "/var/www/${NEXTCLOUD_DOMAIN_NAME}/"
         else
-            cp -r $temp_restore_dir/* /var/www/${NEXTCLOUD_DOMAIN_NAME}/
+            cp -r $temp_restore_dir/* "/var/www/${NEXTCLOUD_DOMAIN_NAME}/"
         fi
-
+        # shellcheck disable=SC2181
         if [ ! "$?" = "0" ]; then
             set_user_permissions
             backup_unmount_drive
@@ -271,12 +270,13 @@ function restore_local_nextcloud {
         temp_restore_dir=/root/tempnextcloudconfig
         restore_directory_from_usb $temp_restore_dir nextcloudconfig
 
-        if [ -d $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config ]; then
-            cp -r $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
+        if [ -d "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config" ]; then
+            cp -r "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config" "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs"
         else
-            cp -r $temp_restore_dir/* /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/
+            cp -r $temp_restore_dir/* "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/"
         fi
 
+        # shellcheck disable=SC2181
         if [ ! "$?" = "0" ]; then
             set_user_permissions
             backup_unmount_drive
@@ -284,9 +284,9 @@ function restore_local_nextcloud {
         fi
         rm -rf ${temp_restore_dir}
 
-        chown -R www-data:www-data /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
-        chown -R www-data:www-data /var/www/${NEXTCLOUD_DOMAIN_NAME}/data
-        cd $nextcloud_dir
+        chown -R www-data:www-data "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs"
+        chown -R www-data:www-data "/var/www/${NEXTCLOUD_DOMAIN_NAME}/data"
+        cd "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs" || exit 14893545875
         sudo -u www-data ./occ maintenance:repair
         sudo -u www-data ./occ files:cleanup
         sudo -u www-data ./occ files:scan --all
@@ -294,21 +294,21 @@ function restore_local_nextcloud {
 }
 
 function backup_remote_nextcloud {
-    if grep -q "nextcloud domain" $COMPLETION_FILE; then
+    if grep -q "nextcloud domain" "$COMPLETION_FILE"; then
         NEXTCLOUD_DOMAIN_NAME=$(get_completion_param "nextcloud domain")
         temp_backup_dir=/var/www/${NEXTCLOUD_DOMAIN_NAME}/data
-        if [ -d $temp_backup_dir ]; then
+        if [ -d "$temp_backup_dir" ]; then
             function_check suspend_site
-            suspend_site ${NEXTCLOUD_DOMAIN_NAME}
+            suspend_site "${NEXTCLOUD_DOMAIN_NAME}"
 
             function_check backup_database_to_friend
             backup_database_to_friend nextcloud
 
             function_check backup_directory_to_friend
-            backup_directory_to_friend $temp_backup_dir nextclouddata
+            backup_directory_to_friend "$temp_backup_dir" nextclouddata
 
             temp_backup_dir=/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config
-            backup_directory_to_friend $temp_backup_dir nextcloudconfig
+            backup_directory_to_friend "$temp_backup_dir" nextcloudconfig
 
             function_check restart_site
             restart_site
@@ -319,7 +319,7 @@ function backup_remote_nextcloud {
 }
 
 function restore_remote_nextcloud {
-    if grep -q "nextcloud domain" $COMPLETION_FILE; then
+    if grep -q "nextcloud domain" "$COMPLETION_FILE"; then
         echo $"Restoring nextcloud"
         NEXTCLOUD_DOMAIN_NAME=$(get_completion_param "nextcloud domain")
 
@@ -327,7 +327,7 @@ function restore_remote_nextcloud {
         nextcloud_create_database
 
         function_check restore_database_from_friend
-        restore_database_from_friend nextcloud ${NEXTCLOUD_DOMAIN_NAME}
+        restore_database_from_friend nextcloud "${NEXTCLOUD_DOMAIN_NAME}"
         if [ -d /root/tempnextcloud ]; then
             rm -rf /root/tempnextcloud
         fi
@@ -335,12 +335,12 @@ function restore_remote_nextcloud {
         temp_restore_dir=/root/tempnextcloudfiles
         restore_directory_from_friend $temp_restore_dir nextcloudfiles
 
-        if [ -d $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data ]; then
-            cp -r $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data /var/www/${NEXTCLOUD_DOMAIN_NAME}/
+        if [ -d "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data" ]; then
+            cp -r "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/data" "/var/www/${NEXTCLOUD_DOMAIN_NAME}/"
         else
-            cp -r $temp_restore_dir/* /var/www/${NEXTCLOUD_DOMAIN_NAME}/
+            cp -r $temp_restore_dir/* "/var/www/${NEXTCLOUD_DOMAIN_NAME}/"
         fi
-
+        # shellcheck disable=SC2181
         if [ ! "$?" = "0" ]; then
             exit 768254
         fi
@@ -349,20 +349,21 @@ function restore_remote_nextcloud {
         temp_restore_dir=/root/tempnextcloudconfig
         restore_directory_from_friend $temp_restore_dir nextcloudconfig
 
-        if [ -d $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config ]; then
-            cp -r $temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
+        if [ -d "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config" ]; then
+            cp -r "$temp_restore_dir/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config" "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs"
         else
-            cp -r $temp_restore_dir/* /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/
+            cp -r $temp_restore_dir/* "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/"
         fi
 
+        # shellcheck disable=SC2181
         if [ ! "$?" = "0" ]; then
             exit 573427
         fi
         rm -rf ${temp_restore_dir}
 
-        chown -R www-data:www-data /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
-        chown -R www-data:www-data /var/www/${NEXTCLOUD_DOMAIN_NAME}/data
-        cd /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
+        chown -R www-data:www-data "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs"
+        chown -R www-data:www-data "/var/www/${NEXTCLOUD_DOMAIN_NAME}/data"
+        cd "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs" || exit 2642846824
         sudo -u www-data ./occ maintenance:repair
         sudo -u www-data ./occ files:cleanup
         sudo -u www-data ./occ files:scan --all
@@ -381,13 +382,13 @@ function remove_nextcloud {
     read_config_param "NEXTCLOUD_DOMAIN_NAME"
     read_config_param "MY_USERNAME"
     echo "Removing $NEXTCLOUD_DOMAIN_NAME"
-    nginx_dissite $NEXTCLOUD_DOMAIN_NAME
-    remove_certs $NEXTCLOUD_DOMAIN_NAME
-    if [ -d /var/www/$NEXTCLOUD_DOMAIN_NAME ]; then
-        rm -rf /var/www/$NEXTCLOUD_DOMAIN_NAME
+    nginx_dissite "$NEXTCLOUD_DOMAIN_NAME"
+    remove_certs "$NEXTCLOUD_DOMAIN_NAME"
+    if [ -d "/var/www/$NEXTCLOUD_DOMAIN_NAME" ]; then
+        rm -rf "/var/www/$NEXTCLOUD_DOMAIN_NAME"
     fi
-    if [ -f /etc/nginx/sites-available/$NEXTCLOUD_DOMAIN_NAME ]; then
-        rm /etc/nginx/sites-available/$NEXTCLOUD_DOMAIN_NAME
+    if [ -f "/etc/nginx/sites-available/$NEXTCLOUD_DOMAIN_NAME" ]; then
+        rm "/etc/nginx/sites-available/$NEXTCLOUD_DOMAIN_NAME"
     fi
     function_check drop_database
     drop_database nextcloud
@@ -395,17 +396,17 @@ function remove_nextcloud {
     remove_onion_service nextcloud ${NEXTCLOUD_ONION_PORT}
     remove_app nextcloud
     remove_completion_param install_nextcloud
-    sed -i '/nextcloud/d' $COMPLETION_FILE
+    sed -i '/nextcloud/d' "$COMPLETION_FILE"
     remove_backup_database_local nextcloud
 
     function_check remove_ddns_domain
-    remove_ddns_domain $NEXTCLOUD_DOMAIN_NAME
+    remove_ddns_domain "$NEXTCLOUD_DOMAIN_NAME"
     systemctl restart nginx
     systemctl restart php7.0-fpm
 }
 
 function install_nextcloud_main {
-    if [ ! $NEXTCLOUD_DOMAIN_NAME ]; then
+    if [ ! "$NEXTCLOUD_DOMAIN_NAME" ]; then
         echo $'No domain name was given for nextcloud'
         exit 7359
     fi
@@ -434,34 +435,34 @@ function install_nextcloud_main {
     fi
     sed -i 's|;env[PATH]|env[PATH]|g' /etc/php/7.0/fpm/pool.d/www.conf
 
-    if [ ! -d /var/www/$NEXTCLOUD_DOMAIN_NAME ]; then
-        mkdir /var/www/$NEXTCLOUD_DOMAIN_NAME
+    if [ ! -d "/var/www/$NEXTCLOUD_DOMAIN_NAME" ]; then
+        mkdir "/var/www/$NEXTCLOUD_DOMAIN_NAME"
     fi
-    if [ ! -d /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs ]; then
+    if [ ! -d "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs" ]; then
 
         if [ -d /repos/nextcloud ]; then
-            mkdir /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
-            cp -r -p /repos/nextcloud/. /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
-            cd /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
+            mkdir "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs"
+            cp -r -p /repos/nextcloud/. "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs"
+            cd "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs" || exit 2783539793
             git pull
         else
             function_check git_clone
-            git_clone $NEXTCLOUD_REPO /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
+            git_clone "$NEXTCLOUD_REPO" "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs"
         fi
 
-        if [ ! -d /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs ]; then
+        if [ ! -d "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs" ]; then
             echo $'Unable to clone nextcloud repo'
             exit 87525
         fi
     fi
 
-    cd /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
+    cd "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs" || exit 3468346834
     git submodule update --init
     git checkout $NEXTCLOUD_COMMIT -b $NEXTCLOUD_COMMIT
     set_completion_param "nextcloud commit" "$NEXTCLOUD_COMMIT"
 
-    chmod g+w /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
-    chown -R www-data:www-data /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs
+    chmod g+w "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs"
+    chown -R www-data:www-data "/var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs"
 
     function_check nextcloud_create_database
     nextcloud_create_database
@@ -474,154 +475,154 @@ function install_nextcloud_main {
     fi
 
     function_check add_ddns_domain
-    add_ddns_domain $NEXTCLOUD_DOMAIN_NAME
+    add_ddns_domain "$NEXTCLOUD_DOMAIN_NAME"
 
     nextcloud_nginx_site=/etc/nginx/sites-available/$NEXTCLOUD_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
         function_check nginx_http_redirect
-        nginx_http_redirect $NEXTCLOUD_DOMAIN_NAME
-        echo 'server {' >> $nextcloud_nginx_site
-        echo '  listen 443 ssl;' >> $nextcloud_nginx_site
-        echo '  #listen [::]:443 ssl;' >> $nextcloud_nginx_site
-        echo "  server_name $NEXTCLOUD_DOMAIN_NAME;" >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  # Security' >> $nextcloud_nginx_site
+        nginx_http_redirect "$NEXTCLOUD_DOMAIN_NAME"
+        { echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $NEXTCLOUD_DOMAIN_NAME;";
+          echo '';
+          echo '  # Security'; } >> "$nextcloud_nginx_site"
         function_check nginx_ssl
-        nginx_ssl $NEXTCLOUD_DOMAIN_NAME mobile
+        nginx_ssl "$NEXTCLOUD_DOMAIN_NAME" mobile
 
         function_check nginx_disable_sniffing
-        nginx_disable_sniffing $NEXTCLOUD_DOMAIN_NAME
+        nginx_disable_sniffing "$NEXTCLOUD_DOMAIN_NAME"
 
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  # Logs' >> $nextcloud_nginx_site
-        echo '  access_log /dev/null;' >> $nextcloud_nginx_site
-        echo '  error_log /dev/null;' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  # Root' >> $nextcloud_nginx_site
-        echo "  root /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs;" >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  # Index' >> $nextcloud_nginx_site
-        echo '  index index.php;' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '  # Logs';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo '  # Root';
+          echo "  root /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  # Index';
+          echo '  index index.php;';
+          echo '';
 
-        # By default nextcloud advertises highly specific version information
-        # on status.php, which can obviously be used by adversaries.
-        # Blocking status.php prevents this information leak
-        echo '  location = /status.php {' >> $nextcloud_nginx_site
-        echo '    return 404;' >> $nextcloud_nginx_site
-        echo '  }' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
+          # By default nextcloud advertises highly specific version information
+          # on status.php, which can obviously be used by adversaries.
+          # Blocking status.php prevents this information leak
+          echo '  location = /status.php {';
+          echo '    return 404;';
+          echo '  }';
+          echo '';
 
-        echo '  # PHP' >> $nextcloud_nginx_site
-        echo '  location ~ \.php {' >> $nextcloud_nginx_site
-        echo '    include snippets/fastcgi-php.conf;' >> $nextcloud_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $nextcloud_nginx_site
-        echo '    fastcgi_read_timeout 30;' >> $nextcloud_nginx_site
-        echo '  }' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  # Location' >> $nextcloud_nginx_site
-        echo '  location / {' >> $nextcloud_nginx_site
+          echo '  # PHP';
+          echo '  location ~ \.php {';
+          echo '    include snippets/fastcgi-php.conf;';
+          echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+          echo '    fastcgi_read_timeout 30;';
+          echo '  }';
+          echo '';
+          echo '  # Location';
+          echo '  location / {'; } >> "$nextcloud_nginx_site"
         function_check nginx_limits
-        nginx_limits $NEXTCLOUD_DOMAIN_NAME '15m'
-        echo '    try_files $uri $uri/ @nextcloud;' >> $nextcloud_nginx_site
-        echo '  }' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  # Fancy URLs' >> $nextcloud_nginx_site
-        echo '  location @nextcloud {' >> $nextcloud_nginx_site
-        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $nextcloud_nginx_site
-        echo '  }' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  # Restrict access that is unnecessary anyway' >> $nextcloud_nginx_site
-        echo '  location ~ /\.(ht|git) {' >> $nextcloud_nginx_site
-        echo '    deny all;' >> $nextcloud_nginx_site
-        echo '  }' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  location = /.well-known/carddav {' >> $nextcloud_nginx_site
-        echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
-        echo '  }' >> $nextcloud_nginx_site
-        echo '  location = /.well-known/caldav {' >> $nextcloud_nginx_site
-        echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
-        echo '  }' >> $nextcloud_nginx_site
-        echo '' >> $nextcloud_nginx_site
-        echo '  location /.well-known/acme-challenge { }' >> $nextcloud_nginx_site
-        echo '}' >> $nextcloud_nginx_site
+        nginx_limits "$NEXTCLOUD_DOMAIN_NAME" '15m'
+        { echo "    try_files \$uri \$uri/ @nextcloud;";
+          echo '  }';
+          echo '';
+          echo '  # Fancy URLs';
+          echo '  location @nextcloud {';
+          echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+          echo '  }';
+          echo '';
+          echo '  # Restrict access that is unnecessary anyway';
+          echo '  location ~ /\.(ht|git) {';
+          echo '    deny all;';
+          echo '  }';
+          echo '';
+          echo '  location = /.well-known/carddav {';
+          echo "    return 301 \$scheme://\$host/remote.php/dav;";
+          echo '  }';
+          echo '  location = /.well-known/caldav {';
+          echo "    return 301 \$scheme://\$host/remote.php/dav;";
+          echo '  }';
+          echo '';
+          echo '  location /.well-known/acme-challenge { }';
+          echo '}'; } >> "$nextcloud_nginx_site"
     else
-        echo -n '' > $nextcloud_nginx_site
+        echo -n '' > "$nextcloud_nginx_site"
     fi
-    echo 'server {' >> $nextcloud_nginx_site
-    echo "    listen 127.0.0.1:$NEXTCLOUD_ONION_PORT default_server;" >> $nextcloud_nginx_site
-    echo "    server_name $NEXTCLOUD_DOMAIN_NAME;" >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
+    { echo 'server {';
+      echo "    listen 127.0.0.1:$NEXTCLOUD_ONION_PORT default_server;";
+      echo "    server_name $NEXTCLOUD_DOMAIN_NAME;";
+      echo ''; } >> "$nextcloud_nginx_site"
     function_check nginx_disable_sniffing
-    nginx_disable_sniffing $NEXTCLOUD_DOMAIN_NAME
-    echo '' >> $nextcloud_nginx_site
-    echo '  # Logs' >> $nextcloud_nginx_site
-    echo '  access_log /dev/null;' >> $nextcloud_nginx_site
-    echo '  error_log /dev/null;' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
-    echo '  # Root' >> $nextcloud_nginx_site
-    echo "  root /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs;" >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
-    echo '  # Index' >> $nextcloud_nginx_site
-    echo '  index index.php;' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
+    nginx_disable_sniffing "$NEXTCLOUD_DOMAIN_NAME"
+    { echo '';
+      echo '  # Logs';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  # Root';
+      echo "  root /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs;";
+      echo '';
+      echo '  # Index';
+      echo '  index index.php;';
+      echo '';
 
-    # By default nextcloud advertises highly specific version information
-    # on status.php, which can obviously be used by adversaries.
-    # Blocking status.php prevents this information leak
-    echo '  location = /status.php {' >> $nextcloud_nginx_site
-    echo '    return 404;' >> $nextcloud_nginx_site
-    echo '  }' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
+      # By default nextcloud advertises highly specific version information
+      # on status.php, which can obviously be used by adversaries.
+      # Blocking status.php prevents this information leak
+      echo '  location = /status.php {';
+      echo '    return 404;';
+      echo '  }';
+      echo '';
 
-    echo '  # PHP' >> $nextcloud_nginx_site
-    echo '  location ~ \.php {' >> $nextcloud_nginx_site
-    echo '    include snippets/fastcgi-php.conf;' >> $nextcloud_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $nextcloud_nginx_site
-    echo '    fastcgi_read_timeout 30;' >> $nextcloud_nginx_site
-    echo '  }' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
-    echo '  # Location' >> $nextcloud_nginx_site
-    echo '  location / {' >> $nextcloud_nginx_site
+      echo '  # PHP';
+      echo '  location ~ \.php {';
+      echo '    include snippets/fastcgi-php.conf;';
+      echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+      echo '    fastcgi_read_timeout 30;';
+      echo '  }';
+      echo '';
+      echo '  # Location';
+      echo '  location / {'; } >> "$nextcloud_nginx_site"
     function_check nginx_limits
-    nginx_limits $NEXTCLOUD_DOMAIN_NAME '15m'
-    echo '    try_files $uri $uri/ @nextcloud;' >> $nextcloud_nginx_site
-    echo '  }' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
-    echo '  # Fancy URLs' >> $nextcloud_nginx_site
-    echo '  location @nextcloud {' >> $nextcloud_nginx_site
-    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $nextcloud_nginx_site
-    echo '  }' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
-    echo '  # Restrict access that is unnecessary anyway' >> $nextcloud_nginx_site
-    echo '  location ~ /\.(ht|git) {' >> $nextcloud_nginx_site
-    echo '    deny all;' >> $nextcloud_nginx_site
-    echo '  }' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
-    echo '  location = /.well-known/carddav {' >> $nextcloud_nginx_site
-    echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
-    echo '  }' >> $nextcloud_nginx_site
-    echo '  location = /.well-known/caldav {' >> $nextcloud_nginx_site
-    echo '    return 301 $scheme://$host/remote.php/dav;' >> $nextcloud_nginx_site
-    echo '  }' >> $nextcloud_nginx_site
-    echo '' >> $nextcloud_nginx_site
-    echo '  location /.well-known/acme-challenge { }' >> $nextcloud_nginx_site
-    echo '}' >> $nextcloud_nginx_site
+    nginx_limits "$NEXTCLOUD_DOMAIN_NAME" '15m'
+    { echo "    try_files \$uri \$uri/ @nextcloud;";
+      echo '  }';
+      echo '';
+      echo '  # Fancy URLs';
+      echo '  location @nextcloud {';
+      echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+      echo '  }';
+      echo '';
+      echo '  # Restrict access that is unnecessary anyway';
+      echo '  location ~ /\.(ht|git) {';
+      echo '    deny all;';
+      echo '  }';
+      echo '';
+      echo '  location = /.well-known/carddav {';
+      echo "    return 301 \$scheme://\$host/remote.php/dav;";
+      echo '  }';
+      echo '  location = /.well-known/caldav {';
+      echo "    return 301 \$scheme://\$host/remote.php/dav;";
+      echo '  }';
+      echo '';
+      echo '  location /.well-known/acme-challenge { }';
+      echo '}'; } >> "$nextcloud_nginx_site"
 
-    sed -i 's| DENY;| SAMEORIGIN;|g' $nextcloud_nginx_site
+    sed -i 's| DENY;| SAMEORIGIN;|g' "$nextcloud_nginx_site"
 
     # NextCloud doesn't like content-security-policy at all
-    sed -i '/Content-Security-Policy/d' $nextcloud_nginx_site
+    sed -i '/Content-Security-Policy/d' "$nextcloud_nginx_site"
 
     function_check configure_php
     configure_php
 
     function_check create_site_certificate
-    create_site_certificate $NEXTCLOUD_DOMAIN_NAME 'yes'
+    create_site_certificate "$NEXTCLOUD_DOMAIN_NAME" 'yes'
 
-    if [[ $ONION_ONLY == "no" ]]; then
-        if [ ! -f /etc/ssl/certs/${NEXTCLOUD_DOMAIN_NAME}.pem ]; then
+    if [[ "$ONION_ONLY" == "no" ]]; then
+        if [ ! -f "/etc/ssl/certs/${NEXTCLOUD_DOMAIN_NAME}.pem" ]; then
             echo $'Certificate not generated for nextcloud'
             exit 725762
         fi
@@ -636,31 +637,18 @@ function install_nextcloud_main {
     backup_database_local nextcloud
 
     function_check nginx_ensite
-    nginx_ensite $NEXTCLOUD_DOMAIN_NAME
-
-    # NOTE: For the typical case always enable SSL and only
-    # disable it if in onion only mode. This is due to complexities
-    # with the way URLs are generated by nextcloud
-    nextcloud_ssl='always'
-    if [[ $ONION_ONLY != 'no' ]]; then
-        nextcloud_ssl='never'
-    fi
+    nginx_ensite "$NEXTCLOUD_DOMAIN_NAME"
 
     NEXTCLOUD_ONION_HOSTNAME=$(add_onion_service nextcloud 80 ${NEXTCLOUD_ONION_PORT})
-
-    NEXTCLOUD_SERVER=${NEXTCLOUD_DOMAIN_NAME}
-    if [[ $ONION_ONLY != 'no' ]]; then
-        NEXTCLOUD_SERVER=${NEXTCLOUD_ONION_HOSTNAME}
-    fi
 
     systemctl restart php7.0-fpm
     systemctl restart nginx
 
-    ${PROJECT_NAME}-addemail -u $MY_USERNAME -e "noreply@$NEXTCLOUD_DOMAIN_NAME" -g nextcloud --public no
+    "${PROJECT_NAME}-addemail" -u "$MY_USERNAME" -e "noreply@$NEXTCLOUD_DOMAIN_NAME" -g nextcloud --public no
 
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a nextcloud -p "$NEXTCLOUD_ADMIN_PASSWORD"
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a nextcloud -p "$NEXTCLOUD_ADMIN_PASSWORD"
 
-    cd /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
+    cd "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs" || exit 2467245247
     if [ -d config ]; then
         chown -R www-data:www-data config
     fi
@@ -669,7 +657,7 @@ function install_nextcloud_main {
     fi
 
     chmod +x occ
-    ./occ maintenance:install --database-name nextcloud --admin-user ${MY_USERNAME} --admin-pass "${NEXTCLOUD_ADMIN_PASSWORD}" --database mysql --database-user root --database-pass "${MARIADB_PASSWORD}"
+    ./occ maintenance:install --database-name nextcloud --admin-user "${MY_USERNAME}" --admin-pass "${NEXTCLOUD_ADMIN_PASSWORD}" --database mysql --database-user root --database-pass "${MARIADB_PASSWORD}"
     if [ ! -d data ]; then
         echo $'Nextcloud data directory was not found. This probably means that the installation failed.'
         echo ''
@@ -683,20 +671,19 @@ function install_nextcloud_main {
     sudo -u www-data ./occ status
     sudo -u www-data ./occ app:list
     sudo -u www-data ./occ app:enable encryption
-    sudo -u www-data ./occ encryption:enable
-    if [ ! "$?" = "0" ]; then
+    if ! sudo -u www-data ./occ encryption:enable; then
         echo $'Encryption not enabled'
         exit 73527
     fi
     sudo -u www-data ./occ encryption:status
     sudo -u www-data ./occ config:system:set appstoreenabled --value=false
-    chmod g+w /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/config.php
-    chown -R www-data:www-data /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs
+    chmod g+w "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/config.php"
+    chown -R www-data:www-data "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs"
     chmod 0644 .htaccess
     chmod 0750 data
-    chown -R www-data:www-data /var/www/${NEXTCLOUD_DOMAIN_NAME}/data
-    sudo -u www-data ./occ config:system:set trusted_domains 1 --value=$NEXTCLOUD_DOMAIN_NAME
-    sudo -u www-data ./occ config:system:set trusted_domains 2 --value=$NEXTCLOUD_ONION_HOSTNAME
+    chown -R www-data:www-data "/var/www/${NEXTCLOUD_DOMAIN_NAME}/data"
+    sudo -u www-data ./occ config:system:set trusted_domains 1 --value="$NEXTCLOUD_DOMAIN_NAME"
+    sudo -u www-data ./occ config:system:set trusted_domains 2 --value="$NEXTCLOUD_ONION_HOSTNAME"
     sudo -u www-data ./occ files:cleanup
     sudo -u www-data ./occ files:scan --all
     sudo -u www-data ./occ maintenance:repair
@@ -705,8 +692,8 @@ function install_nextcloud_main {
     systemctl restart mariadb
 
     # move the data directory
-    mv /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/data /var/www/${NEXTCLOUD_DOMAIN_NAME}/
-    sed -i "s|'datadirectory'.*|'datadirectory' => '/var/www/$NEXTCLOUD_DOMAIN_NAME/data',|g" /var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/config.php
+    mv "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/data" "/var/www/${NEXTCLOUD_DOMAIN_NAME}/"
+    sed -i "s|'datadirectory'.*|'datadirectory' => '/var/www/$NEXTCLOUD_DOMAIN_NAME/data',|g" "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/config.php"
 
     set_completion_param "nextcloud domain" "$NEXTCLOUD_DOMAIN_NAME"
 
@@ -714,7 +701,7 @@ function install_nextcloud_main {
 }
 
 function install_nextcloud {
-    if [ ! $ONION_ONLY ]; then
+    if [ ! "$ONION_ONLY" ]; then
         ONION_ONLY='no'
     fi
 

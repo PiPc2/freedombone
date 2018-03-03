@@ -33,13 +33,13 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-recoverkey
 export TEXTDOMAINDIR="/usr/share/locale"
 
-source $PROJECT_INSTALL_DIR/${PROJECT_NAME}-vars
+source "$PROJECT_INSTALL_DIR/${PROJECT_NAME}-vars"
 
 # include utils which allow function_check, go and drive mount
-UTILS_FILES=/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*
+UTILS_FILES="/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-*"
 for f in $UTILS_FILES
 do
-    source $f
+    source "$f"
 done
 
 FRIENDS_SERVERS_LIST=
@@ -53,7 +53,7 @@ function show_help {
     exit 0
 }
 
-while [[ $# > 1 ]]
+while [ $# -gt 1 ]
 do
     key="$1"
 
@@ -78,69 +78,71 @@ do
     shift
 done
 
-if [ ! $MY_USERNAME ]; then
+if [ ! "$MY_USERNAME" ]; then
     show_help
 fi
-if [ ! -d /home/$MY_USERNAME ]; then
+if [ ! -d "/home/$MY_USERNAME" ]; then
     echo $"User $MY_USERNAME does not exist on the system"
     exit 7270
 fi
 
-if [ ! $MY_USERNAME ]; then
+if [ ! "$MY_USERNAME" ]; then
     echo $'No username given'
     exit 3578
 fi
-if [ ! -d /home/$MY_USERNAME ]; then
+if [ ! -d "/home/$MY_USERNAME" ]; then
     echo $"User $MY_USERNAME does not exist on the system"
     exit 7270
 fi
 
-FRAGMENTS_DIR=/home/$MY_USERNAME/.gnupg_fragments
+FRAGMENTS_DIR="/home/$MY_USERNAME/.gnupg_fragments"
 
 # if no remote backup list was given then assume recover from USB
-if [ ! $FRIENDS_SERVERS_LIST ]; then
+if [ ! "$FRIENDS_SERVERS_LIST" ]; then
     interactive_gpg_from_usb
     exit 0
 fi
 
 # obtain shares/fragments from remote locations
-if [ $FRIENDS_SERVERS_LIST ]; then
+if [ "$FRIENDS_SERVERS_LIST" ]; then
     # For each remote server
-    while read remote_server
+    while read -r remote_server
     do
         # Get the server and its password
         # Format is:
         #   username@domain:/home/username <port number> <ssh password>
         REMOTE_SERVER=$(echo "${remote_server}" | awk -F ' ' '{print $1}')
-        if [ $REMOTE_SERVER ]; then
+        if [ "$REMOTE_SERVER" ]; then
             REMOTE_SSH_PORT=$(echo "${remote_server}" | awk -F ' ' '{print $2}')
             REMOTE_PASSWORD=$(echo "${remote_server}" | awk -F ' ' '{print $3}')
 
             # create a directory if it doesn't exist
-            if [ ! -d /home/$MY_USERNAME/.gnupg_fragments ]; then
-                mkdir -p /home/$MY_USERNAME/.gnupg_fragments
+            if [ ! -d "/home/$MY_USERNAME/.gnupg_fragments" ]; then
+                mkdir -p "/home/$MY_USERNAME/.gnupg_fragments"
             fi
 
             echo -n $"Starting key retrieval from $REMOTE_SERVER..."
-            /usr/bin/sshpass -p $REMOTE_PASSWORD \
-                             scp -r -P $REMOTE_SSH_PORT $REMOTE_SERVER/.gnupg_fragments/* /home/$MY_USERNAME/.gnupg_fragments
+            /usr/bin/sshpass -p "$REMOTE_PASSWORD" \
+                             scp -r -P "$REMOTE_SSH_PORT" "$REMOTE_SERVER/.gnupg_fragments/*" "/home/$MY_USERNAME/.gnupg_fragments"
+            # shellcheck disable=SC2181
             if [ ! "$?" = "0" ]; then
                 echo $'FAILED'
             else
                 echo $'Ok'
             fi
         fi
-    done < $FRIENDS_SERVERS_LIST
+    done < "$FRIENDS_SERVERS_LIST"
 fi
 
 # was a directory created?
-if [ ! -d $FRAGMENTS_DIR ]; then
+if [ ! -d "$FRAGMENTS_DIR" ]; then
     echo $'No fragments have been recovered, so the key cannot be recovered'
     exit 7483
 fi
 
 # was anything downloaded?
-cd $FRAGMENTS_DIR
+cd "$FRAGMENTS_DIR" || exit 24682468
+# shellcheck disable=SC2012
 no_of_shares=$(ls -afq keyshare.asc.* | wc -l)
 if (( no_of_shares == 0 )); then
     echo $'No key fragments were retrieved'
@@ -148,14 +150,14 @@ if (( no_of_shares == 0 )); then
 fi
 
 # set permissions on the fragments
-chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg_fragments
+chown -R "$MY_USERNAME":"$MY_USERNAME" "/home/$MY_USERNAME/.gnupg_fragments"
 
 # decrypt the file
 KEYS_FILE=$FRAGMENTS_DIR/keyshare.asc
-cd $FRAGMENTS_DIR
-gfcombine $KEYS_FILE.*
+cd "$FRAGMENTS_DIR" || exit 482746874624
+gfcombine "$KEYS_FILE.*"
 
-if [ ! -f $KEYS_FILE ]; then
+if [ ! -f "$KEYS_FILE" ]; then
     echo $'Unable to decrypt key. This may mean that not enough fragments are available'
     exit 6283
 fi
@@ -163,15 +165,14 @@ fi
 echo $'Key fragments recombined'
 
 # import the gpg key
-gpg --homedir=/home/$MY_USERNAME/.gnupg --allow-secret-key-import --import $KEYS_FILE
-if [ ! "$?" = "0" ]; then
+if ! gpg --homedir="/home/$MY_USERNAME/.gnupg" --allow-secret-key-import --import "$KEYS_FILE"; then
     echo $'Unable to import gpg key'
-    shred -zu $KEYS_FILE
+    shred -zu "$KEYS_FILE"
     exit 3682
 fi
-shred -zu $KEYS_FILE
-chown -R $MY_USERNAME:$MY_USERNAME /home/$MY_USERNAME/.gnupg
-chmod -R 600 /home/$MY_USERNAME/.gnupg
+shred -zu "$KEYS_FILE"
+chown -R "$MY_USERNAME":"$MY_USERNAME" "/home/$MY_USERNAME/.gnupg"
+chmod -R 600 "/home/$MY_USERNAME/.gnupg"
 
 echo $'GPG key was recovered'
 

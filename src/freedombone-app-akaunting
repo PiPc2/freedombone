@@ -49,12 +49,12 @@ akaunting_variables=(ONION_ONLY
                      MY_USERNAME)
 
 function akaunting_remove_bad_links {
-    cd /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
+    cd "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" || exit 365873658
 
     # copy jquery locally
     jquery_version='1.12.4'
     if [ ! -f jquery-${jquery_version}.js ]; then
-        cd /var/www/$GHOST_DOMAIN_NAME/htdocs
+        cd "/var/www/$GHOST_DOMAIN_NAME/htdocs" || exit 3276324
         wget https://code.jquery.com/jquery-${jquery_version}.js
         jquery_hash=$(sha256sum jquery-${jquery_version}.js | awk -F ' ' '{print $1}')
         if [[ "$jquery_hash" != '430f36f9b5f21aae8cc9dca6a81c4d3d84da5175eaedcf2fdc2c226302cb3575' ]]; then
@@ -74,7 +74,7 @@ function akaunting_remove_bad_links {
     sed -i '/googleapi/d' vendor/almasaeed2010/adminlte/dist/css/alt/AdminLTE-without-plugins.min.css
     sed -i "s|ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js|$AKAUNTING_DOMAIN_NAME/jquery-${jquery_version}.js|g" vendor/almasaeed2010/adminlte/plugins/ckeditor/samples/old/jquery.html
 
-    chown -R www-data:www-data /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
+    chown -R www-data:www-data "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs"
 }
 
 function logging_on_akaunting {
@@ -88,65 +88,66 @@ function logging_off_akaunting {
 function remove_user_akaunting {
     remove_username="$1"
 
-    ${PROJECT_NAME}-pass -u $remove_username --rmapp akaunting
+    "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp akaunting
 }
 
 function add_user_akaunting {
     new_username="$1"
     new_user_password="$2"
 
-    ${PROJECT_NAME}-pass -u $new_username -a akaunting -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$new_username" -a akaunting -p "$new_user_password"
 
     echo '0'
 }
 
 function install_interactive_akaunting {
-    if [ ! $ONION_ONLY ]; then
+    if [ ! "$ONION_ONLY" ]; then
         ONION_ONLY='no'
     fi
 
-    if [[ $ONION_ONLY != "no" ]]; then
+    if [[ "$ONION_ONLY" != "no" ]]; then
         AKAUNTING_DOMAIN_NAME='akaunting.local'
     else
         AKAUNTING_DETAILS_COMPLETE=
         while [ ! $AKAUNTING_DETAILS_COMPLETE ]
         do
-            data=$(tempfile 2>/dev/null)
-            trap "rm -f $data" 0 1 2 5 15
+            data=$(mktemp 2>/dev/null)
             if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"Akaunting Configuration" \
-                       --form $"\nPlease enter your Akaunting details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 65 2 \
+                       --form $"\\nPlease enter your Akaunting details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 65 2 \
                        $"Domain:" 1 1 "$(grep 'AKAUNTING_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
                        $"Code:" 2 1 "$(grep 'AKAUNTING_CODE' temp.cfg | awk -F '=' '{print $2}')" 2 25 33 255 \
-                       2> $data
+                       2> "$data"
             else
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"Akaunting Configuration" \
-                       --form $"\nPlease enter your Akaunting details.\n\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 65 2 \
+                       --form $"\\nPlease enter your Akaunting details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 14 65 2 \
                        $"Domain:" 1 1 "$(grep 'AKAUNTING_DOMAIN_NAME' temp.cfg | awk -F '=' '{print $2}')" 1 25 33 40 \
-                       2> $data
+                       2> "$data"
             fi
             sel=$?
             case $sel in
-                1) exit 1;;
-                255) exit 1;;
+                1) rm -f "$data"
+                   exit 1;;
+                255) rm -f "$data"
+                     exit 1;;
             esac
-            AKAUNTING_DOMAIN_NAME=$(cat $data | sed -n 1p)
-            if [ $AKAUNTING_DOMAIN_NAME ]; then
+            AKAUNTING_DOMAIN_NAME=$(sed -n 1p < "$data")
+            if [ "$AKAUNTING_DOMAIN_NAME" ]; then
                 if [[ $AKAUNTING_DOMAIN_NAME == "$HUBZILLA_DOMAIN_NAME" ]]; then
                     AKAUNTING_DOMAIN_NAME=""
                 fi
                 TEST_DOMAIN_NAME=$AKAUNTING_DOMAIN_NAME
                 validate_domain_name
-                if [[ $TEST_DOMAIN_NAME != $AKAUNTING_DOMAIN_NAME ]]; then
+                if [[ "$TEST_DOMAIN_NAME" != "$AKAUNTING_DOMAIN_NAME" ]]; then
                     AKAUNTING_DOMAIN_NAME=
                     dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
                 else
                     if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
-                        AKAUNTING_CODE=$(cat $data | sed -n 2p)
+                        AKAUNTING_CODE=$(sed -n 2p < "$data")
                         validate_freedns_code "$AKAUNTING_CODE"
-                        if [ ! $VALID_CODE ]; then
+                        if [ ! "$VALID_CODE" ]; then
                             AKAUNTING_DOMAIN_NAME=
                         fi
                     fi
@@ -155,6 +156,7 @@ function install_interactive_akaunting {
             if [ $AKAUNTING_DOMAIN_NAME ]; then
                 AKAUNTING_DETAILS_COMPLETE="yes"
             fi
+            rm -f "$data"
         done
 
         write_config_param "AKAUNTING_CODE" "$AKAUNTING_CODE"
@@ -169,23 +171,23 @@ function change_password_akaunting {
 
     read_config_param 'AKAUNTING_DOMAIN_NAME'
 
-    ${PROJECT_NAME}-pass -u "$curr_username" -a akaunting -p "$new_user_password"
+    "${PROJECT_NAME}-pass" -u "$curr_username" -a akaunting -p "$new_user_password"
 }
 
 function akaunting_create_database {
-    if [ -f $IMAGE_PASSWORD_FILE ]; then
-        AKAUNTING_ADMIN_PASSWORD="$(printf `cat $IMAGE_PASSWORD_FILE`)"
+    if [ -f "$IMAGE_PASSWORD_FILE" ]; then
+        AKAUNTING_ADMIN_PASSWORD="$(printf "%s" "$(cat "$IMAGE_PASSWORD_FILE")")"
     else
-        if [ ! $AKAUNTING_ADMIN_PASSWORD ]; then
-            AKAUNTING_ADMIN_PASSWORD="$(create_password ${MINIMUM_PASSWORD_LENGTH})"
+        if [ ! "$AKAUNTING_ADMIN_PASSWORD" ]; then
+            AKAUNTING_ADMIN_PASSWORD="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
         fi
     fi
-    if [ ! $AKAUNTING_ADMIN_PASSWORD ]; then
+    if [ ! "$AKAUNTING_ADMIN_PASSWORD" ]; then
         return
     fi
 
     function_check create_database
-    create_database akaunting "$AKAUNTING_ADMIN_PASSWORD" $MY_USERNAME
+    create_database akaunting "$AKAUNTING_ADMIN_PASSWORD" "$MY_USERNAME"
 }
 
 function reconfigure_akaunting {
@@ -198,70 +200,69 @@ function upgrade_akaunting {
         return
     fi
 
-    if grep -q "akaunting domain" $COMPLETION_FILE; then
+    if grep -q "akaunting domain" "$COMPLETION_FILE"; then
         AKAUNTING_DOMAIN_NAME=$(get_completion_param "akaunting domain")
     fi
 
     # update to the next commit
     function_check set_repo_commit
-    set_repo_commit /var/www/$AKAUNTING_DOMAIN_NAME/htdocs "akaunting commit" "$AKAUNTING_COMMIT" $AKAUNTING_REPO
+    set_repo_commit "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" "akaunting commit" "$AKAUNTING_COMMIT" "$AKAUNTING_REPO"
 
-    cd /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
+    cd "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" || exit 367835
     install_composer
     akaunting_remove_bad_links
 
-    chown -R www-data:www-data /var/www/${AKAUNTING_DOMAIN_NAME}/htdocs
+    chown -R www-data:www-data "/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs"
 }
 
 
 function backup_local_akaunting {
-    akaunting_path=/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs
-    if [ -d $akaunting_path ]; then
-        suspend_site ${AKAUNTING_DOMAIN_NAME}
+    akaunting_path="/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs"
+    if [ -d "$akaunting_path" ]; then
+        suspend_site "${AKAUNTING_DOMAIN_NAME}"
         function_check backup_database_to_usb
         backup_database_to_usb akaunting
-        backup_directory_to_usb $akaunting_path akaunting
+        backup_directory_to_usb "$akaunting_path" akaunting
         restart_site
     fi
 }
 
 function restore_local_akaunting {
     temp_restore_dir=/root/tempakaunting
-    akaunting_dir=/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs
+    akaunting_dir="/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs"
 
-    suspend_site ${AKAUNTING_DOMAIN_NAME}
+    suspend_site "${AKAUNTING_DOMAIN_NAME}"
 
     function_check akaunting_create_database
     akaunting_create_database
 
-    restore_database akaunting ${AKAUNTING_DOMAIN_NAME}
-    chown www-data:www-data $akaunting_dir
+    restore_database akaunting "${AKAUNTING_DOMAIN_NAME}"
+    chown www-data:www-data "$akaunting_dir"
 
     restart_site
 }
 
 function backup_remote_akaunting {
-    akaunting_path=/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs
-    if [ -d $akaunting_path ]; then
-        suspend_site ${AKAUNTING_DOMAIN_NAME}
+    akaunting_path="/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs"
+    if [ -d "$akaunting_path" ]; then
+        suspend_site "${AKAUNTING_DOMAIN_NAME}"
         function_check backup_database_to_friend
         backup_database_to_friend akaunting
-        backup_directory_to_friend $akaunting_path akaunting
+        backup_directory_to_friend "$akaunting_path" akaunting
         restart_site
     fi
 }
 
 function restore_remote_akaunting {
-    temp_restore_dir=/root/tempakaunting
-    akaunting_dir=/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs
+    akaunting_dir="/var/www/${AKAUNTING_DOMAIN_NAME}/htdocs"
 
-    suspend_site ${AKAUNTING_DOMAIN_NAME}
+    suspend_site "${AKAUNTING_DOMAIN_NAME}"
 
     function_check akaunting_create_database
     akaunting_create_database
 
-    restore_database_from_friend akaunting ${AKAUNTING_DOMAIN_NAME}
-    chown www-data:www-data $akaunting_dir
+    restore_database_from_friend akaunting "${AKAUNTING_DOMAIN_NAME}"
+    chown www-data:www-data "$akaunting_dir"
 
     restart_site
 }
@@ -274,28 +275,28 @@ function remove_akaunting {
     read_config_param "AKAUNTING_DOMAIN_NAME"
     read_config_param "MY_USERNAME"
     echo "Removing $AKAUNTING_DOMAIN_NAME"
-    nginx_dissite $AKAUNTING_DOMAIN_NAME
-    remove_certs $AKAUNTING_DOMAIN_NAME
+    nginx_dissite "$AKAUNTING_DOMAIN_NAME"
+    remove_certs "$AKAUNTING_DOMAIN_NAME"
 
-    if [ -d /var/www/$AKAUNTING_DOMAIN_NAME ]; then
-        rm -rf /var/www/$AKAUNTING_DOMAIN_NAME
+    if [ -d "/var/www/$AKAUNTING_DOMAIN_NAME" ]; then
+        rm -rf "/var/www/$AKAUNTING_DOMAIN_NAME"
     fi
-    if [ -f /etc/nginx/sites-available/$AKAUNTING_DOMAIN_NAME ]; then
-        rm /etc/nginx/sites-available/$AKAUNTING_DOMAIN_NAME
+    if [ -f "/etc/nginx/sites-available/$AKAUNTING_DOMAIN_NAME" ]; then
+        rm "/etc/nginx/sites-available/$AKAUNTING_DOMAIN_NAME"
     fi
     function_check drop_database
     drop_database akaunting
     function_check remove_onion_service
-    remove_onion_service akaunting ${AKAUNTING_ONION_PORT}
+    remove_onion_service akaunting "${AKAUNTING_ONION_PORT}"
     if grep -q "akaunting" /etc/crontab; then
         sed -i "/akaunting/d" /etc/crontab
     fi
     remove_app akaunting
     remove_completion_param install_akaunting
-    sed -i '/akaunting/d' $COMPLETION_FILE
+    sed -i '/akaunting/d' "$COMPLETION_FILE"
 
     function_check remove_ddns_domain
-    remove_ddns_domain $AKAUNTING_DOMAIN_NAME
+    remove_ddns_domain "$AKAUNTING_DOMAIN_NAME"
 }
 
 function install_akaunting {
@@ -303,7 +304,7 @@ function install_akaunting {
         ONION_ONLY='no'
     fi
 
-    if [ ! $AKAUNTING_DOMAIN_NAME ]; then
+    if [ ! "$AKAUNTING_DOMAIN_NAME" ]; then
         echo $'No domain name was given for akaunting'
         exit 89353
     fi
@@ -317,142 +318,142 @@ function install_akaunting {
     apt-get -yq install php-gettext php-curl php-gd php-mysql git curl
     apt-get -yq install memcached php-memcached php-intl exiftool libfcgi0ldbl
 
-    if [ ! -d /var/www/$AKAUNTING_DOMAIN_NAME ]; then
-        mkdir /var/www/$AKAUNTING_DOMAIN_NAME
+    if [ ! -d "/var/www/$AKAUNTING_DOMAIN_NAME" ]; then
+        mkdir "/var/www/$AKAUNTING_DOMAIN_NAME"
     fi
-    if [ ! -d /var/www/$AKAUNTING_DOMAIN_NAME/htdocs ]; then
+    if [ ! -d "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" ]; then
         if [ -d /repos/akaunting ]; then
-            mkdir /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
-            cp -r -p /repos/akaunting/. /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
-            cd /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
+            mkdir "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs"
+            cp -r -p /repos/akaunting/. "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs"
+            cd "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" || exit 23458735
             git pull
         else
             function_check git_clone
-            git_clone $AKAUNTING_REPO /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
+            git_clone "$AKAUNTING_REPO" "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs"
         fi
 
-        if [ ! -d /var/www/$AKAUNTING_DOMAIN_NAME/htdocs ]; then
+        if [ ! -d "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" ]; then
             echo $'Unable to clone akaunting repo'
             exit 2589389
         fi
     fi
 
-    cd /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
-    git checkout $AKAUNTING_COMMIT -b $AKAUNTING_COMMIT
+    cd "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" || exit 23468724527
+    git checkout "$AKAUNTING_COMMIT" -b "$AKAUNTING_COMMIT"
     set_completion_param "akaunting commit" "$AKAUNTING_COMMIT"
 
-    chmod g+w /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
-    chown -R www-data:www-data /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
+    chmod g+w "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs"
+    chown -R www-data:www-data "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs"
 
-    cd /var/www/$AKAUNTING_DOMAIN_NAME/htdocs
+    cd "/var/www/$AKAUNTING_DOMAIN_NAME/htdocs" || exit 34783524
     install_composer
 
     function_check akaunting_create_database
     akaunting_create_database
 
     function_check add_ddns_domain
-    add_ddns_domain $AKAUNTING_DOMAIN_NAME
+    add_ddns_domain "$AKAUNTING_DOMAIN_NAME"
 
     AKAUNTING_ONION_HOSTNAME=$(add_onion_service akaunting 80 ${AKAUNTING_ONION_PORT})
 
     akaunting_nginx_site=/etc/nginx/sites-available/$AKAUNTING_DOMAIN_NAME
     if [[ $ONION_ONLY == "no" ]]; then
         function_check nginx_http_redirect
-        nginx_http_redirect $AKAUNTING_DOMAIN_NAME "index index.php"
-        echo 'server {' >> $akaunting_nginx_site
-        echo '  listen 443 ssl;' >> $akaunting_nginx_site
-        echo '  #listen [::]:443 ssl;' >> $akaunting_nginx_site
-        echo "  server_name $AKAUNTING_DOMAIN_NAME;" >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
+        nginx_http_redirect "$AKAUNTING_DOMAIN_NAME" "index index.php"
+        { echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $AKAUNTING_DOMAIN_NAME;";
+          echo ''; } >> "$akaunting_nginx_site"
         function_check nginx_compress
-        nginx_compress $AKAUNTING_DOMAIN_NAME
-        echo '' >> $akaunting_nginx_site
-        echo '  # Security' >> $akaunting_nginx_site
+        nginx_compress "$AKAUNTING_DOMAIN_NAME"
+        echo '' >> "$akaunting_nginx_site"
+        echo '  # Security' >> "$akaunting_nginx_site"
         function_check nginx_ssl
-        nginx_ssl $AKAUNTING_DOMAIN_NAME
+        nginx_ssl "$AKAUNTING_DOMAIN_NAME"
 
         function_check nginx_disable_sniffing
-        nginx_disable_sniffing $AKAUNTING_DOMAIN_NAME
+        nginx_disable_sniffing "$AKAUNTING_DOMAIN_NAME"
 
-        echo '  add_header Strict-Transport-Security max-age=15768000;' >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo '  access_log /dev/null;' >> $akaunting_nginx_site
-        echo '  error_log /dev/null;' >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo "  root /var/www/$AKAUNTING_DOMAIN_NAME/htdocs;" >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo '  index index.php;' >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo '  location ~ \.php {' >> $akaunting_nginx_site
-        echo '    include snippets/fastcgi-php.conf;' >> $akaunting_nginx_site
-        echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $akaunting_nginx_site
-        echo '    fastcgi_read_timeout 30;' >> $akaunting_nginx_site
-        echo '  }' >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo '  location / {' >> $akaunting_nginx_site
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo "  root /var/www/$AKAUNTING_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  index index.php;';
+          echo '';
+          echo '  location ~ \.php {';
+          echo '    include snippets/fastcgi-php.conf;';
+          echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+          echo '    fastcgi_read_timeout 30;';
+          echo '  }';
+          echo '';
+          echo '  location / {'; } >> "$akaunting_nginx_site"
         function_check nginx_limits
-        nginx_limits $AKAUNTING_DOMAIN_NAME '15m'
-        echo '    try_files $uri $uri/ @akaunting;' >> $akaunting_nginx_site
-        echo '  }' >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo '  location @akaunting {' >> $akaunting_nginx_site
-        echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $akaunting_nginx_site
-        echo '  }' >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo '  location ~ /\.(ht|git) {' >> $akaunting_nginx_site
-        echo '    deny all;' >> $akaunting_nginx_site
-        echo '  }' >> $akaunting_nginx_site
-        echo '' >> $akaunting_nginx_site
-        echo '}' >> $akaunting_nginx_site
+        nginx_limits "$AKAUNTING_DOMAIN_NAME" '15m'
+        { echo "    try_files \$uri \$uri/ @akaunting;";
+          echo '  }';
+          echo '';
+          echo '  location @akaunting {';
+          echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+          echo '  }';
+          echo '';
+          echo '  location ~ /\.(ht|git) {';
+          echo '    deny all;';
+          echo '  }';
+          echo '';
+          echo '}'; } >> "$akaunting_nginx_site"
     else
-        echo -n '' > $akaunting_nginx_site
+        echo -n '' > "$akaunting_nginx_site"
     fi
-    echo 'server {' >> $akaunting_nginx_site
-    echo "    listen 127.0.0.1:$AKAUNTING_ONION_PORT default_server;" >> $akaunting_nginx_site
-    echo "    server_name $AKAUNTING_ONION_HOSTNAME;" >> $akaunting_nginx_site
-    echo '' >> $akaunting_nginx_site
-    function_check nginx_compress
-    nginx_compress $AKAUNTING_DOMAIN_NAME
-    echo '' >> $akaunting_nginx_site
+    { echo 'server {';
+      echo "    listen 127.0.0.1:$AKAUNTING_ONION_PORT default_server;";
+      echo "    server_name $AKAUNTING_ONION_HOSTNAME;";
+      echo ''; } >> "$akaunting_nginx_site"
+      function_check nginx_compress
+    nginx_compress "$AKAUNTING_DOMAIN_NAME"
+    echo '' >> "$akaunting_nginx_site"
     function_check nginx_disable_sniffing
-    nginx_disable_sniffing $AKAUNTING_DOMAIN_NAME
-    echo '' >> $akaunting_nginx_site
-    echo '  access_log /dev/null;' >> $akaunting_nginx_site
-    echo '  error_log /dev/null;' >> $akaunting_nginx_site
-    echo '' >> $akaunting_nginx_site
-    echo "  root /var/www/$AKAUNTING_DOMAIN_NAME/htdocs;" >> $akaunting_nginx_site
-    echo '' >> $akaunting_nginx_site
-    echo '  index index.php;' >> $akaunting_nginx_site
-    echo '' >> $akaunting_nginx_site
-    echo '  location ~ \.php {' >> $akaunting_nginx_site
-    echo '    include snippets/fastcgi-php.conf;' >> $akaunting_nginx_site
-    echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;' >> $akaunting_nginx_site
-    echo '    fastcgi_read_timeout 30;' >> $akaunting_nginx_site
-    echo '  }' >> $akaunting_nginx_site
-    echo '' >> $akaunting_nginx_site
-    echo '  location / {' >> $akaunting_nginx_site
+    nginx_disable_sniffing "$AKAUNTING_DOMAIN_NAME"
+    { echo '';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo "  root /var/www/$AKAUNTING_DOMAIN_NAME/htdocs;";
+      echo '';
+      echo '  index index.php;';
+      echo '';
+      echo '  location ~ \.php {';
+      echo '    include snippets/fastcgi-php.conf;';
+      echo '    fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+      echo '    fastcgi_read_timeout 30;';
+      echo '  }';
+      echo '';
+      echo '  location / {'; } >> "$akaunting_nginx_site"
     function_check nginx_limits
-    nginx_limits $AKAUNTING_DOMAIN_NAME '15m'
-    echo '    try_files $uri $uri/ @akaunting;' >> $akaunting_nginx_site
-    echo '  }' >> $akaunting_nginx_site
-    echo '' >> $akaunting_nginx_site
-    echo '  location @akaunting {' >> $akaunting_nginx_site
-    echo '    rewrite ^(.*)$ /index.php?p=$1 last;' >> $akaunting_nginx_site
-    echo '  }' >> $akaunting_nginx_site
-    echo '' >> $akaunting_nginx_site
-    echo '  location ~ /\.(ht|git) {' >> $akaunting_nginx_site
-    echo '    deny all;' >> $akaunting_nginx_site
-    echo '  }' >> $akaunting_nginx_site
-    echo '}' >> $akaunting_nginx_site
+    nginx_limits "$AKAUNTING_DOMAIN_NAME" '15m'
+    { echo "    try_files \$uri \$uri/ @akaunting;";
+      echo '  }';
+      echo '';
+      echo '  location @akaunting {';
+      echo "    rewrite ^(.*)\$ /index.php?p=\$1 last;";
+      echo '  }';
+      echo '';
+      echo '  location ~ /\.(ht|git) {';
+      echo '    deny all;';
+      echo '  }';
+      echo '}'; } >> "$akaunting_nginx_site"
 
     function_check configure_php
     configure_php
 
     function_check create_site_certificate
-    create_site_certificate $AKAUNTING_DOMAIN_NAME 'yes'
+    create_site_certificate "$AKAUNTING_DOMAIN_NAME" 'yes'
 
     function_check nginx_ensite
-    nginx_ensite $AKAUNTING_DOMAIN_NAME
+    nginx_ensite "$AKAUNTING_DOMAIN_NAME"
 
     akaunting_remove_bad_links
 
@@ -460,7 +461,7 @@ function install_akaunting {
     systemctl restart php7.0-fpm
     systemctl restart nginx
 
-    ${PROJECT_NAME}-pass -u $MY_USERNAME -a akaunting -p "$AKAUNTING_ADMIN_PASSWORD"
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a akaunting -p "$AKAUNTING_ADMIN_PASSWORD"
 
     set_completion_param "akaunting domain" "$AKAUNTING_DOMAIN_NAME"
 

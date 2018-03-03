@@ -66,12 +66,12 @@ function syncthing_create_ids_file {
 
     SYNCTHING_ID=$(cat ~/.syncthing-server-id)
     if [ ! -f $SYNCTHING_CONFIG_FILE ]; then
-        echo $'# Your syncthing configuration file' > $SYNCTHING_CONFIG_FILE
-        echo '#' >> $SYNCTHING_CONFIG_FILE
-        echo $"# The ${PROJECT_NAME} syncthing ID is: $SYNCTHING_ID" >> $SYNCTHING_CONFIG_FILE
-        echo '#' >> $SYNCTHING_CONFIG_FILE
-        echo '# Paste the IDs of your devices below' >> $SYNCTHING_CONFIG_FILE
-        echo '#' >> $SYNCTHING_CONFIG_FILE
+        { echo $'# Your syncthing configuration file';
+          echo '#';
+          echo $"# The ${PROJECT_NAME} syncthing ID is: $SYNCTHING_ID";
+          echo '#';
+          echo '# Paste the IDs of your devices below';
+          echo '#'; } > $SYNCTHING_CONFIG_FILE
     fi
 }
 
@@ -94,12 +94,13 @@ function syncthing_show_id {
     SYNCTHING_ID=$(cat ~/.syncthing-server-id)
     dialog --title $"Device ID for ${PROJECT_NAME}" \
            --backtitle $"Freedombone User Control Panel" \
-           --msgbox $"In a desktop terminal press shift and select the ID below,\nthen right click and copy.\n\nWithin Connectbot select Menu/Copy and then highlight the ID below\n\n$SYNCTHING_ID\n\nAlternatively press Enter to display a QR code which can be scanned." 13 78
+           --msgbox $"In a desktop terminal press shift and select the ID below,\\nthen right click and copy.\\n\\nWithin Connectbot select Menu/Copy and then highlight the ID below\\n\\n$SYNCTHING_ID\\n\\nAlternatively press Enter to display a QR code which can be scanned." 13 78
     clear
     echo $'Your Syncthing ID code'
     echo ''
     echo -n "$SYNCTHING_ID" | qrencode -t UTF8
     echo ''
+    # shellcheck disable=SC2034
     read -n1 -rsp $"Press any key to continue..." key
 }
 
@@ -110,21 +111,23 @@ function syncthing_add_id {
 
     syncthing_create_ids_file
 
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
+    data=$(mktemp 2>/dev/null)
     dialog --backtitle $"Freedombone User Control Panel" \
            --title $"Add a Syncthing device ID" \
            --form $"Paste the device ID for your laptop/desktop/netbook/phone/tablet below" 9 80 2 \
            $"Device ID:" 1 1 "" 1 26 80 80 \
            $"Description (optional):" 2 1 "" 2 26 80 80 \
-           2> $data
+           2> "$data"
     sel=$?
     case $sel in
-        1) return;;
-        255) return;;
+        1) rm -f "$data"
+           return;;
+        255) rm -f "$data"
+             return;;
     esac
-    SYNCTHING_DEVICE_ID=$(cat $data | sed -n 1p)
-    SYNCTHING_DESCRIPTION=$(cat $data | sed -n 2p)
+    SYNCTHING_DEVICE_ID=$(sed -n 1p < "$data")
+    SYNCTHING_DESCRIPTION=$(sed -n 2p < "$data")
+    rm -f "$data"
 
     if [ ${#SYNCTHING_DEVICE_ID} -lt 10 ]; then
         return
@@ -164,19 +167,21 @@ function syncthing_remove_id {
 
     syncthing_create_ids_file
 
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
+    data=$(mktemp 2>/dev/null)
     dialog --backtitle $"Freedombone User Control Panel" \
            --title $"Remove a Syncthing device ID" \
            --form $"Paste the device ID which is to be removed below" 8 80 1 \
            $"Device ID:" 1 1 "" 1 14 80 80 \
-           2> $data
+           2> "$data"
     sel=$?
     case $sel in
-        1) return;;
-        255) return;;
+        1) rm -f "$data"
+           return;;
+        255) rm -f "$data"
+             return;;
     esac
-    SYNCTHING_DEVICE_ID=$(cat $data | sed -n 1p)
+    SYNCTHING_DEVICE_ID=$(sed -n 1p < "$data")
+    rm -f "$data"
 
     if [ ${#SYNCTHING_DEVICE_ID} -lt 10 ]; then
         return
@@ -212,8 +217,7 @@ function run_client_syncthing {
 
     while true
     do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
+        data=$(mktemp 2>/dev/null)
         dialog --backtitle $"Freedombone User Control Panel" \
                --title $"File Synchronization" \
                --radiolist $"Choose an operation:" 12 70 6 \
@@ -221,19 +225,23 @@ function run_client_syncthing {
                2 $"Add an ID for another machine or device" off \
                3 $"Remove an ID for another machine or device" off \
                4 $"Manually edit device IDs" off \
-               5 $"Back to main menu" on 2> $data
+               5 $"Back to main menu" on 2> "$data"
         sel=$?
         case $sel in
-            1) break;;
-            255) break;;
+            1) rm -f "$data"
+               break;;
+            255) rm -f "$data"
+                 break;;
         esac
-        case $(cat $data) in
+        case $(cat "$data") in
             1) syncthing_show_id;;
             2) syncthing_add_id;;
             3) syncthing_remove_id;;
             4) syncthing_manual_edit;;
-            5) break;;
+            5) rm -f "$data"
+               break;;
         esac
+        rm -f "$data"
     done
 }
 
@@ -260,21 +268,21 @@ function backup_local_syncthing {
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d /home/$USERNAME/Sync ]; then
+            if [ -d "/home/$USERNAME/Sync" ]; then
                 echo $"Backing up syncthing files for $USERNAME"
-                backup_directory_to_usb /home/$USERNAME/Sync syncthing/$USERNAME
+                backup_directory_to_usb "/home/$USERNAME/Sync" "syncthing/$USERNAME"
                 # ensure that device IDs will be backed up as part of user config settings
-                if [ ! -d /home/$USERNAME/.config/syncthing ]; then
-                    mkdir -p /home/$USERNAME/.config/syncthing
-                    chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+                if [ ! -d "/home/$USERNAME/.config/syncthing" ]; then
+                    mkdir -p "/home/$USERNAME/.config/syncthing"
+                    chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME/.config"
                 fi
-                if [ -f /home/$USERNAME/.syncthing-server-id ]; then
-                    cp /home/$USERNAME/.syncthing-server-id /home/$USERNAME/.config/syncthing
-                    chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+                if [ -f "/home/$USERNAME/.syncthing-server-id" ]; then
+                    cp "/home/$USERNAME/.syncthing-server-id" "/home/$USERNAME/.config/syncthing"
+                    chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME/.config"
                 fi
-                if [ -f /home/$USERNAME/.syncthingids ]; then
-                    cp /home/$USERNAME/.syncthingids /home/$USERNAME/.config/syncthing
-                    chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+                if [ -f "/home/$USERNAME/.syncthingids" ]; then
+                    cp "/home/$USERNAME/.syncthingids" "/home/$USERNAME/.config/syncthing"
+                    chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME/.config"
                 fi
             fi
         fi
@@ -288,7 +296,7 @@ function restore_local_syncthing {
     fi
 
     temp_restore_dir=/root/tempsyncthing
-    if [ -d $USB_MOUNT/backup/syncthingconfig ]; then
+    if [ -d "$USB_MOUNT/backup/syncthingconfig" ]; then
         echo $"Restoring syncthing configuration"
         function_check restore_directory_from_usb
         restore_directory_from_usb ${temp_restore_dir}config syncthingconfig
@@ -297,9 +305,7 @@ function restore_local_syncthing {
         if [ ! -d $SYNCTHING_CONFIG_PATH ]; then
             mkdir -p $SYNCTHING_CONFIG_PATH
         fi
-        cp -r ${temp_restore_dir}config/* $SYNCTHING_CONFIG_PATH/
-
-        if [ ! "$?" = "0" ]; then
+        if ! cp -r ${temp_restore_dir}config/* $SYNCTHING_CONFIG_PATH/; then
             set_user_permissions
             backup_unmount_drive
             systemctl start syncthing
@@ -309,7 +315,7 @@ function restore_local_syncthing {
         rm -rf ${temp_restore_dir}config
     fi
 
-    if [ -d $USB_MOUNT/backup/syncthingshared ]; then
+    if [ -d "$USB_MOUNT/backup/syncthingshared" ]; then
         echo $"Restoring syncthing shared files"
         restore_directory_from_usb ${temp_restore_dir}shared syncthingshared
         #cp -r ${temp_restore_dir}shared/* /
@@ -321,28 +327,29 @@ function restore_local_syncthing {
         rm -rf ${temp_restore_dir}shared
     fi
 
-    if [ -d $USB_MOUNT/backup/syncthing ]; then
+    if [ -d "$USB_MOUNT/backup/syncthing" ]; then
         for d in $USB_MOUNT/backup/syncthing/*/ ; do
             USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
             if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+                if [ ! -d "/home/$USERNAME" ]; then
+                    "${PROJECT_NAME}-adduser" "$USERNAME"
                 fi
                 echo $"Restoring syncthing files for $USERNAME"
-                restore_directory_from_usb ${temp_restore_dir} syncthing/$USERNAME
-                if [ -d ${temp_restore_dir}/home/$USERNAME/Sync ]; then
-                    cp -r ${temp_restore_dir}/home/$USERNAME/Sync /home/$USERNAME/
+                restore_directory_from_usb "${temp_restore_dir}" "syncthing/$USERNAME"
+                if [ -d "${temp_restore_dir}/home/$USERNAME/Sync" ]; then
+                    cp -r "${temp_restore_dir}/home/$USERNAME/Sync" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/Sync ]; then
-                        mkdir /home/$USERNAME/Sync
+                    if [ ! -d "/home/$USERNAME/Sync" ]; then
+                        mkdir "/home/$USERNAME/Sync"
                     fi
                     if [ -d /root/Sync ]; then
-                        cp -r /root/Sync/* /home/$USERNAME/Sync/
+                        cp -r /root/Sync/* "/home/$USERNAME/Sync/"
                         rm -rf /root/Sync
                     else
-                        cp -r ${temp_restore_dir}/* /home/$USERNAME/Sync/
+                        cp -r "${temp_restore_dir}/*" "/home/$USERNAME/Sync/"
                     fi
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf ${temp_restore_dir}
                     set_user_permissions
@@ -354,13 +361,13 @@ function restore_local_syncthing {
                 rm -rf ${temp_restore_dir}
 
                 # restore device IDs from config settings
-                if [ -f /home/$USERNAME/.config/syncthing/.syncthing-server-id ]; then
-                    cp /home/$USERNAME/.config/syncthing/.syncthing-server-id /home/$USERNAME/.syncthing-server-id
-                    chown $USERNAME:$USERNAME /home/$USERNAME/.syncthing-server-id
+                if [ -f "/home/$USERNAME/.config/syncthing/.syncthing-server-id" ]; then
+                    cp "/home/$USERNAME/.config/syncthing/.syncthing-server-id" "/home/$USERNAME/.syncthing-server-id"
+                    chown "$USERNAME":"$USERNAME" "/home/$USERNAME/.syncthing-server-id"
                 fi
-                if [ -f /home/$USERNAME/.config/syncthing/.syncthingids ]; then
-                    cp /home/$USERNAME/.config/syncthing/.syncthingids /home/$USERNAME/.syncthingids
-                    chown $USERNAME:$USERNAME /home/$USERNAME/.syncthingids
+                if [ -f "/home/$USERNAME/.config/syncthing/.syncthingids" ]; then
+                    cp "/home/$USERNAME/.config/syncthing/.syncthingids" "/home/$USERNAME/.syncthingids"
+                    chown "$USERNAME":"$USERNAME" "/home/$USERNAME/.syncthingids"
                 fi
             fi
         done
@@ -389,21 +396,21 @@ function backup_remote_syncthing {
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            if [ -d /home/$USERNAME/Sync ]; then
+            if [ -d "/home/$USERNAME/Sync" ]; then
                 echo $"Backing up syncthing files for $USERNAME"
-                backup_directory_to_friend /home/$USERNAME/Sync syncthing/$USERNAME
+                backup_directory_to_friend "/home/$USERNAME/Sync" "syncthing/$USERNAME"
                 # ensure that device IDs will be backed up as part of user config settings
-                if [ ! -d /home/$USERNAME/.config/syncthing ]; then
-                    mkdir -p /home/$USERNAME/.config/syncthing
-                    chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+                if [ ! -d "/home/$USERNAME/.config/syncthing" ]; then
+                    mkdir -p "/home/$USERNAME/.config/syncthing"
+                    chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME/.config"
                 fi
-                if [ -f /home/$USERNAME/.syncthing-server-id ]; then
-                    cp /home/$USERNAME/.syncthing-server-id /home/$USERNAME/.config/syncthing
-                    chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+                if [ -f "/home/$USERNAME/.syncthing-server-id" ]; then
+                    cp "/home/$USERNAME/.syncthing-server-id" "/home/$USERNAME/.config/syncthing"
+                    chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME/.config"
                 fi
-                if [ -f /home/$USERNAME/.syncthingids ]; then
-                    cp /home/$USERNAME/.syncthingids /home/$USERNAME/.config/syncthing
-                    chown -R $USERNAME:$USERNAME /home/$USERNAME/.config
+                if [ -f "/home/$USERNAME/.syncthingids" ]; then
+                    cp "/home/$USERNAME/.syncthingids" "/home/$USERNAME/.config/syncthing"
+                    chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME/.config"
                 fi
             fi
         fi
@@ -416,7 +423,7 @@ function restore_remote_syncthing {
         systemctl stop cron
     fi
 
-    if [ -d $SERVER_DIRECTORY/backup/syncthingconfig ]; then
+    if [ -d "$SERVER_DIRECTORY/backup/syncthingconfig" ]; then
         echo $"Restoring syncthing configuration"
         temp_restore_dir=/root/tempsyncthingconfig
         function_check restore_directory_from_friend
@@ -425,8 +432,7 @@ function restore_remote_syncthing {
         if [ ! -d $SYNCTHING_CONFIG_PATH ]; then
             mkdir -p $SYNCTHING_CONFIG_PATH
         fi
-        cp -r ${temp_restore_dir}/* $SYNCTHING_CONFIG_PATH/
-        if [ ! "$?" = "0" ]; then
+        if ! cp -r ${temp_restore_dir}/* $SYNCTHING_CONFIG_PATH/; then
             systemctl start syncthing
             systemctl start cron
             exit 6833
@@ -434,7 +440,7 @@ function restore_remote_syncthing {
         rm -rf $temp_restore_dir
     fi
 
-    if [ -d $SERVER_DIRECTORY/backup/syncthingshared ]; then
+    if [ -d "$SERVER_DIRECTORY/backup/syncthingshared" ]; then
         echo $"Restoring syncthing shared files"
         temp_restore_dir=/root/tempsyncthingshared
         function_check restore_directory_from_friend
@@ -446,30 +452,31 @@ function restore_remote_syncthing {
         rm -rf ${temp_restore_dir}
     fi
 
-    if [ -d $SERVER_DIRECTORY/backup/syncthing ]; then
+    if [ -d "$SERVER_DIRECTORY/backup/syncthing" ]; then
         for d in $SERVER_DIRECTORY/backup/syncthing/*/ ; do
             USERNAME=$(echo "$d" | awk -F '/' '{print $6}')
             if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-                if [ ! -d /home/$USERNAME ]; then
-                    ${PROJECT_NAME}-adduser $USERNAME
+                if [ ! -d "/home/$USERNAME" ]; then
+                    "${PROJECT_NAME}-adduser" "$USERNAME"
                 fi
                 echo $"Restoring syncthing files for $USERNAME"
                 temp_restore_dir=/root/tempsyncthing
                 function_check restore_directory_from_friend
-                restore_directory_from_friend $temp_restore_dir syncthing/$USERNAME
-                if [ -d $temp_restore_dir/home/$USERNAME/Sync ]; then
-                    cp -r $temp_restore_dir/home/$USERNAME/Sync /home/$USERNAME/
+                restore_directory_from_friend "$temp_restore_dir" "syncthing/$USERNAME"
+                if [ -d "$temp_restore_dir/home/$USERNAME/Sync" ]; then
+                    cp -r "$temp_restore_dir/home/$USERNAME/Sync" "/home/$USERNAME/"
                 else
-                    if [ ! -d /home/$USERNAME/Sync ]; then
-                        mkdir /home/$USERNAME/Sync
+                    if [ ! -d "/home/$USERNAME/Sync" ]; then
+                        mkdir "/home/$USERNAME/Sync"
                     fi
                     if [ -d /root/Sync ]; then
-                        cp -r /root/Sync/* /home/$USERNAME/Sync/
+                        cp -r /root/Sync/* "/home/$USERNAME/Sync/"
                         rm -rf /root/Sync
                     else
-                        cp -r ${temp_restore_dir}/* /home/$USERNAME/Sync/
+                        cp -r "${temp_restore_dir}/*" "/home/$USERNAME/Sync/"
                     fi
                 fi
+                # shellcheck disable=SC2181
                 if [ ! "$?" = "0" ]; then
                     rm -rf $temp_restore_dir
                     systemctl start syncthing
@@ -479,13 +486,13 @@ function restore_remote_syncthing {
                 rm -rf $temp_restore_dir
 
                 # restore device IDs from config settings
-                if [ -f /home/$USERNAME/.config/syncthing/.syncthing-server-id ]; then
-                    cp /home/$USERNAME/.config/syncthing/.syncthing-server-id /home/$USERNAME/.syncthing-server-id
-                    chown $USERNAME:$USERNAME /home/$USERNAME/.syncthing-server-id
+                if [ -f "/home/$USERNAME/.config/syncthing/.syncthing-server-id" ]; then
+                    cp "/home/$USERNAME/.config/syncthing/.syncthing-server-id" "/home/$USERNAME/.syncthing-server-id"
+                    chown "$USERNAME":"$USERNAME" "/home/$USERNAME/.syncthing-server-id"
                 fi
-                if [ -f /home/$USERNAME/.config/syncthing/.syncthingids ]; then
-                    cp /home/$USERNAME/.config/syncthing/.syncthingids /home/$USERNAME/.syncthingids
-                    chown $USERNAME:$USERNAME /home/$USERNAME/.syncthingids
+                if [ -f "/home/$USERNAME/.config/syncthing/.syncthingids" ]; then
+                    cp "/home/$USERNAME/.config/syncthing/.syncthingids" "/home/$USERNAME/.syncthingids"
+                    chown "$USERNAME":"$USERNAME" "/home/$USERNAME/.syncthingids"
                 fi
                 echo $"Restore of syncthing files for $USERNAME complete"
             fi
@@ -512,12 +519,12 @@ function remove_syncthing {
 }
 
 function configure_firewall_for_syncthing {
-    if [[ $(is_completed $FUNCNAME) == "1" ]]; then
+    if [[ $(is_completed "${FUNCNAME[0]}") == "1" ]]; then
         return
     fi
 
     firewall_add Syncthing ${SYNCTHING_PORT}
-    mark_completed $FUNCNAME
+    mark_completed "${FUNCNAME[0]}"
 }
 
 function install_syncthing_repo {
@@ -537,22 +544,22 @@ function install_syncthing {
 
     # This probably does need to run as root so that it can access the Sync directories
     # in each user's home directory
-    echo '[Unit]' > /etc/systemd/system/syncthing.service
-    echo 'Description=Syncthing - Open Source Continuous File Synchronization' >> /etc/systemd/system/syncthing.service
-    echo 'Documentation=man:syncthing(1)' >> /etc/systemd/system/syncthing.service
-    echo 'After=network.target' >> /etc/systemd/system/syncthing.service
-    echo 'Wants=syncthing-inotify@.service' >> /etc/systemd/system/syncthing.service
-    echo '' >> /etc/systemd/system/syncthing.service
-    echo '[Service]' >> /etc/systemd/system/syncthing.service
-    echo 'User=root' >> /etc/systemd/system/syncthing.service
-    echo "Environment='all_proxy=socks5://localhost:9050'" >> /etc/systemd/system/syncthing.service
-    echo 'ExecStart=/usr/bin/syncthing -no-browser -no-restart -logflags=0' >> /etc/systemd/system/syncthing.service
-    echo 'Restart=on-failure' >> /etc/systemd/system/syncthing.service
-    echo 'SuccessExitStatus=3 4' >> /etc/systemd/system/syncthing.service
-    echo 'RestartForceExitStatus=3 4' >> /etc/systemd/system/syncthing.service
-    echo '' >> /etc/systemd/system/syncthing.service
-    echo '[Install]' >> /etc/systemd/system/syncthing.service
-    echo 'WantedBy=multi-user.target' >> /etc/systemd/system/syncthing.service
+    { echo '[Unit]';
+      echo 'Description=Syncthing - Open Source Continuous File Synchronization';
+      echo 'Documentation=man:syncthing(1)';
+      echo 'After=network.target';
+      echo 'Wants=syncthing-inotify@.service';
+      echo '';
+      echo '[Service]';
+      echo 'User=root';
+      echo "Environment='all_proxy=socks5://localhost:9050'";
+      echo 'ExecStart=/usr/bin/syncthing -no-browser -no-restart -logflags=0';
+      echo 'Restart=on-failure';
+      echo 'SuccessExitStatus=3 4';
+      echo 'RestartForceExitStatus=3 4';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/syncthing.service
     systemctl enable syncthing
     systemctl daemon-reload
     systemctl start syncthing

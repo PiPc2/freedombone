@@ -47,124 +47,119 @@ function show_help {
     exit 0
 }
 
-while [[ $# > 1 ]]
+while [ $# -gt 1 ]
 do
     key="$1"
 
     case $key in
-    -h|--help)
-        show_help
-        ;;
-    -u|--user)
-        shift
-        MYUSERNAME="$1"
-        ;;
-    -l|--list)
-        shift
-        MAILINGLIST="$1"
-        ;;
-    -s|--subject)
-        shift
-        SUBJECTTAG="$1"
-        ;;
-    -e|--email)
-        shift
-        LIST_ADDRESS="$1"
-        ;;
-    -p|--public)
-        shift
-        PUBLIC="$1"
-        ;;
-    *)
-        # unknown option
-        ;;
+        -h|--help)
+            show_help
+            ;;
+        -u|--user)
+            shift
+            MYUSERNAME="$1"
+            ;;
+        -l|--list)
+            shift
+            MAILINGLIST="$1"
+            ;;
+        -s|--subject)
+            shift
+            SUBJECTTAG="$1"
+            ;;
+        -e|--email)
+            shift
+            LIST_ADDRESS="$1"
+            ;;
+        -p|--public)
+            shift
+            PUBLIC="$1"
+            ;;
+        *)
+            # unknown option
+            ;;
     esac
     shift
 done
 
-if [ ! $MYUSERNAME ]; then
+if [ ! "$MYUSERNAME" ]; then
     show_help
 fi
 
-if [[ ! $MAILINGLIST && ! $SUBJECTTAG ]]; then
+if [[ ! "$MAILINGLIST" && ! "$SUBJECTTAG" ]]; then
     show_help
 fi
 
-MUTTRC=/home/$MYUSERNAME/.muttrc
-PM=/home/$MYUSERNAME/.procmailrc
-LISTDIR=/home/$MYUSERNAME/Maildir/$MAILINGLIST
+MUTTRC="/home/$MYUSERNAME/.muttrc"
+PM="/home/$MYUSERNAME/.procmailrc"
+LISTDIR="/home/$MYUSERNAME/Maildir/$MAILINGLIST"
 
-if grep -q "=$MAILINGLIST" $MUTTRC; then
+if grep -q "=$MAILINGLIST" "$MUTTRC"; then
     echo $"Mailing list $MAILINGLIST was already added"
 fi
 
 if [ ! -d "$LISTDIR" ]; then
-    mkdir -m 700 $LISTDIR
-    mkdir -m 700 $LISTDIR/tmp
-    mkdir -m 700 $LISTDIR/new
-    mkdir -m 700 $LISTDIR/cur
+    mkdir -m 700 "$LISTDIR"
+    mkdir -m 700 "$LISTDIR/tmp"
+    mkdir -m 700 "$LISTDIR/new"
+    mkdir -m 700 "$LISTDIR/cur"
 fi
 
-chown -R $MYUSERNAME:$MYUSERNAME $LISTDIR
+chown -R "$MYUSERNAME":"$MYUSERNAME" "$LISTDIR"
 
 if [ ${#SUBJECTTAG} -gt 0 ]; then
     # use the subject tag
-    if ! grep -q "Subject:.*()\[$SUBJECTTAG\]" $PM; then
-    if [[ $PUBLIC != "yes" ]]; then
-        # private emails go after the encryption stage
-        filter="
-# Email rule for $MAILINGLIST subject [$SUBJECTTAG]
-:0
-  * ^Subject:.*()\[$SUBJECTTAG\]
-$LISTDIR/new
-# End of rule
-"
-        echo "$filter" >> $PM
-    else
-        # public emails are copied before hte encryption stage
-        if ! grep -q '# encrypt' $PM; then
-        filter="
-# Email rule for $MAILINGLIST subject [$SUBJECTTAG]
-:0
-  * ^Subject:.*()\[$SUBJECTTAG\]
-$LISTDIR/new
-# End of rule
-"
-        echo "$filter" >> $PM
+    if ! grep -q "Subject:.*()\\[$SUBJECTTAG\\]" "$PM"; then
+        if [[ $PUBLIC != "yes" ]]; then
+            # private emails go after the encryption stage
+            { echo "# Email rule for $MAILINGLIST subject [$SUBJECTTAG]";
+              echo ":0";
+              echo "  * ^Subject:.*()\\[$SUBJECTTAG\\]";
+              echo "$LISTDIR/new";
+              echo "# End of rule";
+              echo ""; } >> "$PM"
         else
-        filter=$(echo "# Email rule for $MAILINGLIST subject [$SUBJECTTAG]\n:0\n  * ^Subject:.*()\\\[$SUBJECTTAG\\\]\n$LISTDIR/new\n# End of rule\n")
-        sed -i "/# encrypt/i ${filter}" $PM
+            # public emails are copied before hte encryption stage
+            if ! grep -q '# encrypt' "$PM"; then
+                { echo "# Email rule for $MAILINGLIST subject [$SUBJECTTAG]";
+                  echo ":0";
+                  echo "  * ^Subject:.*()\\[$SUBJECTTAG\\]";
+                  echo "$LISTDIR/new";
+                  echo "# End of rule";
+                  echo ""; } >> "$PM"
+            else
+                sed -i "/# encrypt/i # Email rule for $MAILINGLIST subject [$SUBJECTTAG]\\n:0\\n  * ^Subject:.*()\\\\[$SUBJECTTAG\\\\]\\n$LISTDIR/new\\n# End of rule\\n" "$PM"
+            fi
         fi
-    fi
-    chown $MYUSERNAME:$MYUSERNAME $PM
+        chown "$MYUSERNAME":"$MYUSERNAME" "$PM"
     fi
 else
-    exit $(${PROJECT_NAME}-addemail -u $MYUSERNAME -e $LIST_ADDRESS -g $MAILINGLIST --public $PUBLIC)
+    exit "$("${PROJECT_NAME}-addemail" -u "$MYUSERNAME" -e "$LIST_ADDRESS" -g "$MAILINGLIST" --public "$PUBLIC")"
 fi
 
 if [ ! -f "$MUTTRC" ]; then
-    cp /etc/Muttrc $MUTTRC
-    chown $MYUSERNAME:$MYUSERNAME $MUTTRC
+    cp /etc/Muttrc "$MUTTRC"
+    chown "$MYUSERNAME":"$MYUSERNAME" "$MUTTRC"
 fi
 
-PROCMAILLOG=/home/$MYUSERNAME/log
-if [ ! -d $PROCMAILLOG ]; then
-    mkdir $PROCMAILLOG
-    chown -R $MYUSERNAME:$MYUSERNAME $PROCMAILLOG
+PROCMAILLOG="/home/$MYUSERNAME/log"
+if [ ! -d "$PROCMAILLOG" ]; then
+    mkdir "$PROCMAILLOG"
+    chown -R "$MYUSERNAME":"$MYUSERNAME" "$PROCMAILLOG"
 fi
 
-MUTT_MAILBOXES=$(grep "mailboxes =" $MUTTRC)
-if [[ $MUTT_MAILBOXES != *$MAILINGLIST* ]]; then
-    if ! grep -q "=$MAILINGLIST" $MUTTRC; then
-    sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" $MUTTRC
-    chown $MYUSERNAME:$MYUSERNAME $MUTTRC
+MUTT_MAILBOXES=$(grep "mailboxes =" "$MUTTRC")
+if [[ "$MUTT_MAILBOXES" != *$MAILINGLIST* ]]; then
+    if ! grep -q "=$MAILINGLIST" "$MUTTRC"; then
+        sed -i "s|$MUTT_MAILBOXES|$MUTT_MAILBOXES =$MAILINGLIST|g" "$MUTTRC"
+        chown "$MYUSERNAME":"$MYUSERNAME" "$MUTTRC"
     fi
 fi
 
-if [ $LIST_ADDRESS ]; then
-    sed -i "s|unsubscribe $LIST_ADDRESS|subscribe $LIST_ADDRESS|g" $MUTTRC
-    if ! grep -q "subscribe $LIST_ADDRESS" $MUTTRC; then
-    echo "subscribe $LIST_ADDRESS" >> $MUTTRC
+if [ "$LIST_ADDRESS" ]; then
+    sed -i "s|unsubscribe $LIST_ADDRESS|subscribe $LIST_ADDRESS|g" "$MUTTRC"
+    if ! grep -q "subscribe $LIST_ADDRESS" "$MUTTRC"; then
+        echo "subscribe $LIST_ADDRESS" >> "$MUTTRC"
     fi
 fi
 

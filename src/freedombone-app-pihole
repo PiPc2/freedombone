@@ -66,17 +66,17 @@ function pihole_copy_files {
     if [ ! -d /etc/.pihole ]; then
         mkdir /etc/.pihole
     fi
-    cp $INSTALL_DIR/pihole/adlists.default /etc/.pihole/adlists.default
-    cp $INSTALL_DIR/pihole/adlists.default $piholeDir/adlists.default
+    cp "$INSTALL_DIR/pihole/adlists.default" /etc/.pihole/adlists.default
+    cp "$INSTALL_DIR/pihole/adlists.default" $piholeDir/adlists.default
     if [ ! -f $PIHOLE_CUSTOM_ADLIST ]; then
-        cp $INSTALL_DIR/pihole/adlists.default $PIHOLE_CUSTOM_ADLIST
+        cp "$INSTALL_DIR/pihole/adlists.default" $PIHOLE_CUSTOM_ADLIST
     fi
-    cp $INSTALL_DIR/pihole/advanced/Scripts/* /opt/$piholeBasename
+    cp "$INSTALL_DIR/pihole/advanced/Scripts/*" /opt/$piholeBasename
     if [ -f /etc/dnsmasq.d/01-pihole.conf ]; then
         rm /etc/dnsmasq.d/01-pihole.conf
     fi
-    cp $INSTALL_DIR/pihole/advanced/pihole.cron /etc/cron.d/pihole
-    cp $INSTALL_DIR/pihole/gravity.sh /opt/$piholeBasename
+    cp "$INSTALL_DIR/pihole/advanced/pihole.cron" /etc/cron.d/pihole
+    cp "$INSTALL_DIR/pihole/gravity.sh" /opt/$piholeBasename
     chmod +x /opt/pihole/*.sh
 }
 
@@ -95,7 +95,7 @@ function pihole_update {
         return
     fi
 
-    if [ ! -f $HOME/${PROJECT_NAME}-wifi.cfg ]; then
+    if [ ! -f "$HOME/${PROJECT_NAME}-wifi.cfg" ]; then
         PIHOLE_IFACE=eth0
     else
         read_config_param WIFI_INTERFACE
@@ -114,13 +114,13 @@ function pihole_update {
     echo "piholeDNS1=${PIHOLE_DNS1}" >> ${setupVars}
     echo "piholeDNS2=${PIHOLE_DNS1}" >> ${setupVars}
 
-    echo 'domain-needed' > /etc/dnsmasq.conf
-    echo 'bogus-priv' >> /etc/dnsmasq.conf
-    echo 'no-resolv' >> /etc/dnsmasq.conf
-    echo "server=${PIHOLE_DNS1}" >> /etc/dnsmasq.conf
-    echo "server=${PIHOLE_DNS2}" >> /etc/dnsmasq.conf
-    echo "interface=${PIHOLE_IFACE}" >> /etc/dnsmasq.conf
-    echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
+    { echo 'domain-needed';
+      echo 'bogus-priv';
+      echo 'no-resolv';
+      echo "server=${PIHOLE_DNS1}";
+      echo "server=${PIHOLE_DNS2}";
+      echo "interface=${PIHOLE_IFACE}";
+      echo 'listen-address=127.0.0.1'; } > /etc/dnsmasq.conf
 
     pihole -g
     systemctl restart dnsmasq
@@ -132,8 +132,7 @@ function pihole_update {
 }
 
 function pihole_change_upstream_dns {
-    data=$(tempfile 2>/dev/null)
-    trap "rm -f $data" 0 1 2 5 15
+    data=$(mktemp 2>/dev/null)
     dialog --backtitle $"Ad Blocker Upstream DNS" \
            --radiolist $"Pick a domain name service (DNS):" 28 50 19 \
            1 $"Digital Courage" on \
@@ -154,13 +153,15 @@ function pihole_change_upstream_dns {
            16 $"DNS.Watch" off \
            17 $"uncensoreddns.org" off \
            18 $"Lorraine Data Network" off \
-           19 $"Google" off 2> $data
+           19 $"Google" off 2> "$data"
     sel=$?
     case $sel in
-        1) exit 1;;
-        255) exit 1;;
+        1) rm -f "$data"
+           exit 1;;
+        255) rm -f "$data"
+             exit 1;;
     esac
-    case $(cat $data) in
+    case $(cat "$data") in
         1) PIHOLE_DNS1='85.214.73.63'
            PIHOLE_DNS2='213.73.91.35'
            ;;
@@ -218,10 +219,12 @@ function pihole_change_upstream_dns {
         19) PIHOLE_DNS1='8.8.8.8'
             PIHOLE_DNS2='4.4.4.4'
             dialog --title $"WARNING" \
-                   --msgbox $"\nGoogle's main purpose for providing DNS resolvers is to spy upon people and know which sites they are visiting.\n\nThis is something to consider, and you should only really be using Google DNS as a last resort if other resolvers are unavailable." 12 60
+                   --msgbox $"\\nGoogle's main purpose for providing DNS resolvers is to spy upon people and know which sites they are visiting.\\n\\nThis is something to consider, and you should only really be using Google DNS as a last resort if other resolvers are unavailable." 12 60
             ;;
-        255) exit 1;;
+        255) rm -f "$data"
+             exit 1;;
     esac
+    rm -f "$data"
     write_config_param "PIHOLE_DNS1" "$PIHOLE_DNS1"
     write_config_param "PIHOLE_DNS2" "$PIHOLE_DNS2"
 }
@@ -252,8 +255,7 @@ function pihole_resume {
 function configure_interactive_pihole {
     while true
     do
-        data=$(tempfile 2>/dev/null)
-        trap "rm -f $data" 0 1 2 5 15
+        data=$(mktemp 2>/dev/null)
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"Ad Blocker" \
                --radiolist $"Choose an operation:" 16 70 7 \
@@ -263,13 +265,15 @@ function configure_interactive_pihole {
                4 $"Change upstream DNS servers" off \
                5 $"Pause blocker" off \
                6 $"Resume blocker" off \
-               7 $"Exit" on 2> $data
+               7 $"Exit" on 2> "$data"
         sel=$?
         case $sel in
-            1) exit 1;;
-            255) exit 1;;
+            1) rm -f "$data"
+               exit 1;;
+            255) rm -f "$data"
+                 exit 1;;
         esac
-        case $(cat $data) in
+        case $(cat "$data") in
             1) editor $PIHOLE_CUSTOM_ADLIST
                update_pihole_interactive
                ;;
@@ -286,8 +290,10 @@ function configure_interactive_pihole {
                ;;
             6) pihole_resume
                ;;
-            7) break;;
+            7) rm -f "$data"
+               break;;
         esac
+        rm -f "$data"
     done
 }
 
@@ -306,7 +312,7 @@ function upgrade_pihole {
     fi
 
     function_check set_repo_commit
-    set_repo_commit $INSTALL_DIR/pihole "pihole commit" "$PIHOLE_COMMIT" $PIHOLE_REPO
+    set_repo_commit "$INSTALL_DIR/pihole" "pihole commit" "$PIHOLE_COMMIT" $PIHOLE_REPO
 
     pihole_copy_files
     pihole_update
@@ -367,8 +373,8 @@ function remove_pihole {
         rm /etc/cron.d/pihole
     fi
 
-    if [ -d $INSTALL_DIR/pihole ]; then
-        rm -rf $INSTALL_DIR/pihole
+    if [ -d "$INSTALL_DIR/pihole" ]; then
+        rm -rf "$INSTALL_DIR/pihole"
     fi
 
     firewall_remove 53
@@ -391,27 +397,27 @@ function install_pihole {
 
     systemctl enable dnsmasq
 
-    if [ ! -d $INSTALL_DIR ]; then
-        mkdir -p $INSTALL_DIR
+    if [ ! -d "$INSTALL_DIR" ]; then
+        mkdir -p "$INSTALL_DIR"
     fi
 
-    if [ ! -d $INSTALL_DIR/pihole ]; then
-        cd $INSTALL_DIR
+    if [ ! -d "$INSTALL_DIR/pihole" ]; then
+        cd "$INSTALL_DIR" || exit 78245624527
 
         if [ -d /repos/pihole ]; then
             mkdir pihole
             cp -r -p /repos/pihole/. pihole
-            cd pihole
+            cd pihole || exit 24572424684
             git pull
         else
             git_clone $PIHOLE_REPO pihole
         fi
 
-        if [ ! -d $INSTALL_DIR/pihole ]; then
+        if [ ! -d "$INSTALL_DIR/pihole" ]; then
             exit 523925
         fi
-        cd $INSTALL_DIR/pihole
-        git checkout $PIHOLE_COMMIT -b $PIHOLE_COMMIT
+        cd "$INSTALL_DIR/pihole" || exit 2682468242
+        git checkout "$PIHOLE_COMMIT" -b "$PIHOLE_COMMIT"
         set_completion_param "pihole commit" "$PIHOLE_COMMIT"
     fi
 
@@ -420,21 +426,21 @@ function install_pihole {
     fi
 
     # blank file which takes the place of ads
-    echo '<html>' > /var/www/pihole/htdocs/index.html
-    echo '<body>' >> /var/www/pihole/htdocs/index.html
-    echo '</body>' >> /var/www/pihole/htdocs/index.html
-    echo '</html>' >> /var/www/pihole/htdocs/index.html
+    { echo '<html>';
+      echo '<body>';
+      echo '</body>';
+      echo '</html>'; } > /var/www/pihole/htdocs/index.html
 
-    if [ ! -f $INSTALL_DIR/pihole/gravity.sh ]; then
+    if [ ! -f "$INSTALL_DIR/pihole/gravity.sh" ]; then
         exit 26738
     fi
-    cp $INSTALL_DIR/pihole/gravity.sh /usr/local/bin/gravity.sh
+    cp "$INSTALL_DIR/pihole/gravity.sh" /usr/local/bin/gravity.sh
     chmod 755 /usr/local/bin/gravity.sh
 
-    if [ ! -f $INSTALL_DIR/pihole/pihole ]; then
+    if [ ! -f "$INSTALL_DIR/pihole/pihole" ]; then
         exit 52935
     fi
-    cp $INSTALL_DIR/pihole/pihole /usr/local/bin/pihole
+    cp "$INSTALL_DIR/pihole/pihole" /usr/local/bin/pihole
     chmod 755 /usr/local/bin/pihole
 
     if [ ! -d $piholeDir ]; then
