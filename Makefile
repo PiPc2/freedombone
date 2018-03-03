@@ -23,6 +23,7 @@ install:
 	mkdir -p ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -p ${DESTDIR}/usr/share/${APP}/avatars
 	mkdir -p ${DESTDIR}/etc/${APP}
+	cp src/${APP} ${DESTDIR}${PREFIX}/bin
 	rm -f ${DESTDIR}/${PREFIX}/bin/${APP}-*
 	cp -r image_build/* ${DESTDIR}/etc/${APP}
 	cp img/backgrounds/${APP}_*.png ${DESTDIR}${PREFIX}/share
@@ -40,6 +41,7 @@ install:
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-app-* ${DESTDIR}/usr/share/${APP}/apps
 	mv ${DESTDIR}${PREFIX}/bin/${APP}-utils-* ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -m 755 -p ${DESTDIR}${PREFIX}/share/man/man1
+	cp man/${APP}.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	rm ${DESTDIR}${PREFIX}/share/man/man1/${APP}*.1.gz
 	cp man/*.1.gz ${DESTDIR}${PREFIX}/share/man/man1
 	cp man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
