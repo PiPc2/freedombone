@@ -184,13 +184,14 @@ function test_domain_name {
 # Checks whether certificates were generated for the given hostname
 function check_certificates {
     if [ ! "$1" ]; then
-        return
+        echo $'No certificate name provided'
+        exit 3568736585683
     fi
     USE_LETSENCRYPT='no'
     if [ "$2" ]; then
         USE_LETSENCRYPT="$2"
     fi
-    if [[ $USE_LETSENCRYPT == 'no' ]]; then
+    if [[ $USE_LETSENCRYPT == 'no' || "$ONION_ONLY" != 'no' ]]; then
         if [ ! -f "/etc/ssl/private/${1}.key" ]; then
             echo $"Private certificate for ${CHECK_HOSTNAME} was not created"
             exit 63959
@@ -239,17 +240,27 @@ function cert_exists {
 }
 
 function create_self_signed_cert {
+    if [ ! "${SITE_DOMAIN_NAME}" ]; then
+        echo $'No site domain specified for self signed cert'
+        exit 4638565385
+    fi
     "${PROJECT_NAME}-addcert" -h "${SITE_DOMAIN_NAME}" --dhkey "${DH_KEYLENGTH}"
     function_check check_certificates
     check_certificates "${SITE_DOMAIN_NAME}"
 }
 
 function create_letsencrypt_cert {
+    if [ ! "${SITE_DOMAIN_NAME}" ]; then
+        echo $'No site domain specified for letsencrypt cert'
+        exit 246824624
+    fi
+
     if ! "${PROJECT_NAME}-addcert" -e "${SITE_DOMAIN_NAME}" -s "${LETSENCRYPT_SERVER}" --dhkey "${DH_KEYLENGTH}" --email "${MY_EMAIL_ADDRESS}"; then
         if [[ ${NO_SELF_SIGNED} == 'no' ]]; then
             echo $"Lets Encrypt failed for ${SITE_DOMAIN_NAME}, so try making a self-signed cert"
             "${PROJECT_NAME}-addcert" -h "${SITE_DOMAIN_NAME}" --dhkey "${DH_KEYLENGTH}"
             function_check check_certificates
+            CHECK_HOSTNAME="${SITE_DOMAIN_NAME}"
             check_certificates "${SITE_DOMAIN_NAME}"
         else
             echo $"Lets Encrypt failed for $SITE_DOMAIN_NAME"
@@ -263,6 +274,7 @@ function create_letsencrypt_cert {
     fi
 
     function_check check_certificates
+    CHECK_HOSTNAME="${SITE_DOMAIN_NAME}"
     check_certificates "${SITE_DOMAIN_NAME}" 'yes'
 }
 
@@ -1004,6 +1016,7 @@ function email_install_tls {
     fi
     if [ ! -f /etc/ssl/certs/exim.dhparam ]; then
         "${PROJECT_NAME}-addcert" -h exim --dhkey "$DH_KEYLENGTH"
+        CHECK_HOSTNAME=exim
         check_certificates exim
         cp /etc/ssl/certs/exim.dhparam /etc/exim4
         chown root:Debian-exim /etc/exim4/exim.dhparam
