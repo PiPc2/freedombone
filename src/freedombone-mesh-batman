@@ -8,7 +8,7 @@
 #
 #                    Freedom in the Cloud
 #
-# Used to enable or disable batman mesh protocol on wlanX
+# Used to enable or disable batman mesh protocol on a given interface
 #
 # License
 # =======
@@ -34,23 +34,11 @@ COMPLETION_FILE="/root/${PROJECT_NAME}-completed.txt"
 # hotspot passphrase must be 5 characters or longer
 HOTSPOT_PASSPHRASE="${PROJECT_NAME}"
 
-interface_type='wlan'
+# The type of interface which the mesh will run on
+MESH_INTERFACE_TYPE='wlan'
 
 source /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-wifi
 source /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-mesh
-
-mesh_protocol_init
-update_wifi_adaptors "${interface_type}"
-
-if [ ! "$IFACE" ]; then
-    echo $'No wlan adaptor'
-    exit 0
-fi
-
-if [ -e /etc/default/batctl ]; then
-    # shellcheck disable=SC1091
-    . /etc/default/batctl
-fi
 
 function status {
     batctl o
@@ -170,7 +158,7 @@ function add_wifi_interface {
 
 # shellcheck disable=SC2120
 function start {
-    update_wifi_adaptors "${interface_type}"
+    update_wifi_adaptors "${MESH_INTERFACE_TYPE}"
 
     if [ -z "$IFACE" ] ; then
         echo 'error: unable to find wifi interface, not enabling batman-adv mesh'
@@ -237,7 +225,7 @@ function start {
             brctl addif "$BRIDGE" "$EIFACE"
             ifconfig "$EIFACE" 0.0.0.0
             ifconfig "$EIFACE" up promisc
-            echo $'End of ethernet bridge'
+            echo $'End of internet bridge'
 
             sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx6 dev=${IFACE} dev=${EIFACE}|g" /etc/systemd/system/bmx6.service
             sed -i "s|ExecStart=.*|ExecStart=/usr/sbin/bmx7 dev=${IFACE} dev=${EIFACE}|g" /etc/systemd/system/bmx7.service
@@ -358,6 +346,31 @@ function monitor {
     # shellcheck disable=SC2119
     start
 }
+
+# optionally a file can contain the mesh interface type
+mesh_interface_type_file=/root/.mesh_interface_type
+if [ -f "$mesh_interface_type_file" ]; then
+    MESH_INTERFACE_TYPE=$(head -n 1 < "$mesh_interface_type_file")
+    if [[ "$MESH_INTERFACE_TYPE" == 'wlan'* ]]; then
+        MESH_INTERFACE_TYPE='wlan'
+    fi
+    if [[ "$MESH_INTERFACE_TYPE" == 'eth'* ]]; then
+        MESH_INTERFACE_TYPE='eth'
+    fi
+fi
+
+mesh_protocol_init
+update_wifi_adaptors "${MESH_INTERFACE_TYPE}"
+
+if [ ! "$IFACE" ]; then
+    echo $'No wlan adaptor'
+    exit 0
+fi
+
+if [ -e /etc/default/batctl ]; then
+    # shellcheck disable=SC1091
+    . /etc/default/batctl
+fi
 
 if ! grep -q "$IFACE" /proc/net/dev; then
     echo "Interface \$IFACE was not found"
