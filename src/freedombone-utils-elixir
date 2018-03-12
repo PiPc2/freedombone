@@ -31,12 +31,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+erlang_package='erlang-solutions_1.0_all.deb'
+
 function remove_elixir {
     apt-get -yq remove elixir erlang-xmerl erlang-dev erlang-parsetools
     apt-get -yq remove esl-erlang
 }
 
 function install_elixir {
+    if [ -f /usr/local/bin/mix ]; then
+        return
+    fi
+
     apt-get -yq install wget build-essential
 
     if [ ! -d "$INSTALL_DIR" ]; then
@@ -44,7 +50,6 @@ function install_elixir {
     fi
 
     cd "$INSTALL_DIR" || exit 768345274
-    erlang_package=erlang-solutions_1.0_all.deb
     wget https://packages.erlang-solutions.com/$erlang_package
     if [ ! -f "$INSTALL_DIR/$erlang_package" ]; then
         exit 72853
@@ -55,6 +60,38 @@ function install_elixir {
     apt-get -yq install elixir erlang-xmerl erlang-dev erlang-parsetools
 
     if [ ! -f /usr/local/bin/mix ]; then
+        echo $'/usr/local/bin/mix not found after elixir installation'
+        exit 629352
+    fi
+}
+
+function image_install_elixir {
+    if [[ $VARIANT == "mesh"* ]]; then
+        return
+    fi
+
+    # shellcheck disable=SC2154
+    chroot "$rootdir" apt-get -yq install wget build-essential
+
+    if [ ! -d "$rootdir$INSTALL_DIR" ]; then
+        mkdir -p "$rootdir$INSTALL_DIR"
+    fi
+
+    { echo '#!/bin/bash';
+      echo "cd $INSTALL_DIR";
+      echo "erlang_package=$erlang_package";
+      echo "wget https://packages.erlang-solutions.com/\$erlang_package";
+      echo "if [ ! -f \"\$INSTALL_DIR/\$erlang_package\" ]; then";
+      echo '    exit 1';
+      echo 'fi';
+      echo "dpkg -i \$erlang_package"; } > "$rootdir/usr/bin/install_elixir"
+    chmod +x "$rootdir/usr/bin/install_elixir"
+    chroot "$rootdir" /usr/bin/install_elixir
+    chroot "$rootdir" apt-get -yq update
+    chroot "$rootdir" apt-get -yq install esl-erlang
+    chroot "$rootdir" apt-get -yq install elixir erlang-xmerl erlang-dev erlang-parsetools
+
+    if [ ! -f "$rootdir/usr/local/bin/mix" ]; then
         echo $'/usr/local/bin/mix not found after elixir installation'
         exit 629352
     fi
