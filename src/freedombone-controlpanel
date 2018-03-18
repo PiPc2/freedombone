@@ -129,42 +129,8 @@ fi
 
 function any_key {
     echo ''
+    # shellcheck disable=SC2034
     read -n1 -rsp $"Press any key to continue..." key
-}
-
-function any_key_verify {
-    echo ''
-    read -n1 -rsp $"Press any key to continue or C to check a hash..." key
-    if [[ "$key" != 'c' && "$key" != 'C' ]]; then
-        return
-    fi
-
-    data=$(mktemp 2>/dev/null)
-    dialog --title $"Check tripwire hash" \
-           --backtitle $"Freedombone Control Panel" \
-           --inputbox $"Paste your tripwire hash below and it will be checked against the current database" 12 60 2>"$data"
-    sel=$?
-    case $sel in
-        0)
-            GIVEN_HASH=$(<"$data")
-            if [ ${#GIVEN_HASH} -gt 8 ]; then
-                if [[ "$GIVEN_HASH" == *' '* ]]; then
-                    dialog --title $"Check tripwire" \
-                           --msgbox $"\\nThe hash should not contain any spaces" 10 40
-                else
-                    DBHASH=$(sha512sum "/var/lib/tripwire/${HOSTNAME}.twd" | awk -F ' ' '{print $1}')
-                    if [[ "$DBHASH" == "$GIVEN_HASH" ]]; then
-                        dialog --title $"Check tripwire" \
-                               --msgbox $"\\nSuccess\\n\\nThe hash you gave matches the current tripwire database" 10 40
-                    else
-                        dialog --title $"Check tripwire" \
-                               --msgbox $"\\nFailed\\n\\nThe hash you gave does not match the current tripwire database. This might be because you reset the tripwire, or there could have been an unauthorised modification of the system" 12 50
-                    fi
-                fi
-            fi
-            ;;
-    esac
-    rm -f "$data"
 }
 
 function reset_password_tries {
@@ -1182,81 +1148,6 @@ function security_settings {
     "${PROJECT_NAME}-sec"
 }
 
-function show_tripwire_verification_code {
-    if [ ! -f "/var/lib/tripwire/${HOSTNAME}.twd" ]; then
-        return
-    fi
-    clear
-    echo ''
-    echo $'Tripwire Verification Code'
-    echo ''
-    DBHASH=$(sha512sum "/var/lib/tripwire/${HOSTNAME}.twd")
-    echo -n "$DBHASH" | qrencode -t UTF8
-    echo ''
-    echo "$DBHASH"
-    echo ''
-}
-
-function reset_tripwire {
-    if [ ! -f /usr/bin/reset-tripwire ]; then
-        echo $'Missing /usr/bin/reset-tripwire'
-        any_key
-        return
-    fi
-    if [ ! -f "/etc/tripwire/${HOSTNAME}-local.key" ]; then
-        if [ -f "/etc/tripwire/${PROJECT_NAME}-local.key" ]; then
-            # shellcheck disable=SC2086
-            mv /etc/tripwire/${PROJECT_NAME}-local.key /etc/tripwire/${HOSTNAME}-local.key
-            # shellcheck disable=SC2086
-            mv /etc/tripwire/${PROJECT_NAME}-site.key /etc/tripwire/${HOSTNAME}-site.key
-        else
-            echo $'Error: missing local key'
-            any_key
-            return
-        fi
-    fi
-    clear
-    echo $'Turing off logging...'
-    "${PROJECT_NAME}-logging" off
-    echo $'Locking down permissions...'
-    lockdown_permissions
-    echo $'Creating configuration...'
-    echo '
-
-       ' | twadmin --create-cfgfile -S "/etc/tripwire/${HOSTNAME}-site.key" /etc/tripwire/twcfg.txt
-    echo $'Resetting policy...'
-    echo '
-
-       ' | twadmin --create-polfile -S "/etc/tripwire/${HOSTNAME}-site.key" /etc/tripwire/twpol.txt
-    echo $'Creating tripwire database'
-    echo '
-
-' | tripwire --init --cfgfile /etc/tripwire/tw.cfg --polfile /etc/tripwire/tw.pol --dbfile "/var/lib/tripwire/${HOSTNAME}.twd"
-    echo $'Resetting the Tripwire...'
-    echo ''
-    echo '
-
-                ' | reset-tripwire
-    echo ''
-
-    # Sometimes nginx fails to restart if matrix is installed
-    # Restart matrix first
-    if [ -d /etc/matrix ]; then
-        systemctl restart matrix
-        systemctl restart nginx
-    fi
-
-    if [ -f "/var/lib/tripwire/${HOSTNAME}.twd" ]; then
-        show_tripwire_verification_code
-        echo $'Tripwire is now reset. Take a note of the above hash, or record'
-        echo $'the QR code using a mobile device. This will enable you to independently'
-        echo $'verify the integrity of the tripwire.'
-    else
-        echo $'ERROR: tripwire database was not created'
-    fi
-    any_key
-}
-
 function format_drive {
     detect_usb_drive
     dialog --title $"Format USB drive $USB_DRIVE" \
@@ -2082,26 +1973,24 @@ function menu_top_level {
     do
         W=(1 $"About this system"
            2 $"Backup and Restore"
-           3 $"Verify Tripwire Code"
-           4 $"Reset Tripwire"
-           5 $"App Settings"
-           6 $"Add/Remove Apps"
-           7 $"Logging on/off"
-           8 $"Ping enable/disable"
-           9 $"Manage Users"
-           10 $"Email Menu"
-           11 $"Domain or User Blocking"
-           12 $"Security Settings"
-           13 $"Change the name of this system"
-           14 $"Set a static local IP address"
-           15 $"Wifi menu"
-           16 $"Add Clacks"
-           17 $"Check for updates"
-           18 $"Power off the system"
-           19 $"Restart the system")
+           3 $"App Settings"
+           4 $"Add/Remove Apps"
+           5 $"Logging on/off"
+           6 $"Ping enable/disable"
+           7 $"Manage Users"
+           8 $"Email Menu"
+           9 $"Domain or User Blocking"
+           10 $"Security Settings"
+           11 $"Change the name of this system"
+           12 $"Set a static local IP address"
+           13 $"Wifi menu"
+           14 $"Add Clacks"
+           15 $"Check for updates"
+           16 $"Power off the system"
+           17 $"Restart the system")
 
         # shellcheck disable=SC2068
-        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Administrator Control Panel" --menu $"Choose an operation, or ESC to exit:" 27 60 27 "${W[@]}" 3>&2 2>&1 1>&3)
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Administrator Control Panel" --menu $"Choose an operation, or ESC to exit:" 25 60 25 "${W[@]}" 3>&2 2>&1 1>&3)
 
         if [ ! "$selection" ]; then
             break
@@ -2112,27 +2001,24 @@ function menu_top_level {
         case $selection in
             1) show_about;;
             2) menu_backup_restore;;
-            3) show_tripwire_verification_code
-               any_key_verify;;
-            4) reset_tripwire;;
-            5) menu_app_settings;;
-            6) if ! /usr/local/bin/addremove; then
+            3) menu_app_settings;;
+            4) if ! /usr/local/bin/addremove; then
                    any_key
                fi
                ;;
-            7) logging_on_off;;
-            8) ping_enable_disable;;
-            9) menu_users;;
-            10) menu_email;;
-            11) domain_blocking;;
-            12) security_settings;;
-            13) change_system_name;;
-            14) set_static_IP;;
-            15) menu_wifi;;
-            16) add_clacks;;
-            17) check_for_updates;;
-            18) shut_down_system;;
-            19) restart_system;;
+            5) logging_on_off;;
+            6) ping_enable_disable;;
+            7) menu_users;;
+            8) menu_email;;
+            9) domain_blocking;;
+            10) security_settings;;
+            11) change_system_name;;
+            12) set_static_IP;;
+            13) menu_wifi;;
+            14) add_clacks;;
+            15) check_for_updates;;
+            16) shut_down_system;;
+            17) restart_system;;
         esac
     done
 }
