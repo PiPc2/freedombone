@@ -245,7 +245,6 @@ function pleroma_recompile {
     if [ -f /etc/systemd/system/pleroma.service ]; then
         systemctl restart pleroma
     fi
-
 }
 
 function logging_on_pleroma {
@@ -724,6 +723,11 @@ function upgrade_pleroma {
         return
     fi
 
+    pleroma_registrations=open
+    if grep -q 'registrations_open: false' $PLEROMA_DIR/config/config.exs; then
+        pleroma_registrations=
+    fi
+
     # make a copy of the configuration
     cp $PLEROMA_DIR/priv/static/static/config.json $PLEROMA_DIR/priv/static/static/config_prev.json
 
@@ -750,6 +754,11 @@ function upgrade_pleroma {
     fi
 
     sudo -u pleroma mix deps.get
+
+    if [ ! $pleroma_registrations ]; then
+        sed -i 's|registrations_open: true|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+        sed -i 's|registrations_open: True|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+    fi
 
     pleroma_recompile
 
@@ -1179,6 +1188,13 @@ function install_pleroma {
     # set registrations open initially
     sed -i 's|registrations_open:.*|registrations_open: true,|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|"registrationOpen":.*|"registrationOpen": true,|g' $PLEROMA_DIR/priv/static/static/config.json
+
+    if ! grep -q "media_proxy" $PLEROMA_DIR/priv/static/static/config.json; then
+        sed -i '/"name":/a "media_proxy": false,' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|"media_proxy"|  "media_proxy"|g' $PLEROMA_DIR/priv/static/static/config.json
+    else
+        sed -i 's|"media_proxy".*|"media_proxy": false,|g' $PLEROMA_DIR/priv/static/static/config.json
+    fi
 
     systemctl daemon-reload
     systemctl enable pleroma
