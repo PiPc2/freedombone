@@ -150,40 +150,70 @@ function configure_email_onion {
     set_completion_param "email onion domain" "${onion_address}"
     add_email_hostname "$onion_address"
 
-    #echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
-    #cdb -m -c -t /tmp/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
+    apt-get -yq install tinycdb perl
 
-    #{ "perl_startup = do '/etc/exim4/perl-routines.pl'";
-    #  "perl_at_start"; } > /etc/exim4/conf.d/main/perl
+    # MX record should be:
+    # _onion-mx._tcp.$DEFAULT_DOMAIN_NAME. 3600 IN SRV 0 5 25 $onion_address
 
-    #{ "use Net::DNS::Resolver;";
-    #  "sub onionLookup {";
-    #  "  my \$hostname = shift;";
-    #  "  my \$res = Net::DNS::Resolver->new(nameservers => [qw(127.0.0.1)],);";
-    #  "  \$res->port(5300);";
-    #  "  my \$query = \$res->search(\$hostname);";
-    #  "  foreach my \$rr (\$query->answer) {";
-    #  "    next unless \$rr->type eq \"A\";";
-    #  "    return \$rr->address;";
-    #  "  }";
-    #  "  return 'no_such_host';";
-    #  "}"; } > /etc/exim4/perl-routines.pl
+    echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
+    cdb -m -c -t ~/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
 
-    #{ "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
-    #  "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/domainlists
+    { "perl_startup = do '/etc/exim4/perl-routines.pl'";
+      "perl_at_start"; } > /etc/exim4/conf.d/main/perl
 
-    #{ "# send things over tor where we have an entry for it";
-    #  "onionrelays:";
-    #  "  driver    = manualroute";
-    #  "  domains   = +onion_relays";
-    #  "  transport = onion_relay";
-    #  "  # get the automap IP for the onion address from the tor daemon";
-    #  "  route_data = \${perl{onionLookup}{\${lookup{\$domain}cdb{ONION_RELAYDB}}}}";
-    #  "  no_more"; } > /etc/exim4/conf.d/router/50_exim4-config-onion
+    { "use Net::DNS::Resolver;";
+      "sub onionLookup {";
+      "  my \$hostname = shift;";
+      "  my \$res = Net::DNS::Resolver->new(nameservers => [qw(127.0.0.1)],);";
+      "  \$res->port(5300);";
+      "  my \$query = \$res->search(\$hostname);";
+      "  foreach my \$rr (\$query->answer) {";
+      "    next unless \$rr->type eq \"A\";";
+      "    return \$rr->address;";
+      "  }";
+      "  return 'no_such_host';";
+      "}"; } > /etc/exim4/perl-routines.pl
 
-    #{ "onion_relay:";
-    #  "  driver = smtp";
-    #  "  socks_proxy = 127.0.0.1 port=9050"; } > /etc/exim4/conf.d/transport/50_exim4-config_onion
+    { "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
+      "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/domainlists
+
+    { "# send things over tor where we have an entry for it";
+      "onionrelays:";
+      "  driver    = manualroute";
+      "  domains   = +onion_relays";
+      "  transport = onion_relay";
+      "  # get the automap IP for the onion address from the tor daemon";
+      "  route_data = \${perl{onionLookup}{\${lookup{\$domain}cdb{ONION_RELAYDB}}}}";
+      "  no_more"; } > /etc/exim4/conf.d/router/50_exim4-config-onion
+
+    { "onion_relay:";
+      "  driver = smtp";
+      "  socks_proxy = 127.0.0.1 port=9050"; } > /etc/exim4/conf.d/transport/50_exim4-config_onion
+
+    if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
+        echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
+    else
+        sed -i 's|#AutomapHostsOnResolve.*|AutomapHostsOnResolve 1|g' /etc/tor/torrc
+        sed -i 's|AutomapHostsOnResolve.*|AutomapHostsOnResolve 1|g' /etc/tor/torrc
+    fi
+
+    if ! grep -q "DNSPort " /etc/tor/torrc; then
+        echo 'DNSPort 5300' >> /etc/tor/torrc
+    else
+        sed -i 's|#DNSPort .*|DNSPort 5300|g' /etc/tor/torrc
+        sed -i 's|DNSPort .*|DNSPort 5300|g' /etc/tor/torrc
+    fi
+
+    if ! grep -q "DNSListenAddress" /etc/tor/torrc; then
+        echo 'DNSListenAddress 127.0.0.1' >> /etc/tor/torrc
+    else
+        sed -i 's|#DNSListenAddress.*|DNSListenAddress 127.0.0.1|g' /etc/tor/torrc
+        sed -i 's|DNSListenAddress.*|DNSListenAddress 127.0.0.1|g' /etc/tor/torrc
+    fi
+
+    dpkg-reconfigure --frontend noninteractive exim4-config
+    systemctl restart tor
+    systemctl restart exim4
 
     mark_completed "${FUNCNAME[0]}"
 }
