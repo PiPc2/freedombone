@@ -9,15 +9,6 @@
 #                    Freedom in the Cloud
 #
 # Pleroma backend application
-# https://git.pleroma.social/pleroma/pleroma/wikis/Installing-on-Debian-Based-Distributions
-#
-# Show stopper: This is dependent on https://placehold.it for avatar images,
-# so at present it's not usable until a first party placeholder image system
-# is included.
-#
-# There is also a possible issue with the chat system which uses an object called
-# "Agent" which may not be supported with the version of elixir within the
-# Debian package. This only applies if you're installing from the latest commit.
 #
 # License
 # =======
@@ -47,7 +38,7 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='59a76ea464998476f8c4814324647f4ae4a7f2cb'
+PLEROMA_COMMIT='c50c7745bc8b8f52ba07c69c0d2505df54da0f59'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
@@ -254,7 +245,6 @@ function pleroma_recompile {
     if [ -f /etc/systemd/system/pleroma.service ]; then
         systemctl restart pleroma
     fi
-
 }
 
 function logging_on_pleroma {
@@ -733,6 +723,11 @@ function upgrade_pleroma {
         return
     fi
 
+    pleroma_registrations=open
+    if grep -q 'registrations_open: false' $PLEROMA_DIR/config/config.exs; then
+        pleroma_registrations=
+    fi
+
     # make a copy of the configuration
     cp $PLEROMA_DIR/priv/static/static/config.json $PLEROMA_DIR/priv/static/static/config_prev.json
 
@@ -760,11 +755,18 @@ function upgrade_pleroma {
 
     sudo -u pleroma mix deps.get
 
+    if [ ! $pleroma_registrations ]; then
+        sed -i 's|registrations_open: true|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+        sed -i 's|registrations_open: True|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+    fi
+
     pleroma_recompile
 
     # migrate database
     sudo -u pleroma mix deps.clean --build mime
     sudo -u pleroma mix ecto.migrate
+
+    pleroma_custom_logo "$PLEROMA_DIR"
 
     expire_pleroma_posts "$PLEROMA_DOMAIN_NAME" "$PLEROMA_EXPIRE_MONTHS"
     create_pleroma_blocklist
@@ -933,6 +935,10 @@ function remove_pleroma {
     sed -i '/pleroma domain/d' "$COMPLETION_FILE"
     sed -i '/pleroma commit/d' "$COMPLETION_FILE"
     sed -i "/$blocking_script_file/d" /etc/crontab
+
+    if [ -f /usr/bin/pleroma-blocking ]; then
+        rm /usr/bin/pleroma-blocking
+    fi
 
     function_check remove_ddns_domain
     remove_ddns_domain "$PLEROMA_DOMAIN_NAME"
@@ -1182,6 +1188,13 @@ function install_pleroma {
     # set registrations open initially
     sed -i 's|registrations_open:.*|registrations_open: true,|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|"registrationOpen":.*|"registrationOpen": true,|g' $PLEROMA_DIR/priv/static/static/config.json
+
+    if ! grep -q "media_proxy" $PLEROMA_DIR/priv/static/static/config.json; then
+        sed -i '/"name":/a "media_proxy": false,' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|"media_proxy"|  "media_proxy"|g' $PLEROMA_DIR/priv/static/static/config.json
+    else
+        sed -i 's|"media_proxy".*|"media_proxy": false,|g' $PLEROMA_DIR/priv/static/static/config.json
+    fi
 
     systemctl daemon-reload
     systemctl enable pleroma

@@ -45,14 +45,14 @@ XMPP_CIPHERS='"EDH+CAMELLIA:EDH+aRSA:EECDH+aRSA+AESGCM:EECDH+aRSA+SHA256:EECDH:+
 XMPP_ECC_CURVE='"secp384r1"'
 
 prosody_latest_version='0.10'
-prosody_nightly=410
-prosody_nightly_hash='9cf3db6a09895a744d72eb90b4a635758a710afe1a16b78506c7139c4e7211eb'
+prosody_nightly=468
+prosody_nightly_hash='c72aaab1182a86090188284f443d2f819889ca242d4e955258ef60f4c7c9a1ba'
 prosody_filename=prosody-${prosody_latest_version}-1nightly${prosody_nightly}
 prosody_nightly_url="https://prosody.im/nightly/${prosody_latest_version}/latest/${prosody_filename}.tar.gz"
 
 # From https://hg.prosody.im/prosody-modules
-prosody_modules_filename='prosody-modules-20180104.tar.gz'
-prosody_modules_hash='7c81b4ed8a90130b4db5902dc1f299ad1c4dab57a0970552b71cb2042a490bc1'
+prosody_modules_filename='prosody-modules-20180322.tar.gz'
+prosody_modules_hash='982d0dfcef98e9cb9cee4cc3801b8ce9a503a32e44c32b99df6fe94545b90072'
 
 xmpp_variables=(ONION_ONLY
                 INSTALLED_WITHIN_DOCKER
@@ -414,10 +414,16 @@ function prosody_daemon_restart_script {
     # On rare occasions the daemon appears to get stuck
     # i.e. still active, but not accepting connections
     # This ensures that it will unstick itself at least once per day
-    if [ ! -f /etc/cron.daily/prosody ]; then
-        echo '#!/bin/bash' > /etc/cron.daily/prosody
-        echo 'systemctl restart prosody' >> /etc/cron.daily/prosody
-        chmod +x /etc/cron.daily/prosody
+    if [ -f /etc/cron.daily/prosody ]; then
+        rm /etc/cron.daily/prosody
+    fi
+    if [ ! -f /etc/cron.hourly/prosody ]; then
+        { echo '#!/bin/bash';
+          echo "is_active=\$(systemctl is-active prosody)";
+          echo "if [[ \"\$is_active\" != 'active' ]]; then";
+          echo '  systemctl restart prosody'
+          echo 'fi'; } > /etc/cron.hourly/prosody
+        chmod +x /etc/cron.hourly/prosody
     fi
 }
 
@@ -667,13 +673,13 @@ function xmpp_contact_info {
         return
     fi
 
-    { 'contact_info = {';
-      "abuse = { \"mailto:${MY_EMAIL_ADDRESS}\", \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
-      "admin = { \"mailto:${MY_EMAIL_ADDRESS}\", \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
-      "feedback = { \"mailto:${MY_EMAIL_ADDRESS}\", \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
-      "security = { \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
-      "support = { \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
-      '};'; } >> "$filename"
+    { echo 'contact_info = {';
+      echo "abuse = { \"mailto:${MY_EMAIL_ADDRESS}\", \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
+      echo "admin = { \"mailto:${MY_EMAIL_ADDRESS}\", \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
+      echo "feedback = { \"mailto:${MY_EMAIL_ADDRESS}\", \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
+      echo "security = { \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
+      echo "support = { \"xmpp:${MY_USERNAME}@${HOSTNAME}\" };";
+      echo '};'; } >> "$filename"
 }
 
 function xmpp_modules {
@@ -867,6 +873,7 @@ function xmpp_create_config {
       echo 'http_upload_file_size_limit = 307200';
       echo '';
       echo "Component \"chat.${DEFAULT_DOMAIN_NAME}\" \"muc\"";
+      echo '    restrict_room_creation = true';
       echo '    name = "Chatrooms"';
       echo '    modules_enabled = {';
       echo '        "muc_limits";';

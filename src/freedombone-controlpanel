@@ -129,127 +129,8 @@ fi
 
 function any_key {
     echo ''
+    # shellcheck disable=SC2034
     read -n1 -rsp $"Press any key to continue..." key
-}
-
-function any_key_verify {
-    echo ''
-    read -n1 -rsp $"Press any key to continue or C to check a hash..." key
-    if [[ "$key" != 'c' && "$key" != 'C' ]]; then
-        return
-    fi
-
-    data=$(mktemp 2>/dev/null)
-    dialog --title $"Check tripwire hash" \
-           --backtitle $"Freedombone Control Panel" \
-           --inputbox $"Paste your tripwire hash below and it will be checked against the current database" 12 60 2>"$data"
-    sel=$?
-    case $sel in
-        0)
-            GIVEN_HASH=$(<"$data")
-            if [ ${#GIVEN_HASH} -gt 8 ]; then
-                if [[ "$GIVEN_HASH" == *' '* ]]; then
-                    dialog --title $"Check tripwire" \
-                           --msgbox $"\\nThe hash should not contain any spaces" 10 40
-                else
-                    DBHASH=$(sha512sum "/var/lib/tripwire/${HOSTNAME}.twd" | awk -F ' ' '{print $1}')
-                    if [[ "$DBHASH" == "$GIVEN_HASH" ]]; then
-                        dialog --title $"Check tripwire" \
-                               --msgbox $"\\nSuccess\\n\\nThe hash you gave matches the current tripwire database" 10 40
-                    else
-                        dialog --title $"Check tripwire" \
-                               --msgbox $"\\nFailed\\n\\nThe hash you gave does not match the current tripwire database. This might be because you reset the tripwire, or there could have been an unauthorised modification of the system" 12 50
-                    fi
-                fi
-            fi
-            ;;
-    esac
-    rm -f "$data"
-}
-
-function get_app_icann_address {
-    app_name="$1"
-    if grep -q "${app_name} domain" "$COMPLETION_FILE"; then
-        grep "${app_name} domain" "${COMPLETION_FILE}" | head -n 1 | awk -F ':' '{print $2}'
-        return
-    else
-        app_name_upper="$(echo "$app_name" | tr '[:lower:]' '[:upper:]')_DOMAIN_NAME"
-        if [ "$app_name_upper" ]; then
-            param_value=$(grep "${app_name_upper}=" "$CONFIGURATION_FILE" | head -n 1 | awk -F '=' '{print $2}')
-            if [ "${param_value}" ]; then
-                echo "${param_value}"
-                return
-            fi
-        fi
-    fi
-    echo "${DEFAULT_DOMAIN_NAME}"
-}
-
-function passwords_select_user {
-    SELECTED_USERNAME=
-
-    # shellcheck disable=SC2207
-    users_array=($(ls /home))
-
-    delete=(git)
-    # shellcheck disable=SC2068
-    for del in ${delete[@]}
-    do
-        # shellcheck disable=SC2206
-        users_array=(${users_array[@]/$del})
-    done
-
-    i=0
-    W=()
-    name=()
-    # shellcheck disable=SC2068
-    for u in ${users_array[@]}
-    do
-        if [[ $(is_valid_user "$u") == "1" ]]; then
-            i=$((i+1))
-            W+=("$i" "$u")
-            name+=("$u")
-        fi
-    done
-
-    if [ $i -eq 1 ]; then
-        SELECTED_USERNAME="${name[0]}"
-    else
-        # shellcheck disable=SC2068
-        user_index=$(dialog --backtitle $"Freedombone Control Panel" --title $"Select User" --menu $"Select one of the following:" 24 40 17 ${W[@]} 3>&2 2>&1 1>&3)
-
-        # shellcheck disable=SC2181
-        if [ $? -eq 0 ]; then
-            SELECTED_USERNAME="${name[$((user_index-1))]}"
-        fi
-    fi
-}
-
-function passwords_show_apps {
-    SELECTED_APP=
-    i=0
-    W=()
-    name=()
-    # shellcheck disable=SC2068
-    for a in ${APPS_AVAILABLE[@]}
-    do
-        if [[ $(function_exists "change_password_${a}") == "1" ]]; then
-            i=$((i+1))
-            W+=("$i" "$a")
-            name+=("$a")
-        fi
-    done
-    i=$((i+1))
-    W+=("$i" "mariadb")
-    name+=("mariadb")
-
-    # shellcheck disable=SC2068
-    selected_app_index=$(dialog --backtitle $"Freedombone Control Panel" --title $"Select App" --menu $"Select one of the following:" 24 40 17 ${W[@]} 3>&2 2>&1 1>&3)
-
-    # shellcheck disable=SC2181
-    if [ $? -eq 0 ]; then
-        SELECTED_APP="${name[$((selected_app_index-1))]}"
-    fi
 }
 
 function reset_password_tries {
@@ -260,67 +141,6 @@ function reset_password_tries {
     pam_tally --user "$SELECTED_USERNAME" --reset
     dialog --title $"Reset password tries" \
            --msgbox $"Password tries have been reset for $SELECTED_USERNAME" 6 60
-}
-
-function view_or_change_passwords {
-    passwords_select_user
-    if [ ! "$SELECTED_USERNAME" ]; then
-        return
-    fi
-    detect_installed_apps
-    passwords_show_apps
-    if [ ! "$SELECTED_APP" ]; then
-        return
-    fi
-
-    CURR_PASSWORD=$("${PROJECT_NAME}-pass" -u "${SELECTED_USERNAME}" -a "${SELECTED_APP}")
-
-    icann_address=$(get_app_icann_address "${SELECTED_APP}")
-    onion_address=$(get_app_onion_address "${SELECTED_APP}")
-
-    titlestr=$"View or Change Password"
-    if [ ${#onion_address} -gt 0 ]; then
-        viewstr=$"${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address or $onion_address\\n\\nCopy or change it if you wish."
-    else
-        viewstr=$"${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address\\n\\nCopy or change it if you wish."
-    fi
-
-    if [ -f /root/.nostore ]; then
-        titlestr=$"Change Password"
-        if [ ${#onion_address} -gt 0 ]; then
-            viewstr=$"Change the ${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address or $onion_address."
-        else
-            viewstr=$"Change the ${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address."
-        fi
-    fi
-
-    if [[ "${SELECTED_APP}" == 'mariadb' ]]; then
-        CURR_PASSWORD=$("${PROJECT_NAME}-pass" -u root -a mariadb)
-        dialog --title $"MariaDB database password" \
-               --msgbox "\\n            ${CURR_PASSWORD}" 7 40
-        return
-    fi
-
-    data=$(mktemp 2>/dev/null)
-    dialog --title "$titlestr" \
-           --backtitle $"Freedombone Control Panel" \
-           --inputbox "$viewstr" 12 75 "$CURR_PASSWORD" 2>"$data"
-    sel=$?
-    case $sel in
-        0)
-            CURR_PASSWORD=$(<"$data")
-            if [ ${#CURR_PASSWORD} -gt 8 ]; then
-                "${PROJECT_NAME}-pass" -u "${SELECTED_USERNAME}" -a "${SELECTED_APP}" -p "${CURR_PASSWORD}"
-                "change_password_${SELECTED_APP}" "${SELECTED_USERNAME}" "${CURR_PASSWORD}"
-                dialog --title $"Change password" \
-                       --msgbox $"The password was changed" 6 40
-            else
-                dialog --title $"Change password" \
-                       --msgbox $"The password given must be at least 8 characters" 6 40
-            fi
-            ;;
-    esac
-    rm -f "$data"
 }
 
 function check_for_updates {
@@ -383,33 +203,58 @@ function pad_string {
     echo -n -e "$1" | sed -e :a -e 's/^.\{1,25\}$/& /;ta'
 }
 
+function show_tor_bridges {
+    if ! grep -q "#BridgeRelay" /etc/tor/torrc; then
+        if grep -q "BridgeRelay 1" /etc/tor/torrc; then
+            read_config_param 'TOR_BRIDGE_PORT'
+            read_config_param 'TOR_BRIDGE_NICKNAME'
+            if [ ${#TOR_BRIDGE_NICKNAME} -gt 0 ]; then
+                W+=($"Your Tor Bridge" "$(get_ipv4_address):${TOR_BRIDGE_PORT} ${TOR_BRIDGE_NICKNAME}")
+            fi
+        fi
+    fi
+    bridges_list=$(grep "Bridge " /etc/tor/torrc | grep -v '##')
+    if [ ${#bridges_list} -gt 0 ]; then
+        for i in "${bridges_list[@]}"
+        do
+            bridgestr=$(i//Bridge /)
+            W+=($"Tor Bridge" "$bridgestr")
+        done
+    fi
+}
+
 function show_domains {
     read_config_param "DEFAULT_DOMAIN_NAME"
 
-    echo 'Domains'
-    echo '======='
-    echo ''
-    echo -n -e "$(pad_string 'Name')"
-    echo -n -e "$(pad_string 'ICANN')"
-    echo -n -e "$(pad_string 'Tor')"
-    echo ''
-    echo '--------------------------------------------------------------------------'
+    W=()
+
+    W+=("IPv4" "$(get_ipv4_address) / $(get_external_ipv4_address)")
+    ipv6_address="$(get_ipv6_address)"
+    if [ ${#ipv6_address} -gt 0 ]; then
+        W+=("IPv6" "${ipv6_address}")
+    fi
+
+
     if grep -q "ssh onion domain" "$COMPLETION_FILE"; then
-        echo -n -e "$(pad_string 'ssh')"
-        echo -n -e "$(pad_string "${DEFAULT_DOMAIN_NAME}")"
-        grep 'ssh onion domain' "${COMPLETION_FILE}" | awk -F ':' '{print $2}'
+        domain_onion=$(grep 'ssh onion domain' "${COMPLETION_FILE}" | awk -F ':' '{print $2}')
+        W+=("ssh" "${DEFAULT_DOMAIN_NAME} / ${domain_onion}")
     fi
     if grep -q "email onion domain" "$COMPLETION_FILE"; then
-        echo -n -e "$(pad_string 'Email')"
-        echo -n -e "$(pad_string "${DEFAULT_DOMAIN_NAME}")"
-        grep 'email onion domain' "${COMPLETION_FILE}" | awk -F ':' '{print $2}'
+        domain_onion=$(grep 'email onion domain' "${COMPLETION_FILE}" | awk -F ':' '{print $2}')
+        W+=("Email" "${DEFAULT_DOMAIN_NAME} / ${domain_onion}")
     fi
     if grep -q "sks onion domain" "$COMPLETION_FILE"; then
         read_config_param "KEYSERVER_DOMAIN_NAME"
-        echo -n -e "$(pad_string 'SKS')"
-        echo -n -e "$(pad_string "${KEYSERVER_DOMAIN_NAME}")"
-        grep 'sks onion domain' "${COMPLETION_FILE}" | awk -F ':' '{print $2}'
+        domain_onion=$(grep 'sks onion domain' "${COMPLETION_FILE}" | awk -F ':' '{print $2}')
+        W+=("SKS" "${KEYSERVER_DOMAIN_NAME} / ${domain_onion}")
     fi
+
+    INTRODUCER_FILENAME=/home/tahoelafs/data/private/introducer.furl
+    if [ -f $INTRODUCER_FILENAME ]; then
+        W+=("Tahoe-LAFS" "$(cat $INTRODUCER_FILENAME)")
+    fi
+
+    show_tor_bridges
 
     # shellcheck disable=SC2068
     for app_name in ${APPS_INSTALLED_NAMES[@]}
@@ -446,36 +291,43 @@ function show_domains {
                 onion_address="-"
             fi
 
-            echo -n -e "$(pad_string "${app_name}")"
-            echo -n -e "$(pad_string "${icann_address}")"
-            echo "${onion_address}"
+            if [[ "${icann_address}" != '-' ]]; then
+                if [[ "${onion_address}" != '-' ]]; then
+                    W+=("${app_name}" "${icann_address} / ${onion_address}")
+                else
+                    W+=("${app_name}" "${icann_address}")
+                fi
+            else
+                W+=("${app_name}" "${onion_address}")
+            fi
 
             if grep -q "mobile${app_name} onion domain" "$COMPLETION_FILE"; then
                 onion_address=$(get_app_onion_address "${app_name}" "mobile")
-                echo -n -e "$(pad_string "${app_name} (mobile)")"
-                echo -n -e "$(pad_string "${icann_address}")"
-                echo "${onion_address}"
+                if [[ "${icann_address}" != '-' ]]; then
+                    W+=("${app_name} (mobile)" "${icann_address} / ${onion_address}")
+                else
+                    W+=("${app_name} (mobile)" "${onion_address}")
+                fi
             fi
         fi
     done
 
     if grep -q "rss reader domain" "$COMPLETION_FILE"; then
         if [ -d /var/lib/tor/hidden_service_ttrss ]; then
-            echo -n -e "$(pad_string 'RSS reader')"
-            RSSDOM='-'
-            echo -n -e "$(pad_string ${RSSDOM})"
-            echo -n "$(cat /var/lib/tor/hidden_service_ttrss/hostname)"
-            echo ''
+            domain_onion=$(cat /var/lib/tor/hidden_service_ttrss/hostname)
+            W+=("RSS Reader" "${domain_onion}")
         fi
         if [ -d /var/lib/tor/hidden_service_mobilerss ]; then
-            echo -n -e "$(pad_string 'RSS mobile')"
-            RSSMOBILEDOM='-'
-            echo -n -e "$(pad_string ${RSSMOBILEDOM})"
-            echo -n "$(cat /var/lib/tor/hidden_service_mobilerss/hostname)"
-            echo ''
+            domain_onion=$(cat /var/lib/tor/hidden_service_mobilerss/hostname)
+            W+=("RSS mobile" "${domain_onion}")
         fi
     fi
-    echo ''
+
+    width=$(tput cols)
+    height=$(tput lines)
+
+    # shellcheck disable=SC2068
+    dialog --backtitle $"Freedombone Control Panel" --title $"Domains" --menu $"Use Shift+cursors to select and copy onion addresses" $((height-4)) $((width-4)) $((height-4)) "${W[@]}" 3>&2 2>&1 1>&3
 }
 
 function show_users {
@@ -525,34 +377,6 @@ function show_ip_addresses {
     echo ''
 }
 
-function show_tor_bridges {
-    bridges_list=$(grep "Bridge " /etc/tor/torrc | grep -v '##')
-    if [ ${#bridges_list} -gt 0 ]; then
-        echo $'Tor Bridges'
-        echo '==========='
-        echo ''
-        echo "${bridges_list}"
-        echo ''
-        echo ''
-    fi
-    if ! grep -q "#BridgeRelay" /etc/tor/torrc; then
-        if grep -q "BridgeRelay 1" /etc/tor/torrc; then
-            read_config_param 'TOR_BRIDGE_PORT'
-            read_config_param 'TOR_BRIDGE_NICKNAME'
-            if [ ${#TOR_BRIDGE_NICKNAME} -gt 0 ]; then
-                echo "Tor bridge on this system"
-                echo '========================='
-                echo ''
-                echo "IP Address: $(get_ipv4_address)"
-                echo "Port:       ${TOR_BRIDGE_PORT}"
-                echo "Nickname:   ${TOR_BRIDGE_NICKNAME}"
-                echo ''
-                echo ''
-            fi
-        fi
-    fi
-}
-
 function show_ssh_public_key {
     echo $'SSH Public Keys'
     echo '==============='
@@ -562,33 +386,18 @@ function show_ssh_public_key {
     echo ''
 }
 
-function show_tahoelafs_introducer {
-    INTRODUCER_FILENAME=/home/tahoelafs/data/private/introducer.furl
-    if [ ! -f $INTRODUCER_FILENAME ]; then
-        return
-    fi
-    echo $'Tahoe-LAFS introducer'
-    echo '====================='
-    echo ''
-    cat $INTRODUCER_FILENAME
-    echo ''
-    echo ''
-}
-
 function show_about {
     detect_apps
     get_apps_installed_names
 
-    clear
-    echo "==== ${PROJECT_NAME} version ${VERSION} ($DEBIAN_VERSION) ===="
-    echo ''
-    show_ip_addresses
-    show_tor_bridges
-    show_ssh_public_key
+    #clear
+    #echo "==== ${PROJECT_NAME} version ${VERSION} ($DEBIAN_VERSION) ===="
+    #echo ''
+    #show_ip_addresses
+    #show_ssh_public_key
     show_domains
-    show_tahoelafs
-    show_users
-    any_key
+    #show_users
+    #any_key
 }
 
 function select_user {
@@ -1265,30 +1074,6 @@ function restore_data_remote {
     rm -f "$data"
 }
 
-function ping_enable_disable {
-    ping_str=$"\\nDo you want to enable other systems to ping this machine?\\n\\nPing may be useful for diagnostic purposes, but for added security you may not want to enable it."
-    enable_ping="no"
-    dialog --title $"Enable Ping / ICMP" \
-           --backtitle $"Freedombone Control Panel" \
-           --defaultno \
-           --yesno "$ping_str" 10 60
-    sel=$?
-    case $sel in
-        0) enable_ping="yes";;
-        255) return;;
-    esac
-
-    if [[ $enable_ping == "yes" ]]; then
-        iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
-        iptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
-        echo "0" >  /proc/sys/net/ipv4/icmp_echo_ignore_all
-    else
-        iptables -D INPUT -p icmp --icmp-type echo-request -j ACCEPT
-        iptables -D OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
-        echo "1" >  /proc/sys/net/ipv4/icmp_echo_ignore_all
-    fi
-}
-
 function logging_on_off {
     logging="no"
     dialog --title $"Logging" \
@@ -1326,82 +1111,6 @@ function restore_gpg_key {
 
 function security_settings {
     "${PROJECT_NAME}-sec"
-    any_key
-}
-
-function show_tripwire_verification_code {
-    if [ ! -f "/var/lib/tripwire/${HOSTNAME}.twd" ]; then
-        return
-    fi
-    clear
-    echo ''
-    echo $'Tripwire Verification Code'
-    echo ''
-    DBHASH=$(sha512sum "/var/lib/tripwire/${HOSTNAME}.twd")
-    echo -n "$DBHASH" | qrencode -t UTF8
-    echo ''
-    echo "$DBHASH"
-    echo ''
-}
-
-function reset_tripwire {
-    if [ ! -f /usr/bin/reset-tripwire ]; then
-        echo $'Missing /usr/bin/reset-tripwire'
-        any_key
-        return
-    fi
-    if [ ! -f "/etc/tripwire/${HOSTNAME}-local.key" ]; then
-        if [ -f "/etc/tripwire/${PROJECT_NAME}-local.key" ]; then
-            # shellcheck disable=SC2086
-            mv /etc/tripwire/${PROJECT_NAME}-local.key /etc/tripwire/${HOSTNAME}-local.key
-            # shellcheck disable=SC2086
-            mv /etc/tripwire/${PROJECT_NAME}-site.key /etc/tripwire/${HOSTNAME}-site.key
-        else
-            echo $'Error: missing local key'
-            any_key
-            return
-        fi
-    fi
-    clear
-    echo $'Turing off logging...'
-    "${PROJECT_NAME}-logging" off
-    echo $'Locking down permissions...'
-    lockdown_permissions
-    echo $'Creating configuration...'
-    echo '
-
-       ' | twadmin --create-cfgfile -S "/etc/tripwire/${HOSTNAME}-site.key" /etc/tripwire/twcfg.txt
-    echo $'Resetting policy...'
-    echo '
-
-       ' | twadmin --create-polfile -S "/etc/tripwire/${HOSTNAME}-site.key" /etc/tripwire/twpol.txt
-    echo $'Creating tripwire database'
-    echo '
-
-' | tripwire --init --cfgfile /etc/tripwire/tw.cfg --polfile /etc/tripwire/tw.pol --dbfile "/var/lib/tripwire/${HOSTNAME}.twd"
-    echo $'Resetting the Tripwire...'
-    echo ''
-    echo '
-
-                ' | reset-tripwire
-    echo ''
-
-    # Sometimes nginx fails to restart if matrix is installed
-    # Restart matrix first
-    if [ -d /etc/matrix ]; then
-        systemctl restart matrix
-        systemctl restart nginx
-    fi
-
-    if [ -f "/var/lib/tripwire/${HOSTNAME}.twd" ]; then
-        show_tripwire_verification_code
-        echo $'Tripwire is now reset. Take a note of the above hash, or record'
-        echo $'the QR code using a mobile device. This will enable you to independently'
-        echo $'verify the integrity of the tripwire.'
-    else
-        echo $'ERROR: tripwire database was not created'
-    fi
-    any_key
 }
 
 function format_drive {
@@ -1773,19 +1482,6 @@ function reinstall_mariadb {
 
     dialog --title $"Reinstall MariaDB" \
            --msgbox $"MariaDB has been reinstalled" 6 40
-}
-
-function show_firewall {
-    clear
-    echo $"Firewall Settings"
-    echo ''
-    while read -r line; do
-        firewall_name=$(echo "$line" | awk -F '=' '{print $1}')
-        firewall_port=$(echo "$line" | awk -F '=' '{print $2}')
-        echo -n -e "$(pad_string "${firewall_name}")"
-        echo "${firewall_port}"
-    done < "$FIREWALL_CONFIG"
-    any_key
 }
 
 function email_extra_domains {
@@ -2198,7 +1894,7 @@ function menu_wifi {
 function menu_app_settings {
     detect_installable_apps
 
-    applist=""
+    W=()
     appnames=()
     n=1
     app_index=0
@@ -2207,7 +1903,7 @@ function menu_app_settings {
     do
         if [[ ${APPS_INSTALLED[$app_index]} != "0" ]]; then
             if [[ $(function_exists "configure_interactive_${a}") == "1" ]]; then
-                applist="$applist $n $a off"
+                W+=("$n" "$a")
                 n=$((n+1))
                 appnames+=("$a")
             fi
@@ -2217,23 +1913,18 @@ function menu_app_settings {
     if [ $n -le 1 ]; then
         return
     fi
-    backstr=$'Exit'
-    applist="$applist $n $backstr on"
-    appnames+=("Exit")
 
     # shellcheck disable=SC2086
-    choice=$(dialog --stdout --backtitle $"Freedombone" \
+    choice=$(dialog --backtitle $"Freedombone" \
                     --title $"Change settings for an App" \
-                    --radiolist $'Choose:' \
-                    26 40 30 $applist)
+                    --menu $'Choose:' \
+                    26 40 30 "${W[@]}" 3>&2 2>&1 1>&3)
 
     # shellcheck disable=SC2181
-    if [ $? -eq 0 ]; then
+    if [ "$choice" ]; then
         app_index=$((choice-1))
         chosen_app=${appnames[$app_index]}
-        if [[ $chosen_app != "Exit" ]]; then
-            "configure_interactive_${chosen_app}"
-        fi
+        "configure_interactive_${chosen_app}"
     fi
 }
 
@@ -2241,29 +1932,24 @@ function menu_top_level {
     while true
     do
         W=(1 $"About this system"
-           2 $"Passwords"
-           3 $"Backup and Restore"
-           4 $"Show Firewall"
-           5 $"Verify Tripwire Code"
-           6 $"Reset Tripwire"
-           7 $"App Settings"
-           8 $"Add/Remove Apps"
-           9 $"Logging on/off"
-           10 $"Ping enable/disable"
-           11 $"Manage Users"
-           12 $"Email Menu"
-           13 $"Domain or User Blocking"
-           14 $"Security Settings"
-           15 $"Change the name of this system"
-           16 $"Set a static local IP address"
-           17 $"Wifi menu"
-           18 $"Add Clacks"
-           19 $"Check for updates"
-           20 $"Power off the system"
-           21 $"Restart the system")
+           2 $"Backup and Restore"
+           3 $"App Settings"
+           4 $"Add/Remove Apps"
+           5 $"Logging on/off"
+           6 $"Manage Users"
+           7 $"Email Menu"
+           8 $"Domain or User Blocking"
+           9 $"Security Settings"
+           10 $"Change the name of this system"
+           11 $"Set a static local IP address"
+           12 $"Wifi menu"
+           13 $"Add Clacks"
+           14 $"Check for updates"
+           15 $"Power off the system"
+           16 $"Restart the system")
 
         # shellcheck disable=SC2068
-        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Administrator Control Panel" --menu $"Choose an operation, or ESC to exit:" 28 60 28 "${W[@]}" 3>&2 2>&1 1>&3)
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Administrator Control Panel" --menu $"Choose an operation, or ESC to exit:" 24 60 24 "${W[@]}" 3>&2 2>&1 1>&3)
 
         if [ ! "$selection" ]; then
             break
@@ -2273,30 +1959,24 @@ function menu_top_level {
 
         case $selection in
             1) show_about;;
-            2) view_or_change_passwords;;
-            3) menu_backup_restore;;
-            4) show_firewall;;
-            5) show_tripwire_verification_code
-               any_key_verify;;
-            6) reset_tripwire;;
-            7) menu_app_settings;;
-            8) if ! /usr/local/bin/addremove; then
+            2) menu_backup_restore;;
+            3) menu_app_settings;;
+            4) if ! /usr/local/bin/addremove; then
                    any_key
                fi
                ;;
-            9) logging_on_off;;
-            10) ping_enable_disable;;
-            11) menu_users;;
-            12) menu_email;;
-            13) domain_blocking;;
-            14) security_settings;;
-            15) change_system_name;;
-            16) set_static_IP;;
-            17) menu_wifi;;
-            18) add_clacks;;
-            19) check_for_updates;;
-            20) shut_down_system;;
-            21) restart_system;;
+            5) logging_on_off;;
+            6) menu_users;;
+            7) menu_email;;
+            8) domain_blocking;;
+            9) security_settings;;
+            10) change_system_name;;
+            11) set_static_IP;;
+            12) menu_wifi;;
+            13) add_clacks;;
+            14) check_for_updates;;
+            15) shut_down_system;;
+            16) restart_system;;
         esac
     done
 }
