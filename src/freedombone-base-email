@@ -31,6 +31,9 @@
 # the default email address
 MY_EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
 
+# When sending mail to riseup.net route to this onion address
+RISEUP_EMAIL_ONION='wy6zk3pmcwiyhiao.onion'
+
 # If you want to run a public mailing list specify its name here.
 # There should be no spaces in the name
 PUBLIC_MAILING_LIST=
@@ -149,51 +152,50 @@ function configure_email_onion {
     set_completion_param "email onion domain" "${onion_address}"
     add_email_hostname "$onion_address"
 
-    apt-get -yq install tinycdb perl
+    #apt-get -yq install tinycdb perl
 
     # MX record should be:
     # _onion-mx._tcp.$DEFAULT_DOMAIN_NAME. 3600 IN SRV 0 5 25 $onion_address
 
-    echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
-    cdb -m -c -t ~/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
+    #echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
+    #cdb -m -c -t ~/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
 
-    { echo "perl_startup = do '/etc/exim4/perl-routines.pl'";
-      echo "perl_at_start"; } > /etc/exim4/conf.d/main/perl
+    #{ echo "perl_startup = do '/etc/exim4/perl-routines.pl'";
+    #  echo "perl_at_start"; } > /etc/exim4/conf.d/main/perl
 
-    { echo "use Net::DNS::Resolver;";
-      echo "sub onionLookup {";
-      echo "  my \$hostname = shift;";
-      echo "  my \$res = Net::DNS::Resolver->new(nameservers => [qw(127.0.0.1)],);";
-      echo "  \$res->port(5300);";
-      echo "  my \$query = \$res->search(\$hostname);";
-      echo "  foreach my \$rr (\$query->answer) {";
-      echo "    next unless \$rr->type eq \"A\";";
-      echo "    return \$rr->address;";
-      echo "  }";
-      echo "  return 'no_such_host';";
-      echo "}"; } > /etc/exim4/perl-routines.pl
+    #{ echo "use Net::DNS::Resolver;";
+    #  echo "sub onionLookup {";
+    #  echo "  my \$hostname = shift;";
+    #  echo "  my \$res = Net::DNS::Resolver->new(nameservers => [qw(127.0.0.1)],);";
+    #  echo "  \$res->port(5300);";
+    #  echo "  my \$query = \$res->search(\$hostname);";
+    #  echo "  foreach my \$rr (\$query->answer) {";
+    #  echo "    next unless \$rr->type eq \"A\";";
+    #  echo "    return \$rr->address;";
+    #  echo "  }";
+    #  echo "  return 'no_such_host';";
+    #  echo "}"; } > /etc/exim4/perl-routines.pl
 
-    { echo "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
-      echo "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/main/48_exim4-config_onion_relays
+    #{ echo "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
+    #  echo "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/main/48_exim4-config_onion_relays
 
     { echo "riseup:";
       echo "  driver    = manualroute";
-      echo "  domains   = riseup.net";
+      echo "  domains   = riseup.net $RISEUP_EMAIL_ONION";
       echo "  transport = onion_relay";
-      echo "  route_data = \${lookup dnsdb{a=wy6zk3pmcwiyhiao.onion}}";
-      echo "  no_more"; } > /etc/exim4/conf.d/router/49_exim4-config-riseup
+      echo "  route_data = \${lookup dnsdb{a=$RISEUP_EMAIL_ONION}}";
+      echo "  no_more"; } > /etc/exim4/conf.d/router/049_exim4-config-riseup
 
     { echo "onionrelays:";
       echo "  driver    = manualroute";
-      echo "  domains   = +onion_relays";
+      echo "  domains   = *.onion";
       echo "  transport = onion_relay";
-      echo "  # get the automap IP for the onion address from the tor daemon";
-      echo "  route_data = \${perl{onionLookup}{\${lookup{\$domain}cdb{ONION_RELAYDB}}}}";
-      echo "  no_more"; } > /etc/exim4/conf.d/router/50_exim4-config-onionrelays
+      echo "  route_data = \${lookup dnsdb{a=\$domain}}";
+      echo "  no_more"; } > /etc/exim4/conf.d/router/050_exim4-config-onionrelays
 
     { echo "onion_relay:";
       echo "  driver = smtp";
-      echo "  socks_proxy = 127.0.0.1 port=9050"; } > /etc/exim4/conf.d/transport/50_exim4-config_onion_relay
+      echo "  socks_proxy = 127.0.0.1 port=9050"; } > /etc/exim4/conf.d/transport/050_exim4-config_onion_relay
 
     if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
         echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
