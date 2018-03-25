@@ -120,6 +120,34 @@ function email_create_template {
     fi
 }
 
+function create_email_onion_address {
+    if ! grep -q "hidden_service_email" /etc/tor/torrc; then
+        { echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/';
+          echo 'HiddenServiceVersion 3';
+          echo 'HiddenServicePort 25 127.0.0.1:25';
+          echo 'HiddenServicePort 587 127.0.0.1:587';
+          echo 'HiddenServicePort 465 127.0.0.1:465'; } >> /etc/tor/torrc
+
+        function_check onion_update
+        onion_update
+
+        function_check wait_for_onion_service
+        wait_for_onion_service email
+
+        if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
+            echo $"email onion site hostname not found"
+            systemctl restart tor
+            exit 782352
+        fi
+
+        onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
+        set_completion_param "email onion domain" "${onion_address}"
+        add_email_hostname "$onion_address"
+    else
+        onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
+    fi
+}
+
 function configure_email_onion {
     if [[ $(is_completed "${FUNCNAME[0]}") == "1" ]]; then
         return
@@ -128,29 +156,7 @@ function configure_email_onion {
         return
     fi
 
-    if ! grep -q "hidden_service_email" /etc/tor/torrc; then
-        { echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/';
-          echo 'HiddenServiceVersion 3';
-          echo 'HiddenServicePort 25 127.0.0.1:25';
-          echo 'HiddenServicePort 587 127.0.0.1:587';
-          echo 'HiddenServicePort 465 127.0.0.1:465'; } >> /etc/tor/torrc
-    fi
-
-    function_check onion_update
-    onion_update
-
-    function_check wait_for_onion_service
-    wait_for_onion_service email
-
-    if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
-        echo $"email onion site hostname not found"
-        systemctl restart tor
-        exit 782352
-    fi
-
-    onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
-    set_completion_param "email onion domain" "${onion_address}"
-    add_email_hostname "$onion_address"
+    create_email_onion_address
 
     #apt-get -yq install tinycdb perl
 
@@ -218,6 +224,7 @@ function configure_email_onion {
         sed -i 's|DNSListenAddress.*|DNSListenAddress 127.0.0.1|g' /etc/tor/torrc
     fi
 
+    update-exim4.conf.template -r
     update-exim4.conf
     dpkg-reconfigure --frontend noninteractive exim4-config
     systemctl restart tor
@@ -245,6 +252,12 @@ function check_email_address_exists {
     my_email="$MY_EMAIL_ADDRESS"
     if [ ${#my_email} -lt 3 ]; then
         MY_EMAIL_ADDRESS="${MY_USERNAME}@${DEFAULT_DOMAIN_NAME}"
+        write_config_param "MY_EMAIL_ADDRESS" "$MY_EMAIL_ADDRESS"
+    fi
+
+    if [[ $ONION_ONLY != 'no' ]]; then
+        my_email=$onion_address
+        MY_EMAIL_ADDRESS=$onion_address
         write_config_param "MY_EMAIL_ADDRESS" "$MY_EMAIL_ADDRESS"
     fi
 }
@@ -1543,6 +1556,7 @@ function install_email {
         return
     fi
 
+    create_email_onion_address
     check_email_address_exists
     install_email_basic
     configure_email_onion
