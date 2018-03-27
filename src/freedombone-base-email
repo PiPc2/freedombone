@@ -71,6 +71,33 @@ GPGIT_COMMIT='583dc76119f19420f8a33f606744faa7c8922738'
 # refresh gpg keys every few hours
 REFRESH_GPG_KEYS_HOURS=2
 
+exim_version='4.89'
+
+function rebuild_exim_with_socks {
+    # shellcheck disable=SC2154
+    if [ ! -d "$INSTALL_DIR" ]; then
+        mkdir -p "$INSTALL_DIR/exim4"
+    fi
+    cd "$INSTALL_DIR/exim4" || exit 3468356
+    rm -rf "$INSTALL_DIR/exim4/"*
+    apt-get source exim4-daemon-heavy
+    apt-get -qy build-dep exim4-daemon-heavy
+    cd "${INSTALL_DIR}/exim4/exim4-*" || exit 356835685
+    cp src/EDITME Local/Makefile
+    sed -i 's|# SUPPORT_SOCKS|SUPPORT_SOCKS|g' Local/Makefile
+    # TODO how to make this non-interactive
+    dpkg-source --commit . SOCKS
+    debuild -us -uc
+    cd "$INSTALL_DIR/exim4" || exit 3468356
+    mv exim4_${exim_version}-*.deb exim4_${exim_version}_all.deb
+    if [ ! -f exim4_${exim_version}_all.deb ]; then
+        ls -l "$INSTALL_DIR/exim4/"*.deb
+        echo "exim4_${exim_version}_all.deb not found"
+        exit 63857368
+    fi
+    dpkg -i exim4_${exim_version}_all.deb
+}
+
 function email_create_template {
     if [ ! -d /etc/skel/log ]; then
         mkdir -m 700 /etc/skel/log
@@ -170,37 +197,38 @@ function configure_email_onion {
     #echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
     #cdb -m -c -t ~/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
 
-    #{ echo "perl_startup = do '/etc/exim4/perl-routines.pl'";
-    #  echo "perl_at_start"; } > /etc/exim4/conf.d/main/perl
+    { echo "perl_startup = do '/etc/exim4/perl-routines.pl'";
+      echo "perl_at_start"; } > /etc/exim4/conf.d/main/00_exim4-config_perl
 
-    #{ echo "use Net::DNS::Resolver;";
-    #  echo "sub onionLookup {";
-    #  echo "  my \$hostname = shift;";
-    #  echo "  my \$res = Net::DNS::Resolver->new(nameservers => [qw(127.0.0.1)],);";
-    #  echo "  \$res->port(5300);";
-    #  echo "  my \$query = \$res->search(\$hostname);";
-    #  echo "  foreach my \$rr (\$query->answer) {";
-    #  echo "    next unless \$rr->type eq \"A\";";
-    #  echo "    return \$rr->address;";
-    #  echo "  }";
-    #  echo "  return 'no_such_host';";
-    #  echo "}"; } > /etc/exim4/perl-routines.pl
+    { echo "use Net::DNS::Resolver;";
+      echo "sub onionLookup {";
+      echo "  my \$hostname = shift;";
+      echo "  my \$res = Net::DNS::Resolver->new(nameservers => [qw(127.0.0.1)],);";
+      echo "  \$res->port(5300);";
+      echo "  my \$query = \$res->search(\$hostname);";
+      echo "  foreach my \$rr (\$query->answer) {";
+      echo "    next unless \$rr->type eq \"A\";";
+      echo "    return \$rr->address;";
+      echo "  }";
+      echo "  return 'no_such_host';";
+      echo "}"; } > /etc/exim4/perl-routines.pl
 
     #{ echo "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
     #  echo "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/main/48_exim4-config_onion_relays
 
     { echo "riseup:";
       echo "  driver    = manualroute";
-      echo "  domains   = riseup.net $RISEUP_EMAIL_ONION";
+      echo "  domains   = riseup.net";
       echo "  transport = onion_relay";
-      echo "  route_data = \${lookup dnsdb{a=$RISEUP_EMAIL_ONION}}";
+      echo "  route_data = \${perl{onionLookup}{$RISEUP_EMAIL_ONION}}"
       echo "  no_more"; } > /etc/exim4/conf.d/router/049_exim4-config-riseup
 
     { echo "onionrelays:";
       echo "  driver    = manualroute";
       echo "  domains   = *.onion";
       echo "  transport = onion_relay";
-      echo "  route_data = \${lookup dnsdb{a=\$domain}}";
+      #echo "  route_data = \${lookup dnsdb{a=\$domain}}";
+      echo "  route_data = \${perl{onionLookup}{\$domain}}"
       echo "  no_more"; } > /etc/exim4/conf.d/router/050_exim4-config-onionrelays
 
     { echo "onion_relay:";
