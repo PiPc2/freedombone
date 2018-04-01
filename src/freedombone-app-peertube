@@ -149,16 +149,86 @@ function peertube_disable_signups {
     systemctl restart peertube
 }
 
+function peertube_import_videos {
+    read_config_param MY_USERNAME
+    read_config_param PEERTUBE_DOMAIN_NAME
+    read_config_param ONION_ONLY
+
+    data=$(mktemp 2>/dev/null)
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Import Videos" \
+           --form "Enter a channel of video URL for YouTube/Vimeo/Dailymotion" 10 75 4 \
+           $"Username:" 1 1 "$MY_USERNAME" 1 28 16 15 \
+           $"Password:" 2 1 "" 2 28 40 10000 \
+           $"Video/Channel URL:" 3 1 "" 3 28 40 10000 \
+           2> "$data"
+    sel=$?
+    case $sel in
+        1) rm -f "$data"
+           return;;
+        255) rm -f "$data"
+             return;;
+    esac
+    peertubeuser=$(sed -n 1p < "$data")
+    peertubepassword=$(sed -n 2p < "$data")
+    video_url=$(sed -n 3p < "$data")
+    rm -f "$data"
+
+    peertubedomain="https://$PEERTUBE_DOMAIN_NAME"
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        peertubedomain="http://$(cat /var/lib/tor/hidden_service_peertube/hostname)"
+    fi
+
+    if [ ${#peertubeuser} -lt 3 ]; then
+        dialog --title $"Import videos" \
+               --msgbox $"Username was not valid" 6 75
+        return
+    fi
+
+    if [ ${#peertubepassword} -lt 3 ]; then
+        dialog --title $"Import videos" \
+               --msgbox $"Password was not valid" 6 75
+        return
+    fi
+
+    if [[ "$video_url" == *' '* || "$video_url" == *','* || "$video_url" == *'@'* ]]; then
+        dialog --title $"Import videos" \
+               --msgbox $"Video/channel URL was not valid" 6 75
+        return
+    fi
+
+    if [ ${#video_url} -lt 8 ]; then
+        dialog --title $"Import videos" \
+               --msgbox $"Video/channel URL was not valid" 6 75
+        return
+    fi
+
+    cd $PEERTUBE_DIR || exit 32468356
+    import_script=$PEERTUBE_DIR/dist/server/tools/import-videos.js
+    if [ ! -f $import_script ]; then
+        dialog --title $"Import videos" \
+               --msgbox $"import-videos script was not found" 6 75
+        return
+    fi
+
+    clear
+    node $import_script -u "$peertubedomain" -U "$peertubeuser" --password "$peertubepassword" -t "$video_url"
+
+    dialog --title $"Import videos" \
+           --msgbox $"Video/s imported from $video_url" 6 75
+}
+
 function configure_interactive_peertube {
     while true
     do
         data=$(mktemp 2>/dev/null)
         dialog --backtitle $"Freedombone Control Panel" \
                --title $"PeerTube" \
-               --radiolist $"Choose an operation:" 10 70 4 \
+               --radiolist $"Choose an operation:" 11 70 5 \
                1 $"Set administrator email address" off \
                2 $"Disable or enable signups" off \
-               3 $"Exit" on 2> "$data"
+               3 $"Import videos" off \
+               4 $"Exit" on 2> "$data"
         sel=$?
         case $sel in
             1) break;;
@@ -167,7 +237,8 @@ function configure_interactive_peertube {
         case $(cat "$data") in
             1) peertube_set_admin_email;;
             2) peertube_disable_signups;;
-            3) rm -f "$data"
+            3) peertube_import_videos;;
+            4) rm -f "$data"
                break;;
         esac
         rm -f "$data"
