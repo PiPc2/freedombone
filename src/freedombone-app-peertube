@@ -55,6 +55,14 @@ peertube_variables=(PEERTUBE_DOMAIN_NAME
                     MY_EMAIL_ADDRESS)
 
 function peertube_import_from_syncthing {
+    peertubedomain="https://$PEERTUBE_DOMAIN_NAME"
+    nodecmd='node'
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        peertubedomain="http://$(cat /var/lib/tor/hidden_service_peertube/hostname)"
+        nodecmd='torsocks node'
+    fi
+
     { echo '#!/bin/bash';
       echo '';
       echo "MY_USERNAME=\$(cat /root/${PROJECT_NAME}.cfg | grep MY_USERNAME | awk -F '=' '{print \$2}')";
@@ -71,7 +79,7 @@ function peertube_import_from_syncthing {
       echo '    exit 0';
       echo 'fi';
       echo '';
-      echo "peertubedomain=\"http://localhost:${PEERTUBE_PORT}\"";
+      echo "peertubedomain=\"$peertubedomain\"";
       echo "peertubeuser=\$(sed -n 1p < \"\$search_dir/login.txt\")";
       echo "peertubepassword=\$(sed -n 2p < \"\$search_dir/login.txt\")";
       echo 'peertubensfw=';
@@ -100,7 +108,8 @@ function peertube_import_from_syncthing {
       echo "        if ! grep \"\$video_file\" /root/.peertube_uploaded; then";
       echo "            if ! grep \"\$video_file\" /root/.peertube_uploading; then";
       echo "                echo \"\$video_file\" >> /root/.peertube_uploading";
-      echo "                if node \$import_script \$peertubensfw \$peertubeprivate -u \"\$peertubedomain\" -U \"\$peertubeuser\" --password \"\$peertubepassword\" -f \"\$video_file\"; then";
+      echo "                peertubetitle=\$(basename \"\$video_file\" | awk -F '.' '{print \$1}' | sed 's|_| |g' | sed 's|-| |g')";
+      echo "                if $nodecmd \$import_script -n \$peertubetitle \$peertubensfw \$peertubeprivate -u \"\$peertubedomain\" -U \"\$peertubeuser\" --password \"\$peertubepassword\" -f \"\$video_file\"; then";
       echo "                    echo \"\$video_file\" >> /root/.peertube_uploaded";
       echo "                    sed -i \"/\$video_file/d\" /root/.peertube_uploading";
       echo "                    exit 0";
@@ -242,7 +251,13 @@ function peertube_import_from_file {
     peertubensfw=$(sed -n 4p < "$data2")
     rm -f "$data2"
 
-    peertubedomain="http://localhost:${PEERTUBE_PORT}"
+    peertubedomain="https://$PEERTUBE_DOMAIN_NAME"
+    nodecmd='node'
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        peertubedomain="http://$(cat /var/lib/tor/hidden_service_peertube/hostname)"
+        nodecmd='torsocks node'
+    fi
 
     data2=$(mktemp 2>/dev/null)
     dialog --title "Choose the video file (select with spacebar)" --fselect "/home/$MY_USERNAME/" 30 60 2> "$data2"
@@ -270,13 +285,13 @@ function peertube_import_from_file {
         nsfwstr='--nsfw'
     fi
 
-    titlestr=
+    titlestr=$(basename "$selected_file" | awk -F '.' '{print $1}' | sed 's|_| |g' | sed 's|-| |g')
     if [ "$peertubetitle" ]; then
         titlestr="-n \"$peertubetitle\""
     fi
 
     clear
-    node $import_script $nsfwstr "$titlestr" -u "$peertubedomain" -U "$peertubeuser" --password "$peertubepassword" -f "$selected_file"
+    $nodecmd $import_script $nsfwstr "$titlestr" -u "$peertubedomain" -U "$peertubeuser" --password "$peertubepassword" -f "$selected_file"
 
     dialog --title $"Import video from file" \
            --msgbox $"Video imported from $selected_file" 6 75
@@ -307,7 +322,13 @@ function peertube_import_videos {
     video_url=$(sed -n 3p < "$data2")
     rm -f "$data2"
 
-    peertubedomain="http://localhost:${PEERTUBE_PORT}"
+    peertubedomain="https://$PEERTUBE_DOMAIN_NAME"
+    nodecmd='node'
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        peertubedomain="http://$(cat /var/lib/tor/hidden_service_peertube/hostname)"
+        nodecmd='torsocks node'
+    fi
 
     if [ ${#peertubeuser} -lt 3 ]; then
         dialog --title $"Import videos from legacy sites" \
@@ -342,7 +363,7 @@ function peertube_import_videos {
     fi
 
     clear
-    node $import_script -u "$peertubedomain" -U "$peertubeuser" --password "$peertubepassword" -t "$video_url"
+    $nodecmd $import_script -u "$peertubedomain" -U "$peertubeuser" --password "$peertubepassword" -t "$video_url"
 
     dialog --title $"Import videos from legacy sites" \
            --msgbox $"Video/s imported from $video_url" 6 75
