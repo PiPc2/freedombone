@@ -38,7 +38,7 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='c50c7745bc8b8f52ba07c69c0d2505df54da0f59'
+PLEROMA_COMMIT='7130e9ddb16286efd7d01088e816f05e82cfa2a1'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
@@ -674,33 +674,26 @@ function configure_interactive_pleroma {
     read_config_param PLEROMA_EXPIRE_MONTHS
     while true
     do
-        data=$(mktemp 2>/dev/null)
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Pleroma" \
-               --radiolist $"Choose an operation:" 15 70 6 \
-               1 $"Set a background image" off \
-               2 $"Set the title" off \
-               3 $"Disable new account registrations" off \
-               4 $"Add a custom emoji" off \
-               5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)" off \
-               6 $"Exit" on 2> "$data"
-        sel=$?
-        case $sel in
-            1) rm -f "$data"
-               return;;
-            255) rm -f "$data"
-                 return;;
-        esac
-        case $(cat "$data") in
+        W=(1 $"Set a background image"
+           2 $"Set the title"
+           3 $"Disable new account registrations"
+           4 $"Add a custom emoji"
+           5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)")
+
+        # shellcheck disable=SC2068
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 14 60 5 "${W[@]}" 3>&2 2>&1 1>&3)
+
+        if [ ! "$selection" ]; then
+            break
+        fi
+
+        case $selection in
             1) pleroma_set_background_image;;
             2) pleroma_set_title;;
             3) pleroma_disable_registrations;;
             4) pleroma_add_emoji;;
             5) pleroma_set_expire_months;;
-            6) rm -f "$data"
-               break;;
         esac
-        rm -f "$data"
     done
 }
 
@@ -1020,17 +1013,14 @@ function install_pleroma {
         function_check nginx_http_redirect
         nginx_http_redirect "$PLEROMA_DOMAIN_NAME" "index index.html"
         { echo '';
-        echo 'proxy_cache_path /tmp/pleroma-media-cache levels=1:2 keys_zone=pleroma_media_cache:10m max_size=100m inactive=80m use_temp_path=off;';
-        echo '';
-        echo 'server {';
-        echo '  listen 443 ssl;';
-        echo '  #listen [::]:443 ssl;';
-        echo "  server_name $PLEROMA_DOMAIN_NAME;";
-        echo ''; } >> "$pleroma_nginx_site"
-        function_check nginx_compress
-        nginx_compress "$PLEROMA_DOMAIN_NAME"
-        echo '' >> "$pleroma_nginx_site"
-        echo '  # Security' >> "$pleroma_nginx_site"
+          echo 'proxy_cache_path /tmp/pleroma-media-cache levels=1:2 keys_zone=pleroma_media_cache:10m max_size=100m inactive=80m use_temp_path=off;';
+          echo '';
+          echo 'server {';
+          echo '  listen 443 ssl http2;';
+          echo '  #listen [::]:443 ssl http2;';
+          echo "  server_name $PLEROMA_DOMAIN_NAME;";
+          echo '';
+          echo '  # Security'; } >> "$pleroma_nginx_site"
         function_check nginx_ssl
         nginx_ssl "$PLEROMA_DOMAIN_NAME"
 
@@ -1046,10 +1036,28 @@ function install_pleroma {
           echo "  root $PLEROMA_DIR;";
           echo '';
           echo '  index index.html;';
-          echo '  location / {'; } >> "$pleroma_nginx_site"
-        function_check nginx_limits
-        nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-        { echo "    add_header 'Access-Control-Allow-Origin' '*';";
+          echo '';
+          echo '  gzip_vary on;';
+          echo '  gzip_proxied any;';
+          echo '  gzip_comp_level 6;';
+          echo '  gzip_buffers 16 8k;';
+          echo '  gzip_http_version 1.1;';
+          echo '  gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript application/activity+json application/atom+xml;';
+          echo '';
+          echo '  location / {';
+          echo '    client_max_body_size 15m;';
+          echo '    client_body_buffer_size 15m;';
+          echo '';
+          echo '    limit_conn conn_limit_per_ip 50;';
+          echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+          echo '';
+          echo "    add_header 'Access-Control-Allow-Origin' '*' always;";
+          echo "    add_header 'Access-Control-Allow-Methods' 'POST, GET, OPTIONS' always;";
+          echo "    add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;";
+          echo "    if (\$request_method = OPTIONS) {";
+          echo '        return 204;';
+          echo '    }';
+          echo '';
           echo '    proxy_http_version 1.1;';
           echo "    proxy_set_header Upgrade \$http_upgrade;";
           echo '    proxy_set_header Connection "upgrade";';
@@ -1058,9 +1066,14 @@ function install_pleroma {
           echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
           echo '  }';
           echo '';
-          echo '  location /proxy {'; } >> "$pleroma_nginx_site"
-        nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-        { echo '    proxy_cache pleroma_media_cache;';
+          echo '  location /proxy {';
+          echo '    client_max_body_size 15m;';
+          echo '    client_body_buffer_size 15m;';
+          echo '';
+          echo '    limit_conn conn_limit_per_ip 50;';
+          echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+          echo '';
+          echo '    proxy_cache pleroma_media_cache;';
           echo '    proxy_cache_lock on;';
           echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
           echo '  }';
@@ -1071,12 +1084,9 @@ function install_pleroma {
         echo '' >> "$pleroma_nginx_site"
     fi
     { echo 'server {';
-      echo "    listen 127.0.0.1:$PLEROMA_ONION_PORT default_server;";
+      echo "    listen 127.0.0.1:$PLEROMA_ONION_PORT default_server http2;";
       echo "    server_name $PLEROMA_ONION_HOSTNAME;";
       echo ''; } >> "$pleroma_nginx_site"
-    function_check nginx_compress
-    nginx_compress "$PLEROMA_DOMAIN_NAME"
-    echo '' >> "$pleroma_nginx_site"
     function_check nginx_security_options
     nginx_security_options "$PLEROMA_DOMAIN_NAME"
     { echo '';
@@ -1087,21 +1097,44 @@ function install_pleroma {
       echo "  root $PLEROMA_DIR;";
       echo '';
       echo '  index index.html;';
-      echo '  location / {'; } >> "$pleroma_nginx_site"
-    function_check nginx_limits
-    nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-    { echo "      add_header 'Access-Control-Allow-Origin' '*';";
-      echo '      proxy_http_version 1.1;';
-      echo "      proxy_set_header Upgrade \$http_upgrade;";
-      echo '      proxy_set_header Connection "upgrade";';
-      echo "      proxy_set_header Host \$http_host;";
       echo '';
-      echo "      proxy_pass http://localhost:$PLEROMA_PORT;";
+      echo '  gzip_vary on;';
+      echo '  gzip_proxied any;';
+      echo '  gzip_comp_level 6;';
+      echo '  gzip_buffers 16 8k;';
+      echo '  gzip_http_version 1.1;';
+      echo '  gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript application/activity+json application/atom+xml;';
+      echo '';
+      echo '  location / {';
+      echo '    client_max_body_size 15m;';
+      echo '    client_body_buffer_size 15m;';
+      echo '';
+      echo '    limit_conn conn_limit_per_ip 50;';
+      echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+      echo '';
+      echo "    add_header 'Access-Control-Allow-Origin' '*' always;";
+      echo "    add_header 'Access-Control-Allow-Methods' 'POST, GET, OPTIONS' always;";
+      echo "    add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;";
+      echo "    if (\$request_method = OPTIONS) {";
+      echo '        return 204;';
+      echo '    }';
+      echo '';
+      echo '    proxy_http_version 1.1;';
+      echo "    proxy_set_header Upgrade \$http_upgrade;";
+      echo '    proxy_set_header Connection "upgrade";';
+      echo "    proxy_set_header Host \$http_host;";
+      echo '';
+      echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
       echo '  }';
       echo '';
-      echo '  location /proxy {'; } >> "$pleroma_nginx_site"
-    nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-    { echo '    proxy_cache pleroma_media_cache;';
+      echo '  location /proxy {';
+      echo '    client_max_body_size 15m;';
+      echo '    client_body_buffer_size 15m;';
+      echo '';
+      echo '    limit_conn conn_limit_per_ip 50;';
+      echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+      echo '';
+      echo '    proxy_cache pleroma_media_cache;';
       echo '    proxy_cache_lock on;';
       echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
       echo '  }';
@@ -1185,12 +1218,18 @@ function install_pleroma {
       echo 'WantedBy=multi-user.target';
       echo 'Alias=pleroma.service'; } > /etc/systemd/system/pleroma.service
 
+
+    # avoid mixed content warnings
+    sed -i '/config :pleroma, :media_proxy/!b;n;c####enabled: true,' $PLEROMA_DIR/config/config.exs
+    sed -i 's|####enabled|  enabled|g' $PLEROMA_DIR/config/config.exs
+    sed -i 's|redirect_on_failure:.*|redirect_on_failure: false|g' $PLEROMA_DIR/config/config.exs
+
     # set registrations open initially
     sed -i 's|registrations_open:.*|registrations_open: true,|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|"registrationOpen":.*|"registrationOpen": true,|g' $PLEROMA_DIR/priv/static/static/config.json
 
     if ! grep -q "media_proxy" $PLEROMA_DIR/priv/static/static/config.json; then
-        sed -i '/"name":/a "media_proxy": false,' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i '/"name":/a "media_proxy": true,' $PLEROMA_DIR/priv/static/static/config.json
         sed -i 's|"media_proxy"|  "media_proxy"|g' $PLEROMA_DIR/priv/static/static/config.json
     else
         sed -i 's|"media_proxy".*|"media_proxy": false,|g' $PLEROMA_DIR/priv/static/static/config.json

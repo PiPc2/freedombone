@@ -31,6 +31,9 @@
 # the default email address
 MY_EMAIL_ADDRESS=$MY_USERNAME@$DEFAULT_DOMAIN_NAME
 
+# When sending mail to riseup.net route to this onion address
+RISEUP_EMAIL_ONION='wy6zk3pmcwiyhiao.onion'
+
 # If you want to run a public mailing list specify its name here.
 # There should be no spaces in the name
 PUBLIC_MAILING_LIST=
@@ -67,6 +70,110 @@ GPGIT_COMMIT='583dc76119f19420f8a33f606744faa7c8922738'
 
 # refresh gpg keys every few hours
 REFRESH_GPG_KEYS_HOURS=2
+
+exim_version='4.89'
+
+function rebuild_exim_with_socks {
+    exim_socks_installed=$(get_completion_param "exim_socks")
+    if [[ "$exim_socks_installed" == 'true' ]]; then
+        return
+    fi
+
+    # shellcheck disable=SC2154
+    if [ ! -d "$INSTALL_DIR/exim4" ]; then
+        mkdir -p "$INSTALL_DIR/exim4"
+    fi
+    cd "$INSTALL_DIR/exim4" || exit 3468356
+    rm -rf "$INSTALL_DIR/exim4/"*
+    apt-get -qy install build-essential fakeroot devscripts
+    apt-get source exim4-daemon-heavy
+    apt-get -qy build-dep exim4-daemon-heavy
+    cd "${INSTALL_DIR}/exim4/exim4-${exim_version}" || exit 356835685
+
+    { echo 'Description: Socks proxying';
+      echo ' Support for socks proxying of outgoing mail';
+      echo ' This is to support onion email addresses, which require support for SOCKS5';
+      echo ' .';
+      echo " exim4 (${exim_version}-2+deb9u3) stretch-security; urgency=high";
+      echo ' .';
+      echo '   * Non-maintainer upload by the Security Team.';
+      echo '   * Fix base64d() buffer size (CVE-2018-6789) (Closes: #890000)';
+      echo 'Author: Salvatore Bonaccorso <carnil@debian.org>';
+      echo 'Bug-Debian: https://bugs.debian.org/890000';
+      echo '';
+      echo '---';
+      echo 'The information above should follow the Patch Tagging Guidelines, please';
+      echo 'checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here';
+      echo 'are templates for supplementary fields that you might want to add:';
+      echo '';
+      echo 'Origin: <vendor|upstream|other>, <url of original patch>';
+      echo 'Bug: <url in upstream bugtracker>';
+      echo 'Bug-Debian: https://bugs.debian.org/<bugnumber>';
+      echo 'Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>';
+      echo 'Forwarded: <no|not-needed|url proving that it has been forwarded>';
+      echo 'Reviewed-By: <name and email of someone who approved the patch>';
+      echo "Last-Update: $(date +%Y-%m-%d)";
+      echo '';
+      echo '--- /dev/null';
+      echo "+++ exim4-${exim_version}/Local/Makefile";
+      echo '@@ -0,0 +1,32 @@';
+      echo '+BIN_DIRECTORY=/usr/exim/bin';
+      echo '+CONFIGURE_FILE=/usr/exim/configure';
+      echo '+EXIM_USER=';
+      echo '+SPOOL_DIRECTORY=/var/spool/exim';
+      echo '+ROUTER_ACCEPT=yes';
+      echo '+ROUTER_DNSLOOKUP=yes';
+      echo '+ROUTER_IPLITERAL=yes';
+      echo '+ROUTER_MANUALROUTE=yes';
+      echo '+ROUTER_QUERYPROGRAM=yes';
+      echo '+ROUTER_REDIRECT=yes';
+      echo '+TRANSPORT_APPENDFILE=yes';
+      echo '+TRANSPORT_AUTOREPLY=yes';
+      echo '+TRANSPORT_PIPE=yes';
+      echo '+TRANSPORT_SMTP=yes';
+      echo '+LOOKUP_DBM=yes';
+      echo '+LOOKUP_LSEARCH=yes';
+      echo '+LOOKUP_DNSDB=yes';
+      echo '+PCRE_CONFIG=yes';
+      echo '+EXIM_MONITOR=eximon.bin';
+      echo '+FIXED_NEVER_USERS=root';
+      echo '+HEADERS_CHARSET="ISO-8859-1"';
+      echo '+DLOPEN_LOCAL_SCAN=yes';
+      echo '+LDFLAGS += -rdynamic';
+      echo '+CFLAGS += -fvisibility=hidden';
+      echo '+SYSLOG_LOG_PID=yes';
+      echo '+EXICYCLOG_MAX=10';
+      echo '+COMPRESS_COMMAND=/usr/bin/gzip';
+      echo '+COMPRESS_SUFFIX=gz';
+      echo '+ZCAT_COMMAND=/usr/bin/zcat';
+      echo '+SUPPORT_SOCKS=yes';
+      echo '+SYSTEM_ALIASES_FILE=/etc/aliases';
+      echo '+EXIM_TMPDIR="/tmp"'; } > debian/patches/SOCKS
+
+    debuild -us -uc
+    cd "$INSTALL_DIR/exim4" || exit 3468356
+    mv exim4_${exim_version}-*.deb exim4_${exim_version}_all.deb
+    if [ ! -f exim4_${exim_version}_all.deb ]; then
+        ls -l "$INSTALL_DIR/exim4/exim4_"*.deb
+        echo "exim4_${exim_version}_all.deb not found"
+        exit 63857368
+    fi
+    apt-mark -q unhold exim4
+    dpkg -i exim4_${exim_version}_all.deb
+    apt-mark -q hold exim4
+    apt-get -yq remove --purge at
+
+    systemctl restart exim4
+    if [[ $(systemctl is-active exim4) != 'active' ]]; then
+        apt-mark -q unhold exim4
+        apt-get -yq install exim4 --reinstall
+        systemctl restart exim4
+    fi
+
+    rm -rf "$INSTALL_DIR/exim4"
+
+    set_completion_param "exim_socks" "true"
+}
 
 function email_create_template {
     if [ ! -d /etc/skel/log ]; then
@@ -117,6 +224,34 @@ function email_create_template {
     fi
 }
 
+function create_email_onion_address {
+    if ! grep -q "hidden_service_email" /etc/tor/torrc; then
+        { echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/';
+          echo 'HiddenServiceVersion 3';
+          echo 'HiddenServicePort 25 127.0.0.1:25';
+          echo 'HiddenServicePort 587 127.0.0.1:587';
+          echo 'HiddenServicePort 465 127.0.0.1:465'; } >> /etc/tor/torrc
+
+        function_check onion_update
+        onion_update
+
+        function_check wait_for_onion_service
+        wait_for_onion_service email
+
+        if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
+            echo $"email onion site hostname not found"
+            systemctl restart tor
+            exit 782352
+        fi
+
+        onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
+        set_completion_param "email onion domain" "${onion_address}"
+        add_email_hostname "$onion_address"
+    else
+        onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
+    fi
+}
+
 function configure_email_onion {
     if [[ $(is_completed "${FUNCNAME[0]}") == "1" ]]; then
         return
@@ -125,39 +260,22 @@ function configure_email_onion {
         return
     fi
 
-    if ! grep -q "hidden_service_email" /etc/tor/torrc; then
-        { echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/';
-          echo 'HiddenServicePort 25 127.0.0.1:25';
-          echo 'HiddenServicePort 587 127.0.0.1:587';
-          echo 'HiddenServicePort 465 127.0.0.1:465'; } >> /etc/tor/torrc
-    fi
+    create_email_onion_address
 
-    function_check onion_update
-    onion_update
-
-    function_check wait_for_onion_service
-    wait_for_onion_service email
-
-    if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
-        echo $"email onion site hostname not found"
-        systemctl restart tor
-        exit 782352
-    fi
-
-    onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
-    set_completion_param "email onion domain" "${onion_address}"
-    add_email_hostname "$onion_address"
-
-    apt-get -yq install tinycdb perl
+    #apt-get -yq install tinycdb perl
 
     # MX record should be:
-    # _onion-mx._tcp.$DEFAULT_DOMAIN_NAME. 3600 IN SRV 0 5 25 $onion_address
+    # _onion-mx._tcp
+    # 20:$onion_address
+    # 3600 IN SRV 0 5 25 $onion_address
 
-    echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
-    cdb -m -c -t ~/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
+    # Test with: exim -d -bt username@$onion_address
+
+    #echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
+    #cdb -m -c -t ~/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
 
     { echo "perl_startup = do '/etc/exim4/perl-routines.pl'";
-      echo "perl_at_start"; } > /etc/exim4/conf.d/main/perl
+      echo "perl_at_start"; } > /etc/exim4/conf.d/main/00_exim4-config_perl
 
     { echo "use Net::DNS::Resolver;";
       echo "sub onionLookup {";
@@ -172,21 +290,27 @@ function configure_email_onion {
       echo "  return 'no_such_host';";
       echo "}"; } > /etc/exim4/perl-routines.pl
 
-    { echo "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
-      echo "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/domainlists
+    #{ echo "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
+    #  echo "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/main/48_exim4-config_onion_relays
 
-    { echo "# send things over tor where we have an entry for it";
-      echo "onionrelays:";
+    { echo "riseup:";
       echo "  driver    = manualroute";
-      echo "  domains   = +onion_relays";
+      echo "  domains   = riseup.net";
       echo "  transport = onion_relay";
-      echo "  # get the automap IP for the onion address from the tor daemon";
-      echo "  route_data = \${perl{onionLookup}{\${lookup{\$domain}cdb{ONION_RELAYDB}}}}";
-      echo "  no_more"; } > /etc/exim4/conf.d/router/50_exim4-config-onion
+      echo "  route_data = \${perl{onionLookup}{$RISEUP_EMAIL_ONION}}"
+      echo "  no_more"; } > /etc/exim4/conf.d/router/049_exim4-config-riseup
+
+    { echo "onionrelays:";
+      echo "  driver    = manualroute";
+      echo "  domains   = *.onion";
+      echo "  transport = onion_relay";
+      #echo "  route_data = \${lookup dnsdb{a=\$domain}}";
+      echo "  route_data = \${perl{onionLookup}{\$domain}}"
+      echo "  no_more"; } > /etc/exim4/conf.d/router/050_exim4-config-onionrelays
 
     { echo "onion_relay:";
       echo "  driver = smtp";
-      echo "  socks_proxy = 127.0.0.1 port=9050"; } > /etc/exim4/conf.d/transport/50_exim4-config_onion
+      echo "  socks_proxy = 127.0.0.1 port=9050"; } > /etc/exim4/conf.d/transport/050_exim4-config_onion_relay
 
     if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
         echo 'AutomapHostsOnResolve 1' >> /etc/tor/torrc
@@ -209,6 +333,8 @@ function configure_email_onion {
         sed -i 's|DNSListenAddress.*|DNSListenAddress 127.0.0.1|g' /etc/tor/torrc
     fi
 
+    update-exim4.conf.template -r
+    update-exim4.conf
     dpkg-reconfigure --frontend noninteractive exim4-config
     systemctl restart tor
     systemctl restart exim4
@@ -235,6 +361,12 @@ function check_email_address_exists {
     my_email="$MY_EMAIL_ADDRESS"
     if [ ${#my_email} -lt 3 ]; then
         MY_EMAIL_ADDRESS="${MY_USERNAME}@${DEFAULT_DOMAIN_NAME}"
+        write_config_param "MY_EMAIL_ADDRESS" "$MY_EMAIL_ADDRESS"
+    fi
+
+    if [[ $ONION_ONLY != 'no' ]]; then
+        my_email=$onion_address
+        MY_EMAIL_ADDRESS=$onion_address
         write_config_param "MY_EMAIL_ADDRESS" "$MY_EMAIL_ADDRESS"
     fi
 }
@@ -827,12 +959,18 @@ function install_email_basic {
     sed -i 's|pam_mail.so standard noenv|pam_mail.so dir=~/Maildir standard|g' /etc/pam.d/sshd
     sed -i 's|pam_mail.so nopen|pam_mail.so dir=~/Maildir nopen|g' /etc/pam.d/su
 
-    { echo "dc_eximconfig_configtype='internet'";
-      echo "dc_other_hostnames='${DEFAULT_DOMAIN_NAME};mail.${DEFAULT_DOMAIN_NAME}'";
-      echo "dc_local_interfaces=''";
+    echo "dc_eximconfig_configtype='internet'" > /etc/exim4/update-exim4.conf.conf
+
+    if [[ $ONION_ONLY == 'no' ]]; then
+        echo "dc_other_hostnames='${DEFAULT_DOMAIN_NAME};mail.${DEFAULT_DOMAIN_NAME}'" >> /etc/exim4/update-exim4.conf.conf
+    else
+        echo "dc_other_hostnames='${onion_address}'" >> /etc/exim4/update-exim4.conf.conf
+    fi
+
+    { echo "dc_local_interfaces=''";
       echo "dc_readhost=''";
       echo "dc_relay_domains=''";
-      echo "dc_minimaldns='false'"; } > /etc/exim4/update-exim4.conf.conf
+      echo "dc_minimaldns='false'"; } >> /etc/exim4/update-exim4.conf.conf
     IPv4_address=$(get_ipv4_address)
     IPv4_address_base=$(echo "$IPv4_address" | awk -F '.' '{print $1"."$2"."$3}')
     RELAY_NETS="${IPv4_address_base}.0/24"
@@ -1533,6 +1671,7 @@ function install_email {
         return
     fi
 
+    create_email_onion_address
     check_email_address_exists
     install_email_basic
     configure_email_onion

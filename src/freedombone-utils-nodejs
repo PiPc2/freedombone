@@ -35,9 +35,9 @@ VARIANTS='mesh'
 
 # change these versions at your peril. Things will often crash if you don't
 # have specifically the correct versions
-NODEJS_VERSION='6.11.4'
-NODEJS_N_VERSION='2.1.7'
-NPM_VERSION='4.0.5'
+NODEJS_VERSION='8.11.1'
+NODEJS_N_VERSION='2.1.8'
+NPM_VERSION='5.8.0'
 
 # This file keeps track of the apps needing nodejs
 # so that it can be removed if tere are no apps which need it
@@ -60,6 +60,37 @@ function get_npm_arch {
     fi
 }
 
+function nodejs_fix_cpu_detection {
+    # fix for failing cpu detection during image build with qemu, see https://github.com/npm/npm/issues/19265
+    if [ -f "$rootdir/usr/lib/node_modules/npm/node_modules/worker-farm/lib/farm.js" ]; then
+        sed -i "s/require('os').cpus().length/(require('os').cpus() || { length: 1 }).length/g" "$rootdir/usr/lib/node_modules/npm/node_modules/worker-farm/lib/farm.js"
+    fi
+
+    if [ -f "$rootdir/usr/lib/node_modules/npm/node_modules/node-gyp/lib/build.js" ]; then
+        sed -i "s/require('os').cpus().length/(require('os').cpus() || { length: 1 }).length/g" "$rootdir/usr/lib/node_modules/npm/node_modules/node-gyp/lib/build.js"
+    fi
+
+    if [ -f "$rootdir/usr/lib/node_modules/npm/node_modules/worker-farm/examples/pi/index.js" ]; then
+        sed -i "s/require('os').cpus().length/(require('os').cpus() || { length: 1 }).length/g" "$rootdir/usr/lib/node_modules/npm/node_modules/worker-farm/examples/pi/index.js"
+    fi
+
+
+    if [ -f "$rootdir/.npm-global/lib/node_modules/npm/node_modules/worker-farm/lib/farm.js" ]; then
+        sed -i "s/require('os').cpus().length/(require('os').cpus() || { length: 1 }).length/g" "$rootdir/.npm-global/lib/node_modules/npm/node_modules/worker-farm/lib/farm.js"
+    fi
+
+    if [ -f "$rootdir/.npm-global/lib/node_modules/npm/node_modules/node-gyp/lib/build.js" ]; then
+        sed -i "s/require('os').cpus().length/(require('os').cpus() || { length: 1 }).length/g" "$rootdir/.npm-global/lib/node_modules/npm/node_modules/node-gyp/lib/build.js"
+    fi
+
+    if [ -f "$rootdir/.npm-global/lib/node_modules/npm/node_modules/worker-farm/examples/pi/index.js" ]; then
+        sed -i "s/require('os').cpus().length/(require('os').cpus() || { length: 1 }).length/g" "$rootdir/.npm-global/lib/node_modules/npm/node_modules/worker-farm/examples/pi/index.js"
+    fi
+
+    # installing worker farm fixes the cpu detection bug
+    #$mesh_install_nodejs_prefix npm install --arch=$NPM_ARCH -g worker-farm@1.6.0 --save
+}
+
 function mesh_install_nodejs {
     mesh_install_nodejs_prefix=
     if [ "$rootdir" ]; then
@@ -72,23 +103,28 @@ function mesh_install_nodejs {
     $mesh_install_nodejs_prefix wget https://deb.nodesource.com/gpgkey/nodesource.gpg.key -O /root/node.gpg.key
     if [ ! -f "$rootdir/root/node.gpg.key" ]; then
         echo $'Unable to obtain gpg key for nodejs repo'
+        NODE_UPGRADE=
         exit 6389252
     fi
     $mesh_install_nodejs_prefix apt-key add /root/node.gpg.key
-    echo "deb https://deb.nodesource.com/node_6.x stretch main" > "$rootdir/etc/apt/sources.list.d/nodesource.list"
-    echo "deb-src https://deb.nodesource.com/node_6.x stretch main" >> "$rootdir/etc/apt/sources.list.d/nodesource.list"
+    echo "deb https://deb.nodesource.com/node_8.x stretch main" > "$rootdir/etc/apt/sources.list.d/nodesource.list"
+    echo "deb-src https://deb.nodesource.com/node_8.x stretch main" >> "$rootdir/etc/apt/sources.list.d/nodesource.list"
 
+    $mesh_install_nodejs_prefix apt-mark -q unhold nodejs
     $mesh_install_nodejs_prefix apt-get update
     $mesh_install_nodejs_prefix apt-get -yq remove --purge nodejs
 
-    if [ -d "$rootdir/usr/local/lib/node_modules" ]; then
-        rm -rf "$rootdir/usr/local/lib/node_modules"
+    if [ ! $NODE_UPGRADE ]; then
+        if [ -d "$rootdir/usr/local/lib/node_modules" ]; then
+            rm -rf "$rootdir/usr/local/lib/node_modules"
+        fi
     fi
+
     if [ -f "$rootdir/usr/local/bin/node" ]; then
         rm "$rootdir/usr/local/bin/node"
     fi
     if [ -f "$rootdir/usr/bin/node" ]; then
-        rm /usr/bin/node
+        rm "$rootdir/usr/bin/node"
     fi
     if [ -f "$rootdir/usr/bin/nodejs" ]; then
         rm "$rootdir/usr/bin/nodejs"
@@ -100,10 +136,17 @@ function mesh_install_nodejs {
         cp "$rootdir/usr/bin/nodejs" "$rootdir/usr/bin/node"
     fi
 
+    if [ -f "$rootdir/usr/bin/node" ]; then
+        cp "$rootdir/usr/bin/node" "$rootdir/usr/local/bin/node"
+    fi
+
+    $mesh_install_nodejs_prefix apt-mark -q hold nodejs
+
     if [ ! -f "${rootdir}/usr/bin/node" ]; then
         if [ ! -f "${rootdir}/usr/local/bin/node" ]; then
             if [ ! -f "${rootdir}/usr/bin/nodejs" ]; then
                 echo $'nodejs was not installed'
+                NODE_UPGRADE=
                 exit 63962
             fi
         fi
@@ -111,29 +154,46 @@ function mesh_install_nodejs {
 
     if [ ! -f "$rootdir/usr/bin/node" ]; then
         echo $'/usr/bin/node not found'
+        NODE_UPGRADE=
         exit 7235728
     fi
 
     get_npm_arch
 
     $mesh_install_nodejs_prefix npm config set unsafe-perm true
+    nodejs_setup_global_modules
+    nodejs_fix_cpu_detection
     $mesh_install_nodejs_prefix npm install --arch=$NPM_ARCH -g npm@${NPM_VERSION} --save
+    if [ -f "$rootdir/.npm-global/bin/npm" ]; then
+        cp "$rootdir/.npm-global/bin/npm" "$rootdir/usr/local/bin/npm"
+        cp "$rootdir/.npm-global/bin/npm" "$rootdir/usr/bin/npm"
+    fi
     if [ -f "$rootdir/usr/local/bin/npm" ]; then
-        cp "$rootdir/usr/local/bin/npm" /usr/bin/npm
+        cp "$rootdir/usr/local/bin/npm" "$rootdir/usr/bin/npm"
     fi
     cp "$rootdir/usr/bin/npm" "$rootdir/root/npm"
 
     # update from the old debian nodejs version
     $mesh_install_nodejs_prefix npm install --arch=$NPM_ARCH -g n@${NODEJS_N_VERSION} --save
-    $mesh_install_nodejs_prefix n --arch $N_ARCH ${NODEJS_VERSION}
-    cp "$rootdir/root/npm" "$rootdir/usr/bin/npm"
+    if [ ! "$rootdir" ]; then
+        # Don't do this if we're building an image,
+        # because cpu detection faults occur.
+        # This condition may no longer be needed in future once the bug is fixed
+        $mesh_install_nodejs_prefix n --arch $N_ARCH ${NODEJS_VERSION}
+        nodejs_fix_cpu_detection
+        cp "$rootdir/root/npm" "$rootdir/usr/bin/npm"
+        cp "$rootdir/root/npm" "$rootdir/usr/local/bin/npm"
 
-    # deliberate second install of npm
-    $mesh_install_nodejs_prefix npm install --arch=$NPM_ARCH -g npm@${NPM_VERSION} --save
-    if [ -f "$rootdir/usr/local/bin/npm" ]; then
-        cp "$rootdir/usr/local/bin/npm" /usr/bin/npm
+        # deliberate second install of npm
+        $mesh_install_nodejs_prefix npm install --arch=$NPM_ARCH -g npm@${NPM_VERSION} --save
+        if [ -f "$rootdir/usr/local/bin/npm" ]; then
+            cp "$rootdir/usr/local/bin/npm" "$rootdir/usr/bin/npm"
+        fi
+        cp "$rootdir/usr/bin/npm" "$rootdir/root/npm"
     fi
-    cp "$rootdir/usr/bin/npm" "$rootdir/root/npm"
+    if [ -f "$rootdir/usr/bin/node" ]; then
+        cp "$rootdir/usr/bin/node" "$rootdir/usr/local/bin/node"
+    fi
 
     # check the version numbers
     cat <<EOF > "$rootdir/usr/bin/test_nodejs_install"
@@ -152,9 +212,57 @@ EOF
     chmod +x "$rootdir/usr/bin/test_nodejs_install"
     if ! $mesh_install_nodejs_prefix /usr/bin/test_nodejs_install; then
         echo $"nodejs version numbers did not match. Architecture is $NPM_ARCH."
+        NODE_UPGRADE=
         exit 76835282
     fi
     rm "$rootdir/usr/bin/test_nodejs_install"
+    NODE_UPGRADE=
+}
+
+function nodejs_upgrade {
+    if [ ! -f /etc/apt/sources.list.d/nodesource.list ]; then
+        return
+    fi
+    nodejs_setup_global_modules
+    if grep -q "node_8.x" /etc/apt/sources.list.d/nodesource.list; then
+        if [ -f /usr/local/bin/node ]; then
+            CURR_NODE_VERSION=$(node --version)
+            if [[ "$CURR_NODE_VERSION" == "v${NODEJS_VERSION}" ]]; then
+                return
+            fi
+        fi
+    fi
+    if [ -f /usr/local/bin/node ]; then
+        CURR_NODE_VERSION=$(node --version)
+        if [[ "$CURR_NODE_VERSION" == "v${NODEJS_VERSION}" ]]; then
+            return
+        fi
+    fi
+    read_config_param ARCHITECTURE
+    get_npm_arch
+    NODE_UPGRADE=1
+    rootdir=
+    mesh_install_nodejs
+    npm update -g
+}
+
+function nodejs_setup_global_modules {
+    if [ ! -f /usr/local/bin/node ]; then
+        return
+    fi
+    if [ ! -d "$rootdir/root/.npm-global" ]; then
+        mkdir "$rootdir/root/.npm-global"
+    fi
+    $mesh_install_nodejs_prefix npm config set prefix '/root/.npm-global'
+    if ! grep -q "PATH=/root/.npm-global/bin" "$rootdir/root/.bashrc"; then
+        echo "PATH=/root/.npm-global/bin:\$PATH" >> "$rootdir/root/.bashrc"
+    fi
+    if ! grep -q "NPM_CONFIG_PREFIX=" "$rootdir/root/.bashrc"; then
+        echo "export NPM_CONFIG_PREFIX=/root/.npm-global" >> "$rootdir/root/.bashrc"
+    fi
+    # shellcheck disable=SC2086
+    $mesh_install_nodejs_prefix export PATH=/root/.npm-global/bin:$PATH
+    $mesh_install_nodejs_prefix export NPM_CONFIG_PREFIX=/root/.npm-global
 }
 
 function remove_nodejs {
