@@ -50,7 +50,6 @@ install:
 	chmod -R +r /usr/share/${APP}
 #	bash -c "./translate install"
 	/usr/local/bin/${APP}-prepare-scripts
-	# copy email onion domain to somewhere where it's accessible to users
 uninstall:
 	rm -f ${PREFIX}/share/${APP}_*.png
 	rm -f ${PREFIX}/share/man/man1/backup.1.gz
