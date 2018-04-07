@@ -259,12 +259,12 @@ an administrator.\n\n######################\n\n' >> $LOG
               fi
               ;;
     V-51391)  if [ "$3" = "en" ]; then
-                  log_msg $2 'A file integrity baseline must be created. Reset the tripwire from the administrator control panel.'
+                  log_msg $2 'A file integrity baseline must be created. Reset the tripwire from the administrator control panel under security settings.'
               else
                   log_msg $2 '必须创建文件完整性基线。'
               fi
               if [ $2 -ne 0 ];then
-                  printf '\n######################\n\nSTIG-ID:RHEL-06-000018\n\nVulnerability Discussion: For tripwire to be effective, an initial database of "known-good" information about files must be captured and it should be able to be verified against the installed files.\n\nFix text: Run "reset tripwire" from the administrator control panel.\n\n######################\n\n' >> $LOG
+                  printf '\n######################\n\nSTIG-ID:RHEL-06-000018\n\nVulnerability Discussion: For tripwire to be effective, an initial database of "known-good" information about files must be captured and it should be able to be verified against the installed files.\n\nFix text: Run "reset tripwire" from security settings on the administrator control panel.\n\n######################\n\n' >> $LOG
               fi
               ;;
     V-38491)  if [ "$3" = "en" ]; then
