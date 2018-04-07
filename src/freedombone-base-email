@@ -225,6 +225,7 @@ function email_create_template {
 }
 
 function create_email_onion_address {
+    email_hostname='/var/lib/tor/hidden_service_email/hostname'
     if ! grep -q "hidden_service_email" /etc/tor/torrc; then
         { echo 'HiddenServiceDir /var/lib/tor/hidden_service_email/';
           echo 'HiddenServiceVersion 3';
@@ -238,18 +239,21 @@ function create_email_onion_address {
         function_check wait_for_onion_service
         wait_for_onion_service email
 
-        if [ ! -f /var/lib/tor/hidden_service_email/hostname ]; then
+        if [ ! -f $email_hostname ]; then
             echo $"email onion site hostname not found"
             systemctl restart tor
             exit 782352
         fi
 
-        onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
+        onion_address=$(cat $email_hostname)
         set_completion_param "email onion domain" "${onion_address}"
         add_email_hostname "$onion_address"
     else
-        onion_address=$(cat /var/lib/tor/hidden_service_email/hostname)
+        onion_address=$(cat $email_hostname)
     fi
+    cp $email_hostname /etc/skel/.email_onion_domain
+    cp $email_hostname "/home/$MY_USERNAME/.email_onion_domain"
+    chown "$MY_USERNAME":"$MY_USERNAME" "/home/$MY_USERNAME/.email_onion_domain"
 }
 
 function configure_email_onion {
@@ -262,17 +266,17 @@ function configure_email_onion {
 
     create_email_onion_address
 
-    #apt-get -yq install tinycdb perl
+    apt-get -yq install perl
 
     # MX record should be:
     # _onion-mx._tcp
     # 20:$onion_address
     # 3600 IN SRV 0 5 25 $onion_address
 
-    # Test with: exim -d -bt username@$onion_address
-
-    #echo "$DEFAULT_DOMAIN_NAME $onion_address" > /etc/exim4/onionrelay.txt
-    #cdb -m -c -t ~/onionrelay.tmp /etc/exim4/onionrelay.cdb /etc/exim4/onionrelay.txt
+    # To test the system, on receiving server:
+    #   exim -bd -d -oX 25
+    # On the sensing server:
+    #   exim -d -oX 25 -bt username@$onion_address
 
     { echo "perl_startup = do '/etc/exim4/perl-routines.pl'";
       echo "perl_at_start"; } > /etc/exim4/conf.d/main/00_exim4-config_perl
@@ -290,26 +294,32 @@ function configure_email_onion {
       echo "  return 'no_such_host';";
       echo "}"; } > /etc/exim4/perl-routines.pl
 
-    #{ echo "ONION_RELAYDB=/etc/exim4/onionrelay.cdb";
-    #  echo "domainlist onion_relays     = cdb;ONION_RELAYDB"; } > /etc/exim4/conf.d/main/48_exim4-config_onion_relays
-
     { echo "riseup:";
       echo "  driver    = manualroute";
       echo "  domains   = riseup.net";
       echo "  transport = onion_relay";
+      echo "  headers_remove = Received:Message-ID:X-Mailer:User-Agent";
+      echo "  headers_add = Message-ID: <\${lc:\${sha1:\$message_id}}@\$sender_address_domain>";
       echo "  route_data = \${perl{onionLookup}{$RISEUP_EMAIL_ONION}}"
-      echo "  no_more"; } > /etc/exim4/conf.d/router/049_exim4-config-riseup
+      echo "  no_more"; } > /etc/exim4/conf.d/router/905_exim4-config-riseup
+
+    if ! grep -q "*.onion" /etc/exim4/conf.d/router/200_exim4-config_primary; then
+       sed -i 's|domains = ! +local_domains|domains = ! +local_domains : ! *.onion : ! riseup.net|g' /etc/exim4/conf.d/router/200_exim4-config_primary
+    fi
 
     { echo "onionrelays:";
       echo "  driver    = manualroute";
       echo "  domains   = *.onion";
       echo "  transport = onion_relay";
-      #echo "  route_data = \${lookup dnsdb{a=\$domain}}";
+      echo "  headers_remove = Received:Message-ID:X-Mailer:User-Agent";
+      echo "  headers_add = Message-ID: <\${lc:\${sha1:\$message_id}}@\$sender_address_domain>";
       echo "  route_data = \${perl{onionLookup}{\$domain}}"
-      echo "  no_more"; } > /etc/exim4/conf.d/router/050_exim4-config-onionrelays
+      echo "  no_more"; } > /etc/exim4/conf.d/router/910_exim4-config-onionrelays
 
     { echo "onion_relay:";
       echo "  driver = smtp";
+      echo "  helo_data = \"\$address_data \$original_domain\"";
+      echo "  hosts_avoid_tls = *";
       echo "  socks_proxy = 127.0.0.1 port=9050"; } > /etc/exim4/conf.d/transport/050_exim4-config_onion_relay
 
     if ! grep -q "AutomapHostsOnResolve" /etc/tor/torrc; then
@@ -366,7 +376,7 @@ function check_email_address_exists {
 
     if [[ $ONION_ONLY != 'no' ]]; then
         my_email=$onion_address
-        MY_EMAIL_ADDRESS=$onion_address
+        MY_EMAIL_ADDRESS="${MY_USERNAME}@$onion_address"
         write_config_param "MY_EMAIL_ADDRESS" "$MY_EMAIL_ADDRESS"
     fi
 }
@@ -649,6 +659,14 @@ function email_client {
       echo '';
       echo '# Optional relay of SMTP via ISP';
       echo '#set smtp_url="smtps://username:password@isp_mail_domain:465/"'; } > /etc/Muttrc
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        # On onion only systems email is onion router anyway, with its
+        # own encryption system, so we don't need the additional pgp layer
+        # except perhaps for some additional confidence
+        sed -i 's|set pgp_autoencrypt|unset pgp_autoencrypt|g' /etc/Muttrc
+        sed -i 's|set pgp_autosign|unset pgp_autosign|g' /etc/Muttrc
+    fi
 
     # For viewing long URLs
     echo 'REGEXP (((http|https|ftp|gopher)|mailto)[.:][^ >"\t]*|www\.[-a-z0-9.]+)[^ .,;\t>">\):]' > "/home/$MY_USERNAME/.urlview"
@@ -1094,7 +1112,8 @@ function spam_filtering {
     # This configuration is based on https://wiki.debian.org/DebianSpamAssassin
     sed -i 's/local_parts = postmaster/local_parts = postmaster:abuse/g' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
     sed -i '/domains = +local_domains : +relay_to_domains/a\    set acl_m0 = rfcnames' /etc/exim4/conf.d/acl/30_exim4-config_check_rcpt
-    sed -i "s/accept/accept condition = \${if eq{\$acl_m0}{rfcnames} {1}{0}}/g" /etc/exim4/conf.d/acl/40_exim4-config_check_data
+    # This prevents .onion domains from being accepted
+    #sed -i "s/accept/accept condition = \${if eq{\$acl_m0}{rfcnames} {1}{0}}/g" /etc/exim4/conf.d/acl/40_exim4-config_check_data
 
     { echo "warn  message = X-Spam-Score: \$spam_score (\$spam_bar)";
       echo '      spam = nobody:true';
