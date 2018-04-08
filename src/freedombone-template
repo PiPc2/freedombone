@@ -291,16 +291,20 @@ echo '}'
 echo ''
 echo "function install_interactive_${app_name} {"
 if [ ! $app_onion_only ]; then
-    echo "    if [ ! \"\$ONION_ONLY\" ]; then"
-    echo "        ONION_ONLY='no'"
-    echo '    fi'
-    echo ''
-    echo "    if [[ \"\$ONION_ONLY\" != \"no\" ]]; then"
-    echo "        ${app_name_upper}_DOMAIN_NAME='${app_name}.local'"
-    echo "        write_config_param \"${app_name_upper}_DOMAIN_NAME\" \"\$${app_name_upper}_DOMAIN_NAME\""
-    echo '    else'
-    echo "        interactive_site_details \"${app_name}\" \"${app_name_upper}_DOMAIN_NAME\" \"${app_name_upper}_CODE\""
-    echo '    fi'
+    if [ $app_webui ]; then
+        echo "    if [ ! \"\$ONION_ONLY\" ]; then"
+        echo "        ONION_ONLY='no'"
+        echo '    fi'
+        echo ''
+        echo "    if [[ \"\$ONION_ONLY\" != \"no\" ]]; then"
+        echo "        ${app_name_upper}_DOMAIN_NAME='${app_name}.local'"
+        echo "        write_config_param \"${app_name_upper}_DOMAIN_NAME\" \"\$${app_name_upper}_DOMAIN_NAME\""
+        echo '    else'
+        echo "        interactive_site_details \"${app_name}\" \"${app_name_upper}_DOMAIN_NAME\" \"${app_name_upper}_CODE\""
+        echo '    fi'
+    else
+        echo "    echo -n ''"
+    fi
 else
     echo "    echo -n ''"
 fi
@@ -310,8 +314,10 @@ echo ''
 echo "function change_password_${app_name} {"
 echo "    curr_username=\"\$1\""
 echo "    new_user_password=\"\$2\""
-echo ''
-echo "    read_config_param '${app_name_upper}_DOMAIN_NAME'"
+if [ $app_webui ]; then
+    echo ''
+    echo "    read_config_param '${app_name_upper}_DOMAIN_NAME'"
+fi
 echo ''
 echo "    \"\${PROJECT_NAME}-pass\" -u \"\$curr_username\" -a ${app_name} -p \"\$new_user_password\""
 echo '}'
@@ -381,10 +387,12 @@ echo "    CURR_${app_name_upper}_COMMIT=\$(get_completion_param \"${app_name} co
 echo "    if [[ \"\$CURR_${app_name_upper}_COMMIT\" == \"\$${app_name_upper}_COMMIT\" ]]; then"
 echo '        return'
 echo '    fi'
-echo ''
-echo "    if grep -q \"${app_name} domain\" \"\$COMPLETION_FILE\"; then"
-echo "        ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
-echo '    fi'
+if [ $app_webui ]; then
+    echo ''
+    echo "    if grep -q \"${app_name} domain\" \"\$COMPLETION_FILE\"; then"
+    echo "        ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
+    echo '    fi'
+fi
 echo ''
 echo '    # update to the next commit'
 if [ ! "$app_dir" ]; then
@@ -407,8 +415,10 @@ if [ ! "$app_dir" ]; then
 else
     echo "    source_directory=${app_dir}"
 fi
-echo ''
-echo "    suspend_site \"\${${app_name_upper}_DOMAIN_NAME}\""
+if [ $app_webui ]; then
+    echo ''
+    echo "    suspend_site \"\${${app_name_upper}_DOMAIN_NAME}\""
+fi
 echo ''
 echo "    dest_directory=${app_name}"
 echo "    backup_directory_to_usb \"\$source_directory\" \$dest_directory"
@@ -422,55 +432,63 @@ if [[ "$database_type" == "postgres"* ]]; then
     echo "    backup_database_to_usb ${app_name}"
     echo ''
 fi
-echo '    restart_site'
+if [ $app_webui ]; then
+    echo '    restart_site'
+fi
 echo '}'
 echo ''
 echo "function restore_local_${app_name} {"
 echo "    if ! grep -q \"${app_name} domain\" \"\$COMPLETION_FILE\"; then"
 echo '        return'
 echo '    fi'
-echo "    ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
-echo "    if [ \"\$${app_name_upper}_DOMAIN_NAME\" ]; then"
-echo "        temp_restore_dir=/root/temp${app_name}"
+if [ $app_webui ]; then
+    echo "    ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
+    echo "    if [ ! \"\$${app_name_upper}_DOMAIN_NAME\" ]; then"
+    echo "        return"
+    echo "    fi"
+fi
+echo "    temp_restore_dir=/root/temp${app_name}"
 if [ ! "$app_dir" ]; then
-    echo "        ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+    echo "    ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
 else
-    echo "        ${app_name}_dir=${app_dir}"
+    echo "    ${app_name}_dir=${app_dir}"
 fi
 echo ''
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
-    echo "        ${app_name}_create_database"
+    echo "    ${app_name}_create_database"
     echo ''
-    echo "        restore_database ${app_name}"
-    echo "        if [ -d \$temp_restore_dir ]; then"
-    echo "            rm -rf \$temp_restore_dir"
-    echo '        fi'
+    echo "    restore_database ${app_name}"
+    echo "    if [ -d \$temp_restore_dir ]; then"
+    echo "        rm -rf \$temp_restore_dir"
+    echo '    fi'
     echo ''
 fi
 if [[ "$database_type" == "postgres"* ]]; then
-    echo "        ${app_name}_create_database"
+    echo "    ${app_name}_create_database"
     echo ''
-    echo '        USE_POSTGRESQL=1'
-    echo "        restore_database ${app_name}"
-    echo "        if [ -d \$temp_restore_dir ]; then"
-    echo "            rm -rf \$temp_restore_dir"
-    echo '        fi'
+    echo '    USE_POSTGRESQL=1'
+    echo "    restore_database ${app_name}"
+    echo "    if [ -d \$temp_restore_dir ]; then"
+    echo "        rm -rf \$temp_restore_dir"
+    echo '    fi'
     echo ''
 fi
-echo "        restore_directory_from_usb \$temp_restore_dir ${app_name}"
-echo "        if [ -d \$temp_restore_dir ]; then"
-echo "            if [ -d \"\$temp_restore_dir\$${app_name}_dir\" ]; then"
-echo "                cp -rp \"\$temp_restore_dir\$${app_name}_dir\"/* \"\$${app_name}_dir\"/"
-echo '            else'
-echo "                if [ ! -d \"\$${app_name}_dir\" ]; then"
-echo "                    mkdir \"\$${app_name}_dir\""
-echo '                fi'
-echo "                cp -rp \"\$temp_restore_dir\"/* \"\$${app_name}_dir\"/"
+echo "    restore_directory_from_usb \$temp_restore_dir ${app_name}"
+echo "    if [ -d \$temp_restore_dir ]; then"
+echo "        if [ -d \"\$temp_restore_dir\$${app_name}_dir\" ]; then"
+echo "            cp -rp \"\$temp_restore_dir\$${app_name}_dir\"/* \"\$${app_name}_dir\"/"
+echo '        else'
+echo "            if [ ! -d \"\$${app_name}_dir\" ]; then"
+echo "                mkdir \"\$${app_name}_dir\""
 echo '            fi'
-echo "            chown -R www-data:www-data \"\$${app_name}_dir\""
-echo "            rm -rf \$temp_restore_dir"
+echo "            cp -rp \"\$temp_restore_dir\"/* \"\$${app_name}_dir\"/"
 echo '        fi'
-echo ''
+if [[ ! "$app_dir" ]]; then
+    echo "        chown -R www-data:www-data \"\$${app_name}_dir\""
+else
+    echo "        chown -R ${app_name}:${app_name} \"\$${app_name}_dir\""
+fi
+echo "        rm -rf \$temp_restore_dir"
 echo '    fi'
 echo '}'
 echo ''
@@ -485,8 +503,10 @@ if [ ! "$app_dir" ]; then
 else
     echo "    source_directory=${app_dir}"
 fi
-echo ''
-echo "    suspend_site \"\${${app_name_upper}_DOMAIN_NAME}\""
+if [ $app_webui ]; then
+    echo ''
+    echo "    suspend_site \"\${${app_name_upper}_DOMAIN_NAME}\""
+fi
 echo ''
 echo "    dest_directory=${app_name}"
 echo "    backup_directory_to_friend \"\$source_directory\" \$dest_directory"
@@ -499,8 +519,10 @@ if [[ "$database_type" == "postgres"* ]]; then
     echo "    backup_database_to_friend ${app_name}"
     echo ''
 fi
-echo ''
-echo '    restart_site'
+if [ $app_webui ]; then
+    echo ''
+    echo '    restart_site'
+fi
 echo '}'
 echo ''
 echo "function restore_remote_${app_name} {"
@@ -508,47 +530,51 @@ echo "    if ! grep -q \"${app_name} domain\" \"\$COMPLETION_FILE\"; then"
 echo '        return'
 echo '    fi'
 echo "    ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
-echo "    if [ \"\$${app_name_upper}_DOMAIN_NAME\" ]; then"
-echo "        temp_restore_dir=/root/temp${app_name}"
+echo "    if [ ! \"\$${app_name_upper}_DOMAIN_NAME\" ]; then"
+echo "        return"
+echo "    fi"
+echo "    temp_restore_dir=/root/temp${app_name}"
 if [ ! "$app_dir" ]; then
-    echo "        ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
+    echo "    ${app_name}_dir=/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs"
 else
-    echo "        ${app_name}_dir=${app_dir}"
+    echo "    ${app_name}_dir=${app_dir}"
 fi
 echo ''
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
-    echo "        ${app_name}_create_database"
+    echo "    ${app_name}_create_database"
     echo ''
-    echo "        restore_database_from_friend ${app_name}"
-    echo "        if [ -d \"\$temp_restore_dir\" ]; then"
-    echo "            rm -rf \$temp_restore_dir"
-    echo '        fi'
+    echo "    restore_database_from_friend ${app_name}"
+    echo "    if [ -d \"\$temp_restore_dir\" ]; then"
+    echo "        rm -rf \$temp_restore_dir"
+    echo '    fi'
     echo ''
 fi
 if [[ "$database_type" == "postgres"* ]]; then
-    echo "        ${app_name}_create_database"
+    echo "    ${app_name}_create_database"
     echo ''
-    echo '        USE_POSTGRESQL=1'
-    echo "        restore_database_from_friend ${app_name}"
-    echo "        if [ -d \"\$temp_restore_dir\" ]; then"
-    echo "            rm -rf \$temp_restore_dir"
-    echo '        fi'
+    echo '    USE_POSTGRESQL=1'
+    echo "    restore_database_from_friend ${app_name}"
+    echo "    if [ -d \"\$temp_restore_dir\" ]; then"
+    echo "        rm -rf \$temp_restore_dir"
+    echo '    fi'
     echo ''
 fi
-echo "        restore_directory_from_friend \$temp_restore_dir ${app_name}"
-echo "        if [ -d \$temp_restore_dir ]; then"
-echo "            if [ -d \"\$temp_restore_dir\$${app_name}_dir\" ]; then"
-echo "                cp -rp \"\$temp_restore_dir\$${app_name}_dir\"/* \"\$${app_name}_dir\"/"
-echo '            else'
-echo "                if [ ! -d \"\$${app_name}_dir\" ]; then"
-echo "                    mkdir \"\$${app_name}_dir\""
-echo '                fi'
-echo "                cp -rp \$temp_restore_dir/* \"\$${app_name}_dir\"/"
+echo "    restore_directory_from_friend \$temp_restore_dir ${app_name}"
+echo "    if [ -d \$temp_restore_dir ]; then"
+echo "        if [ -d \"\$temp_restore_dir\$${app_name}_dir\" ]; then"
+echo "            cp -rp \"\$temp_restore_dir\$${app_name}_dir\"/* \"\$${app_name}_dir\"/"
+echo '        else'
+echo "            if [ ! -d \"\$${app_name}_dir\" ]; then"
+echo "                mkdir \"\$${app_name}_dir\""
 echo '            fi'
-echo "            chown -R www-data:www-data \"\$${app_name}_dir\""
-echo "            rm -rf \$temp_restore_dir"
+echo "            cp -rp \$temp_restore_dir/* \"\$${app_name}_dir\"/"
 echo '        fi'
-echo ''
+if [[ ! "$app_dir" ]]; then
+    echo "        chown -R www-data:www-data \"\$${app_name}_dir\""
+else
+    echo "        chown -R ${app_name}:${app_name} \"\$${app_name}_dir\""
+fi
+echo "        rm -rf \$temp_restore_dir"
 echo '    fi'
 echo '}'
 echo ''
@@ -568,13 +594,15 @@ if [ $app_daemon ]; then
     echo '    fi'
     echo "    userdel -r ${app_name}"
 fi
-echo ''
-echo "    if [ -d \"/var/www/\$${app_name_upper}_DOMAIN_NAME\" ]; then"
-echo "        rm -rf \"/var/www/\$${app_name_upper}_DOMAIN_NAME\""
-echo '    fi'
-echo "    if [ -f \"/etc/nginx/sites-available/\$${app_name_upper}_DOMAIN_NAME\" ]; then"
-echo "        rm \"/etc/nginx/sites-available/\$${app_name_upper}_DOMAIN_NAME\""
-echo '    fi'
+if [ $app_webui ]; then
+    echo ''
+    echo "    if [ -d \"/var/www/\$${app_name_upper}_DOMAIN_NAME\" ]; then"
+    echo "        rm -rf \"/var/www/\$${app_name_upper}_DOMAIN_NAME\""
+    echo '    fi'
+    echo "    if [ -f \"/etc/nginx/sites-available/\$${app_name_upper}_DOMAIN_NAME\" ]; then"
+    echo "        rm \"/etc/nginx/sites-available/\$${app_name_upper}_DOMAIN_NAME\""
+    echo '    fi'
+fi
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
     echo "    drop_database ${app_name}"
 fi
@@ -592,8 +620,10 @@ if [ "$app_port" ]; then
     echo ''
     echo "    firewall_remove ${app_port} tcp"
 fi
-echo ''
-echo "    remove_ddns_domain \"\$${app_name_upper}_DOMAIN_NAME\""
+if [ $app_webui ]; then
+    echo ''
+    echo "    remove_ddns_domain \"\$${app_name_upper}_DOMAIN_NAME\""
+fi
 echo '}'
 echo ''
 echo "function install_${app_name} {"
@@ -632,7 +662,9 @@ if [ $app_webui ]; then
 fi
 
 echo "      if [ -d /repos/${app_name} ]; then"
-echo "          mkdir \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+if [ $app_webui ]; then
+    echo "          mkdir \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+fi
 if [ ! "$app_dir" ]; then
     echo "          cp -r -p /repos/${app_name}/. \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
     echo "          cd \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" || exit 324687356"
@@ -665,16 +697,20 @@ else
 fi
 echo "    git checkout \$${app_name_upper}_COMMIT -b \$${app_name_upper}_COMMIT"
 echo "    set_completion_param \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\""
-echo ''
-echo "    chmod g+w \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
-echo "    chown -R www-data:www-data \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+if [ $app_webui ]; then
+    echo ''
+    echo "    chmod g+w \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+    echo "    chown -R www-data:www-data \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+fi
 
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" || "$database_type" == "postgres"*  ]]; then
     echo ''
     echo "    ${app_name}_create_database"
 fi
-echo ''
-echo "    add_ddns_domain \"\$${app_name_upper}_DOMAIN_NAME\""
+if [ $app_webui ]; then
+    echo ''
+    echo "    add_ddns_domain \"\$${app_name_upper}_DOMAIN_NAME\""
+fi
 echo ''
 echo "    ${app_name_upper}_ONION_HOSTNAME=\$(add_onion_service ${app_name} 80 \${${app_name_upper}_ONION_PORT})"
 
@@ -819,18 +855,24 @@ if [ $app_daemon ]; then
     fi
     echo "    systemctl start ${app_name}"
 fi
-echo ''
-echo "    create_site_certificate \"\$${app_name_upper}_DOMAIN_NAME\" 'yes'"
-echo ''
-echo "    nginx_ensite \"\$${app_name_upper}_DOMAIN_NAME\""
-echo ''
+if [ $app_webui ]; then
+    echo ''
+    echo "    create_site_certificate \"\$${app_name_upper}_DOMAIN_NAME\" 'yes'"
+    echo ''
+    echo "    nginx_ensite \"\$${app_name_upper}_DOMAIN_NAME\""
+fi
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
+    echo ''
     echo '    systemctl restart mariadb'
 fi
-if [[ "$app_php" == 'yes' ]]; then
-    echo '    systemctl restart php7.0-fpm'
+if [ $app_webui ]; then
+    if [[ "$app_php" == 'yes' ]]; then
+        echo ''
+        echo '    systemctl restart php7.0-fpm'
+    fi
+    echo ''
+    echo '    systemctl restart nginx'
 fi
-echo '    systemctl restart nginx'
 echo ''
 echo "    \"\${PROJECT_NAME}-pass\" -u \"\$MY_USERNAME\" -a ${app_name} -p \"\$${app_name_upper}_ADMIN_PASSWORD\""
 echo "    set_completion_param \"${app_name} domain\" \"\$${app_name_upper}_DOMAIN_NAME\""
