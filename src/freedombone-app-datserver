@@ -77,21 +77,22 @@ function reconfigure_datserver {
     echo -n ''
 }
 
-function datserver_add_url {
+function datserver_add_dat {
     data=$(mktemp 2>/dev/null)
-    dialog --title $"Add a file to dat using its URL" \
+    dialog --title $"Add a dat" \
            --backtitle $"Freedombone Control Panel" \
-           --inputbox $"File URL" 8 70 2>"$data"
+           --inputbox $"dat link:" 8 70 2>"$data"
     sel=$?
     case $sel in
         0)
-            file_url=$(<"$data")
-            if [ "$file_url" ]; then
-                if [ ${#file_url} -gt 5 ]; then
-                    clear
-                    cd $DATSERVER_DIRECTORY || return
-                    wget "$file_url"
-                    chown -R datserver:datserver $DATSERVER_DIRECTORY/*
+            dat_link=$(<"$data")
+            if [ "$dat_link" ]; then
+                if [ ${#dat_link} -gt 5 ]; then
+                    if ! grep -q "$dat_link" $DATSERVER_DIRECTORY/feeds; then
+                        echo "$dat_link" >> $DATSERVER_DIRECTORY/feeds
+                        chown -R datserver:datserver $DATSERVER_DIRECTORY/feeds
+                        systemctl restart datserver
+                    fi
                 fi
             fi
             ;;
@@ -99,44 +100,9 @@ function datserver_add_url {
     rm -f "$data"
 }
 
-function datserver_add_file {
-    read_config_param MY_USERNAME
-
-    selected_file=$(dialog --title "Choose a file to store within dat" --fselect "/home/$MY_USERNAME/" 30 60)
-    if [ ! "$selected_file" ]; then
-        return
-    fi
-    if [ ! -f "$selected_file" ]; then
-        return
-    fi
-    if [[ "$selected_file" == "$DATSERVER_DIRECTORY"* ]]; then
-        return
-    fi
-
-    clear
-    echo ''
-    echo $"Copying $selected_file"
-    cp "$selected_file" $DATSERVER_DIRECTORY
-    chown -R datserver:datserver $DATSERVER_DIRECTORY/*
-}
-
-function datserver_show_address {
-    cd $DATSERVER_DIRECTORY || return
-    dat_address=$(dat status | grep "dat:")
-    clear
-    echo ''
-    echo "$dat_address"
-    echo ''
-    echo -n "$dat_address" | qrencode -t UTF8
-    echo ''
-    echo ' '
-    # shellcheck disable=SC2034
-    read -n1 -r -p $"Press any key to continue..." key
-}
-
 function configure_interactive_datserver {
-    W=(1 $"Add a local file"
-       2 $"Add a file from its URL")
+    W=(1 $"Add a dat"
+       2 $"Browse or edit feeds")
 
     while true
     do
@@ -147,11 +113,11 @@ function configure_interactive_datserver {
            break
         fi
         case $selection in
-            1) datserver_show_address
+            1) datserver_add_dat
                ;;
-            2) datserver_add_file
-               ;;
-            3) datserver_add_url
+            2) editor $DATSERVER_DIRECTORY/feeds
+               chown -R datserver:datserver $DATSERVER_DIRECTORY/feeds
+               systemctl restart datserver
                ;;
         esac
     done
@@ -272,6 +238,16 @@ function install_datserver {
     apt-get -yq install wget
 
     install_nodejs datserver
+
+    if ! npm install -g lil-pids; then
+        echo $'unable to install lil-pids'
+        exit 8456721
+    fi
+    if [ ! -f /root/.npm-global/bin/lil-pids ]; then
+        echo $'lil-pids was not installed'
+        exit 5628747
+    fi
+
     if ! npm install -g dat@$DATSERVER_DAT_VERSION; then
         exit 2468736
     fi
@@ -298,43 +274,24 @@ function install_datserver {
         exit 9568356
     fi
 
-    cd $DATSERVER_DIRECTORY || exit 3578635
-    echo -e "\\n\\n" | dat create
-    if [ ! -d $DATSERVER_DIRECTORY/.dat ]; then
-        echo $'dat was not created'
-        exit 753563
-    fi
-    dat_address=$(dat status | grep "dat:")
-    if [ ! "$dat_address" ]; then
-        echo $'dat address could not be found'
-        exit 235479763
-    fi
-    if [ ${#dat_address} -lt 10 ]; then
-        echo $'dat address is too short'
-        exit 4789264359
-    fi
-    echo "$dat_address created"
+    echo "/root/.npm-global/bin/hypercored --cwd $DATSERVER_DIRECTORY" > $DATSERVER_DIRECTORY/services
+    chown -R datserver:datserver "$DATSERVER_DIRECTORY"
 
     { echo '[Unit]';
-      echo 'Description=datserver';
-      echo 'After=syslog.target';
-      echo 'After=network.target';
+      echo 'After=syslog.target network.target remote-fs.target nss-lookup.target';
       echo '';
       echo '[Service]';
-      echo 'Type=simple';
       echo 'User=datserver';
       echo 'Group=datserver';
-      echo "WorkingDirectory=$DATSERVER_DIRECTORY";
-      echo "ExecStart=/root/.npm-global/bin/dat share $DATSERVER_DIRECTORY";
-      echo 'Environment=NODE_ENV=production';
-      echo 'Environment=USER=datserver';
+      echo "ExecStart=/root/.npm-global/bin/lil-pids $DATSERVER_DIRECTORY/services $DATSERVER_DIRECTORY/pids";
       echo 'Restart=always';
+      echo "WorkingDirectory=$DATSERVER_DIRECTORY";
       echo 'StandardError=syslog';
       echo '';
       echo '[Install]';
-      echo 'WantedBy=multi-user.target'; } >> "/etc/systemd/system/datserver.service"
+      echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/datserver.service
+
     systemctl enable datserver
-    chown -R datserver:datserver "$DATSERVER_DIRECTORY"
     systemctl start datserver
 
     APP_INSTALLED=1
