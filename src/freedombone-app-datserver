@@ -124,22 +124,14 @@ function configure_interactive_datserver {
 }
 
 function upgrade_datserver {
-    CURR_DATSERVER_DAT_VERSION=$(get_completion_param "datserver version")
-    if [[ "$CURR_DATSERVER_DAT_VERSION" != "$DATSERVER_DAT_VERSION" ]]; then
-
-        if npm update -g dat@$DATSERVER_DAT_VERSION; then
-            set_completion_param "datserver version" "$DATSERVER_DAT_VERSION"
-        fi
-        chown -R datserver:datserver "$DATSERVER_DIRECTORY"
-    fi
-
     CURR_DATSERVER_HYPERCORED_VERSION=$(get_completion_param "datserver hypercored version")
     if [[ "$CURR_DATSERVER_HYPERCORED_VERSION" != "$DATSERVER_HYPERCORED_VERSION" ]]; then
-
-        if npm update -g hypercored@$DATSERVER_HYPERCORED_VERSION; then
+        cd $DATSERVER_DIRECTORY || exit 254274
+        if npm update hypercored@$DATSERVER_HYPERCORED_VERSION; then
             set_completion_param "datserver hypercored version" "$DATSERVER_HYPERCORED_VERSION"
         fi
         chown -R datserver:datserver "$DATSERVER_DIRECTORY"
+        systemctl restart datserver
     fi
 }
 
@@ -217,19 +209,13 @@ function remove_datserver {
         rm /etc/systemd/system/datserver.service
     fi
     userdel -r datserver
-    npm uninstall -g dat
-    npm uninstall -g hypercored
-    npm uninstall -g lil-pids
 
     remove_nodejs datserver
 
-    remove_onion_service datserver "${DATSERVER_ONION_PORT}"
-    if grep -q "datserver" /etc/crontab; then
-        sed -i "/datserver/d" /etc/crontab
-    fi
     if [ -d $DATSERVER_DIRECTORY ]; then
         rm -rf $DATSERVER_DIRECTORY
     fi
+
     remove_app datserver
     remove_completion_param install_datserver
     sed -i '/datserver/d' "$COMPLETION_FILE"
@@ -240,42 +226,31 @@ function install_datserver {
 
     install_nodejs datserver
 
-    if ! npm install -g lil-pids@2.6.1; then
-        echo $'unable to install lil-pids'
-        exit 8456721
-    fi
-    if [ ! -f /root/.npm-global/bin/lil-pids ]; then
-        echo $'lil-pids was not installed'
-        exit 5628747
-    fi
-
-    if ! npm install -g dat@$DATSERVER_DAT_VERSION; then
-        exit 2468736
-    fi
-    if [ ! -f /root/.npm-global/bin/dat ]; then
-        echo $'dat was not installed'
-        exit 156835
-    fi
-
-    if ! npm install -g hypercored@$DATSERVER_HYPERCORED_VERSION; then
-        echo $'hypercored was not installed'
-        exit 4635439
-    fi
-
-    set_completion_param "datserver version" "$DATSERVER_DAT_VERSION"
-    set_completion_param "datserver hypercored version" "$DATSERVER_HYPERCORED_VERSION"
-
     if [ -d $DATSERVER_DIRECTORY ]; then
         rm -rf $DATSERVER_DIRECTORY
     fi
     mkdir $DATSERVER_DIRECTORY
-    useradd -c "datserver system account" -d "$DATSERVER_DIRECTORY" -m -r -g datserver datserver
+    cd $DATSERVER_DIRECTORY || exit 3658356
+
+    if ! npm install hypercored@$DATSERVER_HYPERCORED_VERSION; then
+        echo $'hypercored was not installed'
+        exit 4635439
+    fi
+
+    { echo '#!/bin/bash';
+      echo 'cd /etc/datserver';
+      echo './node_modules/.bin/hypercored'; } > /usr/bin/run_datserver
+    chmod +x /usr/bin/run_datserver
+
+    set_completion_param "datserver version" "$DATSERVER_DAT_VERSION"
+    set_completion_param "datserver hypercored version" "$DATSERVER_HYPERCORED_VERSION"
+
+    adduser --system --home="$DATSERVER_DIRECTORY" --group datserver
     if [ ! -d $DATSERVER_DIRECTORY ]; then
         echo $'dat directory was not created'
         exit 9568356
     fi
 
-    echo "/root/.npm-global/bin/hypercored --cwd $DATSERVER_DIRECTORY" > $DATSERVER_DIRECTORY/services
     chown -R datserver:datserver "$DATSERVER_DIRECTORY"
 
     { echo '[Unit]';
@@ -284,7 +259,7 @@ function install_datserver {
       echo '[Service]';
       echo 'User=datserver';
       echo 'Group=datserver';
-      echo "ExecStart=/root/.npm-global/bin/lil-pids $DATSERVER_DIRECTORY/services $DATSERVER_DIRECTORY/pids";
+      echo "ExecStart=/usr/bin/run_datserver";
       echo 'Restart=always';
       echo "WorkingDirectory=$DATSERVER_DIRECTORY";
       echo 'StandardError=syslog';
