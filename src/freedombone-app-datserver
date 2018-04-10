@@ -84,6 +84,55 @@ function datserver_generate_bootstraps {
     echo 'module.exports = function (opts) {';
     echo '  return extend(DEFAULT_OPTS, opts) // opts takes priority';
     echo '}'; } > $DATSERVER_BOOTSTRAP_FILE
+
+  chown datserver:datserver $DATSERVER_BOOTSTRAP_FILE
+}
+
+function datserver_configure_bootstraps {
+    read_config_param DATSERVER_DISCOVERY1
+    read_config_param DATSERVER_DISCOVERY2
+
+    read_config_param DATSERVER_BOOTSTRAP1
+    read_config_param DATSERVER_BOOTSTRAP2
+    read_config_param DATSERVER_BOOTSTRAP3
+    read_config_param DATSERVER_BOOTSTRAP4
+
+    data=$(mktemp 2>/dev/null)
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"dat bootstrap servers" \
+           --form $"Specify discovery and bootstrap servers:\\n" 14 68 6 \
+           $"Discovery 1:" 1 1 "$DATSERVER_DISCOVERY1" 1 35 26 25 \
+           $"Discovery 2:" 2 1 "$DATSERVER_DISCOVERY2" 2 35 26 25 \
+           $"Bootstrap 1:" 3 1 "$DATSERVER_BOOTSTRAP1" 3 35 26 25 \
+           $"Bootstrap 2:" 4 1 $"$DATSERVER_BOOTSTRAP2" 4 35 4 25 \
+           $"Bootstrap 3:" 5 1 $"$DATSERVER_BOOTSTRAP3" 5 35 4 25 \
+           $"Bootstrap 4:" 6 1 $"$DATSERVER_BOOTSTRAP4" 6 35 4 25 \
+           2> "$data"
+    sel=$?
+    case $sel in
+        1)  rm -f "$data"
+            return;;
+        255) rm -f "$data"
+             return;;
+    esac
+    DATSERVER_DISCOVERY1=$(sed -n 1p < "$data")
+    DATSERVER_DISCOVERY2=$(sed -n 2p < "$data")
+    DATSERVER_BOOTSTRAP1=$(sed -n 3p < "$data")
+    DATSERVER_BOOTSTRAP2=$(sed -n 4p < "$data")
+    DATSERVER_BOOTSTRAP3=$(sed -n 4p < "$data")
+    DATSERVER_BOOTSTRAP4=$(sed -n 4p < "$data")
+    rm "$data"
+
+    write_config_param DATSERVER_DISCOVERY1
+    write_config_param DATSERVER_DISCOVERY2
+
+    write_config_param DATSERVER_BOOTSTRAP1
+    write_config_param DATSERVER_BOOTSTRAP2
+    write_config_param DATSERVER_BOOTSTRAP3
+    write_config_param DATSERVER_BOOTSTRAP4
+
+    datserver_generate_bootstraps
+    systemctl restart datserver
 }
 
 function logging_on_datserver {
@@ -142,12 +191,13 @@ function datserver_add_dat {
 
 function configure_interactive_datserver {
     W=(1 $"Add a dat"
-       2 $"Browse or edit feeds")
+       2 $"Browse or edit feeds"
+       3 $"Bootstrap servers")
 
     while true
     do
         # shellcheck disable=SC2068
-        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"dat server" --menu $"Choose an operation, or ESC for main menu:" 10 70 3 "${W[@]}" 3>&2 2>&1 1>&3)
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"dat server" --menu $"Choose an operation, or ESC for main menu:" 11 70 4 "${W[@]}" 3>&2 2>&1 1>&3)
 
         if [ ! "$selection" ]; then
            break
@@ -159,6 +209,8 @@ function configure_interactive_datserver {
                editor feeds
                chown -R datserver:datserver $DATSERVER_DIRECTORY/feeds
                systemctl restart datserver
+               ;;
+            3) datserver_configure_bootstraps
                ;;
         esac
     done
