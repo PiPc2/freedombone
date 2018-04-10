@@ -43,7 +43,71 @@ DATSERVER_HYPERCORED_VERSION='1.4.1'
 DATSERVER_DIRECTORY=/etc/datserver
 DATSERVER_PORT=3282
 
-datserver_variables=(MY_USERNAME)
+# bootstrap servers are specified here
+DATSERVER_BOOTSTRAP_FILE=$DATSERVER_DIRECTORY/node_modules/datland-swarm-defaults/index.js
+
+DATSERVER_DISCOVERY1=
+DATSERVER_DISCOVERY2=
+DATSERVER_BOOTSTRAP1=
+DATSERVER_BOOTSTRAP2=
+DATSERVER_BOOTSTRAP3=
+DATSERVER_BOOTSTRAP4=
+
+datserver_variables=(MY_USERNAME
+                     DATSERVER_DISCOVERY1
+                     DATSERVER_DISCOVERY2
+                     DATSERVER_BOOTSTRAP1
+                     DATSERVER_BOOTSTRAP2
+                     DATSERVER_BOOTSTRAP3
+                     DATSERVER_BOOTSTRAP4)
+
+function datserver_add_discovery_domain {
+    server_domain="$1"
+
+    if [ ! "$server_domain" ]; then
+        return
+    fi
+
+    if [ ${#server_domain} -lt 4 ]; then
+        return
+    fi
+
+    if grep -q "$server_domain" $DATSERVER_BOOTSTRAP_FILE; then
+       return
+    fi
+
+    sed -i "/var DEFAULT_DISCOVERY/a '$server_domain'," $DATSERVER_BOOTSTRAP_FILE
+    sed -i "s|'$server_domain',|  '$server_domain',|g" $DATSERVER_BOOTSTRAP_FILE
+}
+
+function datserver_add_bootstrap {
+    boostrap_server="$1"
+
+    if [ ! "$boostrap_server" ]; then
+        return
+    fi
+
+    if [ ${#boostrap_server} -lt 4 ]; then
+        return
+    fi
+
+    if grep -q "$boostrap_server" $DATSERVER_BOOTSTRAP_FILE; then
+       return
+    fi
+
+    sed -i "/var DEFAULT_BOOTSTRAP/a '$boostrap_server'," $DATSERVER_BOOTSTRAP_FILE
+    sed -i "s|'$boostrap_server',|  '$boostrap_server',|g" $DATSERVER_BOOTSTRAP_FILE
+}
+
+function datserver_generate_bootstraps {
+    datserver_add_discovery_domain "$DATSERVER_DISCOVERY1"
+    datserver_add_discovery_domain "$DATSERVER_DISCOVERY2"
+
+    datserver_add_bootstrap "$DATSERVER_BOOTSTRAP1"
+    datserver_add_bootstrap "$DATSERVER_BOOTSTRAP2"
+    datserver_add_bootstrap "$DATSERVER_BOOTSTRAP3"
+    datserver_add_bootstrap "$DATSERVER_BOOTSTRAP4"
+}
 
 function logging_on_datserver {
     echo -n ''
@@ -127,9 +191,11 @@ function upgrade_datserver {
     CURR_DATSERVER_HYPERCORED_VERSION=$(get_completion_param "datserver hypercored version")
     if [[ "$CURR_DATSERVER_HYPERCORED_VERSION" != "$DATSERVER_HYPERCORED_VERSION" ]]; then
         cd $DATSERVER_DIRECTORY || exit 254274
+        systemctl stop datserver
         if npm update hypercored@$DATSERVER_HYPERCORED_VERSION; then
             set_completion_param "datserver hypercored version" "$DATSERVER_HYPERCORED_VERSION"
         fi
+        datserver_generate_bootstraps
         chown -R datserver:datserver "$DATSERVER_DIRECTORY"
         systemctl restart datserver
     fi
@@ -253,8 +319,7 @@ function install_datserver {
         exit 9568356
     fi
 
-    # bootstrap servers are here:
-    # $DATSERVER_DIRECTORY/node_modules/datland-swarm-defaults/index.js
+    datserver_generate_bootstraps
 
     chown -R datserver:datserver "$DATSERVER_DIRECTORY"
 
