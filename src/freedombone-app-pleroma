@@ -1,23 +1,12 @@
 #!/bin/bash
+#  _____               _           _
+# |   __|___ ___ ___ _| |___ _____| |_ ___ ___ ___
+# |   __|  _| -_| -_| . | . |     | . | . |   | -_|
+# |__|  |_| |___|___|___|___|_|_|_|___|___|_|_|___|
 #
-# .---.                  .              .
-# |                      |              |
-# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
-# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
-# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
-#
-#                    Freedom in the Cloud
+#                              Freedom in the Cloud
 #
 # Pleroma backend application
-# https://git.pleroma.social/pleroma/pleroma/wikis/Installing-on-Debian-Based-Distributions
-#
-# Show stopper: This is dependent on https://placehold.it for avatar images,
-# so at present it's not usable until a first party placeholder image system
-# is included.
-#
-# There is also a possible issue with the chat system which uses an object called
-# "Agent" which may not be supported with the version of elixir within the
-# Debian package. This only applies if you're installing from the latest commit.
 #
 # License
 # =======
@@ -47,10 +36,11 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='b0d242cd9220c22c0af7c153182a51d8e40d34ba'
+PLEROMA_COMMIT='e153b364a71de431787db236c57114f229162ddf'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
+pleroma_secret=$PLEROMA_DIR/config/dev.secret.exs
 
 PLEROMA_BACKGROUND_IMAGE_URL=
 
@@ -71,6 +61,17 @@ pleroma_variables=(ONION_ONLY
                    PLEROMA_EXPIRE_MONTHS
                    MY_EMAIL_ADDRESS
                    MY_USERNAME)
+
+function pleroma_enable_chat {
+    if [[ "$1" == 't'* || "$1" == 'y'* || "$1" == 'T'* || "$1" == 'Y'* ]]; then
+        sed -i 's|"chatDisabled":.*|"chatDisabled": false,|g' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|:chat, enabled:.*|:chat, enabled: true|g' $PLEROMA_DIR/config/config.exs
+    else
+        sed -i 's|"chatDisabled":.*|"chatDisabled": true,|g' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|:chat, enabled:.*|:chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
+    fi
+    pleroma_recompile
+}
 
 function create_pleroma_blocklist {
     { echo '#!/bin/bash';
@@ -254,7 +255,6 @@ function pleroma_recompile {
     if [ -f /etc/systemd/system/pleroma.service ]; then
         systemctl restart pleroma
     fi
-
 }
 
 function logging_on_pleroma {
@@ -268,6 +268,8 @@ function logging_off_pleroma {
 function remove_user_pleroma {
     remove_username="$1"
 
+    cd $PLEROMA_DIR || exit 252498
+    mix rm_user "$remove_username"
     "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp pleroma
 }
 
@@ -275,6 +277,8 @@ function add_user_pleroma {
     new_username="$1"
     new_user_password="$2"
 
+    cd $PLEROMA_DIR || exit 348346
+    mix register_user "$new_username" "$new_username" "$new_username@$HOSTNAME" $"Your bio goes here" "$new_user_password"
     "${PROJECT_NAME}-pass" -u "$new_username" -a pleroma -p "$new_user_password"
 
     echo '0'
@@ -416,7 +420,6 @@ function pleroma_create_database {
         echo $"Missing directory $PLEROMA_DIR/config"
         exit 7835393
     fi
-    pleroma_secret=$PLEROMA_DIR/config/dev.secret.exs
     if [ ! -f $PLEROMA_DIR/config/dev.exs ]; then
         echo $"Did not find $PLEROMA_DIR/config/dev.exs"
         exit 78923528
@@ -684,33 +687,40 @@ function configure_interactive_pleroma {
     read_config_param PLEROMA_EXPIRE_MONTHS
     while true
     do
-        data=$(mktemp 2>/dev/null)
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"Pleroma" \
-               --radiolist $"Choose an operation:" 15 70 6 \
-               1 $"Set a background image" off \
-               2 $"Set the title" off \
-               3 $"Disable new account registrations" off \
-               4 $"Add a custom emoji" off \
-               5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)" off \
-               6 $"Exit" on 2> "$data"
-        sel=$?
-        case $sel in
-            1) rm -f "$data"
-               return;;
-            255) rm -f "$data"
-                 return;;
-        esac
-        case $(cat "$data") in
+        chatenabled=
+        enablechatstr=$'Enable chat system'
+        if grep -q ':chat, enabled: true' $PLEROMA_DIR/config/config.exs; then
+            chatenabled=1
+            enablechatstr=$'Disable chat system'
+        fi
+
+        W=(1 $"Set a background image"
+           2 $"Set the title"
+           3 $"Disable new account registrations"
+           4 $"Add a custom emoji"
+           5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)"
+           6 "$enablechatstr")
+
+        # shellcheck disable=SC2068
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 13 60 6 "${W[@]}" 3>&2 2>&1 1>&3)
+
+        if [ ! "$selection" ]; then
+            break
+        fi
+
+        case $selection in
             1) pleroma_set_background_image;;
             2) pleroma_set_title;;
             3) pleroma_disable_registrations;;
             4) pleroma_add_emoji;;
             5) pleroma_set_expire_months;;
-            6) rm -f "$data"
-               break;;
+            6) if [ $chatenabled ]; then
+                   pleroma_enable_chat false
+               else
+                   pleroma_enable_chat true
+               fi
+               ;;
         esac
-        rm -f "$data"
     done
 }
 
@@ -731,6 +741,11 @@ function upgrade_pleroma {
     CURR_PLEROMA_COMMIT=$(get_completion_param "pleroma commit")
     if [[ "$CURR_PLEROMA_COMMIT" == "$PLEROMA_COMMIT" ]]; then
         return
+    fi
+
+    pleroma_registrations=open
+    if grep -q 'registrations_open: false' $PLEROMA_DIR/config/config.exs; then
+        pleroma_registrations=
     fi
 
     # make a copy of the configuration
@@ -760,14 +775,23 @@ function upgrade_pleroma {
 
     sudo -u pleroma mix deps.get
 
+    if [ ! $pleroma_registrations ]; then
+        sed -i 's|registrations_open: true|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+        sed -i 's|registrations_open: True|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+    fi
+
     pleroma_recompile
 
     # migrate database
     sudo -u pleroma mix deps.clean --build mime
     sudo -u pleroma mix ecto.migrate
 
+    pleroma_custom_logo "$PLEROMA_DIR"
+
     expire_pleroma_posts "$PLEROMA_DOMAIN_NAME" "$PLEROMA_EXPIRE_MONTHS"
     create_pleroma_blocklist
+
+    chown -R pleroma:pleroma $PLEROMA_DIR
 
     systemctl restart pleroma
 }
@@ -902,7 +926,7 @@ function remove_pleroma {
     rm /etc/systemd/system/pleroma.service
 
     userdel pleroma
-    #apt-get -yq remove esl-erlang elixir erlang-xmerl erlang-dev erlang-parsetools
+    #remove_elixir
 
     function_check remove_nodejs
     remove_nodejs pleroma-backend
@@ -932,32 +956,24 @@ function remove_pleroma {
     sed -i '/pleroma commit/d' "$COMPLETION_FILE"
     sed -i "/$blocking_script_file/d" /etc/crontab
 
+    if [ -f /usr/bin/pleroma-blocking ]; then
+        rm /usr/bin/pleroma-blocking
+    fi
+
     function_check remove_ddns_domain
     remove_ddns_domain "$PLEROMA_DOMAIN_NAME"
 }
 
-function install_elixir {
-    apt-get -yq install wget build-essential
-
-    if [ ! -d "$INSTALL_DIR" ]; then
-        mkdir -p "$INSTALL_DIR"
+function image_install_pleroma {
+    if [[ "$SOCIALINSTANCE" != 'pleroma' ]]; then
+        return
     fi
 
-    cd "$INSTALL_DIR" || exit 768345274
-    erlang_package=erlang-solutions_1.0_all.deb
-    wget https://packages.erlang-solutions.com/$erlang_package
-    if [ ! -f "$INSTALL_DIR/$erlang_package" ]; then
-        exit 72853
-    fi
-    dpkg -i $erlang_package
-    apt-get -yq update
-    apt-get -yq install esl-erlang
-    apt-get -yq install elixir erlang-xmerl erlang-dev erlang-parsetools
+    # shellcheck disable=SC2154
+    chroot "$rootdir" apt-get -yq install wget imagemagick
 
-    if [ ! -f /usr/local/bin/mix ]; then
-        echo $'/usr/local/bin/mix not found after elixir installation'
-        exit 629352
-    fi
+    image_install_elixir
+    image_install_postgresql
 }
 
 function install_pleroma {
@@ -1024,24 +1040,21 @@ function install_pleroma {
         function_check nginx_http_redirect
         nginx_http_redirect "$PLEROMA_DOMAIN_NAME" "index index.html"
         { echo '';
-        echo 'proxy_cache_path /tmp/pleroma-media-cache levels=1:2 keys_zone=pleroma_media_cache:10m max_size=100m inactive=80m use_temp_path=off;';
-        echo '';
-        echo 'server {';
-        echo '  listen 443 ssl;';
-        echo '  #listen [::]:443 ssl;';
-        echo "  server_name $PLEROMA_DOMAIN_NAME;";
-        echo ''; } >> "$pleroma_nginx_site"
-        function_check nginx_compress
-        nginx_compress "$PLEROMA_DOMAIN_NAME"
-        echo '' >> "$pleroma_nginx_site"
-        echo '  # Security' >> "$pleroma_nginx_site"
+          echo 'proxy_cache_path /tmp/pleroma-media-cache levels=1:2 keys_zone=pleroma_media_cache:10m max_size=100m inactive=80m use_temp_path=off;';
+          echo '';
+          echo 'server {';
+          echo '  listen 443 ssl http2;';
+          echo '  #listen [::]:443 ssl http2;';
+          echo "  server_name $PLEROMA_DOMAIN_NAME;";
+          echo '';
+          echo '  # Security'; } >> "$pleroma_nginx_site"
         function_check nginx_ssl
         nginx_ssl "$PLEROMA_DOMAIN_NAME"
 
         function_check nginx_security_options
         nginx_security_options "$PLEROMA_DOMAIN_NAME"
 
-        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+        { echo '  add_header Strict-Transport-Security max-age=0;';
           echo '';
           echo '  # Logs';
           echo '  access_log /dev/null;';
@@ -1050,10 +1063,28 @@ function install_pleroma {
           echo "  root $PLEROMA_DIR;";
           echo '';
           echo '  index index.html;';
-          echo '  location / {'; } >> "$pleroma_nginx_site"
-        function_check nginx_limits
-        nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-        { echo "    add_header 'Access-Control-Allow-Origin' '*';";
+          echo '';
+          echo '  gzip_vary on;';
+          echo '  gzip_proxied any;';
+          echo '  gzip_comp_level 6;';
+          echo '  gzip_buffers 16 8k;';
+          echo '  gzip_http_version 1.1;';
+          echo '  gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript application/activity+json application/atom+xml;';
+          echo '';
+          echo '  location / {';
+          echo '    client_max_body_size 15m;';
+          echo '    client_body_buffer_size 15m;';
+          echo '';
+          echo '    limit_conn conn_limit_per_ip 50;';
+          echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+          echo '';
+          echo "    add_header 'Access-Control-Allow-Origin' '*' always;";
+          echo "    add_header 'Access-Control-Allow-Methods' 'POST, GET, OPTIONS' always;";
+          echo "    add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;";
+          echo "    if (\$request_method = OPTIONS) {";
+          echo '        return 204;';
+          echo '    }';
+          echo '';
           echo '    proxy_http_version 1.1;';
           echo "    proxy_set_header Upgrade \$http_upgrade;";
           echo '    proxy_set_header Connection "upgrade";';
@@ -1062,9 +1093,14 @@ function install_pleroma {
           echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
           echo '  }';
           echo '';
-          echo '  location /proxy {'; } >> "$pleroma_nginx_site"
-        nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-        { echo '    proxy_cache pleroma_media_cache;';
+          echo '  location /proxy {';
+          echo '    client_max_body_size 15m;';
+          echo '    client_body_buffer_size 15m;';
+          echo '';
+          echo '    limit_conn conn_limit_per_ip 50;';
+          echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+          echo '';
+          echo '    proxy_cache pleroma_media_cache;';
           echo '    proxy_cache_lock on;';
           echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
           echo '  }';
@@ -1078,9 +1114,6 @@ function install_pleroma {
       echo "    listen 127.0.0.1:$PLEROMA_ONION_PORT default_server;";
       echo "    server_name $PLEROMA_ONION_HOSTNAME;";
       echo ''; } >> "$pleroma_nginx_site"
-    function_check nginx_compress
-    nginx_compress "$PLEROMA_DOMAIN_NAME"
-    echo '' >> "$pleroma_nginx_site"
     function_check nginx_security_options
     nginx_security_options "$PLEROMA_DOMAIN_NAME"
     { echo '';
@@ -1091,21 +1124,44 @@ function install_pleroma {
       echo "  root $PLEROMA_DIR;";
       echo '';
       echo '  index index.html;';
-      echo '  location / {'; } >> "$pleroma_nginx_site"
-    function_check nginx_limits
-    nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-    { echo "      add_header 'Access-Control-Allow-Origin' '*';";
-      echo '      proxy_http_version 1.1;';
-      echo "      proxy_set_header Upgrade \$http_upgrade;";
-      echo '      proxy_set_header Connection "upgrade";';
-      echo "      proxy_set_header Host \$http_host;";
       echo '';
-      echo "      proxy_pass http://localhost:$PLEROMA_PORT;";
+      echo '  gzip_vary on;';
+      echo '  gzip_proxied any;';
+      echo '  gzip_comp_level 6;';
+      echo '  gzip_buffers 16 8k;';
+      echo '  gzip_http_version 1.1;';
+      echo '  gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript application/activity+json application/atom+xml;';
+      echo '';
+      echo '  location / {';
+      echo '    client_max_body_size 15m;';
+      echo '    client_body_buffer_size 15m;';
+      echo '';
+      echo '    limit_conn conn_limit_per_ip 50;';
+      echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+      echo '';
+      echo "    add_header 'Access-Control-Allow-Origin' '*' always;";
+      echo "    add_header 'Access-Control-Allow-Methods' 'POST, GET, OPTIONS' always;";
+      echo "    add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type' always;";
+      echo "    if (\$request_method = OPTIONS) {";
+      echo '        return 204;';
+      echo '    }';
+      echo '';
+      echo '    proxy_http_version 1.1;';
+      echo "    proxy_set_header Upgrade \$http_upgrade;";
+      echo '    proxy_set_header Connection "upgrade";';
+      echo "    proxy_set_header Host \$http_host;";
+      echo '';
+      echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
       echo '  }';
       echo '';
-      echo '  location /proxy {'; } >> "$pleroma_nginx_site"
-    nginx_limits "$PLEROMA_DOMAIN_NAME" '15m'
-    { echo '    proxy_cache pleroma_media_cache;';
+      echo '  location /proxy {';
+      echo '    client_max_body_size 15m;';
+      echo '    client_body_buffer_size 15m;';
+      echo '';
+      echo '    limit_conn conn_limit_per_ip 50;';
+      echo '    limit_req zone=req_limit_per_ip burst=50 nodelay;';
+      echo '';
+      echo '    proxy_cache pleroma_media_cache;';
       echo '    proxy_cache_lock on;';
       echo "    proxy_pass http://localhost:$PLEROMA_PORT;";
       echo '  }';
@@ -1119,6 +1175,7 @@ function install_pleroma {
         echo $'mix local.hex failed'
         exit 1745673
     fi
+    mix local.hex --force
     if ! sudo -u pleroma mix deps.get --force; then
         echo $'mix deps.get failed'
         exit 7325733
@@ -1157,8 +1214,7 @@ function install_pleroma {
 
     # We need to set up the url option again because it somehow gets
     # lost during mix compile
-    pleroma_secret=$PLEROMA_DIR/config/dev.secret.exs
-    if ! grep -q 'watchers: [],' $pleroma_secret; then
+    if ! grep -q 'watchers: \[],' $pleroma_secret; then
         sed -i 's|watchers: \[\]|watchers: \[\],|g' $pleroma_secret
     fi
     if ! grep -q 'url:' $pleroma_secret; then
@@ -1189,13 +1245,31 @@ function install_pleroma {
       echo 'WantedBy=multi-user.target';
       echo 'Alias=pleroma.service'; } > /etc/systemd/system/pleroma.service
 
+
+    # avoid mixed content warnings
+    sed -i '/config :pleroma, :media_proxy/!b;n;c####enabled: true,' $PLEROMA_DIR/config/config.exs
+    sed -i 's|####enabled|  enabled|g' $PLEROMA_DIR/config/config.exs
+    sed -i 's|redirect_on_failure:.*|redirect_on_failure: false|g' $PLEROMA_DIR/config/config.exs
+    sed -i 's|:chat, enabled:.*|:chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
+
     # set registrations open initially
     sed -i 's|registrations_open:.*|registrations_open: true,|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|"registrationOpen":.*|"registrationOpen": true,|g' $PLEROMA_DIR/priv/static/static/config.json
 
+    if ! grep -q "media_proxy" $PLEROMA_DIR/priv/static/static/config.json; then
+        sed -i '/"name":/a "media_proxy": true,' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|"media_proxy"|  "media_proxy"|g' $PLEROMA_DIR/priv/static/static/config.json
+    else
+        sed -i 's|"media_proxy".*|"media_proxy": false,|g' $PLEROMA_DIR/priv/static/static/config.json
+    fi
+    sed -i 's|"chatDisabled":.*|"chatDisabled": true,|g' $PLEROMA_DIR/priv/static/static/config.json
+
     systemctl daemon-reload
     systemctl enable pleroma
     systemctl start pleroma
+
+    cd $PLEROMA_DIR || exit 1935638
+    mix register_user "$MY_USERNAME" "$MY_USERNAME" "$MY_EMAIL_ADDRESS" $"Your bio goes here" "$PLEROMA_ADMIN_PASSWORD"
 
     APP_INSTALLED=1
 }

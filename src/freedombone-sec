@@ -1,12 +1,10 @@
 #!/bin/bash
+#  _____               _           _
+# |   __|___ ___ ___ _| |___ _____| |_ ___ ___ ___
+# |   __|  _| -_| -_| . | . |     | . | . |   | -_|
+# |__|  |_| |___|___|___|___|_|_|_|___|___|_|_|___|
 #
-# .---.                  .              .
-# |                      |              |
-# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
-# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
-# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
-#
-#                    Freedom in the Cloud
+#                              Freedom in the Cloud
 #
 # Alters the security settings
 #
@@ -68,6 +66,240 @@ DH_KEYLENGTH=2048
 LETSENCRYPT_SERVER='https://acme-v01.api.letsencrypt.org/directory'
 
 MY_USERNAME=
+
+function ping_enable_disable {
+    ping_str=$"\\nDo you want to enable other systems to ping this machine?\\n\\nPing may be useful for diagnostic purposes, but for added security you may not want to enable it."
+    enable_ping="no"
+    dialog --title $"Enable Ping / ICMP" \
+           --backtitle $"Freedombone Control Panel" \
+           --defaultno \
+           --yesno "$ping_str" 10 60
+    sel=$?
+    case $sel in
+        0) enable_ping="yes";;
+        255) return;;
+    esac
+
+    if [[ $enable_ping == "yes" ]]; then
+        iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
+        iptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
+        echo "0" >  /proc/sys/net/ipv4/icmp_echo_ignore_all
+    else
+        iptables -D INPUT -p icmp --icmp-type echo-request -j ACCEPT
+        iptables -D OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
+        echo "1" >  /proc/sys/net/ipv4/icmp_echo_ignore_all
+    fi
+}
+
+function any_key_verify {
+    echo ''
+    read -n1 -rsp $"Press any key to continue or C to check a hash..." key
+    if [[ "$key" != 'c' && "$key" != 'C' ]]; then
+        return
+    fi
+
+    data=$(mktemp 2>/dev/null)
+    dialog --title $"Check tripwire hash" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox $"Paste your tripwire hash below and it will be checked against the current database" 12 60 2>"$data"
+    sel=$?
+    case $sel in
+        0)
+            GIVEN_HASH=$(<"$data")
+            if [ ${#GIVEN_HASH} -gt 8 ]; then
+                if [[ "$GIVEN_HASH" == *' '* ]]; then
+                    dialog --title $"Check tripwire" \
+                           --msgbox $"\\nThe hash should not contain any spaces" 10 40
+                else
+                    DBHASH=$(sha512sum "/var/lib/tripwire/${HOSTNAME}.twd" | awk -F ' ' '{print $1}')
+                    if [[ "$DBHASH" == "$GIVEN_HASH" ]]; then
+                        dialog --title $"Check tripwire" \
+                               --msgbox $"\\nSuccess\\n\\nThe hash you gave matches the current tripwire database" 10 40
+                    else
+                        dialog --title $"Check tripwire" \
+                               --msgbox $"\\nFailed\\n\\nThe hash you gave does not match the current tripwire database. This might be because you reset the tripwire, or there could have been an unauthorised modification of the system" 12 50
+                    fi
+                fi
+            fi
+            ;;
+    esac
+    rm -f "$data"
+}
+
+function show_tripwire_verification_code {
+    if [ ! -f "/var/lib/tripwire/${HOSTNAME}.twd" ]; then
+        return
+    fi
+    clear
+    echo ''
+    echo $'Tripwire Verification Code'
+    echo ''
+    DBHASH=$(sha512sum "/var/lib/tripwire/${HOSTNAME}.twd")
+    echo -n "$DBHASH" | qrencode -t UTF8
+    echo ''
+    echo "$DBHASH"
+    echo ''
+}
+
+function reset_tripwire {
+    if [ ! -f /usr/bin/reset-tripwire ]; then
+        echo $'Missing /usr/bin/reset-tripwire'
+        any_key
+        return
+    fi
+    if [ ! -f "/etc/tripwire/${HOSTNAME}-local.key" ]; then
+        if [ -f "/etc/tripwire/${PROJECT_NAME}-local.key" ]; then
+            # shellcheck disable=SC2086
+            mv /etc/tripwire/${PROJECT_NAME}-local.key /etc/tripwire/${HOSTNAME}-local.key
+            # shellcheck disable=SC2086
+            mv /etc/tripwire/${PROJECT_NAME}-site.key /etc/tripwire/${HOSTNAME}-site.key
+        else
+            echo $'Error: missing local key'
+            any_key
+            return
+        fi
+    fi
+    clear
+    echo $'Turing off logging...'
+    "${PROJECT_NAME}-logging" off
+    echo $'Locking down permissions...'
+    lockdown_permissions
+    echo $'Creating configuration...'
+    echo '
+
+       ' | twadmin --create-cfgfile -S "/etc/tripwire/${HOSTNAME}-site.key" /etc/tripwire/twcfg.txt
+    echo $'Resetting policy...'
+    echo '
+
+       ' | twadmin --create-polfile -S "/etc/tripwire/${HOSTNAME}-site.key" /etc/tripwire/twpol.txt
+    echo $'Creating tripwire database'
+    echo '
+
+' | tripwire --init --cfgfile /etc/tripwire/tw.cfg --polfile /etc/tripwire/tw.pol --dbfile "/var/lib/tripwire/${HOSTNAME}.twd"
+    echo $'Resetting the Tripwire...'
+    echo ''
+    echo '
+
+                ' | reset-tripwire
+    echo ''
+
+    # Sometimes nginx fails to restart if matrix is installed
+    # Restart matrix first
+    if [ -d /etc/matrix ]; then
+        systemctl restart matrix
+        systemctl restart nginx
+    fi
+
+    if [ -f "/var/lib/tripwire/${HOSTNAME}.twd" ]; then
+        show_tripwire_verification_code
+        echo $'Tripwire is now reset. Take a note of the above hash, or record'
+        echo $'the QR code using a mobile device. This will enable you to independently'
+        echo $'verify the integrity of the tripwire.'
+    else
+        echo $'ERROR: tripwire database was not created'
+    fi
+    any_key
+}
+
+function passwords_show_apps {
+    SELECTED_APP=
+    i=0
+    W=()
+    name=()
+    # shellcheck disable=SC2068
+    for a in ${APPS_AVAILABLE[@]}
+    do
+        if grep -q "change_password_" "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${a}"; then
+            i=$((i+1))
+            W+=("$i" "$a")
+            name+=("$a")
+        fi
+    done
+    i=$((i+1))
+    W+=("$i" "mariadb")
+    name+=("mariadb")
+
+    # shellcheck disable=SC2068
+    selected_app_index=$(dialog --backtitle $"Freedombone Control Panel" --title $"User $SELECTED_USERNAME: Select App" --menu $"Select one of the following:" 24 40 17 ${W[@]} 3>&2 2>&1 1>&3)
+
+    # shellcheck disable=SC2181
+    if [ $? -eq 0 ]; then
+        SELECTED_APP="${name[$((selected_app_index-1))]}"
+    fi
+}
+
+function view_or_change_passwords {
+    passwords_select_user
+    if [ ! "$SELECTED_USERNAME" ]; then
+        return
+    fi
+    detect_installed_apps
+    passwords_show_apps
+    if [ ! "$SELECTED_APP" ]; then
+        return
+    fi
+
+    CURR_PASSWORD=$("${PROJECT_NAME}-pass" -u "${SELECTED_USERNAME}" -a "${SELECTED_APP}")
+
+    icann_address=$(get_app_icann_address "${SELECTED_APP}")
+    onion_address=$(get_app_onion_address "${SELECTED_APP}")
+
+    titlestr=$"View or Change Password"
+    if [ ${#onion_address} -gt 0 ]; then
+        viewstr=$"${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address or $onion_address\\n\\nCopy or change it if you wish."
+    else
+        viewstr=$"${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address\\n\\nCopy or change it if you wish."
+    fi
+
+    if [ -f /root/.nostore ]; then
+        titlestr=$"Change Password"
+        if [ ${#onion_address} -gt 0 ]; then
+            viewstr=$"Change the ${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address or $onion_address."
+        else
+            viewstr=$"Change the ${SELECTED_APP} password for ${SELECTED_USERNAME} on $icann_address."
+        fi
+    fi
+
+    if [[ "${SELECTED_APP}" == 'mariadb' ]]; then
+        CURR_PASSWORD=$("${PROJECT_NAME}-pass" -u root -a mariadb)
+        dialog --title $"MariaDB database password" \
+               --msgbox "\\n            ${CURR_PASSWORD}" 7 40
+        return
+    fi
+
+    data=$(mktemp 2>/dev/null)
+    dialog --title "$titlestr" \
+           --backtitle $"Freedombone Control Panel" \
+           --inputbox "$viewstr" 12 75 "$CURR_PASSWORD" 2>"$data"
+    sel=$?
+    case $sel in
+        0)
+            CURR_PASSWORD=$(<"$data")
+            if [ ${#CURR_PASSWORD} -gt 8 ]; then
+                "${PROJECT_NAME}-pass" -u "${SELECTED_USERNAME}" -a "${SELECTED_APP}" -p "${CURR_PASSWORD}"
+                "change_password_${SELECTED_APP}" "${SELECTED_USERNAME}" "${CURR_PASSWORD}"
+                dialog --title $"Change password" \
+                       --msgbox $"The password was changed" 6 40
+            else
+                dialog --title $"Change password" \
+                       --msgbox $"The password given must be at least 8 characters" 6 40
+            fi
+            ;;
+    esac
+    rm -f "$data"
+}
+
+function show_firewall {
+    W=()
+    while read -r line; do
+        firewall_name=$(echo "$line" | awk -F '=' '{print $1}')
+        firewall_port=$(echo "$line" | awk -F '=' '{print $2}')
+        W+=("${firewall_name}" "${firewall_port}")
+    done < "$FIREWALL_CONFIG"
+
+    # shellcheck disable=SC2068
+    dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Firewall" --menu $"Press ESC to return to main menu" 28 50 28 "${W[@]}" 3>&2 2>&1 1>&3
+}
 
 function export_passwords {
     detect_usb_drive
@@ -924,86 +1156,69 @@ function remove_tor_bridge_relay {
 }
 
 function menu_tor_bridges {
-    data=$(mktemp 2>/dev/null)
-    dialog --backtitle $"Freedombone Control Panel" \
-           --title $"Tor Bridges" \
-           --radiolist $"Choose an operation:" 14 50 6 \
-           1 $"Show bridges" off \
-           2 $"Add a bridge" off \
-           3 $"Remove a bridge" off \
-           4 $"Make this system into a bridge" off \
-           5 $"Stop being a bridge" off \
-           6 $"Go Back/Exit" on 2> "$data"
-    sel=$?
-    case $sel in
-        1) rm -f "$data"
-           exit 1;;
-        255) rm -f "$data"
-             exit 1;;
-    esac
+    W=(1 $"Show bridges"
+       2 $"Add a bridge"
+       3 $"Remove a bridge"
+       4 $"Make this system into a bridge"
+       5 $"Stop being a bridge")
 
-    case $(cat "$data") in
+    # shellcheck disable=SC2068
+    selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Security Settings" --menu $"Choose an operation, or ESC to go back:" 14 50 6 "${W[@]}" 3>&2 2>&1 1>&3)
+
+    if [ ! "$selection" ]; then
+        exit 0
+    fi
+
+    case $selection in
         1)
             show_tor_bridges
-            rm -f "$data"
             exit 0
             ;;
         2)
             add_tor_bridge
-            rm -f "$data"
             exit 0
             ;;
         3)
             remove_tor_bridge
-            rm -f "$data"
             exit 0
             ;;
         4)
             add_tor_bridge_relay
-            rm -f "$data"
             exit 0
             ;;
         5)
             remove_tor_bridge_relay
-            rm -f "$data"
-            exit 0
-            ;;
-        6)
-            rm -f "$data"
             exit 0
             ;;
     esac
-    rm -f "$data"
 }
 
 function menu_security_settings {
-    data=$(mktemp 2>/dev/null)
-    dialog --backtitle $"Freedombone Control Panel" \
-           --title $"Security Settings" \
-           --radiolist $"Choose an operation:" 23 76 23 \
-           1 $"Run STIG tests" off \
-           2 $"Fix STIG test failures" off \
-           3 $"Show ssh host public key" off \
-           4 $"Tor bridges" off \
-           5 $"Password storage" off \
-           6 $"Export passwords" off \
-           7 $"Regenerate ssh host keys" off \
-           8 $"Regenerate Diffie-Hellman keys" off \
-           9 $"Update cipersuite" off \
-           10 $"Create a new Let's Encrypt certificate" off \
-           11 $"Renew Let's Encrypt certificate" off \
-           12 $"Delete a Let's Encrypt certificate" off \
-           13 $"Enable GPG based authentication (monkeysphere)" off \
-           14 $"Register a website with monkeysphere" off \
-           15 $"Allow ssh login with passwords" off \
-           16 $"Go Back/Exit" on 2> "$data"
-    sel=$?
-    case $sel in
-        1) rm -f "$data"
-           exit 1;;
-        255) rm -f "$data"
-             exit 1;;
-    esac
+    W=(1 $"Passwords"
+       2 $"Run STIG tests"
+       3 $"Fix STIG test failures"
+       4 $"Show tripwire verification code"
+       5 $"Reset tripwire"
+       6 $"Enable or disable ping"
+       7 $"Show ssh host public key"
+       8 $"Tor bridges"
+       9 $"Password storage"
+       10 $"Export passwords"
+       11 $"Regenerate ssh host keys"
+       12 $"Regenerate Diffie-Hellman keys"
+       13 $"Update cipersuite"
+       14 $"Create a new Let's Encrypt certificate"
+       15 $"Renew Let's Encrypt certificate"
+       16 $"Delete a Let's Encrypt certificate"
+       17 $"Allow ssh login with passwords"
+       18 $"Show firewall")
+
+    # shellcheck disable=SC2068
+    selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Security Settings" --menu $"Choose an operation, or ESC to exit:" 25 76 25 "${W[@]}" 3>&2 2>&1 1>&3)
+
+    if [ ! "$selection" ]; then
+        exit 0
+    fi
 
     clear
 
@@ -1019,82 +1234,86 @@ function menu_security_settings {
     import_settings
     export_settings
 
-    case $(cat "$data") in
+    case $selection in
         1)
+            view_or_change_passwords
+            exit 0;
+            ;;
+        2)
             clear
             echo $'Running STIG tests...'
             echo ''
             ${PROJECT_NAME}-tests --stig showall
-            rm -f "$data"
             exit 0
             ;;
-        2)
+        3)
             clear
             echo $'Fixing any STIG failures...'
             echo ''
             ${PROJECT_NAME}-tests --stig fix
             echo $'Fixes applied. You will need to run the STIG tests again to be sure that they were all fixed.'
-            rm -f "$data"
-            exit 0
-            ;;
-        3)
-            dialog --title $"SSH host public keys" \
-                   --msgbox "\n$(get_ssh_server_key)" 12 60
-            rm -f "$data"
             exit 0
             ;;
         4)
-            menu_tor_bridges
-            rm -f "$data"
+            show_tripwire_verification_code
+            any_key_verify
             exit 0
             ;;
         5)
-            store_passwords
-            rm -f "$data"
+            reset_tripwire
             exit 0
             ;;
+
         6)
-            export_passwords
-            rm -f "$data"
+            ping_enable_disable
             exit 0
             ;;
         7)
-            regenerate_ssh_host_keys
+            dialog --title $"SSH host public keys" \
+                   --msgbox "\\n$(get_ssh_server_key)" 12 60
+            exit 0
             ;;
         8)
-            regenerate_dh_keys
+            menu_tor_bridges
+            exit 0
             ;;
         9)
+            store_passwords
+            exit 0
+            ;;
+        10)
+            export_passwords
+            exit 0
+            ;;
+        11)
+            regenerate_ssh_host_keys
+            ;;
+        12)
+            regenerate_dh_keys
+            ;;
+        13)
             interactive_setup
             update_ciphersuite
             ;;
-        10)
+        14)
             create_letsencrypt
             ;;
-        11)
+        15)
             renew_letsencrypt
             ;;
-        12)
+        16)
             delete_letsencrypt
             ;;
-        13)
-            enable_monkeysphere
-            ;;
-        14)
-            register_website
-            ;;
-        15)
+        17)
             allow_ssh_passwords
             change_ssh_settings
-            rm -f "$data"
             exit 0
             ;;
-        16)
-            rm -f "$data"
+        18)
+            show_firewall
             exit 0
             ;;
     esac
-    rm -f "$data"
 
     change_website_settings
     change_imap_settings

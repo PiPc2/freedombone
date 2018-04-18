@@ -1,12 +1,10 @@
 #!/bin/bash
+#  _____               _           _
+# |   __|___ ___ ___ _| |___ _____| |_ ___ ___ ___
+# |   __|  _| -_| -_| . | . |     | . | . |   | -_|
+# |__|  |_| |___|___|___|___|_|_|_|___|___|_|_|___|
 #
-# .---.                  .              .
-# |                      |              |
-# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
-# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
-# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
-#
-#                    Freedom in the Cloud
+#                              Freedom in the Cloud
 #
 # PeerTube server
 #
@@ -39,7 +37,7 @@ SHOW_ON_ABOUT=1
 PEERTUBE_DOMAIN_NAME=
 PEERTUBE_CODE=
 PEERTUBE_REPO="https://github.com/Chocobozzz/PeerTube"
-PEERTUBE_COMMIT='fef2c7164e025b12a64185dbab058ef4129733c6'
+PEERTUBE_COMMIT='f209b32afaffbb8b93c265525ebde182ab66c37a'
 PEERTUBE_ONION_PORT=8136
 PEERTUBE_PORT=9004
 MESH_PEERTUBE_PORT=8500
@@ -53,6 +51,93 @@ peertube_variables=(PEERTUBE_DOMAIN_NAME
                     MY_USERNAME
                     ARCHITECTURE
                     MY_EMAIL_ADDRESS)
+
+function peertube_import_from_syncthing {
+    peertubedomain="https://$PEERTUBE_DOMAIN_NAME"
+    nodecmd='node'
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        peertubedomain="http://$(cat /var/lib/tor/hidden_service_peertube/hostname)"
+        nodecmd='torsocks node'
+    fi
+
+    { echo '#!/bin/bash';
+      echo '';
+      echo 'LOCKFILE=/tmp/.peertube.lock';
+      echo '';
+      echo 'if [ -f /root/.peertube.lock ]; then';
+      echo "    lockctr=\$(cat \$LOCKFILE)";
+      echo "    lockctr=\$((lockctr+1))";
+      echo "    echo \"\$lockctr\" > \$LOCKFILE";
+      echo "    if [ \$lockctr -ge 30 ]; then";
+      echo "        rm \$LOCKFILE";
+      echo '    else';
+      echo '        exit 0';
+      echo '    fi';
+      echo 'fi';
+      echo '';
+      echo "MY_USERNAME=\$(cat /root/${PROJECT_NAME}.cfg | grep MY_USERNAME | awk -F '=' '{print \$2}')";
+      echo "if [ ! \"\$MY_USERNAME\" ]; then";
+      echo '    exit 0';
+      echo 'fi';
+      echo '';
+      echo "search_dir=/home/\$MY_USERNAME/Sync/peertube_upload";
+      echo "if [ ! -f \$search_dir/login.txt ]; then";
+      echo '    exit 0';
+      echo 'fi';
+      echo "import_script=${PEERTUBE_DIR}/dist/server/tools/upload.js";
+      echo "if [ ! -f \$import_script ]; then";
+      echo '    exit 0';
+      echo 'fi';
+      echo '';
+      echo "peertubedomain=\"$peertubedomain\"";
+      echo "peertubeuser=\$(sed -n 1p < \"\$search_dir/login.txt\")";
+      echo "peertubepassword=\$(sed -n 2p < \"\$search_dir/login.txt\")";
+      echo 'peertubensfw=';
+      echo "if grep -q 'nsfw' \"\$search_dir/login.txt\"; then";
+      echo "    peertubensfw='--nsfw'";
+      echo 'fi';
+      echo "if grep -q 'NSFW' \"\$search_dir/login.txt\"; then";
+      echo "    peertubensfw='--nsfw'";
+      echo 'fi';
+      echo '';
+      echo "peertubeprivate='-P 3'";
+      echo "if grep -q 'public' \"\$search_dir/login.txt\"; then";
+      echo "    peertubeprivate='-P 1'";
+      echo 'fi';
+      echo "if grep -q 'Public' \"\$search_dir/login.txt\"; then";
+      echo "    peertubeprivate='-P 1'";
+      echo 'fi';
+      echo '';
+      echo 'failed_uploads=0';
+      echo '';
+      echo "cd ${PEERTUBE_DIR} || exit 32468356";
+      echo "echo \"0\" > \$LOCKFILE";
+      echo '';
+      echo "for video_file in \$search_dir/*; do";
+      echo "    if [[ \"\$video_file\" == *'.ogv' || \"\$video_file\" == *'.mp4' || \"\$video_file\" == *'.webm' ]]; then";
+      echo "        if ! grep -q \"\$video_file\" /root/.peertube_uploaded; then";
+      echo "            peertubetitle=\$(basename \"\$video_file\" | awk -F '.' '{print \$1}' | sed 's|_| |g' | sed 's|-| |g')";
+      echo "            if $nodecmd \$import_script -n \"\$peertubetitle\" \$peertubensfw \$peertubeprivate -u \"\$peertubedomain\" -U \"\$peertubeuser\" --password \"\$peertubepassword\" -f \"\$video_file\"; then";
+      echo "                echo \"\$video_file\" >> /root/.peertube_uploaded";
+      echo "                rm \$LOCKFILE";
+      echo "                exit 0";
+      echo '            else';
+      echo "                failed_uploads=\$((failed_uploads+1))";
+      echo "                if [ \$failed_uploads -gt 1 ]; then";
+      echo "                    rm \$LOCKFILE";
+      echo '                    exit 0';
+      echo '                fi';
+      echo '            fi';
+      echo '        fi';
+      echo '    fi';
+      echo 'done';
+      echo '';
+      echo "rm \$LOCKFILE"; } > /usr/bin/peertubesync
+
+    chmod +x /usr/bin/peertubesync
+    cron_add_mins 1 /usr/bin/peertubesync
+}
 
 function peertube_create_database {
     if [ -f "$IMAGE_PASSWORD_FILE" ]; then
@@ -149,28 +234,169 @@ function peertube_disable_signups {
     systemctl restart peertube
 }
 
+function peertube_import_from_file {
+    read_config_param MY_USERNAME
+    read_config_param PEERTUBE_DOMAIN_NAME
+    read_config_param ONION_ONLY
+
+    data2=$(mktemp 2>/dev/null)
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Import Video from file" \
+           --form $"Enter your PeerTube login details and video title" 10 65 4 \
+           $"Username:" 1 1 "$MY_USERNAME" 1 18 16 15 \
+           $"Password:" 2 1 "" 2 18 40 10000 \
+           $"Video Title:" 3 1 "" 3 18 40 1000 \
+           $"NSFW:" 4 1 $"no" 4 18 4 4 \
+           2> "$data2"
+    sel=$?
+    case $sel in
+        1) rm -f "$data2"
+           return;;
+        255) rm -f "$data2"
+             return;;
+    esac
+    peertubeuser=$(sed -n 1p < "$data2")
+    peertubepassword=$(sed -n 2p < "$data2")
+    peertubetitle=$(sed -n 3p < "$data2")
+    peertubensfw=$(sed -n 4p < "$data2")
+    rm -f "$data2"
+
+    peertubedomain="https://$PEERTUBE_DOMAIN_NAME"
+    nodecmd='node'
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        peertubedomain="http://$(cat /var/lib/tor/hidden_service_peertube/hostname)"
+        nodecmd='torsocks node'
+    fi
+
+    selected_file=$(dialog --title "Choose the video file (select with spacebar)" --fselect "/home/$MY_USERNAME/" 30 60)
+    if [ ! "$selected_file" ]; then
+        return
+    fi
+    if [[ "$selected_file" != *'.ogv' && "$selected_file" != *'.mp4' && "$selected_file" != *'.webm' ]]; then
+        dialog --title $"Import video from file" \
+               --msgbox $"The video should be in ogv, mp4 or webm format" 6 75
+        return
+    fi
+
+    cd $PEERTUBE_DIR || exit 32468356
+    import_script=$PEERTUBE_DIR/dist/server/tools/upload.js
+    if [ ! -f $import_script ]; then
+        dialog --title $"Import videos" \
+               --msgbox $"upload script was not found" 6 75
+        return
+    fi
+
+    nsfwstr=
+    if [[ "$peertubensfw" == *'y'* || "$peertubensfw" == *'Y'* ]]; then
+        nsfwstr='--nsfw'
+    fi
+
+    titlestr=$(basename "$selected_file" | awk -F '.' '{print $1}' | sed 's|_| |g' | sed 's|-| |g')
+    if [ "$peertubetitle" ]; then
+        titlestr="-n \"$peertubetitle\""
+    fi
+
+    clear
+    $nodecmd $import_script $nsfwstr "$titlestr" -u "$peertubedomain" -U "$peertubeuser" --password "$peertubepassword" -f "$selected_file"
+
+    dialog --title $"Import video from file" \
+           --msgbox $"Video imported from $selected_file" 6 75
+}
+
+function peertube_import_videos {
+    read_config_param MY_USERNAME
+    read_config_param PEERTUBE_DOMAIN_NAME
+    read_config_param ONION_ONLY
+
+    data2=$(mktemp 2>/dev/null)
+    dialog --backtitle $"Freedombone Control Panel" \
+           --title $"Import Videos from legacy sites" \
+           --form $"Enter a channel of video URL for YouTube/Vimeo/Dailymotion" 10 75 4 \
+           $"Username:" 1 1 "$MY_USERNAME" 1 22 16 15 \
+           $"Password:" 2 1 "" 2 22 50 10000 \
+           $"Video/Channel URL:" 3 1 "" 3 22 50 10000 \
+           2> "$data2"
+    sel=$?
+    case $sel in
+        1) rm -f "$data2"
+           return;;
+        255) rm -f "$data2"
+             return;;
+    esac
+    peertubeuser=$(sed -n 1p < "$data2")
+    peertubepassword=$(sed -n 2p < "$data2")
+    video_url=$(sed -n 3p < "$data2")
+    rm -f "$data2"
+
+    peertubedomain="https://$PEERTUBE_DOMAIN_NAME"
+    nodecmd='node'
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        peertubedomain="http://$(cat /var/lib/tor/hidden_service_peertube/hostname)"
+        nodecmd='torsocks node'
+    fi
+
+    if [ ${#peertubeuser} -lt 3 ]; then
+        dialog --title $"Import videos from legacy sites" \
+               --msgbox $"Username was not valid" 6 75
+        return
+    fi
+
+    if [ ${#peertubepassword} -lt 3 ]; then
+        dialog --title $"Import videos from legacy sites" \
+               --msgbox $"Password was not valid" 6 75
+        return
+    fi
+
+    if [[ "$video_url" == *' '* || "$video_url" == *','* || "$video_url" == *'@'* ]]; then
+        dialog --title $"Import videos from legacy sites" \
+               --msgbox $"Video/channel URL was not valid" 6 75
+        return
+    fi
+
+    if [ ${#video_url} -lt 8 ]; then
+        dialog --title $"Import videos from legacy sites" \
+               --msgbox $"Video/channel URL was not valid" 6 75
+        return
+    fi
+
+    cd $PEERTUBE_DIR || exit 32468356
+    import_script=$PEERTUBE_DIR/dist/server/tools/import-videos.js
+    if [ ! -f $import_script ]; then
+        dialog --title $"Import videos from legacy sites" \
+               --msgbox $"import-videos script was not found" 6 75
+        return
+    fi
+
+    clear
+    $nodecmd $import_script -u "$peertubedomain" -U "$peertubeuser" --password "$peertubepassword" -t "$video_url"
+
+    dialog --title $"Import videos from legacy sites" \
+           --msgbox $"Video/s imported from $video_url" 6 75
+}
+
 function configure_interactive_peertube {
+    W=(1 $"Set administrator email address"
+       2 $"Disable or enable signups"
+       3 $"Import videos from YouTube/Vimeo/Dailymotion"
+       4 $"Import video from file")
+
     while true
     do
-        data=$(mktemp 2>/dev/null)
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"PeerTube" \
-               --radiolist $"Choose an operation:" 10 70 4 \
-               1 $"Set administrator email address" off \
-               2 $"Disable or enable signups" off \
-               3 $"Exit" on 2> "$data"
-        sel=$?
-        case $sel in
-            1) break;;
-            255) break;;
-        esac
-        case $(cat "$data") in
+        # shellcheck disable=SC2068
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"PeerTube" --menu $"Choose an operation, or ESC to exit:" 12 60 4 "${W[@]}" 3>&2 2>&1 1>&3)
+
+        if [ ! "$selection" ]; then
+            break
+        fi
+
+        case $selection in
             1) peertube_set_admin_email;;
             2) peertube_disable_signups;;
-            3) rm -f "$data"
-               break;;
+            3) peertube_import_videos;;
+            4) peertube_import_from_file;;
         esac
-        rm -f "$data"
     done
 }
 
@@ -189,6 +415,8 @@ function reconfigure_peertube {
 }
 
 function upgrade_peertube {
+    peertube_import_from_syncthing
+
     CURR_PEERTUBE_COMMIT=$(get_completion_param "peertube commit")
     if [[ "$CURR_PEERTUBE_COMMIT" == "$PEERTUBE_COMMIT" ]]; then
         return
@@ -342,6 +570,14 @@ function remove_peertube {
     remove_onion_service peertube ${PEERTUBE_ONION_PORT}
     remove_completion_param "install_peertube"
     sed -i '/peertube/d' "$COMPLETION_FILE"
+    sed -i '/peertubesync/d' /etc/crontab
+
+    if [ -f /usr/bin/peertubesync ]; then
+        rm /usr/bin/peertubesync
+    fi
+    if [ -f /root/peertube_uploaded ]; then
+        rm /root/peertube_uploaded
+    fi
 
     function_check drop_database_postgresql
     drop_database_postgresql peertube peertube
@@ -622,11 +858,11 @@ function mesh_install_peertube {
     if [[ "$VARIANT" != "meshclient" && "$VARIANT" != "meshusb" ]]; then
         return
     fi
-    if [[ "$ARCHITECTURE" != 'x86_64' && "$ARCHITECTURE" != 'amd64' ]]; then
+    if [[ "$ARCHITECTURE" != 'x86_64' && "$ARCHITECTURE" != 'amd64' && "$ARCHITECTURE" != 'i386' ]]; then
         return
     fi
 
-    chroot "$rootdir" apt-get -yq install ffmpeg curl
+    chroot "$rootdir" apt-get -yq install ffmpeg curl redis-tools redis-server
 
     function_check install_postgresql
     install_postgresql
@@ -653,35 +889,40 @@ echo "deb https://dl.yarnpkg.com/debian/ stable main" | sudo tee /etc/apt/source
 apt-get -y update
 apt-get -yq install yarn
 
-#npm install --arch=$NPM_ARCH -g yarn
-#if [ ! "\$?" = "0" ]; then
+#if ! npm install --arch=$NPM_ARCH -g yarn@1.5.1; then
 #    echo $'PeerTube Failed to install yarn'
 #    exit 79353234
 #fi
-#npm install --arch=$NPM_ARCH webpack@3.10.0 --no-optional
-#if [ ! "\$?" = "0" ]; then
+#if ! npm install --arch=$NPM_ARCH webpack@3.10.0 --no-optional; then
 #    echo $'PeerTube failed to install webpack'
 #    exit 68386353
 #fi
 yarn install
 yarn run build:prod
-yarn add -D webpack
-if [ ! "\$?" = "0" ]; then
+if ! yarn add -D webpack; then
     echo $'PeerTube failed to add webpack'
     exit 67342823
 fi
-yarn install --ignore-optional
-if [ ! "\$?" = "0" ]; then
+if ! yarn install --ignore-optional; then
     echo $'PeerTube failed to run yarn install'
     exit 63754235
 fi
-npm install --arch=$NPM_ARCH
-if [ ! "\$?" = "0" ]; then
+if ! npm install --arch=$NPM_ARCH -g npm@4; then
+    # https://github.com/KraigM/homebridge-harmonyhub/issues/119
+    echo $'Failed to downgrade npm'
+    exit 3476835
+fi
+cp /root/.npm-global/bin/npm /usr/local/bin/npm
+if ! npm install --arch=$NPM_ARCH; then
     echo $'PeerTube failed to install peertube'
     exit 7835243
 fi
-npm run build --arch=$NPM_ARCH
-if [ ! "\$?" = "0" ]; then
+if ! npm install --arch=$NPM_ARCH -g "npm@${NPM_VERSION}"; then
+    echo $'Failed to restore npm after downgrade'
+    exit 5737583
+fi
+cp /root/.npm-global/bin/npm /usr/local/bin/npm
+if ! npm run build --arch=$NPM_ARCH; then
     echo $'PeerTube failed to build peertube'
     exit 5293593
 fi
@@ -737,7 +978,7 @@ function install_peertube {
         exit 783523
     fi
 
-    apt-get -yq install ffmpeg
+    apt-get -yq install ffmpeg redis-tools redis-server
 
     function_check install_postgresql
     install_postgresql
@@ -772,7 +1013,7 @@ function install_peertube {
     git checkout $PEERTUBE_COMMIT -b $PEERTUBE_COMMIT
     set_completion_param "peertube commit" "$PEERTUBE_COMMIT"
 
-    if ! npm install -g yarn; then
+    if ! npm install -g yarn@1.5.1; then
         echo $'Failed to install yarn'
         exit 79353234
     fi
@@ -781,10 +1022,21 @@ function install_peertube {
         echo $'Failed to run yarn install'
         exit 63754235
     fi
+    if ! npm install -g npm@4; then
+        # https://github.com/KraigM/homebridge-harmonyhub/issues/119
+        echo $'Failed to downgrade npm'
+        exit 3476835
+    fi
+    cp /root/.npm-global/bin/npm /usr/local/bin/npm
     if ! npm install; then
         echo $'Failed to install peertube'
         exit 7835243
     fi
+    if ! npm install -g "npm@${NPM_VERSION}"; then
+        echo $'Failed to restore npm after downgrade'
+        exit 5737583
+    fi
+    cp /root/.npm-global/bin/npm /usr/local/bin/npm
     if ! npm run build; then
         echo $'Failed to build peertube'
         exit 5293593
@@ -833,6 +1085,8 @@ function install_peertube {
 
     # update the admin email address after creation of the database
     sed -i "s|email: .*|email: '$MY_EMAIL_ADDRESS'|g" $PEERTUBE_DIR/config/production.yaml
+
+    peertube_import_from_syncthing
 
     set_completion_param "peertube domain" "$PEERTUBE_DOMAIN_NAME"
     APP_INSTALLED=1

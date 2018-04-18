@@ -1,12 +1,10 @@
 #!/bin/bash
+#  _____               _           _
+# |   __|___ ___ ___ _| |___ _____| |_ ___ ___ ___
+# |   __|  _| -_| -_| . | . |     | . | . |   | -_|
+# |__|  |_| |___|___|___|___|_|_|_|___|___|_|_|___|
 #
-# .---.                  .              .
-# |                      |              |
-# |--- .--. .-.  .-.  .-.|  .-. .--.--. |.-.  .-. .--.  .-.
-# |    |   (.-' (.-' (   | (   )|  |  | |   )(   )|  | (.-'
-# '    '     --'  --'  -' -  -' '  '   -' -'   -' '   -  --'
-#
-#                    Freedom in the Cloud
+#                              Freedom in the Cloud
 #
 # gnusocial application
 #
@@ -306,34 +304,28 @@ function configure_interactive_gnusocial {
     read_config_param GNUSOCIAL_EXPIRE_MONTHS
     while true
     do
-        data=$(mktemp 2>/dev/null)
-        dialog --backtitle $"Freedombone Control Panel" \
-               --title $"GNU Social" \
-               --radiolist $"Choose an operation:" 16 70 7 \
-               1 $"Set a background image" off \
-               2 $"Set the title" off \
-               3 $"Set post expiry period (currently $GNUSOCIAL_EXPIRE_MONTHS months)" off \
-               4 $"Select Qvitter user interface" off \
-               5 $"Select Pleroma user interface" off \
-               6 $"Select Classic user interface" off \
-               7 $"Exit" on 2> "$data"
-        sel=$?
-        case $sel in
-            1) rm -f "$data"
-               return;;
-            255) rm -f "$data"
-                 return;;
-        esac
-        case $(cat "$data") in
+        W=(1 $"Set a background image"
+           2 $"Set the title"
+           3 $"Set post expiry period (currently $GNUSOCIAL_EXPIRE_MONTHS months)"
+           4 $"Select Qvitter user interface"
+           5 $"Select Pleroma user interface"
+           6 $"Select Classic user interface")
+
+        # shellcheck disable=SC2068
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"GNU Social" --menu $"Choose an operation, or ESC to exit:" 15 60 6 "${W[@]}" 3>&2 2>&1 1>&3)
+
+        if [ ! "$selection" ]; then
+            break
+        fi
+
+        case $selection in
             1) gnusocial_set_background_image;;
             2) gnusocial_set_title;;
             3) gnusocial_set_expire_months;;
             4) gnusocial_use_qvitter gnusocial;;
             5) gnusocial_use_pleroma gnusocial;;
             6) gnusocial_use_classic gnusocial;;
-            7) break;;
         esac
-        rm -f "$data"
     done
 }
 
@@ -611,6 +603,12 @@ function remove_gnusocial {
     if grep -q 'gnusocial-firewall' /etc/crontab; then
         sed -i '/gnusocial-firewall/d' /etc/crontab
     fi
+    sed -i 's|mysqli.allow_persistent.*|mysqli.allow_persistent = On|g' /etc/php/7.0/cli/php.ini
+    sed -i 's|mysqli.reconnect.*|mysqli.reconnect = Off|g' /etc/php/7.0/cli/php.ini
+
+    if [ -f /usr/bin/gnusocial-firewall ]; then
+        rm /usr/bin/gnusocial-firewall
+    fi
 
     function_check remove_ddns_domain
     remove_ddns_domain "$GNUSOCIAL_DOMAIN_NAME"
@@ -887,6 +885,15 @@ function install_gnusocial_main {
 
     # This improves performance
     sed -i "s|//\$config\\['db'\\]\\['schemacheck'\\].*|\$config\\['db'\\]\\['schemacheck'\\] = 'script';|g" "$gnusocial_config_file"
+
+    # remove the install script
+    if [ -f "/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/install.php" ]; then
+        rm "/var/www/$GNUSOCIAL_DOMAIN_NAME/htdocs/install.php"
+    fi
+
+    # php configuration
+    sed -i 's|mysqli.allow_persistent.*|mysqli.allow_persistent = On|g' /etc/php/7.0/cli/php.ini
+    sed -i 's|mysqli.reconnect.*|mysqli.reconnect = On|g' /etc/php/7.0/cli/php.ini
 
     systemctl restart mariadb
     systemctl restart php7.0-fpm
