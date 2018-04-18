@@ -62,6 +62,17 @@ pleroma_variables=(ONION_ONLY
                    MY_EMAIL_ADDRESS
                    MY_USERNAME)
 
+function pleroma_enable_chat {
+    if [[ "$1" == 't'* || "$1" == 'y'* || "$1" == 'T'* || "$1" == 'Y'* ]]; then
+        sed -i 's|"chatDisabled":.*|"chatDisabled": false,|g' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|:chat, enabled:.*|:chat, enabled: true|g' $PLEROMA_DIR/config/config.exs
+    else
+        sed -i 's|"chatDisabled":.*|"chatDisabled": true,|g' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|:chat, enabled:.*|:chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
+    fi
+    pleroma_recompile
+}
+
 function create_pleroma_blocklist {
     { echo '#!/bin/bash';
       echo "if [ ! -f /root/${PROJECT_NAME}-firewall-domains.cfg ]; then";
@@ -676,11 +687,19 @@ function configure_interactive_pleroma {
     read_config_param PLEROMA_EXPIRE_MONTHS
     while true
     do
+        chatenabled=
+        enablechatstr=$'Enable chat system'
+        if grep -q ':chat, enabled: false' $PLEROMA_DIR/config/config.exs; then
+            chatenabled=1
+            enablechatstr=$'Disable chat system'
+        fi
+
         W=(1 $"Set a background image"
            2 $"Set the title"
            3 $"Disable new account registrations"
            4 $"Add a custom emoji"
-           5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)")
+           5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)"
+           6 "$enablechatstr")
 
         # shellcheck disable=SC2068
         selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 14 60 5 "${W[@]}" 3>&2 2>&1 1>&3)
@@ -695,6 +714,12 @@ function configure_interactive_pleroma {
             3) pleroma_disable_registrations;;
             4) pleroma_add_emoji;;
             5) pleroma_set_expire_months;;
+            6) if [ $chatenabled ]; then
+                   pleroma_enable_chat false
+               else
+                   pleroma_enable_chat true
+               fi
+               ;;
         esac
     done
 }
@@ -1224,6 +1249,7 @@ function install_pleroma {
     sed -i '/config :pleroma, :media_proxy/!b;n;c####enabled: true,' $PLEROMA_DIR/config/config.exs
     sed -i 's|####enabled|  enabled|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|redirect_on_failure:.*|redirect_on_failure: false|g' $PLEROMA_DIR/config/config.exs
+    sed -i 's|:chat, enabled:.*|:chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
 
     # set registrations open initially
     sed -i 's|registrations_open:.*|registrations_open: true,|g' $PLEROMA_DIR/config/config.exs
@@ -1235,6 +1261,7 @@ function install_pleroma {
     else
         sed -i 's|"media_proxy".*|"media_proxy": false,|g' $PLEROMA_DIR/priv/static/static/config.json
     fi
+    sed -i 's|"chatDisabled":.*|"chatDisabled": true,|g' $PLEROMA_DIR/priv/static/static/config.json
 
     systemctl daemon-reload
     systemctl enable pleroma
