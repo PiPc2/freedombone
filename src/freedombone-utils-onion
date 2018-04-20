@@ -478,24 +478,14 @@ function tor_add_bridge {
 
     apt-get -yq install obfs4proxy
 
-    if grep -q "ClientTransportPlugin" /etc/tor/torrc; then
-        sed -i 's|#ClientTransportPlugin|ClientTransportPlugin|g' /etc/tor/torrc
-        sed -i 's|# ClientTransportPlugin|ClientTransportPlugin|g' /etc/tor/torrc
-        sed -i 's|ClientTransportPlugin.*|ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed|g' /etc/tor/torrc
+    if [ ! -f /etc/torrc.d/bridges ]; then
+        { echo 'ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed';
+          echo 'UseBridges 1';
+          echo "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}"; } > /etc/torrc.d/bridges
     else
-        echo 'ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed' >> /etc/tor/torrc
-    fi
-    if grep -q "UseBridges" /etc/tor/torrc; then
-        sed -i 's|#UseBridges|UseBridges|g' /etc/tor/torrc
-        sed -i 's|# UseBridges|UseBridges|g' /etc/tor/torrc
-        sed -i 's|UseBridges.*|UseBridges 1|g' /etc/tor/torrc
-    else
-        echo 'UseBridges 1' >> /etc/tor/torrc
-    fi
-
-    bridge_str="Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}"
-    if ! grep -q "${bridge_str}" /etc/tor/torrc; then
-        sed -i "/UseBridges/a ${bridge_str}" >> /etc/tor/torrc
+        if ! grep -q "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}" /etc/torrc.d/bridges; then
+            echo "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}" >> /etc/torrc.d/bridges
+        fi
     fi
 
     systemctl restart tor
@@ -508,24 +498,19 @@ function tor_remove_bridge {
     if [[ "$bridge_ip_address" == *"."* ]]; then
         bridge_str="Bridge $bridge_type ${bridge_ip_address}"
     else
-        if grep -q " ${bridge_ip_address}" /etc/tor/torrc; then
+        if grep -q " ${bridge_ip_address}" /etc/torrc.d/bridges; then
             bridge_str=" ${bridge_ip_address}"
         else
             return
         fi
     fi
-    if grep -q "${bridge_str}" /etc/tor/torrc; then
-        sed -i "/${bridge_str}/d" /etc/tor/torrc
+    if grep -q "${bridge_str}" /etc/torrc.d/bridges; then
+        sed -i "/${bridge_str}/d" /etc/torrc.d/bridges
     fi
 
-    # If there are no bridges remaining then remove UseBridges
-    if ! grep -q "Bridge " /etc/tor/torrc; then
-        if ! grep -q "#UseBridges" /etc/tor/torrc; then
-            sed -i 's|UseBridges|#UseBridges|g' /etc/tor/torrc
-        fi
-        if ! grep -q "#ClientTransportPlugin" /etc/tor/torrc; then
-            sed -i 's|ClientTransportPlugin|#ClientTransportPlugin|g' /etc/tor/torrc
-        fi
+    # If there are no bridges remaining then remove the file
+    if ! grep -q "Bridge " /etc/torrc.d/bridges; then
+        rm /etc/torrc.d/bridges
     fi
 
     systemctl restart tor
@@ -534,6 +519,8 @@ function tor_remove_bridge {
 function tor_create_bridge_relay {
     read_config_param 'TOR_BRIDGE_PORT'
     read_config_param 'TOR_BRIDGE_NICKNAME'
+    read_config_param 'MY_EMAIL_ADDRESS'
+
     if [ ! "$TOR_BRIDGE_PORT" ]; then
         return
     fi
@@ -546,47 +533,25 @@ function tor_create_bridge_relay {
 
     apt-get -yq install obfs4proxy
 
-    sed -i 's|#BridgeRelay.*|BridgeRelay 1|g' /etc/tor/torrc
-    sed -i 's|BridgeRelay.*|BridgeRelay 1|g' /etc/tor/torrc
-    sed -i 's|#ServerTransportPlugin.*|ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy|g' /etc/tor/torrc
-    sed -i 's|ServerTransportPlugin.*|ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy|g' /etc/tor/torrc
+    { echo 'BridgeRelay 1';
+      echo 'ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy';
+      echo "ExtORPort $TOR_BRIDGE_PORT";
+      echo "ContactInfo $MY_EMAIL_ADDRESS";
+      echo "Nickname $TOR_BRIDGE_NICKNAME"; } > /etc/torrc.d/bridgerelay
 
-    if ! grep -q 'ExtORPort ' /etc/tor/torrc; then
-        echo "ExtORPort $TOR_BRIDGE_PORT" >> /etc/tor/torrc
-    else
-        sed -i "s|#ExtORPort .*|ExtORPort $TOR_BRIDGE_PORT|g" /etc/tor/torrc
-        sed -i "s|ExtORPort .*|ExtORPort $TOR_BRIDGE_PORT|g" /etc/tor/torrc
-    fi
-
-    read_config_param 'MY_EMAIL_ADDRESS'
-
-    sed -i "s|#ContactInfo.*|ContactInfo $MY_EMAIL_ADDRESS|g" /etc/tor/torrc
-    if [ "$TOR_BRIDGE_NICKNAME" ]; then
-        sed -i "s|#Nickname.*|Nickname $TOR_BRIDGE_NICKNAME|g" /etc/tor/torrc
-        sed -i "s|Nickname.*|Nickname $TOR_BRIDGE_NICKNAME|g" /etc/tor/torrc
-    fi
     firewall_add tor_bridge "$TOR_BRIDGE_PORT" tcp
+
     systemctl restart tor
 }
 
 function tor_remove_bridge_relay {
-    if ! grep -q '#BridgeRelay ' /etc/tor/torrc; then
-        sed -i 's|BridgeRelay |#BridgeRelay |g' /etc/tor/torrc
+    if [ -f /etc/torrc.d/bridgerelay ]; then
+        rm /etc/torrc.d/bridgerelay
     fi
-    if ! grep -q '#ServerTransportPlugin ' /etc/tor/torrc; then
-        sed -i 's|ServerTransportPlugin |#ServerTransportPlugin |g' /etc/tor/torrc
-    fi
-    if ! grep -q '#ExtORPort ' /etc/tor/torrc; then
-        sed -i 's|ExtORPort |#ExtORPort |g' /etc/tor/torrc
-    fi
-    if ! grep -q '#ContactInfo ' /etc/tor/torrc; then
-        sed -i "s|ContactInfo |#ContactInfo |g" /etc/tor/torrc
-    fi
-    if ! grep -q '#Nickname ' /etc/tor/torrc; then
-        sed -i "s|Nickname |#Nickname |g" /etc/tor/torrc
-    fi
+
     read_config_param 'TOR_BRIDGE_PORT'
     firewall_remove "$TOR_BRIDGE_PORT" tcp
+
     systemctl restart tor
 }
 
