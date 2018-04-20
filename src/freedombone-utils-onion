@@ -31,6 +31,47 @@ TOR_MAX_TRAFFIC_PER_MONTH_GB=10
 
 USE_V2_ONION_ADDRESS=
 HIDDEN_SERVICE_PATH='/var/lib/tor/hidden_service_'
+ONION_SERVICES_FILE=/etc/torrc.d/${PROJECT_NAME}
+
+function torrc_migrate {
+    if [ -f $ONION_SERVICES_FILE ]; then
+        if grep -q "#%include /etc/torrc.d" /etc/tor/torrc; then
+            sed -i 's|#%include /etc/torrc.d|%include /etc/torrc.d|g' /etc/tor/torrc
+            systemctl restart tor
+        fi
+        return
+    fi
+    systemctl stop tor
+
+    mkdir /etc/torrc.d
+
+    grep "HiddenServiceDir\\|HiddenServiceVersion\\|HiddenServicePort" /etc/tor/torrc | grep -v "#HiddenServiceDir" >> $ONION_SERVICES_FILE
+
+    if ! grep "HiddenServiceVersion" $ONION_SERVICES_FILE; then
+        systemctl restart tor
+        return
+    fi
+
+    if grep -q "#%include /etc/torrc.d" /etc/tor/torrc; then
+        sed -i 's|#%include /etc/torrc.d|%include /etc/torrc.d|g' /etc/tor/torrc
+    else
+        echo "%include /etc/torrc.d" >> /etc/tor/torrc
+    fi
+
+    { echo 'DNSPort 5300';
+      echo 'DNSListenAddress 127.0.0.1';
+      echo 'AutomapHostsOnResolve 1'; } > /etc/torrc.d/dns
+
+    sed -i '/DNSPort 5300/d' /etc/tor/torrc
+    sed -i '/DNSListenAddress 127.0.0./d' /etc/tor/torrc
+    sed -i '/AutomapHostsOnResolve 1/d' /etc/tor/torrc
+
+    sed -i '/HiddenServiceDir/d' /etc/tor/torrc
+    sed -i '/HiddenServiceVersion/d' /etc/tor/torrc
+    sed -i '/HiddenServicePort/d' /etc/tor/torrc
+
+    systemctl restart tor
+}
 
 function add_email_hostname {
     extra_email_hostname="$1"
@@ -80,17 +121,17 @@ function remove_onion_service {
     nick="$3"
 
     if [ ${#nick} -gt 0 ]; then
-        sed -i "/stealth ${nick}/d" /etc/tor/torrc
+        sed -i "/stealth ${nick}/d" $ONION_SERVICES_FILE
     fi
-    sed -i "/hidden_service_${onion_service_name}/,+1 d" /etc/tor/torrc
-    sed -i "/hidden_service_${onion_service_name}_mobile/,+1 d" /etc/tor/torrc
-    sed -i "/127.0.0.1:${onion_service_port_to}/d" /etc/tor/torrc
+    sed -i "/hidden_service_${onion_service_name}/,+1 d" $ONION_SERVICES_FILE
+    sed -i "/hidden_service_${onion_service_name}_mobile/,+1 d" $ONION_SERVICES_FILE
+    sed -i "/127.0.0.1:${onion_service_port_to}/d" $ONION_SERVICES_FILE
     if [ "$3" ]; then
-        sed -i "/127.0.0.1:${3}/d" /etc/tor/torrc
+        sed -i "/127.0.0.1:${3}/d" $ONION_SERVICES_FILE
         if [ "$4" ]; then
-            sed -i "/127.0.0.1:${4}/d" /etc/tor/torrc
+            sed -i "/127.0.0.1:${4}/d" $ONION_SERVICES_FILE
             if [ "$5" ]; then
-                sed -i "/127.0.0.1:${5}/d" /etc/tor/torrc
+                sed -i "/127.0.0.1:${5}/d" $ONION_SERVICES_FILE
             fi
         fi
     fi
@@ -123,16 +164,16 @@ function add_onion_service {
         USE_V2_ONION_ADDRESS=
         exit 877367
     fi
-    if ! grep -q "hidden_service_${onion_service_name}" /etc/tor/torrc; then
-        echo "HiddenServiceDir ${HIDDEN_SERVICE_PATH}${onion_service_name}/" >> /etc/tor/torrc
+    if ! grep -q "hidden_service_${onion_service_name}" $ONION_SERVICES_FILE; then
+        echo "HiddenServiceDir ${HIDDEN_SERVICE_PATH}${onion_service_name}/" >> $ONION_SERVICES_FILE
         if [ ! $USE_V2_ONION_ADDRESS ]; then
-            echo 'HiddenServiceVersion 3' >> /etc/tor/torrc
+            echo 'HiddenServiceVersion 3' >> $ONION_SERVICES_FILE
         else
-            echo 'HiddenServiceVersion 2' >> /etc/tor/torrc
+            echo 'HiddenServiceVersion 2' >> $ONION_SERVICES_FILE
         fi
-        echo "HiddenServicePort ${onion_service_port_from} 127.0.0.1:${onion_service_port_to}" >> /etc/tor/torrc
+        echo "HiddenServicePort ${onion_service_port_from} 127.0.0.1:${onion_service_port_to}" >> $ONION_SERVICES_FILE
         if [ ${#onion_stealth_name} -gt 0 ]; then
-            echo "HiddenServiceAuthorizeClient stealth ${onion_stealth_name}" >> /etc/tor/torrc
+            echo "HiddenServiceAuthorizeClient stealth ${onion_stealth_name}" >> $ONION_SERVICES_FILE
         fi
     fi
 
@@ -287,44 +328,16 @@ function install_tor {
     # For torify
     apt-get -yq install torsocks
 
-    # turn off logging
-    sed -i 's|#Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
-    sed -i 's|Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
-
-    # Restrict traffic
-    sed -i "s|#AccountingMax.*|AccountingMax $TOR_MAX_TRAFFIC_PER_MONTH_GB GBytes|g" /etc/tor/torrc
-    sed -i "s|AccountingMax.*|AccountingMax $TOR_MAX_TRAFFIC_PER_MONTH_GB GBytes|g" /etc/tor/torrc
-
-    mark_completed "${FUNCNAME[0]}"
-}
-
-function resolve_dns_via_tor {
-    if [[ $SYSTEM_TYPE == "mesh"* ]]; then
-        return
+    if [ ! -d /etc/torrc.d ]; then
+        mkdir /etc/torrc.d
     fi
-    if [[ $(is_completed "${FUNCNAME[0]}") == "1" ]]; then
-        return
-    fi
-    if [ ! -f /etc/tor/torrc ]; then
-        echo $'tor was not installed'
-        exit 52952
+    sed -i 's|#%include /etc/torrc.d|%include /etc/torrc.d|g' /etc/tor/torrc
+    if ! grep -q '%include /etc/torrc.d' /etc/tor/torrc; then
+        echo '%include /etc/torrc.d' >> /etc/tor/torrc
     fi
 
-    # resolve DNS via tor
-    if ! grep -q 'DNSPort 53' /etc/tor/torrc; then
-        { echo 'DNSPort 53';
-          echo 'AutomapHostsOnResolve 1';
-          echo 'AutomapHostsSuffixes .exit,.onion'; } >> /etc/tor/torrc
-        onion_update
-    fi
-
-    # don't change resolv.conf
-    sed -i 's|, domain-name-servers||g' /etc/dhcp/dhclient.conf
-
-    # point resolv.conf to tor
-    resolvconf=/etc/resolvconf/resolv.conf.d/head
-    echo 'nameserver 127.0.0.1:53' > $resolvconf
-    resolvconf -u
+    echo 'Log notice file /dev/null' > /etc/torrc.d/logging
+    echo "AccountingMax $TOR_MAX_TRAFFIC_PER_MONTH_GB GBytes" > /etc/torrc.d/maxtraffic
 
     mark_completed "${FUNCNAME[0]}"
 }
@@ -465,24 +478,14 @@ function tor_add_bridge {
 
     apt-get -yq install obfs4proxy
 
-    if grep -q "ClientTransportPlugin" /etc/tor/torrc; then
-        sed -i 's|#ClientTransportPlugin|ClientTransportPlugin|g' /etc/tor/torrc
-        sed -i 's|# ClientTransportPlugin|ClientTransportPlugin|g' /etc/tor/torrc
-        sed -i 's|ClientTransportPlugin.*|ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed|g' /etc/tor/torrc
+    if [ ! -f /etc/torrc.d/bridges ]; then
+        { echo 'ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed';
+          echo 'UseBridges 1';
+          echo "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}"; } > /etc/torrc.d/bridges
     else
-        echo 'ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed' >> /etc/tor/torrc
-    fi
-    if grep -q "UseBridges" /etc/tor/torrc; then
-        sed -i 's|#UseBridges|UseBridges|g' /etc/tor/torrc
-        sed -i 's|# UseBridges|UseBridges|g' /etc/tor/torrc
-        sed -i 's|UseBridges.*|UseBridges 1|g' /etc/tor/torrc
-    else
-        echo 'UseBridges 1' >> /etc/tor/torrc
-    fi
-
-    bridge_str="Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}"
-    if ! grep -q "${bridge_str}" /etc/tor/torrc; then
-        sed -i "/UseBridges/a ${bridge_str}" >> /etc/tor/torrc
+        if ! grep -q "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}" /etc/torrc.d/bridges; then
+            echo "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}" >> /etc/torrc.d/bridges
+        fi
     fi
 
     systemctl restart tor
@@ -495,24 +498,19 @@ function tor_remove_bridge {
     if [[ "$bridge_ip_address" == *"."* ]]; then
         bridge_str="Bridge $bridge_type ${bridge_ip_address}"
     else
-        if grep -q " ${bridge_ip_address}" /etc/tor/torrc; then
+        if grep -q " ${bridge_ip_address}" /etc/torrc.d/bridges; then
             bridge_str=" ${bridge_ip_address}"
         else
             return
         fi
     fi
-    if grep -q "${bridge_str}" /etc/tor/torrc; then
-        sed -i "/${bridge_str}/d" /etc/tor/torrc
+    if grep -q "${bridge_str}" /etc/torrc.d/bridges; then
+        sed -i "/${bridge_str}/d" /etc/torrc.d/bridges
     fi
 
-    # If there are no bridges remaining then remove UseBridges
-    if ! grep -q "Bridge " /etc/tor/torrc; then
-        if ! grep -q "#UseBridges" /etc/tor/torrc; then
-            sed -i 's|UseBridges|#UseBridges|g' /etc/tor/torrc
-        fi
-        if ! grep -q "#ClientTransportPlugin" /etc/tor/torrc; then
-            sed -i 's|ClientTransportPlugin|#ClientTransportPlugin|g' /etc/tor/torrc
-        fi
+    # If there are no bridges remaining then remove the file
+    if ! grep -q "Bridge " /etc/torrc.d/bridges; then
+        rm /etc/torrc.d/bridges
     fi
 
     systemctl restart tor
@@ -521,6 +519,8 @@ function tor_remove_bridge {
 function tor_create_bridge_relay {
     read_config_param 'TOR_BRIDGE_PORT'
     read_config_param 'TOR_BRIDGE_NICKNAME'
+    read_config_param 'MY_EMAIL_ADDRESS'
+
     if [ ! "$TOR_BRIDGE_PORT" ]; then
         return
     fi
@@ -533,47 +533,25 @@ function tor_create_bridge_relay {
 
     apt-get -yq install obfs4proxy
 
-    sed -i 's|#BridgeRelay.*|BridgeRelay 1|g' /etc/tor/torrc
-    sed -i 's|BridgeRelay.*|BridgeRelay 1|g' /etc/tor/torrc
-    sed -i 's|#ServerTransportPlugin.*|ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy|g' /etc/tor/torrc
-    sed -i 's|ServerTransportPlugin.*|ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy|g' /etc/tor/torrc
+    { echo 'BridgeRelay 1';
+      echo 'ServerTransportPlugin obfs4 exec /usr/bin/obfs4proxy';
+      echo "ExtORPort $TOR_BRIDGE_PORT";
+      echo "ContactInfo $MY_EMAIL_ADDRESS";
+      echo "Nickname $TOR_BRIDGE_NICKNAME"; } > /etc/torrc.d/bridgerelay
 
-    if ! grep -q 'ExtORPort ' /etc/tor/torrc; then
-        echo "ExtORPort $TOR_BRIDGE_PORT" >> /etc/tor/torrc
-    else
-        sed -i "s|#ExtORPort .*|ExtORPort $TOR_BRIDGE_PORT|g" /etc/tor/torrc
-        sed -i "s|ExtORPort .*|ExtORPort $TOR_BRIDGE_PORT|g" /etc/tor/torrc
-    fi
-
-    read_config_param 'MY_EMAIL_ADDRESS'
-
-    sed -i "s|#ContactInfo.*|ContactInfo $MY_EMAIL_ADDRESS|g" /etc/tor/torrc
-    if [ "$TOR_BRIDGE_NICKNAME" ]; then
-        sed -i "s|#Nickname.*|Nickname $TOR_BRIDGE_NICKNAME|g" /etc/tor/torrc
-        sed -i "s|Nickname.*|Nickname $TOR_BRIDGE_NICKNAME|g" /etc/tor/torrc
-    fi
     firewall_add tor_bridge "$TOR_BRIDGE_PORT" tcp
+
     systemctl restart tor
 }
 
 function tor_remove_bridge_relay {
-    if ! grep -q '#BridgeRelay ' /etc/tor/torrc; then
-        sed -i 's|BridgeRelay |#BridgeRelay |g' /etc/tor/torrc
+    if [ -f /etc/torrc.d/bridgerelay ]; then
+        rm /etc/torrc.d/bridgerelay
     fi
-    if ! grep -q '#ServerTransportPlugin ' /etc/tor/torrc; then
-        sed -i 's|ServerTransportPlugin |#ServerTransportPlugin |g' /etc/tor/torrc
-    fi
-    if ! grep -q '#ExtORPort ' /etc/tor/torrc; then
-        sed -i 's|ExtORPort |#ExtORPort |g' /etc/tor/torrc
-    fi
-    if ! grep -q '#ContactInfo ' /etc/tor/torrc; then
-        sed -i "s|ContactInfo |#ContactInfo |g" /etc/tor/torrc
-    fi
-    if ! grep -q '#Nickname ' /etc/tor/torrc; then
-        sed -i "s|Nickname |#Nickname |g" /etc/tor/torrc
-    fi
+
     read_config_param 'TOR_BRIDGE_PORT'
     firewall_remove "$TOR_BRIDGE_PORT" tcp
+
     systemctl restart tor
 }
 

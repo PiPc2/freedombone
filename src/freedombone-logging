@@ -92,7 +92,9 @@ function turn_logging_off {
 
 function turn_off_rsys_logging {
     if ! grep -q '/var/log/auth.log' /etc/rsyslog.conf; then
-        return
+        if ! grep -q '/var/log/kern.log' /etc/rsyslog.conf; then
+            return
+        fi
     fi
     sed -i 's|mail,news.none.*|mail,news.none      /dev/null|g' /etc/rsyslog.conf
     sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /dev/null|g' /etc/rsyslog.conf
@@ -102,6 +104,7 @@ function turn_off_rsys_logging {
     sed -i 's|daemon.\*.*|daemon.\*              /dev/null|g' /etc/rsyslog.conf
     sed -i 's|mail.\*.*|mail.\*              /dev/null|g' /etc/rsyslog.conf
     sed -i 's|user.\*.*|user.\*              /dev/null|g' /etc/rsyslog.conf
+    sed -i 's|kern.\*.*|kern.\*              /dev/null|g' /etc/rsyslog.conf
     sed -i 's|news.none;mail.none.*|news.none;mail.none /dev/null|g' /etc/rsyslog.conf
     sed -i 's|\*.\*;auth,authpriv.none.*|\*.\*;auth,authpriv.none      /dev/null|g' /etc/rsyslog.conf
     sed -i 's|#cron.\*|cron.\*|g' /etc/rsyslog.conf
@@ -114,6 +117,10 @@ function turn_off_rsys_logging {
     $REMOVE_FILES_COMMAND /var/log/daemon.*
     $REMOVE_FILES_COMMAND /var/log/user.*
     $REMOVE_FILES_COMMAND /var/log/messages*
+    $REMOVE_FILES_COMMAND /var/log/syslog*
+    $REMOVE_FILES_COMMAND /var/log/alternatives*
+    $REMOVE_FILES_COMMAND /var/log/faillog
+    $REMOVE_FILES_COMMAND /var/log/kern.log*
 }
 
 function turn_on_rsys_logging {
@@ -128,6 +135,7 @@ function turn_on_rsys_logging {
     sed -i 's|daemon.\*.*|daemon.\*              -/var/log/daemon.log|g' /etc/rsyslog.conf
     sed -i 's|mail.\*.*|mail.\*              -/var/log/mail.log|g' /etc/rsyslog.conf
     sed -i 's|user.\*.*|user.\*              -/var/log/user.log|g' /etc/rsyslog.conf
+    sed -i 's|kern.\*.*|kern.\*              -/var/log/kern.log|g' /etc/rsyslog.conf
     sed -i 's|news.none;mail.none.*|news.none;mail.none -/var/log/debug|g' /etc/rsyslog.conf
     sed -i 's|\*.\*;auth,authpriv.none.*|\*.\*;auth,authpriv.none      -/var/log/syslog|g' /etc/rsyslog.conf
     sed -i 's|#cron.\*|cron.\*|g' /etc/rsyslog.conf
@@ -150,8 +158,7 @@ if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
             touch /var/log/tor/notices.log
             chown debian-tor:adm /var/log/tor/notices.log
         fi
-        sed -i 's|#Log notice file.*|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
-        sed -i 's|Log notice file.*|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
+        echo 'Log notice file /var/log/tor/notices.log' > /etc/torrc.d/logging
     fi
     if [ -f /etc/php/7.0/fpm/php-fpm.conf ]; then
         sed -i 's|error_log =.*|error_log = /var/log/php-fpm.log|g' /etc/php/7.0/fpm/php-fpm.conf
@@ -193,12 +200,12 @@ if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
         fi
     fi
     turn_on_rsys_logging
+    turn_on_postgresql_logging
 else
     turn_logging_off
 
     if [ -d /etc/tor ]; then
-        sed -i 's|#Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
-        sed -i 's|Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
+        echo 'Log notice file /dev/null' > /etc/torrc.d/logging
         rm /var/log/tor/*
     fi
     if [ -d /var/log/radicale ]; then
@@ -250,6 +257,7 @@ else
         fi
     fi
     turn_off_rsys_logging
+    turn_off_postgresql_logging
 fi
 
 if [ -d /etc/exim4 ]; then
@@ -294,6 +302,9 @@ if [ -d /var/www/radicale ]; then
 fi
 if [ -d /etc/matrix ]; then
     systemctl restart matrix
+fi
+if [ -d /etc/postgresql ]; then
+    systemctl restart postgresql
 fi
 
 exit 0
