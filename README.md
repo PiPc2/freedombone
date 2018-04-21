@@ -12,4 +12,4 @@ If you find bugs, or want to add a new app to this system see the [Developers Gu
 
 If you like this project and want to support continued development then [here's what to do](https://freedombone.net/support.html).
 
-<img src="https://freedombone.net/images/gfdl.png" width=80/>
+<center><a href="https://freedombone.net/fdl-1.3.txt"><img src="https://freedombone.net/images/gfdl.png" width=80/></a></center>
