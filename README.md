@@ -1,4 +1,4 @@
-<img src="https://github.com/bashrc/freedombone/blob/master/img/logo.png?raw=true" width=800/>
+<img src="https://github.com/bashrc/freedombone/blob/master/img/logo.png?raw=true" width=600/>
 
 So you want to run your own internet services? Email, chat, VoIP, web sites, file synchronisation, wikis, blogs, social networks, media hosting, backups, VPN. Freedombone is a home server system which enables you to self-host all of these things.
 
