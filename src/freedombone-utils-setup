@@ -794,16 +794,46 @@ function install_shellcheck {
     apt-get -yq install shellcheck
 }
 
-function set_read_ahead {
-    # Setting this can significantly improve microSD read performance
-    read_ahead="$1"
-    if [ ! "$read_ahead" ]; then
-        read_ahead=4096
+function microsd_card_optimisations {
+    # These values can improve performance on microSD cards
+    if [ ! -d /etc/network/if-up.d ]; then
+        mkdir /etc/network/if-up.d
     fi
-    if [ ! -f /sys/devices/virtual/bdi/179:0/read_ahead_kb ]; then
-        return
+    printf '#!/bin/bash\n' > /usr/bin/enable_optimisations
+
+    if [ -f /sys/devices/virtual/bdi/179:0/read_ahead_kb ]; then
+        echo -n '4096' > /sys/devices/virtual/bdi/179:0/read_ahead_kb
+        echo "echo -n '4096' > /sys/devices/virtual/bdi/179:0/read_ahead_kb" >> /usr/bin/enable_optimisations
     fi
-    echo -n "$read_ahead" > /sys/devices/virtual/bdi/179:0/read_ahead_kb
+
+    if [ -f /proc/sys/vm/dirty_expire_centisecs ]; then
+        echo -n '100' > /proc/sys/vm/dirty_expire_centisecs
+        echo "echo -n '100' > /proc/sys/vm/dirty_expire_centisecs" >> /usr/bin/enable_optimisations
+    fi
+
+    if [ -f /proc/sys/vm/dirty_writeback_centisecs ]; then
+        echo -n '100' > /proc/sys/vm/dirty_writeback_centisecs
+        echo "echo -n '100' > /proc/sys/vm/dirty_writeback_centisecs" >> /usr/bin/enable_optimisations
+    fi
+
+    chmod +x /usr/bin/enable_optimisations
+
+    { echo '[Unit]';
+      echo "Description=${PROJECT_NAME} optimisations";
+      echo 'After=syslog.target';
+      echo 'After=network.target';
+      echo 'After=remote-fs.target';
+      echo '';
+      echo '[Service]';
+      echo 'Type=simple';
+      echo 'User=root';
+      echo 'Group=root';
+      echo 'WorkingDirectory=/root';
+      echo 'ExecStart=/usr/bin/enable_optimisations';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/optimisations.service
+      systemctl enable optimisations
 }
 
 function setup_utils {
@@ -828,8 +858,8 @@ function setup_utils {
     function_check separate_tmp_filesystem
     separate_tmp_filesystem 150
 
-    function_check set_read_ahead
-    set_read_ahead 4096
+    function_check microsd_card_optimisations
+    microsd_card_optimisations
 
     function_check proc_filesystem_settings
     proc_filesystem_settings
