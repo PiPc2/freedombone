@@ -35,7 +35,7 @@ TOX_PORT=33445
 
 # upstream is https://github.com/TokTok/c-toxcore
 TOXCORE_REPO="https://github.com/bashrc/toxcore"
-TOXCORE_COMMIT='987ad5eac173442d6ad2d5cd80c2da763a815a9a'
+TOXCORE_COMMIT='7d399cedcfd20f0d91a8caf386ae3c63f4dcf285'
 
 TOXID_REPO="https://github.com/bashrc/toxid"
 TOX_BOOTSTRAP_ID_FILE=/var/lib/tox-bootstrapd/pubkey.txt
@@ -47,7 +47,7 @@ TOX_NODES=
 #  '144.76.60.215,2a01:4f8:191:64d6::1,33445,04119E835DF3E78BACF0F84235B300546AF8B936F035185E2A8E9E0A67C8924F,sonOfRa,DE'
 #)
 TOXIC_REPO="https://github.com/Tox/toxic"
-TOXIC_COMMIT='5cc83a7cb584886d90d7da15e8398215fed0d315'
+TOXIC_COMMIT='68ce17a57fd05599968a299e5dc516e183ebcf75'
 TOXIC_FILE=/usr/local/bin/toxic
 
 QTOX_REPO="https://github.com/bashrc/qTox"
@@ -184,8 +184,12 @@ function upgrade_tox {
     if [[ $(commit_has_changed "$INSTALL_DIR/toxcore" "toxcore commit" "$TOXCORE_COMMIT") == "1" ]]; then
         cd "$INSTALL_DIR/toxcore" || exit 53683563
         sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' "$rootdir/etc/systemd/system/tox-bootstrapd.service"
-        autoreconf -i
-        ./configure --enable-daemon
+        ./autogen.sh
+        if [ ! -d "$INSTALL_DIR/toxcore/_build" ]; then
+            mkdir "$INSTALL_DIR/toxcore/_build"
+        fi
+        cd "$INSTALL_DIR/toxcore/_build" || return
+        cmake ..
         make
         make install
         systemctl daemon-reload
@@ -426,6 +430,7 @@ function install_tox_client {
 }
 
 function mesh_tox_node {
+    SECONDS=0
     # obtain commits from the main file
     TOXCORE_COMMIT_MAIN=$(grep "TOXCORE_COMMIT=" "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-tox" | head -n 1 | awk -F "'" '{print $2}')
     if [ ${#TOXCORE_COMMIT_MAIN} -gt 10 ]; then
@@ -478,13 +483,13 @@ function mesh_tox_node {
         chroot "${rootdir}" apt-get -yq install automake checkinstall check git yasm
         chroot "${rootdir}" apt-get -yq install libsodium18 libsodium-dev libcap2-bin
         chroot "${rootdir}" apt-get -yq install libconfig9 libconfig-dev autoconf
-        chroot "${rootdir}" apt-get -yq install libopus-dev libvpx-dev
+        chroot "${rootdir}" apt-get -yq install libopus-dev libvpx-dev cmake
     else
         apt-get -yq install build-essential libtool autotools-dev
         apt-get -yq install automake checkinstall check git yasm
         apt-get -yq install libsodium18 libsodium-dev libcap2-bin
         apt-get -yq install libconfig9 libconfig-dev autoconf
-        apt-get -yq install libopus-dev libvpx-dev
+        apt-get -yq install libopus-dev libvpx-dev cmake
     fi
 
     if [ ! -d "${rootdir}${INSTALL_DIR}" ]; then
@@ -508,23 +513,27 @@ function mesh_tox_node {
     if [ "${rootdir}" ]; then
         chroot "${rootdir}" /bin/bash -x <<EOF
 cd ${INSTALL_DIR}/toxcore
-autoreconf -i
-./configure --enable-daemon
+./autogen.sh
+mkdir _build
+cd _build || exit 1
+cmake ..
 make
 make install
 EOF
     else
         /bin/bash -x <<EOF
 cd ${INSTALL_DIR}/toxcore
-autoreconf -i
-./configure --enable-daemon
+./autogen.sh
+mkdir _build
+cd _build || exit 1
+cmake ..
 make
 make install
 EOF
     fi
 
     # shellcheck disable=SC2086
-    cp $rootdir/usr/local/lib/libtoxcore* "$rootdir/usr/lib/"
+    cp -l $rootdir/usr/local/lib/libtoxcore* "$rootdir/usr/lib/"
     cp "${rootdir}${INSTALL_DIR}/toxcore/other/bootstrap_daemon/tox-bootstrapd.service" "$rootdir/etc/systemd/system/"
     sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/tox-bootstrapd --config /etc/tox-bootstrapd.conf|g' "$rootdir/etc/systemd/system/tox-bootstrapd.service"
     if [ "${rootdir}" ]; then
@@ -533,7 +542,6 @@ EOF
         systemctl enable tox-bootstrapd.service
     fi
 
-    SECONDS=0
     if [ ! -f "$rootdir/usr/local/bin/tox-bootstrapd" ]; then
         duration=$SECONDS
         echo $"Toxcore compile failed at $((duration / 60)) minutes and $((duration % 60)) seconds elapsed."
@@ -690,11 +698,14 @@ function mesh_tox_client {
     if [ "${rootdir}" ]; then
         chroot "${rootdir}" apt-get -yq install libncursesw5-dev libconfig-dev libqrencode-dev
         chroot "${rootdir}" apt-get -yq install libcurl4-openssl-dev libvpx-dev libopenal-dev
-        chroot "${rootdir}" apt-get -yq install libqrencode-dev
+        chroot "${rootdir}" apt-get -yq install libqrencode-dev libpng-dev libncurses5-dev libalut-dev
+        chroot "${rootdir}" apt-get -yq install libnotify-dev python3-dev
+        toxic_disable_notify=0
     else
         apt-get -yq install libncursesw5-dev libconfig-dev libqrencode-dev
         apt-get -yq install libcurl4-openssl-dev libvpx-dev libopenal-dev
-        apt-get -yq install libqrencode-dev
+        apt-get -yq install libqrencode-dev libpng-dev libncurses5-dev libalut-dev python3-dev
+        toxic_disable_notify=1
     fi
 
     TEMP_SCRIPT_NAME=fbtmp728353.sh
@@ -711,8 +722,11 @@ function mesh_tox_client {
       echo 'fi';
       echo "cd $INSTALL_DIR/toxic";
       echo "git checkout $TOXIC_COMMIT -b $TOXIC_COMMIT";
-      echo 'make';
-      echo 'if [ ! "$?" = "0" ]; then';
+      echo "export DISABLE_DESKTOP_NOTIFY=$toxic_disable_notify";
+      echo "export DISABLE_AV=$toxic_disable_notify";
+      echo "export DISABLE_X11=$toxic_disable_notify";
+      echo "export DISABLE_SOUND_NOTIFY=$toxic_disable_notify";
+      echo 'if ! make; then';
       echo '    exit 1';
       echo 'fi';
       echo 'make install';
