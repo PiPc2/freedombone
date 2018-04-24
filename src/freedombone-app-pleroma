@@ -36,7 +36,7 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='e153b364a71de431787db236c57114f229162ddf'
+PLEROMA_COMMIT='fc6f5bcad3ad94eefbfcb24ca361e818ed0319d6'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
@@ -724,6 +724,33 @@ function configure_interactive_pleroma {
     done
 }
 
+function pleroma_upgrade_tor {
+    pleroma_tor_update=
+
+    if ! grep -q '{:socks5, :localhost, 9050}' $pleroma_secret; then
+        pleroma_tor_update=1
+    fi
+
+    if ! grep -q '# config :pleroma, :http, proxy_url:' $PLEROMA_DIR/config/config.exs; then
+        pleroma_tor_update=1
+    fi
+
+    if [ ! $pleroma_tor_update ]; then
+        return
+    fi
+
+    if ! grep -q '{:socks5, :localhost, 9050}' $pleroma_secret; then
+        sed -i '/9050/d' $pleroma_secret
+        sed -i '/url:/a config :pleroma, :http, proxy_url: {:socks5, :localhost, 9050}' $pleroma_secret
+    fi
+
+    if ! grep -q '# config :pleroma, :http, proxy_url:' $PLEROMA_DIR/config/config.exs; then
+        sed -i 's|config :pleroma, :http, proxy_url:|# config :pleroma, :http, proxy_url:|g' $PLEROMA_DIR/config/config.exs
+    fi
+
+    pleroma_recompile
+}
+
 function upgrade_pleroma {
     read_config_param PLEROMA_DOMAIN_NAME
     read_config_param PLEROMA_EXPIRE_MONTHS
@@ -738,6 +765,8 @@ function upgrade_pleroma {
         create_pleroma_blocklist
     fi
 
+    pleroma_upgrade_tor
+
     CURR_PLEROMA_COMMIT=$(get_completion_param "pleroma commit")
     if [[ "$CURR_PLEROMA_COMMIT" == "$PLEROMA_COMMIT" ]]; then
         return
@@ -746,6 +775,11 @@ function upgrade_pleroma {
     pleroma_registrations=open
     if grep -q 'registrations_open: false' $PLEROMA_DIR/config/config.exs; then
         pleroma_registrations=
+    fi
+
+    pleroma_chat_enabled=1
+    if grep -q ':chat, enabled: false' $PLEROMA_DIR/config/config.exs; then
+        pleroma_chat_enabled=
     fi
 
     # make a copy of the configuration
@@ -778,6 +812,12 @@ function upgrade_pleroma {
     if [ ! $pleroma_registrations ]; then
         sed -i 's|registrations_open: true|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
         sed -i 's|registrations_open: True|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+    fi
+
+    if [ ! $pleroma_chat_enabled ]; then
+        sed -i 's|config :pleroma, :chat.*|config :pleroma, :chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
+    else
+        sed -i 's|config :pleroma, :chat.*|config :pleroma, :chat, enabled: true|g' $PLEROMA_DIR/config/config.exs
     fi
 
     pleroma_recompile
@@ -1251,6 +1291,10 @@ function install_pleroma {
     sed -i 's|####enabled|  enabled|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|redirect_on_failure:.*|redirect_on_failure: false|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|:chat, enabled:.*|:chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
+
+    # onion routing
+    sed -i '/url:/a config :pleroma, :http, proxy_url: {:socks5, :localhost, 9050}' $pleroma_secret
+    sed -i 's|config :pleroma, :http, proxy_url:|# config :pleroma, :http, proxy_url:|g' $PLEROMA_DIR/config/config.exs
 
     # set registrations open initially
     sed -i 's|registrations_open:.*|registrations_open: true,|g' $PLEROMA_DIR/config/config.exs
