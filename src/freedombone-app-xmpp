@@ -63,6 +63,37 @@ xmpp_variables=(ONION_ONLY
                 DEFAULT_DOMAIN_NAME
                 XMPP_DOMAIN_CODE)
 
+function xmpp_update_e2e_policy {
+    filename="$1"
+
+    read_config_param DEFAULT_DOMAIN_NAME
+    read_config_param ONION_ONLY
+
+    if ! grep -q "e2e_policy_muc" "$filename"; then
+        echo "e2e_policy_muc = \"none\"" >> "$filename"
+    else
+        sed -i 's|e2e_policy_muc.*|e2e_policy_muc = "none"|g' "$filename"
+    fi
+    if ! grep -q "e2e_policy_chat" "$filename"; then
+        echo "e2e_policy_chat = \"required\"" >> "$filename"
+    else
+        sed -i 's|e2e_policy_chat.*|e2e_policy_chat = "required"|g' "$filename"
+    fi
+    if ! grep -q "e2e_policy_message_required_chat" "$filename"; then
+        echo "e2e_policy_message_required_chat = \"\"" >> "$filename"
+    else
+        sed -i "s|e2e_policy_message_required_chat.*|e2e_policy_message_required_chat = \"\"|g" "$filename"
+    fi
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        XMPP_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_xmpp/hostname)
+        sed -i "s|VirtualHost \".*.onion.*|VirtualHost \"${XMPP_ONION_HOSTNAME}\"|g" /etc/prosody/prosody.cfg.lua
+        # TLS is not strictly needed for onion transport security
+        sed -i 's|c2s_require_encryption =.*|c2s_require_encryption = false|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|s2s_require_encryption =.*|s2s_require_encryption = false|g' /etc/prosody/prosody.cfg.lua
+    fi
+}
+
 function logging_on_xmpp {
     if [ -d /etc/prosody ]; then
         if [ ! -d /var/log/prosody ]; then
@@ -426,6 +457,10 @@ function upgrade_xmpp {
             usermod -a -G ssl-cert prosody
         fi
     fi
+
+    xmpp_update_e2e_policy /etc/prosody/conf.avail/xmpp.cfg.lua
+    xmpp_update_e2e_policy /etc/prosody/prosody.cfg.lua
+
     prosody_daemon_restart_script
     function_check update_prosody_modules
     update_prosody_modules
@@ -1077,6 +1112,14 @@ function install_xmpp {
     else
         sed -i 's|s2s_require_encryption.*|s2s_require_encryption = true|g' /etc/prosody/conf.avail/xmpp.cfg.lua
     fi
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        sed -i 's|c2s_require_encryption.*|c2s_require_encryption = false|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+        sed -i 's|s2s_require_encryption.*|s2s_require_encryption = false|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+    fi
+
+    xmpp_update_e2e_policy /etc/prosody/conf.avail/xmpp.cfg.lua
+
     if ! grep -q "allow_unencrypted_plain_auth" /etc/prosody/conf.avail/xmpp.cfg.lua; then
         echo 'allow_unencrypted_plain_auth = false' >> /etc/prosody/conf.avail/xmpp.cfg.lua
     else
