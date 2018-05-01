@@ -51,6 +51,7 @@ prosody_nightly_url="https://prosody.im/nightly/${prosody_latest_version}/latest
 # From https://hg.prosody.im/prosody-modules
 prosody_modules_filename='prosody-modules-20180322.tar.gz'
 prosody_modules_hash='982d0dfcef98e9cb9cee4cc3801b8ce9a503a32e44c32b99df6fe94545b90072'
+xmpp_encryption_warning=$"For security reasons, OMEMO or PGP encryption is required for conversations on this server."
 
 xmpp_variables=(ONION_ONLY
                 INSTALLED_WITHIN_DOCKER
@@ -61,6 +62,37 @@ xmpp_variables=(ONION_ONLY
                 MY_EMAIL_ADDRESS
                 DEFAULT_DOMAIN_NAME
                 XMPP_DOMAIN_CODE)
+
+function xmpp_update_e2e_policy {
+    filename="$1"
+
+    read_config_param DEFAULT_DOMAIN_NAME
+    read_config_param ONION_ONLY
+
+    if ! grep -q "e2e_policy_muc" "$filename"; then
+        echo "e2e_policy_muc = \"none\"" >> "$filename"
+    else
+        sed -i 's|e2e_policy_muc.*|e2e_policy_muc = "none"|g' "$filename"
+    fi
+    if ! grep -q "e2e_policy_chat" "$filename"; then
+        echo "e2e_policy_chat = \"required\"" >> "$filename"
+    else
+        sed -i 's|e2e_policy_chat.*|e2e_policy_chat = "required"|g' "$filename"
+    fi
+    if ! grep -q "e2e_policy_message_required_chat" "$filename"; then
+        echo "e2e_policy_message_required_chat = \"$xmpp_encryption_warning\"" >> "$filename"
+    else
+        sed -i "s|e2e_policy_message_required_chat.*|e2e_policy_message_required_chat = \"$xmpp_encryption_warning\"|g" "$filename"
+    fi
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        XMPP_ONION_HOSTNAME=$(cat /var/lib/tor/hidden_service_xmpp/hostname)
+        sed -i "s|VirtualHost \".*.onion.*|VirtualHost \"${XMPP_ONION_HOSTNAME}\"|g" "$filename"
+        # TLS is not strictly needed for onion transport security
+        sed -i 's|c2s_require_encryption =.*|c2s_require_encryption = false|g' "$filename"
+        sed -i 's|s2s_require_encryption =.*|s2s_require_encryption = false|g' "$filename"
+    fi
+}
 
 function logging_on_xmpp {
     if [ -d /etc/prosody ]; then
@@ -425,6 +457,10 @@ function upgrade_xmpp {
             usermod -a -G ssl-cert prosody
         fi
     fi
+
+    xmpp_update_e2e_policy /etc/prosody/conf.avail/xmpp.cfg.lua
+    xmpp_update_e2e_policy /etc/prosody/prosody.cfg.lua
+
     prosody_daemon_restart_script
     function_check update_prosody_modules
     update_prosody_modules
@@ -608,7 +644,7 @@ function remove_xmpp {
 
     function_check remove_onion_service
     remove_onion_service xmpp 5222 5223 5269
-    sed -i '/HiddenServiceVersion 2/d' $ONION_SERVICES_FILE
+    sed -i '/HiddenServiceVersion 2/d' "$ONION_SERVICES_FILE"
 
     apt-mark -q unhold prosody
     apt-get -yq remove --purge prosody
@@ -818,10 +854,15 @@ function xmpp_create_config {
     else
         echo "    dhparam = \"/etc/ssl/certs/xmpp.dhparam\";" >> /etc/prosody/prosody.cfg.lua
     fi
+
     { echo '}';
       echo '';
       echo 'c2s_require_encryption = true';
       echo 's2s_require_encryption = true';
+      echo '';
+      echo 'e2e_policy_muc = "none"';
+      echo 'e2e_policy_chat = "required"';
+      echo "e2e_policy_message_required_chat = \"$xmpp_encryption_warning\"";
       echo '';
       echo 's2s_secure_auth = false';
       echo '';
@@ -838,6 +879,9 @@ function xmpp_create_config {
       echo ''; } >> /etc/prosody/prosody.cfg.lua
     if [[ "$ONION_ONLY" != 'no' ]]; then
         echo "VirtualHost \"${XMPP_ONION_HOSTNAME}\"" >> /etc/prosody/prosody.cfg.lua
+        # TLS is not needed for onion transport security
+        sed -i 's|s2s_require_encryption =.*|s2s_require_encryption = false|g' /etc/prosody/prosody.cfg.lua
+        sed -i 's|c2s_require_encryption =.*|c2s_require_encryption = false|g' /etc/prosody/prosody.cfg.lua
     else
         echo "VirtualHost \"${DEFAULT_DOMAIN_NAME}\"" >> /etc/prosody/prosody.cfg.lua
     fi
@@ -1068,6 +1112,14 @@ function install_xmpp {
     else
         sed -i 's|s2s_require_encryption.*|s2s_require_encryption = true|g' /etc/prosody/conf.avail/xmpp.cfg.lua
     fi
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        sed -i 's|c2s_require_encryption.*|c2s_require_encryption = false|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+        sed -i 's|s2s_require_encryption.*|s2s_require_encryption = false|g' /etc/prosody/conf.avail/xmpp.cfg.lua
+    fi
+
+    xmpp_update_e2e_policy /etc/prosody/conf.avail/xmpp.cfg.lua
+
     if ! grep -q "allow_unencrypted_plain_auth" /etc/prosody/conf.avail/xmpp.cfg.lua; then
         echo 'allow_unencrypted_plain_auth = false' >> /etc/prosody/conf.avail/xmpp.cfg.lua
     else
@@ -1079,11 +1131,11 @@ function install_xmpp {
         echo $'No Tor installation found. xmpp onion site cannot be configured.'
         exit 877367
     fi
-    if ! grep -q "hidden_service_xmpp" $ONION_SERVICES_FILE; then
+    if ! grep -q "hidden_service_xmpp" "$ONION_SERVICES_FILE"; then
         { echo 'HiddenServiceDir /var/lib/tor/hidden_service_xmpp/';
           echo 'HiddenServiceVersion 2';
           echo "HiddenServicePort 5222 127.0.0.1:5222";
-          echo "HiddenServicePort 5269 127.0.0.1:5269"; } >> $ONION_SERVICES_FILE
+          echo "HiddenServicePort 5269 127.0.0.1:5269"; } >> "$ONION_SERVICES_FILE"
         echo $'Added onion site for xmpp chat'
     fi
 
