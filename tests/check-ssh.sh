@@ -47,8 +47,12 @@ case $1 in
     installed)
 	OPENSSH_SERVER=$(dpkg -s openssh-server | grep -i "Status:.*install.*ok.*installed" | wc -l)
 	OPENSSH_CLIENT=$(dpkg -s openssh-client | grep -i "Status:.*install.*ok.*installed" | wc -l)
-	if [ ${OPENSSH_SERVER} -eq 1 -a ${OPENSSH_CLIENT} -eq 1 ]; then
-	    :
+	if [ ${OPENSSH_SERVER} -eq 1 ]; then
+	    if [ ${OPENSSH_CLIENT} -eq 1 ]; then
+		:
+	    else
+		exit 1
+	    fi
 	else
 	    exit 1
 	fi	
