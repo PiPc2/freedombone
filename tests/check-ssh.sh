@@ -51,9 +51,11 @@ case $1 in
 	    if [ ${OPENSSH_CLIENT} -eq 1 ]; then
 		:
 	    else
+		echo "OPENSSH_CLIENT ${OPENSSH_CLIENT} != 1"
 		exit 1
 	    fi
 	else
+	    echo "OPENSSH_SERVER ${OPENSSH_SERVER} != 1"
 	    exit 1
 	fi	
 	;;    
