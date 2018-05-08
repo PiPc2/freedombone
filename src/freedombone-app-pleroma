@@ -36,7 +36,7 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='5b6d6d7f2d9363c494642bfda4d6e4d12daa53c7'
+PLEROMA_COMMIT='762f6edc29a7a48e3a663e9bedec58e0036ff363'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
@@ -733,15 +733,21 @@ function configure_interactive_pleroma {
             enablechatstr=$'Disable chat system'
         fi
 
+        pleromatorstr=$'Enable routing through Tor for onion addresses'
+        if grep -q '9050' $pleroma_secret; then
+            pleromatorstr=$'Disable routing through Tor'
+        fi
+
         W=(1 $"Set a background image"
            2 $"Set the title"
            3 $"Disable new account registrations"
            4 $"Add a custom emoji"
            5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)"
-           6 "$enablechatstr")
+           6 "$enablechatstr"
+           7 "$pleromatorstr")
 
         # shellcheck disable=SC2068
-        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 13 60 6 "${W[@]}" 3>&2 2>&1 1>&3)
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 14 60 7 "${W[@]}" 3>&2 2>&1 1>&3)
 
         if [ ! "$selection" ]; then
             break
@@ -759,11 +765,25 @@ function configure_interactive_pleroma {
                    pleroma_enable_chat true
                fi
                ;;
+            7) if grep -q '9050' $pleroma_secret; then
+                   pleroma_disable_tor
+               else
+                   pleroma_enable_tor
+               fi
+               ;;
         esac
     done
 }
 
-function pleroma_upgrade_tor {
+function pleroma_disable_tor {
+    if grep -q '9050' $pleroma_secret; then
+        sed -i '/9050/d' $pleroma_secret
+        sed -i 's|# config :pleroma, :http, proxy_url:|config :pleroma, :http, proxy_url:|g' $PLEROMA_DIR/config/config.exs
+        pleroma_recompile
+    fi
+}
+
+function pleroma_enable_tor {
     pleroma_tor_update=
 
     if ! grep -q '{:socks5, :localhost, 9050}' $pleroma_secret; then
@@ -806,7 +826,7 @@ function upgrade_pleroma {
         create_pleroma_blocklist
     fi
 
-    pleroma_upgrade_tor
+    #pleroma_enable_tor
 
     CURR_PLEROMA_COMMIT=$(get_completion_param "pleroma commit")
     if [[ "$CURR_PLEROMA_COMMIT" == "$PLEROMA_COMMIT" ]]; then

@@ -311,6 +311,34 @@ function configure_ssh_onion {
     mark_completed "${FUNCNAME[0]}"
 }
 
+function check_tor_health {
+    { echo '#!/bin/bash';
+      echo "status=\$(${PROJECT_NAME}-tor-health)";
+      echo "ADMIN_USER=\$(grep \"MY_USERNAME=\" ~/${PROJECT_NAME}.cfg | awk -F '=' '{print \$2}')";
+      echo "if [[ \"\$status\" == 'G'* ]]; then";
+      echo '    if [ -f /tmp/.torfailed ]; then';
+      echo '        rm /tmp/.torfailed';
+      echo "        tail -n 3 /var/log/tor/notices.log | mail -s \"[${PROJECT_NAME}] Tor status is now \$status\" \$ADMIN_USER@\$HOSTNAME";
+      echo '    fi';
+      echo '    exit 0';
+      echo 'fi';
+      echo 'if [ ! -f /tmp/.torfailed ]; then';
+      echo "    tail -n 3 /var/log/tor/notices.log | mail -s \"[${PROJECT_NAME}] Tor status is \$status\" \$ADMIN_USER@\$HOSTNAME";
+      echo "    echo \"\$status\" > /tmp/.torfailed";
+      echo 'else';
+      echo "    prev_status=\$(cat /tmp/.torfailed)";
+      echo "    if [[ \"\$prev_status\" != \"\$status\" ]]; then";
+      echo "        tail -n 3 /var/log/tor/notices.log | mail -s \"[${PROJECT_NAME}] Tor status is \$status\" \$ADMIN_USER@\$HOSTNAME";
+      echo "        echo \"\$status\" > /tmp/.torfailed";
+      echo '    fi';
+      echo 'fi'; } > /usr/bin/check_tor_health
+    chmod +x /usr/bin/check_tor_health
+
+    if ! grep -q 'check_tor_health' /etc/crontab; then
+        cron_add_mins 10 "/usr/bin/check_tor_health"
+    fi
+}
+
 function install_tor {
     if [[ $SYSTEM_TYPE == "mesh*" ]]; then
         return
@@ -336,7 +364,7 @@ function install_tor {
         echo '%include /etc/torrc.d' >> /etc/tor/torrc
     fi
 
-    echo 'Log notice file /dev/null' > /etc/torrc.d/logging
+    echo 'Log notice file /var/log/tor/notices.log' > /etc/torrc.d/logging
     echo "AccountingMax $TOR_MAX_TRAFFIC_PER_MONTH_GB GBytes" > /etc/torrc.d/maxtraffic
 
     mark_completed "${FUNCNAME[0]}"

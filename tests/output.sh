@@ -1399,6 +1399,15 @@ disabled. The "nis" service can be disabled with the following commands:\n\n#upd
                   printf '\n######################\n\nSTIG-ID:RHEL-06-000224\n\nVulnerability Discussion: Due to its usage for maintenance and security-supporting tasks, enabling the cron daemon is essential.\n\nFix text: The "crond" service is used to execute commands at preconfigured times. It is required by almost all systems to perform necessary maintenance tasks, such as notifying root of system activity. The "crond" service can be enabled with the following commands:\n\n#update-rc.d cron defaults\nservice cron start\n\n######################\n\n' >> $LOG
               fi
               ;;
+    SV-86857r1_rule) if [ "$3" = "en" ]; then
+			 log_msg $2 'OpenSSH server and client must be installed.'
+		     else
+			 log_msg $2 '必须安装OpenSSH服务器和客户端'
+		     fi		     
+		     if [ $2 -ne 0 ];then
+			 printf '\n######################\n\nWithout protection of the transmitted information, confidentiality and integrity may be compromised because unprotected communications can be intercepted and either read or altered. \n\nThis requirement applies to both internal and external networks and all types of information system components from which information can be transmitted (e.g., servers, mobile devices, notebook computers, printers, copiers, scanners, and facsimile machines). Communication paths outside the physical protection of a controlled boundary are exposed to the possibility of interception and modification. \n\nProtecting the confidentiality and integrity of organizational information can be accomplished by physical means (e.g., employing physical distribution systems) or by logical means (e.g., employing cryptographic techniques). If physical means of protection are employed, logical means (cryptography) do not have to be employed, and vice versa.\n\n######################\n\n' >> $LOG
+		     fi
+		     ;;
     V-38607)  if [ "$3" = "en" ]; then
                   log_msg $2 'The SSH daemon must be configured to use only the SSHv2 protocol.'
               else
