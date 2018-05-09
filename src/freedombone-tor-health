@@ -6,12 +6,12 @@
 #
 #                              Freedom in the Cloud
 #
-# Prepares control scripts
+# Returns a health status for Tor
 #
 # License
 # =======
 #
-# Copyright (C) 2017-2018 Bob Mottram <bob@freedombone.net>
+# Copyright (C) 2018 Bob Mottram <bob@freedombone.net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -28,20 +28,35 @@
 
 PROJECT_NAME='freedombone'
 
-cat /usr/local/bin/${PROJECT_NAME}-vars /usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-* /usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-* > /tmp/includescripts
+export TEXTDOMAIN=${PROJECT_NAME}-tor-health
+export TEXTDOMAINDIR="/usr/share/locale"
 
-cat /tmp/includescripts /usr/local/bin/${PROJECT_NAME}-controlpanel > /usr/local/bin/control
-cat /tmp/includescripts /usr/local/bin/${PROJECT_NAME}-controlpanel-user > /usr/local/bin/controluser
-cat /tmp/includescripts /usr/local/bin/${PROJECT_NAME}-addremove > /usr/local/bin/addremove
+d1=$(date --date="-10 min" "+%b %d %H:%M"):00
+d2=$(date "+%b %d %H:%M"):00
+ctr=0
+echo -n '' > /var/log/tor/notices_new.log
+while read -r line; do
+    datestr=$(echo "$line" | awk -F '.' '{print $1}')
+    if [[ "$datestr" > "$d1" && "$datestr" < "$d2" || "$datestr" =~ $d2 ]]; then
+        if [[ "$line" == *'Retrying'* ]]; then
+            ctr=$((ctr+1))
+        fi
+        echo "$line" >> /var/log/tor/notices_new.log
+    fi
+done < /var/log/tor/notices.log
 
-sed -i '/# Start including files/,/# End including files/d' /usr/local/bin/control
-sed -i '/# Start including files/,/# End including files/d' /usr/local/bin/controluser
-sed -i '/# Start including files/,/# End including files/d' /usr/local/bin/addremove
+mv /var/log/tor/notices_new.log /var/log/tor/notices.log
+chown -R debian-tor:adm /var/log/tor
 
-chmod +x /usr/local/bin/control
-chmod +x /usr/local/bin/controluser
-chmod +x /usr/local/bin/addremove
+if [ $ctr -gt 5 ]; then
+    echo $'Failed'
+    exit 0
+fi
 
-rm /tmp/includescripts
+if [ $ctr -gt 0 ]; then
+    echo $'Poor'
+    exit 0
+fi
 
+echo $'Good'
 exit 0

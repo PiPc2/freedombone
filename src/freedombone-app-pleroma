@@ -36,7 +36,7 @@ PLEROMA_CODE=
 PLEROMA_PORT=4000
 PLEROMA_ONION_PORT=8011
 PLEROMA_REPO="https://git.pleroma.social/pleroma/pleroma.git"
-PLEROMA_COMMIT='e153b364a71de431787db236c57114f229162ddf'
+PLEROMA_COMMIT='762f6edc29a7a48e3a663e9bedec58e0036ff363'
 PLEROMA_ADMIN_PASSWORD=
 PLEROMA_DIR=/etc/pleroma
 PLEROMA_SECRET_KEY=""
@@ -61,6 +61,24 @@ pleroma_variables=(ONION_ONLY
                    PLEROMA_EXPIRE_MONTHS
                    MY_EMAIL_ADDRESS
                    MY_USERNAME)
+
+function pleroma_add_filtering {
+    if grep -q "# begin filtering" $pleroma_secret; then
+        return
+    fi
+    sed -i '/pbkdf2_rounds/a reject: []' $pleroma_secret
+    sed -i '/pbkdf2_rounds/a federated_timeline_removal: [],' $pleroma_secret
+    sed -i '/pbkdf2_rounds/a media_nsfw: [],' $pleroma_secret
+    sed -i '/pbkdf2_rounds/a media_removal: [],' $pleroma_secret
+    sed -i '/pbkdf2_rounds/a config :pleroma, :mrf_simple,' $pleroma_secret
+    sed -i '/pbkdf2_rounds/a # begin filtering' $pleroma_secret
+
+    sed -i 's|reject: |  reject: |g' $pleroma_secret
+    sed -i 's|federated_timeline_removal: |  federated_timeline_removal: |g' $pleroma_secret
+    sed -i 's|media_nsfw: |  media_nsfw: |g' $pleroma_secret
+    sed -i 's|media_removal: |  media_removal: |g' $pleroma_secret
+    create_pleroma_blocklist
+}
 
 function pleroma_enable_chat {
     if [[ "$1" == 't'* || "$1" == 'y'* || "$1" == 'T'* || "$1" == 'Y'* ]]; then
@@ -91,6 +109,7 @@ function create_pleroma_blocklist {
       echo 'users_query="DELETE FROM users WHERE"';
       echo 'websub_server_subscriptions_query="DELETE FROM websub_server_subscriptions WHERE"';
       echo 'websub_server_subscriptions_updated=';
+      echo 'filter_str=';
       echo 'while read blocked; do';
       echo "    if [[ \"\$blocked\" == *\".\"* || \"\$blocked\" == *\"@\"* ]]; then";
       echo "        if [ \${#blocked} -gt 4 ]; then";
@@ -102,6 +121,13 @@ function create_pleroma_blocklist {
       echo "            users_query=\"\${users_query} nickname ilike '%\${blocked}%'\"";
       echo '            objects_updated=1';
       echo "            if [[ \"\$blocked\" != *\"@\"* ]]; then";
+      echo '                # Create a filter string for the pleroma configuration';
+      echo "                if [ \"\$filter_str\" ]; then";
+      echo "                    filter_str=\"\${filter_str}, \\\"\$blocked\\\"\"";
+      echo '                else';
+      echo "                    filter_str=\"\\\"\${blocked}\\\"\"";
+      echo '                fi';
+      echo '';
       echo "                if ! grep -q \"127.0.0.1  \$blocked\" /etc/hosts; then";
       echo "                    echo \"127.0.0.1  \$blocked\" >> /etc/hosts";
       echo '                fi';
@@ -114,6 +140,19 @@ function create_pleroma_blocklist {
       echo '        fi';
       echo '    fi';
       echo 'done </root/freedombone-firewall-domains.cfg';
+      echo '';
+      echo "if [ \"\$filter_str\" ]; then";
+      echo "    if ! grep -q \" \$filter_str \" $pleroma_secret; then";
+      echo "        sed -i \"s| media_removal:.*| media_removal: [ \$filter_str ],|g\" $pleroma_secret";
+      echo "        sed -i \"s| federated_timeline_removal:.*| federated_timeline_removal: [ \$filter_str ],|g\" $pleroma_secret";
+      echo "        sed -i \"s| reject:.*| reject: [ \$filter_str ]|g\" $pleroma_secret";
+      echo "        chown -R pleroma:pleroma $PLEROMA_DIR";
+      echo '        sudo -u pleroma mix clean';
+      echo '        sudo -u pleroma mix deps.compile';
+      echo '        sudo -u pleroma mix compile';
+      echo '        systemctl restart pleroma';
+      echo '    fi';
+      echo 'fi';
       echo '';
       echo 'cd /etc/postgresql';
       echo "if [ \$objects_updated ]; then";
@@ -694,15 +733,21 @@ function configure_interactive_pleroma {
             enablechatstr=$'Disable chat system'
         fi
 
+        pleromatorstr=$'Enable routing through Tor for onion addresses'
+        if grep -q '9050' $pleroma_secret; then
+            pleromatorstr=$'Disable routing through Tor'
+        fi
+
         W=(1 $"Set a background image"
            2 $"Set the title"
            3 $"Disable new account registrations"
            4 $"Add a custom emoji"
            5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)"
-           6 "$enablechatstr")
+           6 "$enablechatstr"
+           7 "$pleromatorstr")
 
         # shellcheck disable=SC2068
-        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 13 60 6 "${W[@]}" 3>&2 2>&1 1>&3)
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 14 60 7 "${W[@]}" 3>&2 2>&1 1>&3)
 
         if [ ! "$selection" ]; then
             break
@@ -720,13 +765,56 @@ function configure_interactive_pleroma {
                    pleroma_enable_chat true
                fi
                ;;
+            7) if grep -q '9050' $pleroma_secret; then
+                   pleroma_disable_tor
+               else
+                   pleroma_enable_tor
+               fi
+               ;;
         esac
     done
+}
+
+function pleroma_disable_tor {
+    if grep -q '9050' $pleroma_secret; then
+        sed -i '/9050/d' $pleroma_secret
+        sed -i 's|# config :pleroma, :http, proxy_url:|config :pleroma, :http, proxy_url:|g' $PLEROMA_DIR/config/config.exs
+        pleroma_recompile
+    fi
+}
+
+function pleroma_enable_tor {
+    pleroma_tor_update=
+
+    if ! grep -q '{:socks5, :localhost, 9050}' $pleroma_secret; then
+        pleroma_tor_update=1
+    fi
+
+    if ! grep -q '# config :pleroma, :http, proxy_url:' $PLEROMA_DIR/config/config.exs; then
+        pleroma_tor_update=1
+    fi
+
+    if [ ! $pleroma_tor_update ]; then
+        return
+    fi
+
+    if ! grep -q '{:socks5, :localhost, 9050}' $pleroma_secret; then
+        sed -i '/9050/d' $pleroma_secret
+        sed -i '/url:/a config :pleroma, :http, proxy_url: {:socks5, :localhost, 9050}' $pleroma_secret
+    fi
+
+    if ! grep -q '# config :pleroma, :http, proxy_url:' $PLEROMA_DIR/config/config.exs; then
+        sed -i 's|config :pleroma, :http, proxy_url:|# config :pleroma, :http, proxy_url:|g' $PLEROMA_DIR/config/config.exs
+    fi
+
+    pleroma_recompile
 }
 
 function upgrade_pleroma {
     read_config_param PLEROMA_DOMAIN_NAME
     read_config_param PLEROMA_EXPIRE_MONTHS
+
+    pleroma_add_filtering
 
     if ! grep -q "/media/" /etc/cron.daily/pleroma-expire; then
         rm $pleroma_expire_posts_script
@@ -738,6 +826,8 @@ function upgrade_pleroma {
         create_pleroma_blocklist
     fi
 
+    #pleroma_enable_tor
+
     CURR_PLEROMA_COMMIT=$(get_completion_param "pleroma commit")
     if [[ "$CURR_PLEROMA_COMMIT" == "$PLEROMA_COMMIT" ]]; then
         return
@@ -746,6 +836,11 @@ function upgrade_pleroma {
     pleroma_registrations=open
     if grep -q 'registrations_open: false' $PLEROMA_DIR/config/config.exs; then
         pleroma_registrations=
+    fi
+
+    pleroma_chat_enabled=1
+    if grep -q ':chat, enabled: false' $PLEROMA_DIR/config/config.exs; then
+        pleroma_chat_enabled=
     fi
 
     # make a copy of the configuration
@@ -778,6 +873,12 @@ function upgrade_pleroma {
     if [ ! $pleroma_registrations ]; then
         sed -i 's|registrations_open: true|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
         sed -i 's|registrations_open: True|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+    fi
+
+    if [ ! $pleroma_chat_enabled ]; then
+        sed -i 's|config :pleroma, :chat.*|config :pleroma, :chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
+    else
+        sed -i 's|config :pleroma, :chat.*|config :pleroma, :chat, enabled: true|g' $PLEROMA_DIR/config/config.exs
     fi
 
     pleroma_recompile
@@ -1252,6 +1353,10 @@ function install_pleroma {
     sed -i 's|redirect_on_failure:.*|redirect_on_failure: false|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|:chat, enabled:.*|:chat, enabled: false|g' $PLEROMA_DIR/config/config.exs
 
+    # onion routing
+    sed -i '/url:/a config :pleroma, :http, proxy_url: {:socks5, :localhost, 9050}' $pleroma_secret
+    sed -i 's|config :pleroma, :http, proxy_url:|# config :pleroma, :http, proxy_url:|g' $PLEROMA_DIR/config/config.exs
+
     # set registrations open initially
     sed -i 's|registrations_open:.*|registrations_open: true,|g' $PLEROMA_DIR/config/config.exs
     sed -i 's|"registrationOpen":.*|"registrationOpen": true,|g' $PLEROMA_DIR/priv/static/static/config.json
@@ -1263,6 +1368,8 @@ function install_pleroma {
         sed -i 's|"media_proxy".*|"media_proxy": false,|g' $PLEROMA_DIR/priv/static/static/config.json
     fi
     sed -i 's|"chatDisabled":.*|"chatDisabled": true,|g' $PLEROMA_DIR/priv/static/static/config.json
+
+    pleroma_add_filtering
 
     systemctl daemon-reload
     systemctl enable pleroma

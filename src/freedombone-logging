@@ -90,48 +90,31 @@ function turn_logging_off {
     done
 }
 
-function turn_off_rsys_logging {
-    if ! grep -q '/var/log/auth.log' /etc/rsyslog.conf; then
-        return
-    fi
-    sed -i 's|mail,news.none.*|mail,news.none      /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.info.*|mail.info            /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.warn.*|mail.warn            /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.err.*|mail.err            /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|daemon.\*.*|daemon.\*              /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.\*.*|mail.\*              /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|user.\*.*|user.\*              /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|news.none;mail.none.*|news.none;mail.none /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|\*.\*;auth,authpriv.none.*|\*.\*;auth,authpriv.none      /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|#cron.\*|cron.\*|g' /etc/rsyslog.conf
-    sed -i 's|cron.\*.*|cron.\*             /dev/null|g' /etc/rsyslog.conf
-    $REMOVE_FILES_COMMAND /var/log/wtmp*
-    $REMOVE_FILES_COMMAND /var/log/debug*
-    $REMOVE_FILES_COMMAND /var/log/cron.*
-    $REMOVE_FILES_COMMAND /var/log/auth.*
-    $REMOVE_FILES_COMMAND /var/log/mail.*
-    $REMOVE_FILES_COMMAND /var/log/daemon.*
-    $REMOVE_FILES_COMMAND /var/log/user.*
-    $REMOVE_FILES_COMMAND /var/log/messages*
-}
-
 function turn_on_rsys_logging {
-    if grep -q '/var/log/auth.log' /etc/rsyslog.conf; then
-        return
-    fi
-    sed -i 's|mail,news.none.*|mail,news.none      -/var/log/messages|g' /etc/rsyslog.conf
-    sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /var/log/auth.log|g' /etc/rsyslog.conf
-    sed -i 's|mail.info.*|mail.info            -/var/log/mail.info|g' /etc/rsyslog.conf
-    sed -i 's|mail.warn.*|mail.warn            -/var/log/mail.warn|g' /etc/rsyslog.conf
-    sed -i 's|mail.err.*|mail.err            /var/log/mail.err|g' /etc/rsyslog.conf
-    sed -i 's|daemon.\*.*|daemon.\*              -/var/log/daemon.log|g' /etc/rsyslog.conf
-    sed -i 's|mail.\*.*|mail.\*              -/var/log/mail.log|g' /etc/rsyslog.conf
-    sed -i 's|user.\*.*|user.\*              -/var/log/user.log|g' /etc/rsyslog.conf
-    sed -i 's|news.none;mail.none.*|news.none;mail.none -/var/log/debug|g' /etc/rsyslog.conf
-    sed -i 's|\*.\*;auth,authpriv.none.*|\*.\*;auth,authpriv.none      -/var/log/syslog|g' /etc/rsyslog.conf
-    sed -i 's|#cron.\*|cron.\*|g' /etc/rsyslog.conf
-    sed -i 's|cron.\*.*|cron.\*             /var/log/cron.log|g' /etc/rsyslog.conf
+    save_rsys_header
+
+    { echo 'auth,authpriv.*         /var/log/auth.log';
+      echo '*.*;auth,authpriv.none -/var/log/syslog';
+      echo 'cron.*                  /var/log/cron.log';
+      echo 'daemon.*               -/var/log/daemon.log';
+      echo 'kern.*                 -/var/log/kern.log';
+      echo 'lpr.*                  -/var/log/lpr.log';
+      echo 'mail.*                 -/var/log/mail.log';
+      echo 'user.*                 -/var/log/user.log';
+      echo '';
+      echo 'mail.info              -/var/log/mail.info';
+      echo 'mail.warn              -/var/log/mail.warn';
+      echo 'mail.err                /var/log/mail.err';
+      echo '';
+      echo "*.=debug;\\";
+      echo "        auth,authpriv.none;\\";
+      echo '        news.none;mail.none -/var/log/debug';
+      echo "*.=info;*.=notice;*.=warn;\\";
+      echo "        auth,authpriv.none;\\";
+      echo "        cron,daemon.none;\\";
+      echo '        mail,news.none      -/var/log/messages';
+      echo '';
+      echo '*.emerg                         :omusrmsg:*'; } >> /etc/rsyslog.conf
 }
 
 if [ ! "$1" ]; then
@@ -150,8 +133,7 @@ if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
             touch /var/log/tor/notices.log
             chown debian-tor:adm /var/log/tor/notices.log
         fi
-        sed -i 's|#Log notice file.*|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
-        sed -i 's|Log notice file.*|Log notice file /var/log/tor/notices.log|g' /etc/tor/torrc
+        echo 'Log notice file /var/log/tor/notices.log' > /etc/torrc.d/logging
     fi
     if [ -f /etc/php/7.0/fpm/php-fpm.conf ]; then
         sed -i 's|error_log =.*|error_log = /var/log/php-fpm.log|g' /etc/php/7.0/fpm/php-fpm.conf
@@ -193,13 +175,12 @@ if [[ "$1" == "on" || "$1" == "On" || "$1" == "ON" ]]; then
         fi
     fi
     turn_on_rsys_logging
+    turn_on_postgresql_logging
 else
     turn_logging_off
 
-    if [ -d /etc/tor ]; then
-        sed -i 's|#Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
-        sed -i 's|Log notice file.*|Log notice file /dev/null|g' /etc/tor/torrc
-        rm /var/log/tor/*
+    if [ -d /etc/torrc.d ]; then
+        echo 'Log notice file /var/log/tor/notices.log' > /etc/torrc.d/logging
     fi
     if [ -d /var/log/radicale ]; then
         $REMOVE_FILES_COMMAND /var/log/radicale/*
@@ -250,6 +231,7 @@ else
         fi
     fi
     turn_off_rsys_logging
+    turn_off_postgresql_logging
 fi
 
 if [ -d /etc/exim4 ]; then
@@ -294,6 +276,9 @@ if [ -d /var/www/radicale ]; then
 fi
 if [ -d /etc/matrix ]; then
     systemctl restart matrix
+fi
+if [ -d /etc/postgresql ]; then
+    systemctl restart postgresql
 fi
 
 exit 0

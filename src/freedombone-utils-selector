@@ -272,6 +272,39 @@ function get_apps_installed_names {
     done
 }
 
+function app_not_on_onion_only {
+    app_name="$1"
+
+    read_config_param ONION_ONLY
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        if grep -q "NOT_ON_ONION=1" "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}"; then
+            echo "0"
+            return
+        fi
+    fi
+    echo "1"
+}
+
+function enough_ram_for_app {
+    app_name="$1"
+
+    if ! grep -q "MINIMUM_RAM_MB=" "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}"; then
+        echo "0"
+        return
+    fi
+
+    minimum_ram_MB=$(grep "MINIMUM_RAM_MB=" "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" | head -n 1 | awk -F '=' '{print $2}')
+    minimum_ram_bytes=$((minimum_ram_MB * 1024))
+
+    ram_available=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    if [ "$ram_available" -lt "$minimum_ram_bytes" ]; then
+        echo "1"
+        return
+    fi
+    echo "0"
+}
+
 # detects what apps are available
 function detect_apps {
     FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*"
@@ -285,11 +318,14 @@ function detect_apps {
     for filename in $FILES
     do
         app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
-
-        # shellcheck disable=SC2068
-        if ! item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
-            APPS_AVAILABLE+=("${app_name}")
-            APPS_CHOSEN+=("0")
+        if [[ $(enough_ram_for_app "$app_name") == "0" ]]; then
+            if [[ $(app_not_on_onion_only "$app_name") != "0" ]]; then
+                # shellcheck disable=SC2068
+                if ! item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
+                    APPS_AVAILABLE+=("${app_name}")
+                    APPS_CHOSEN+=("0")
+                fi
+            fi
         fi
     done
 
@@ -318,16 +354,20 @@ function detect_installable_apps {
     do
         app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
 
-        # shellcheck disable=SC2068
-        if ! item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
-            variants_list=$(app_variants "$filename")
-            # check for empty string
-            if [ ${#variants_list} -gt 0 ]; then
-                APPS_AVAILABLE+=("${app_name}")
-                APPS_CHOSEN+=("0")
-                APPS_INSTALLED+=("$(app_is_installed "$app_name")")
-                if [[ $(app_is_installed "$app_name") == "1" ]]; then
-                    APPS_INSTALLED_NAMES+=("$app_name")
+        if [[ $(enough_ram_for_app "$app_name") == "0" ]]; then
+            if [[ $(app_not_on_onion_only "$app_name") != "0" ]]; then
+                # shellcheck disable=SC2068
+                if ! item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
+                    variants_list=$(app_variants "$filename")
+                    # check for empty string
+                    if [ ${#variants_list} -gt 0 ]; then
+                        APPS_AVAILABLE+=("${app_name}")
+                        APPS_CHOSEN+=("0")
+                        APPS_INSTALLED+=("$(app_is_installed "$app_name")")
+                        if [[ $(app_is_installed "$app_name") == "1" ]]; then
+                            APPS_INSTALLED_NAMES+=("$app_name")
+                        fi
+                    fi
                 fi
             fi
         fi
@@ -350,13 +390,17 @@ function detect_installed_apps {
     do
         app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
 
-        if [[ $(app_is_installed "$app_name") == "1" ]]; then
-            # shellcheck disable=SC2068
-            if ! item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
-                variants_list=$(app_variants "$filename")
-                if [ ${#variants_list} -gt 0 ]; then
-                    APPS_AVAILABLE+=("${app_name}")
-                    APPS_INSTALLED_NAMES+=("$app_name")
+        if [[ $(enough_ram_for_app "$app_name") == "0" ]]; then
+            if [[ $(app_not_on_onion_only "$app_name") != "0" ]]; then
+                if [[ $(app_is_installed "$app_name") == "1" ]]; then
+                    # shellcheck disable=SC2068
+                    if ! item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
+                        variants_list=$(app_variants "$filename")
+                        if [ ${#variants_list} -gt 0 ]; then
+                            APPS_AVAILABLE+=("${app_name}")
+                            APPS_INSTALLED_NAMES+=("$app_name")
+                        fi
+                    fi
                 fi
             fi
         fi
@@ -385,27 +429,30 @@ function choose_apps_for_variant {
     for filename in $FILES
     do
         app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
-
-        # shellcheck disable=SC2068
-        if item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
-            if grep -q "VARIANTS=" "${filename}"; then
-                variants_list=$(app_variants "$filename")
-                if [[ "${variants_list}" == 'all'* || \
-                      "${variants_list}" == "$variant_name" || \
-                      "${variants_list}" == "$variant_name "* || \
-                      "${variants_list}" == *" $variant_name "* || \
-                      "${variants_list}" == *" $variant_name" ]]; then
-                    if [[ $(app_is_removed "${a}") == "0" ]]; then
-                        #echo $"${app_name} chosen"
-                        APPS_CHOSEN+=("1")
+        if [[ $(enough_ram_for_app "$app_name") == "0" ]]; then
+            if [[ $(app_not_on_onion_only "$app_name") != "0" ]]; then
+                # shellcheck disable=SC2068
+                if item_in_array "${app_name}" ${APPS_AVAILABLE[@]}; then
+                    if grep -q "VARIANTS=" "${filename}"; then
+                        variants_list=$(app_variants "$filename")
+                        if [[ "${variants_list}" == 'all'* || \
+                                  "${variants_list}" == "$variant_name" || \
+                                  "${variants_list}" == "$variant_name "* || \
+                                  "${variants_list}" == *" $variant_name "* || \
+                                  "${variants_list}" == *" $variant_name" ]]; then
+                            if [[ $(app_is_removed "${a}") == "0" ]]; then
+                                #echo $"${app_name} chosen"
+                                APPS_CHOSEN+=("1")
+                            else
+                                APPS_CHOSEN+=("0")
+                            fi
+                        else
+                            APPS_CHOSEN+=("0")
+                        fi
                     else
                         APPS_CHOSEN+=("0")
                     fi
-                else
-                    APPS_CHOSEN+=("0")
                 fi
-            else
-                APPS_CHOSEN+=("0")
             fi
         fi
     done

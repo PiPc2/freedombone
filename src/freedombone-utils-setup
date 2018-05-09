@@ -223,30 +223,53 @@ function install_backports_kernel {
     fi
 }
 
+function save_rsys_header {
+    { echo "";
+      echo "#################";
+      echo "#### MODULES ####";
+      echo "#################";
+      echo '';
+      echo 'module(load="imuxsock")';
+      echo 'module(load="imklog")';
+      echo '';
+      echo '###########################';
+      echo '#### GLOBAL DIRECTIVES ####';
+      echo '###########################';
+      echo '';
+      echo "\$ActionFileDefaultTemplate RSYSLOG_TraditionalFileFormat";
+      echo '';
+      echo "\$FileOwner root";
+      echo "\$FileGroup adm";
+      echo "\$FileCreateMode 0640";
+      echo "\$DirCreateMode 0755";
+      echo "\$Umask 0022";
+      echo '';
+      echo "\$WorkDirectory /var/spool/rsyslog";
+      echo '';
+      echo "\$IncludeConfig /etc/rsyslog.d/*.conf";
+      echo '';
+      echo '###############';
+      echo '#### RULES ####';
+      echo '###############';
+      echo ''; } > /etc/rsyslog.conf
+}
+
 function turn_off_rsys_logging {
-    if grep -q '/dev/null' /etc/rsyslog.conf; then
-        return
-    fi
-    sed -i 's|mail,news.none.*|mail,news.none      /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|auth,authpriv.\*.*|auth,authpriv.\*         /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.info.*|mail.info            /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.warn.*|mail.warn            /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.err.*|mail.err            /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|daemon.\*.*|daemon.\*              /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|mail.\*.*|mail.\*              /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|user.\*.*|user.\*              /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|news.none;mail.none.*|news.none;mail.none /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|\*.\*;auth,authpriv.none.*|\*.\*;auth,authpriv.none      /dev/null|g' /etc/rsyslog.conf
-    sed -i 's|#cron.\*|cron.\*|g' /etc/rsyslog.conf
-    sed -i 's|cron.\*.*|cron.\*             /dev/null|g' /etc/rsyslog.conf
-    shred -zu /var/log/wtmp*
-    shred -zu /var/log/debug*
-    shred -zu /var/log/cron.*
-    shred -zu /var/log/auth.*
-    shred -zu /var/log/mail.*
-    shred -zu /var/log/daemon.*
-    shred -zu /var/log/user.*
-    shred -zu /var/log/messages*
+    save_rsys_header
+    echo '*.*     ~' >> /etc/rsyslog.conf
+
+    rm -rf /var/log/wtmp*
+    rm -rf /var/log/debug*
+    rm -rf /var/log/cron.*
+    rm -rf /var/log/auth.*
+    rm -rf /var/log/mail.*
+    rm -rf /var/log/daemon.*
+    rm -rf /var/log/user.*
+    rm -rf /var/log/messages*
+    rm -rf /var/log/syslog*
+    rm -rf /var/log/alternatives*
+    rm -rf /var/log/faillog
+    rm -rf /var/log/kern.log*
 }
 
 function initial_setup {
@@ -697,6 +720,9 @@ function setup_firewall {
     function_check configure_firewall
     configure_firewall
 
+    function_check block_firefox_telemetry
+    block_firefox_telemetry
+
     function_check configure_firewall_ping
     configure_firewall_ping
 
@@ -794,6 +820,48 @@ function install_shellcheck {
     apt-get -yq install shellcheck
 }
 
+function microsd_card_optimisations {
+    # These values can improve performance on microSD cards
+
+    apt-get -yq install hdparm
+
+    printf '#!/bin/bash\n' > /usr/bin/enable_optimisations
+
+    if [ -f /sys/devices/virtual/bdi/179:0/read_ahead_kb ]; then
+        echo -n '4096' > /sys/devices/virtual/bdi/179:0/read_ahead_kb
+        echo "echo -n '4096' > /sys/devices/virtual/bdi/179:0/read_ahead_kb" >> /usr/bin/enable_optimisations
+    fi
+
+    if [ -f /proc/sys/vm/dirty_expire_centisecs ]; then
+        echo -n '100' > /proc/sys/vm/dirty_expire_centisecs
+        echo "echo -n '100' > /proc/sys/vm/dirty_expire_centisecs" >> /usr/bin/enable_optimisations
+    fi
+
+    if [ -f /proc/sys/vm/dirty_writeback_centisecs ]; then
+        echo -n '100' > /proc/sys/vm/dirty_writeback_centisecs
+        echo "echo -n '100' > /proc/sys/vm/dirty_writeback_centisecs" >> /usr/bin/enable_optimisations
+    fi
+
+    chmod +x /usr/bin/enable_optimisations
+
+    { echo '[Unit]';
+      echo "Description=${PROJECT_NAME} optimisations";
+      echo 'After=syslog.target';
+      echo 'After=network.target';
+      echo 'After=remote-fs.target';
+      echo '';
+      echo '[Service]';
+      echo 'Type=simple';
+      echo 'User=root';
+      echo 'Group=root';
+      echo 'WorkingDirectory=/root';
+      echo 'ExecStart=/usr/bin/enable_optimisations';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/optimisations.service
+      systemctl enable optimisations
+}
+
 function setup_utils {
     read_config_param "PROJECT_REPO"
     write_config_param "PROJECT_REPO" "$PROJECT_REPO"
@@ -815,6 +883,9 @@ function setup_utils {
 
     function_check separate_tmp_filesystem
     separate_tmp_filesystem 150
+
+    function_check microsd_card_optimisations
+    microsd_card_optimisations
 
     function_check proc_filesystem_settings
     proc_filesystem_settings
@@ -903,8 +974,8 @@ function setup_utils {
     function_check install_tor
     install_tor
 
-    #function_check resolve_dns_via_tor
-    #resolve_dns_via_tor
+    function_check check_tor_health
+    check_tor_health
 
     function_check install_command_line_browser
     install_command_line_browser

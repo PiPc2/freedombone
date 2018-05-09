@@ -30,6 +30,7 @@ VARIANTS='full full-vim media'
 
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
+NOT_ON_ONION=1
 
 POSTACTIV_DOMAIN_NAME=
 POSTACTIV_CODE=
@@ -65,11 +66,11 @@ function postactiv_customise_logo {
     domain_name=$1
 
     if [ -f "/var/www/${domain_name}/htdocs/static/logo.png" ]; then
-        if [ -f ~/freedombone/img/postactiv.png ]; then
-            cp ~/freedombone/img/postactiv.png "/var/www/${domain_name}/htdocs/static/logo.png"
+        if [ -f "$HOME/${PROJECT_NAME}/img/postactiv.png" ]; then
+            cp "$HOME/${PROJECT_NAME}/img/postactiv.png" "/var/www/${domain_name}/htdocs/static/logo.png"
         else
-            if [ -f "/home/$MY_USERNAME/freedombone/img/postactiv.png" ]; then
-                cp "/home/$MY_USERNAME/freedombone/img/postactiv.png" "/var/www/${domain_name}/htdocs/static/logo.png"
+            if [ -f "/home/$MY_USERNAME/${PROJECT_NAME}/img/postactiv.png" ]; then
+                cp "/home/$MY_USERNAME/${PROJECT_NAME}/img/postactiv.png" "/var/www/${domain_name}/htdocs/static/logo.png"
             fi
         fi
     fi
@@ -595,6 +596,7 @@ function remove_postactiv {
     fi
     kill_pid=$(pgrep "/var/www/$POSTACTIV_DOMAIN_NAME/htdocs/scripts/queuedaemon.php" | head -n 1)
     kill -9 "$kill_pid"
+    pkill "$POSTACTIV_DOMAIN_NAME/htdocs/scripts/queuedaemon.php"
 
     if [ -d "/var/www/$POSTACTIV_DOMAIN_NAME" ]; then
         rm -rf "/var/www/$POSTACTIV_DOMAIN_NAME"
@@ -926,8 +928,8 @@ function install_postactiv_main {
 }
 
 function install_postactiv {
-    if [ ! "$ONION_ONLY" ]; then
-        ONION_ONLY='no'
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        return
     fi
 
     install_postactiv_main
@@ -952,7 +954,12 @@ function install_postactiv {
 
     expire_gnusocial_posts "$POSTACTIV_DOMAIN_NAME" "postactiv" "$POSTACTIV_EXPIRE_MONTHS"
 
-    # unleash the daemons!
+    # this has to be run as root initially, otherwise database tables
+    # don't get created
+    cd "/var/www/$POSTACTIV_DOMAIN_NAME/htdocs" || exit 3658254254
+    sh scripts/startdaemons.sh
+    php scripts/checkschema.php
+
     /etc/cron.hourly/postactiv-daemons
 
     systemctl restart nginx
