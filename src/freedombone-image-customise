@@ -1661,6 +1661,7 @@ image_install_inadyn() {
         mkdir -p "$rootdir/root/build"
     fi
     chroot "$rootdir" apt-get -yq install build-essential curl libgnutls28-dev automake1.11 libconfuse-dev
+    chroot "$rootdir" apt-get -yq install gnutls-dev libconfuse-dev pkg-config
 
     if [ -d /repos/inadyn ]; then
         mkdir "$rootdir/root/build/inadyn"
@@ -1681,34 +1682,36 @@ image_install_inadyn() {
     cd "$rootdir/root/build/inadyn" || exit 24682464628
     { echo '#!/bin/bash';
       echo 'cd ~/build/inadyn';
-      echo '#./autogen.sh';
-      echo './configure';
-      echo 'USE_OPENSSL=1 make';
-      echo 'make install'; } > "$rootdir/root/build/build_inadyn.sh"
+      echo './autogen.sh';
+      echo './configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --enable-openssl';
+      echo 'make -j5';
+      echo 'make install-strip'; } > "$rootdir/root/build/build_inadyn.sh"
     chmod +x "$rootdir/root/build/build_inadyn.sh"
     chroot "$rootdir" /root/build/build_inadyn.sh
-    if [ ! -f "$rootdir/usr/local/sbin/inadyn" ]; then
+    if [ ! -f "$rootdir/usr/sbin/inadyn" ]; then
         echo 'Failed to build inadyn'
         exit 6209356
     fi
 
     # create a configuration file
-    { echo 'background';
-      echo 'verbose        1';
-      echo 'period         300';
-      echo 'startup-delay  60';
-      echo 'cache-dir      /run/inadyn';
-      echo 'logfile        /dev/null'; } > "$rootdir/etc/inadyn.conf"
+    { echo 'period          = 300';
+      echo ''; } > "$rootdir/etc/inadyn.conf"
     chmod 600 "$rootdir/etc/inadyn.conf"
 
     { echo '[Unit]';
-      echo 'Description=inadyn (DynDNS updater)';
-      echo 'After=network.target';
+      echo 'Description=Internet Dynamic DNS Client';
+      echo 'Documentation=man:inadyn';
+      echo 'Documentation=man:inadyn.conf';
+      echo 'Documentation=https://github.com/troglobit/inadyn';
+      echo 'ConditionPathExists=/etc/inadyn.conf';
+      echo 'After=network-online.target';
+      echo 'Requires=network-online.target';
       echo '';
       echo '[Service]';
-      echo 'ExecStart=/usr/local/sbin/inadyn --config /etc/inadyn.conf';
-      echo 'Restart=always';
-      echo 'Type=forking';
+      echo 'Type=simple';
+      echo "ExecStart=/usr/sbin/inadyn -C -n -s --loglevel=err --config ${INADYN_CONFIG_FILE}";
+      echo 'Restart=on-failure';
+      echo 'RestartSec=10';
       echo '';
       echo '[Install]';
       echo 'WantedBy=multi-user.target'; } > "$rootdir/etc/systemd/system/inadyn.service"
