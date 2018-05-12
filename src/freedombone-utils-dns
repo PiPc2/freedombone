@@ -94,6 +94,60 @@ EXTERNAL_IP_SERVICES=( \
         'http://ipinfo.io/' \
         'http://httpbin.org/ip')
 
+function update_inadyn_config {
+    if [ ! -f /etc/inadyn.conf ]; then
+        return
+    fi
+
+    if [[ "$DDNS_PROVIDER" == *'freedns'* ]]; then
+        return
+    fi
+
+    if ! grep -q "$DDNS_PROVIDER" /etc/inadyn.conf; then
+        # store any previous aliases
+        grep 'alias ' /etc/inadyn.conf > /tmp/inadyn_aliases
+
+        # remove entry for any previous ddns
+        sed -i '/system /,$d' /etc/inadyn.conf
+
+        # add the new provider
+        { echo '';
+          echo "system $DDNS_PROVIDER";
+          echo '  ssl';
+          echo "  checkip-url $GET_IP_ADDRESS_URL /"; } >> /etc/inadyn.conf
+        if [ "$DDNS_USERNAME" ]; then
+            echo "  username $DDNS_USERNAME" >> /etc/inadyn.conf
+        fi
+        if [ "$DDNS_PASSWORD" ]; then
+            echo "  password $DDNS_PASSWORD" >> /etc/inadyn.conf
+        fi
+
+        if [ -f /tmp/inadyn_aliases ]; then
+            cat /tmp/inadyn_aliases >> /etc/inadyn.conf
+            rm /tmp/inadyn_aliases
+        fi
+    else
+        # change username/password for an existing provider
+        if [ "$DDNS_USERNAME" ]; then
+            if grep -q "  username " /etc/inadyn.conf; then
+                sed -i "s|  username .*|  username $DDNS_USERNAME|g" /etc/inadyn.conf
+            else
+                echo "  username $DDNS_USERNAME" >> /etc/inadyn.conf
+            fi
+        fi
+        if [ "$DDNS_PASSWORD" ]; then
+            if grep -q "  password " /etc/inadyn.conf; then
+                sed -i "s|  password .*|  password $DDNS_PASSWORD|g" /etc/inadyn.conf
+            else
+                echo "  password $DDNS_PASSWORD" >> /etc/inadyn.conf
+            fi
+        fi
+    fi
+
+    systemctl enable inadyn
+    systemctl restart inadyn
+}
+
 function create_freedns_updater {
     if [[ $ONION_ONLY != "no" ]]; then
         return
@@ -135,6 +189,9 @@ function add_ddns_domain {
     fi
     CURRENT_DDNS_DOMAIN="$1"
     if [[ $ONION_ONLY != "no" ]]; then
+        return
+    fi
+    if [ ! "$DDNS_PROVIDER" ]; then
         return
     fi
     if [[ "$DDNS_PROVIDER" == 'none' ]]; then
