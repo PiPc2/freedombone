@@ -35,12 +35,12 @@ NAMESERVER5='85.25.251.254'
 NAMESERVER6='2.141.58.13'
 
 # parameters used when adding a new domain
-DDNS_PROVIDER="default@freedns.afraid.org"
+DDNS_PROVIDER="freedns"
 DDNS_USERNAME=
 DDNS_PASSWORD=
 
-INADYN_REPO="https://github.com/bashrc/inadyn"
-INADYN_COMMIT='fadbe17f520d337dfb8d69ee4bf1fcaa23fce0d6'
+INADYN_REPO="https://github.com/troglobit/inadyn"
+INADYN_COMMIT='3fe26d2235ddda9047cf33e8ed1453bcc3bbbf19'
 INADYN_CONFIG_FILE=/etc/inadyn.conf
 
 # web site used to obtain the external IP address of the system
@@ -105,42 +105,57 @@ function update_inadyn_config {
     fi
 
     if ! grep -q "$DDNS_PROVIDER" "${INADYN_CONFIG_FILE}"; then
-        # store any previous aliases
-        grep 'alias ' "${INADYN_CONFIG_FILE}" > /tmp/inadyn_aliases
+        if grep -q "{" "${INADYN_CONFIG_FILE}"; then
+            sed -i "s|provider .*|provider $DDNS_PROVIDER {|g" "${INADYN_CONFIG_FILE}"
+            sed -i "s|username .*|username       = $DDNS_USERNAME|g" "${INADYN_CONFIG_FILE}"
+            sed -i "s|password .*|password       = $DDNS_PASSWORD|g" "${INADYN_CONFIG_FILE}"
+            sed -i "s|checkip-server .*|checkip-server = $GET_IP_ADDRESS_URL|g" "${INADYN_CONFIG_FILE}"
+        else
+            # Old inadyn config file format
+            # store any previous aliases
+            grep 'alias ' "${INADYN_CONFIG_FILE}" > /tmp/inadyn_aliases
 
-        # remove entry for any previous ddns
-        sed -i '/system /,$d' "${INADYN_CONFIG_FILE}"
+            # remove entry for any previous ddns
+            sed -i '/system /,$d' "${INADYN_CONFIG_FILE}"
 
-        # add the new provider
-        { echo '';
-          echo "system $DDNS_PROVIDER";
-          echo '  ssl';
-          echo "  checkip-url $GET_IP_ADDRESS_URL /"; } >> "${INADYN_CONFIG_FILE}"
-        if [ "$DDNS_USERNAME" ]; then
-            echo "  username $DDNS_USERNAME" >> "${INADYN_CONFIG_FILE}"
-        fi
-        if [ "$DDNS_PASSWORD" ]; then
-            echo "  password $DDNS_PASSWORD" >> "${INADYN_CONFIG_FILE}"
-        fi
-
-        if [ -f /tmp/inadyn_aliases ]; then
-            cat /tmp/inadyn_aliases >> "${INADYN_CONFIG_FILE}"
-            rm /tmp/inadyn_aliases
-        fi
-    else
-        # change username/password for an existing provider
-        if [ "$DDNS_USERNAME" ]; then
-            if grep -q "  username " "${INADYN_CONFIG_FILE}"; then
-                sed -i "s|  username .*|  username $DDNS_USERNAME|g" "${INADYN_CONFIG_FILE}"
-            else
+            # add the new provider
+            { echo '';
+              echo "system $DDNS_PROVIDER";
+              echo '  ssl';
+              echo "  checkip-url $GET_IP_ADDRESS_URL /"; } >> "${INADYN_CONFIG_FILE}"
+            if [ "$DDNS_USERNAME" ]; then
                 echo "  username $DDNS_USERNAME" >> "${INADYN_CONFIG_FILE}"
             fi
-        fi
-        if [ "$DDNS_PASSWORD" ]; then
-            if grep -q "  password " "${INADYN_CONFIG_FILE}"; then
-                sed -i "s|  password .*|  password $DDNS_PASSWORD|g" "${INADYN_CONFIG_FILE}"
-            else
+            if [ "$DDNS_PASSWORD" ]; then
                 echo "  password $DDNS_PASSWORD" >> "${INADYN_CONFIG_FILE}"
+            fi
+
+            if [ -f /tmp/inadyn_aliases ]; then
+                cat /tmp/inadyn_aliases >> "${INADYN_CONFIG_FILE}"
+                rm /tmp/inadyn_aliases
+            fi
+        fi
+    else
+        if grep -q "{" "${INADYN_CONFIG_FILE}"; then
+            sed -i "s|username .*|username       = $DDNS_USERNAME|g" "${INADYN_CONFIG_FILE}"
+            sed -i "s|password .*|password       = $DDNS_PASSWORD|g" "${INADYN_CONFIG_FILE}"
+            sed -i "s|checkip-server .*|checkip-server = $GET_IP_ADDRESS_URL|g" "${INADYN_CONFIG_FILE}"
+        else
+            # Old inadyn config file format
+            # change username/password for an existing provider
+            if [ "$DDNS_USERNAME" ]; then
+                if grep -q "  username " "${INADYN_CONFIG_FILE}"; then
+                    sed -i "s|  username .*|  username $DDNS_USERNAME|g" "${INADYN_CONFIG_FILE}"
+                else
+                    echo "  username $DDNS_USERNAME" >> "${INADYN_CONFIG_FILE}"
+                fi
+            fi
+            if [ "$DDNS_PASSWORD" ]; then
+                if grep -q "  password " "${INADYN_CONFIG_FILE}"; then
+                    sed -i "s|  password .*|  password $DDNS_PASSWORD|g" "${INADYN_CONFIG_FILE}"
+                else
+                    echo "  password $DDNS_PASSWORD" >> "${INADYN_CONFIG_FILE}"
+                fi
             fi
         fi
     fi
@@ -203,24 +218,29 @@ function add_ddns_domain {
         exit 5745
     fi
     if ! grep -q "$DDNS_PROVIDER" "${INADYN_CONFIG_FILE}"; then
-        { echo '';
-          echo "system $DDNS_PROVIDER";
-          echo '  ssl';
-          echo "  checkip-url $GET_IP_ADDRESS_URL /"; } >> "${INADYN_CONFIG_FILE}"
-        if [ $DDNS_USERNAME ]; then
-            echo "  username $DDNS_USERNAME" >> "${INADYN_CONFIG_FILE}"
-        fi
-        if [ $DDNS_PASSWORD ]; then
-            echo "  password $DDNS_PASSWORD" >> "${INADYN_CONFIG_FILE}"
-        fi
+        { echo 'period          = 300';
+          echo 'user-agent      = Mozilla/5.0';
+          echo '';
+          echo "provider $DDNS_PROVIDER {";
+          echo "    ssl            = true";
+          echo "    checkip-ssl    = false";
+          echo "    checkip-server = $GET_IP_ADDRESS_URL";
+          echo "    username       = $DDNS_USERNAME";
+          echo "    password       = $DDNS_PASSWORD";
+          echo "    hostname       = { $CURRENT_DDNS_DOMAIN }";
+          echo '}'; } > "${INADYN_CONFIG_FILE}"
+    else
+        sed -i "s|checkip-server .*|checkip-server = $GET_IP_ADDRESS_URL|g" "${INADYN_CONFIG_FILE}"
     fi
 
     if ! grep -q "$CURRENT_DDNS_DOMAIN" "${INADYN_CONFIG_FILE}"; then
-        echo "  alias $CURRENT_DDNS_DOMAIN" >> "${INADYN_CONFIG_FILE}"
+        DDNS_HOSTNAMES=$(grep 'hostname ' "${INADYN_CONFIG_FILE}"| awk -F '{' '{print $2}' | sed 's| }||g')
+        sed -i "s|hostname .*|hostname       = {${DDNS_HOSTNAMES}, ${CURRENT_DDNS_DOMAIN} }|g" "${INADYN_CONFIG_FILE}"
     fi
     chmod 600 "${INADYN_CONFIG_FILE}"
-    systemctl restart inadyn
+
     systemctl daemon-reload
+    systemctl restart inadyn
 }
 
 function remove_ddns_domain {
@@ -241,9 +261,12 @@ function remove_ddns_domain {
     fi
     if grep -q "$CURRENT_DDNS_DOMAIN" "${INADYN_CONFIG_FILE}"; then
         systemctl stop inadyn
-        sed -i "/alias $CURRENT_DDNS_DOMAIN/d" "${INADYN_CONFIG_FILE}"
-        systemctl start inadyn
+        sed -i "s|, ${CURRENT_DDNS_DOMAIN}||g" "${INADYN_CONFIG_FILE}"
+        if grep -q "$CURRENT_DDNS_DOMAIN" "${INADYN_CONFIG_FILE}"; then
+            sed -i "s|${CURRENT_DDNS_DOMAIN}||g" "${INADYN_CONFIG_FILE}"
+        fi
         systemctl daemon-reload
+        systemctl start inadyn
     fi
 }
 

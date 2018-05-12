@@ -430,6 +430,46 @@ function install_web_server_access_control {
     fi
 }
 
+function upgrade_inadyn_config {
+    if [ ! -f "${INADYN_CONFIG_FILE}" ]; then
+        return
+    fi
+
+    if grep -q "{" "${INADYN_CONFIG_FILE}"; then
+        return
+    fi
+
+    read_config_param DDNS_PROVIDER
+    read_config_param DDNS_USERNAME
+    read_config_param DDNS_PASSWORD
+
+    grep "alias " "${INADYN_CONFIG_FILE}" | sed 's| alias ||g' > ~/.inadyn_existing_sites
+    DDNS_HOSTNAMES=
+    while read -r host; do
+        if [ "$DDNS_HOSTNAMES" ]; then
+            DDNS_HOSTNAMES="$DDNS_HOSTNAMES, $host"
+        else
+            DDNS_HOSTNAMES="$host"
+        fi
+    done <~/.inadyn_existing_sites
+
+    if [ ! "$DDNS_HOSTNAMES" ]; then
+        return
+    fi
+
+    { echo 'period          = 300';
+      echo 'user-agent      = Mozilla/5.0';
+      echo '';
+      echo "provider $DDNS_PROVIDER {";
+      echo "    ssl            = true";
+      echo "    checkip-ssl    = false";
+      echo "    checkip-server = $GET_IP_ADDRESS_URL";
+      echo "    username       = $DDNS_USERNAME";
+      echo "    password       = $DDNS_PASSWORD";
+      echo "    hostname       = { $DDNS_HOSTNAMES }";
+      echo '}'; } > "${INADYN_CONFIG_FILE}"
+}
+
 function install_dynamicdns {
     if [[ $SYSTEM_TYPE == "mesh"* ]]; then
         return
@@ -458,6 +498,7 @@ function install_dynamicdns {
     # https version 1.99.8
 
     apt-get -yq install build-essential curl libgnutls28-dev automake1.11
+    apt-get -yq install gnutls-dev libconfuse-dev
     if [ ! -d "$INSTALL_DIR/inadyn" ]; then
         if [ -d /repos/inadyn ]; then
             mkdir "$INSTALL_DIR/inadyn"
@@ -477,23 +518,17 @@ function install_dynamicdns {
     git checkout "$INADYN_COMMIT" -b "$INADYN_COMMIT"
     set_completion_param "inadyn commit" "$INADYN_COMMIT"
 
-    #./autogen.sh
-    if ! ./configure; then
+    ./autogen.sh
+
+    if ! ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --enable-openssl; then
         exit 74890
     fi
-    if ! USE_OPENSSL=1 make; then
+    if ! make -j5; then
         exit 74858
     fi
-    if ! make install; then
+    if ! make install-strip; then
         exit 3785
     fi
-
-    # create an unprivileged user
-    #chmod 600 /etc/shadow
-    #chmod 600 /etc/gshadow
-    #useradd -r -s /bin/false debian-inadyn
-    #chmod 0000 /etc/shadow
-    #chmod 0000 /etc/gshadow
 
     # create a configuration file
     { echo 'background';
@@ -501,23 +536,29 @@ function install_dynamicdns {
       echo 'period         300';
       echo 'startup-delay  60';
       echo 'cache-dir      /run/inadyn';
-      echo 'logfile        /dev/null'; } > /etc/inadyn.conf
-    chmod 600 /etc/inadyn.conf
+      echo 'logfile        /dev/null'; } > "${INADYN_CONFIG_FILE}"
+    chmod 600 "${INADYN_CONFIG_FILE}"
 
     { echo '[Unit]';
       echo 'Description=inadyn (DynDNS updater)';
       echo 'After=network.target';
       echo '';
       echo '[Service]';
-      echo 'ExecStart=/usr/local/sbin/inadyn --config /etc/inadyn.conf';
+      echo "ExecStart=/usr/sbin/inadyn --config ${INADYN_CONFIG_FILE}";
       echo 'Restart=always';
       echo 'Type=forking';
       echo '';
       echo '[Install]';
       echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/inadyn.service
     systemctl enable inadyn
-    systemctl start inadyn
     systemctl daemon-reload
+    systemctl start inadyn
+
+    # Remove old version of inadyn
+    if [ -f /usr/local/sbin/inadyn ]; then
+        rm /usr/local/sbin/inadyn
+        upgrade_inadyn_config
+    fi
 
     mark_completed "${FUNCNAME[0]}"
 }
