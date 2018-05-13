@@ -8,7 +8,7 @@ Check out the [list of available apps](https://freedombone.net/apps.html) and [F
 
 Disk images which can be cloned straight to USB or microSD drives are [available here](https://freedombone.net/downloads/v31).
 
-If you find bugs, or want to add a new app to this system see the [Developers Guide](https://freedombone.net/devguide.html) and [Code of Conduct](https://freedombone.net/codeofconduct.html). There is a Matrix chat room available at *#fbone:matrix.freedombone.net*.
+If you find bugs, or want to add a new app to this system see the [Developers Guide](https://freedombone.net/devguide.html) and [Code of Conduct](https://freedombone.net/codeofconduct.html). There is a Matrix chat room available at *#fbone:matrix.freedombone.net* and an XMPP channel at *support@chat.freedombone.net*.
 
 If you like this project and want to support continued development then [here's what to do](https://freedombone.net/support.html).
 
