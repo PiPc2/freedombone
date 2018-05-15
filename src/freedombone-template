@@ -32,7 +32,7 @@ app_name='noapp'
 app_name_lower=$(echo "${app_name}" | tr '[:upper:]' '[:lower:]')
 app_name=$app_name_lower
 app_name_upper=$(echo "${app_name}" | tr '[:lower:]' '[:upper:]')
-app_repo="TODO"
+app_repo=
 app_repo_commit='TODO'
 app_php=
 app_node=
@@ -47,6 +47,8 @@ your_name=''
 your_email=''
 SHOW_ON_ABOUT=1
 database_type=''
+debian_packages=
+snap_packages=
 
 function show_help {
     echo ''
@@ -67,10 +69,13 @@ function show_help {
     echo $'     --nodeapp [package]                      Specify a nodejs package to install'
     echo $'  -o --onion [yes|no]                         Is this app only available on an onion address?'
     echo $'  -p --php [yes|no]                           Is this a PHP app?'
+    echo $'     --packages [list of deb package names]   Debian packages to be installed'
+    echo $'     --snaps [list of snap package names]     Snap packages to be installed'
     echo $'  -s --daemon [yes|no]                        Add a daemon'
     echo $'  -d --database [mariadb|postgresql|mongodb]  Type of database'
     echo $'  -w --web [yes|no]                           Whether there is a web user interface (default is yes)'
     echo $'     --dir [directory]                        Where to install to'
+    echo $'  -i --internalport [number]                  Internal port number for the daemon'
     echo ''
     exit 0
 }
@@ -109,6 +114,10 @@ do
         -d|--database)
             shift
             database_type="$1"
+            ;;
+        -i|--internal|--internalport)
+            shift
+            app_port_internal="$1"
             ;;
         -p|--php)
             shift
@@ -151,6 +160,14 @@ do
         --dir)
             shift
             app_dir="$1"
+            ;;
+        --packages|--package)
+            shift
+            debian_packages="$1"
+            ;;
+        --snaps|--snap)
+            shift
+            snap_packages="$1"
             ;;
         *)
             # unknown option
@@ -251,8 +268,10 @@ if [ "$app_port" ]; then
     echo "${app_name_upper}_PORT=$app_port"
 fi
 echo "${app_name_upper}_ONION_PORT=$(( ( RANDOM % 1000 )  + 9010 ))"
-echo "${app_name_upper}_REPO=\"${app_repo}\""
-echo "${app_name_upper}_COMMIT='${app_repo_commit}'"
+if [ "$app_repo" ]; then
+    echo "${app_name_upper}_REPO=\"${app_repo}\""
+    echo "${app_name_upper}_COMMIT='${app_repo_commit}'"
+fi
 if [ $app_daemon ]; then
     if [ ! "$app_port_internal" ]; then
         echo "${app_name_upper}_PORT_INTERNAL=TODO"
@@ -379,27 +398,31 @@ echo '    done'
 echo '}'
 echo ''
 echo "function upgrade_${app_name} {"
-echo "    CURR_${app_name_upper}_COMMIT=\$(get_completion_param \"${app_name} commit\")"
-echo "    if [[ \"\$CURR_${app_name_upper}_COMMIT\" == \"\$${app_name_upper}_COMMIT\" ]]; then"
-echo '        return'
-echo '    fi'
-if [ $app_webui ]; then
-    echo ''
-    echo "    if grep -q \"${app_name} domain\" \"\$COMPLETION_FILE\"; then"
-    echo "        ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
-    echo '    fi'
-fi
-echo ''
-echo '    # update to the next commit'
-if [ ! "$app_dir" ]; then
-    echo "    set_repo_commit \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\" \"\$${app_name_upper}_REPO\""
-    echo "    chown -R www-data:www-data \"/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs\""
+if [ ! "$app_repo" ]; then
+    echo "echo -n ''"
 else
-    echo "    set_repo_commit \"${app_dir}\" \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\" \"\$${app_name_upper}_REPO\""
-    echo "    chown -R ${app_name}:${app_name} \"${app_dir}\""
-fi
-if [ $app_daemon ]; then
-    echo "    systemctl restart ${app_name}"
+    echo "    CURR_${app_name_upper}_COMMIT=\$(get_completion_param \"${app_name} commit\")"
+    echo "    if [[ \"\$CURR_${app_name_upper}_COMMIT\" == \"\$${app_name_upper}_COMMIT\" ]]; then"
+    echo '        return'
+    echo '    fi'
+    if [ $app_webui ]; then
+        echo ''
+        echo "    if grep -q \"${app_name} domain\" \"\$COMPLETION_FILE\"; then"
+        echo "        ${app_name_upper}_DOMAIN_NAME=\$(get_completion_param \"${app_name} domain\")"
+        echo '    fi'
+    fi
+    echo ''
+    echo '    # update to the next commit'
+    if [ ! "$app_dir" ]; then
+        echo "    set_repo_commit \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\" \"\$${app_name_upper}_REPO\""
+        echo "    chown -R www-data:www-data \"/var/www/\${${app_name_upper}_DOMAIN_NAME}/htdocs\""
+    else
+        echo "    set_repo_commit \"${app_dir}\" \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\" \"\$${app_name_upper}_REPO\""
+        echo "    chown -R ${app_name}:${app_name} \"${app_dir}\""
+    fi
+    if [ $app_daemon ]; then
+        echo "    systemctl restart ${app_name}"
+    fi
 fi
 echo '}'
 echo ''
@@ -710,9 +733,22 @@ if [ $app_webui ]; then
     echo ''
     echo "    remove_ddns_domain \"\$${app_name_upper}_DOMAIN_NAME\""
 fi
+if [ "$snap_packages" ]; then
+    echo ''
+    echo "    snap remove ${snap_packages}"
+fi
 echo '}'
 echo ''
 echo "function install_${app_name} {"
+if [ "$debian_packages" ]; then
+    echo "    apt-get -qy install ${debian_packages}"
+    echo ''
+fi
+if [ "$snap_packages" ]; then
+    echo '    apt-get -qy install snapd'
+    echo "    snap install ${snap_packages}"
+    echo ''
+fi
 if [[ "$database_type" == "mariadb" || "$database_type" == "mysql" ]]; then
     echo '    install_mariadb'
     echo ''
@@ -750,42 +786,51 @@ if [ $app_webui ]; then
     echo '    fi'
 fi
 
-echo "    if [ -d /repos/${app_name} ]; then"
-if [ $app_webui ]; then
-    echo "        mkdir \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
-fi
-if [ ! "$app_dir" ]; then
-    echo "        cp -r -p /repos/${app_name}/. \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
-    echo "        cd \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" || exit 324687356"
+if [ "$app_repo" ]; then
+    echo "    if [ -d /repos/${app_name} ]; then"
+    if [ $app_webui ]; then
+        echo "        mkdir \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+    fi
+    if [ ! "$app_dir" ]; then
+        echo "        cp -r -p /repos/${app_name}/. \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+        echo "        cd \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" || exit 324687356"
+    else
+        echo "        cp -r -p /repos/${app_name}/. \"${app_dir}\""
+        echo "        cd \"${app_dir}\" || exit 36487365"
+    fi
+    echo '        git pull'
+    echo '    else'
+    if [ ! "$app_dir" ]; then
+        echo "        git_clone \"\$${app_name_upper}_REPO\" \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+    else
+        echo "        git_clone \"\$${app_name_upper}_REPO\" \"${app_dir}\""
+    fi
+    echo '    fi'
+    echo ''
+    if [ ! "$app_dir" ]; then
+        echo "    if [ ! -d \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" ]; then"
+    else
+        echo "    if [ ! -d \"${app_dir}\" ]; then"
+    fi
+    echo "        echo \$'Unable to clone ${app_name} repo'"
+    echo '        exit 87525'
+    echo '    fi'
+    echo ''
 else
-    echo "        cp -r -p /repos/${app_name}/. \"${app_dir}\""
-    echo "        cd \"${app_dir}\" || exit 36487365"
+    echo "    mkdir -p \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
+    if [ "$app_dir" ]; then
+        echo "    mkdir \"${app_dir}\""
+    fi
 fi
-echo '        git pull'
-echo '    else'
-if [ ! "$app_dir" ]; then
-    echo "        git_clone \"\$${app_name_upper}_REPO\" \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
-else
-    echo "        git_clone \"\$${app_name_upper}_REPO\" \"${app_dir}\""
-fi
-echo '    fi'
-echo ''
-if [ ! "$app_dir" ]; then
-    echo "    if [ ! -d \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" ]; then"
-else
-    echo "    if [ ! -d \"${app_dir}\" ]; then"
-fi
-echo "        echo \$'Unable to clone ${app_name} repo'"
-echo '        exit 87525'
-echo '    fi'
-echo ''
 if [ ! "$app_dir" ]; then
     echo "    cd \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\" || exit 36587356"
 else
     echo "    cd \"${app_dir}\" || exit 3463754637"
 fi
-echo "    git checkout \"\$${app_name_upper}_COMMIT\" -b \"\$${app_name_upper}_COMMIT\""
-echo "    set_completion_param \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\""
+if [ "$app_repo" ]; then
+    echo "    git checkout \"\$${app_name_upper}_COMMIT\" -b \"\$${app_name_upper}_COMMIT\""
+    echo "    set_completion_param \"${app_name} commit\" \"\$${app_name_upper}_COMMIT\""
+fi
 if [ $app_webui ]; then
     echo ''
     echo "    chmod g+w \"/var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs\""
@@ -828,12 +873,10 @@ if [ $app_webui ]; then
         echo ''
         echo "        { echo '  add_header Strict-Transport-Security max-age=15768000;';"
         echo "          echo '';"
-        echo "          echo '  # Logs';"
-        echo "          echo '  access_log /dev/null;';"
-        echo "          echo '  error_log /dev/null;';"
+        echo "          echo '    access_log /dev/null;';"
+        echo "          echo '    error_log /dev/null;';"
         echo "          echo '';"
-        echo "          echo '  # Root';"
-        echo "          echo \"  root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\";"
+        echo "          echo \"    root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\";"
         echo "          echo '';"
         if [[ "$app_php" == 'yes' ]]; then
             echo "          echo '  index index.php;';"
@@ -875,12 +918,10 @@ if [ $app_webui ]; then
     echo "    echo '' >> \"\$${app_name}_nginx_site\""
     echo "    nginx_security_options \"\$${app_name_upper}_DOMAIN_NAME\""
     echo "    { echo '';"
-    echo "      echo '  # Logs';"
-    echo "      echo '  access_log /dev/null;';"
-    echo "      echo '  error_log /dev/null;';"
+    echo "      echo '    access_log /dev/null;';"
+    echo "      echo '    error_log /dev/null;';"
     echo "      echo '';"
-    echo "      echo '  # Root';"
-    echo "      echo \"  root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\";"
+    echo "      echo \"    root /var/www/\$${app_name_upper}_DOMAIN_NAME/htdocs;\";"
     echo "      echo '';"
     if [[ "$app_php" == 'yes' ]]; then
         echo "      echo '  index index.php;';"
@@ -926,7 +967,7 @@ if [ $app_daemon ]; then
     echo "      echo 'Description=${app_name}';"
     echo "      echo 'After=syslog.target';"
     echo "      echo 'After=network.target';"
-    echo "      echo 'Documentation=${app_name_upper}_REPO";
+    echo "      echo \"Documentation=\$${app_name_upper}_REPO\";";
     echo "      echo '';"
     echo "      echo '[Service]';"
     echo "      echo 'Type=simple';"
