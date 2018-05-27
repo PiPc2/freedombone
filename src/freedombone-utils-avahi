@@ -111,13 +111,40 @@ function mesh_avahi {
     WATCHDOG_SCRIPT_NAME="keepon"
     { echo '';
       echo '# keep avahi daemon running';
-      echo "AVAHI_RUNNING=\$(pgrep avahi-daemon > /dev/null && echo Running)";
+      echo "AVAHI_RUNNING=\$(systemctl is-active avahi-daemon >/dev/null 2>&1 && echo Running)";
       echo "if [ ! \$AVAHI_RUNNING ]; then";
       echo '  systemctl start avahi-daemon';
       echo "  echo -n \$CURRENT_DATE >> \$LOGFILE";
       echo "  echo \" Avahi daemon restarted\" >> \$LOGFILE";
       echo 'fi'; } >> "$rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME"
     chmod +x "$rootdir/usr/bin/$WATCHDOG_SCRIPT_NAME"
+}
+
+function keep_avahi_running {
+    WATCHDOG_SCRIPT_NAME="keepon"
+
+    if grep -q "avahi daemon" "/usr/bin/$WATCHDOG_SCRIPT_NAME"; then
+        return
+    fi
+
+    { echo '';
+      echo '# keep avahi daemon running';
+      echo "AVAHI_RUNNING=\$(systemctl is-active avahi-daemon >/dev/null 2>&1 && echo Running)";
+      echo "if [ ! \$AVAHI_RUNNING ]; then";
+      echo '  systemctl start avahi-daemon';
+      echo "  echo -n \$CURRENT_DATE >> \$LOGFILE";
+      echo "  echo \" Avahi daemon restarted\" >> \$LOGFILE";
+      echo 'fi';
+      echo '# End of avahi'; } >> "/usr/bin/$WATCHDOG_SCRIPT_NAME"
+    chmod +x "/usr/bin/$WATCHDOG_SCRIPT_NAME"
+
+    # This is a bit of a hack to ensure that avahi services get broadcast
+    # Without this some other systems may not be able to see the server
+    { echo '#!/bin/bash';
+      echo 'systemctl restart avahi-daemon'; } > /usr/bin/restartavahi
+    chmod +x /usr/bin/restartavahi
+
+    cron_add_mins 10 /usr/bin/restartavahi
 }
 
 function install_avahi {
