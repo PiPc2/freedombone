@@ -61,6 +61,11 @@ if [ $DEVELOPMENT_BRANCH ]; then
     fi
 fi
 
+# upgrading file prevents USB canary from activating
+if [ ! -f /tmp/.upgrading ]; then
+    touch /tmp/.upgrading
+fi
+
 if [ -f /usr/bin/backupdatabases ]; then
     if grep -q "cat /root/dbpass" /usr/bin/backupdatabases; then
         # update to using the password manager
@@ -91,17 +96,22 @@ if [ -d "$PROJECT_DIR" ]; then
         fi
 
         if ! ${PROJECT_NAME} -c "$CONFIGURATION_FILE"; then
+            rm /tmp/.upgrading
             exit 453536
         fi
 
         #rebuild_exim_with_socks
+        install_dynamicdns
         torrc_migrate
         nodejs_upgrade
         apt-get -yq -t stretch-backports install certbot
         email_install_tls
         email_disable_chunking
+        remove_ip_addresses_from_email_logs
         rm /etc/exim4/exim4.conf.template.bak*
         email_update_onion_domain
+        prevent_mail_process_overrun
+        android_update_apps yes
         #defrag_filesystem
 
         # reinstall tor from backports
@@ -115,5 +125,17 @@ fi
 
 # If logging was left on then turn it off
 ${PROJECT_NAME}-logging off
+
+# This is a hack to fix nginx failures which happen sometimes
+# when matrix is installed
+if [ -d /etc/matrix ]; then
+    systemctl restart matrix
+    systemctl restart nginx
+fi
+
+# upgrading file prevents USB canary from activating
+if [ -f /tmp/.upgrading ]; then
+    rm /tmp/.upgrading
+fi
 
 # deliberately there is no 'exit 0' here

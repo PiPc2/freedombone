@@ -1,0 +1,343 @@
+#!/bin/bash
+#
+#  _____               _           _
+# |   __|___ ___ ___ _| |___ _____| |_ ___ ___ ___
+# |   __|  _| -_| -_| . | . |     | . | . |   | -_|
+# |__|  |_| |___|___|___|___|_|_|_|___|___|_|_|___|
+#
+#                              Freedom in the Cloud
+#
+# License
+# =======
+#
+# Copyright (C) 2018 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+NOT_ON_ARM=1
+
+ROCKETCHAT_DOMAIN_NAME=
+ROCKETCHAT_CODE=
+ROCKETCHAT_ONION_PORT=9722
+ROCKETCHAT_PORT_INTERNAL=3000
+
+ROCKETCHAT_SHORT_DESCRIPTION=$'Chat system'
+ROCKETCHAT_DESCRIPTION=$'Chat system'
+ROCKETCHAT_MOBILE_APP_URL=
+
+rocketchat_variables=(ONION_ONLY
+                      ROCKETCHAT_DOMAIN_NAME
+                      ROCKETCHAT_CODE
+                      DDNS_PROVIDER
+                      MY_USERNAME)
+
+function logging_on_rocketchat {
+    echo -n ''
+}
+
+function logging_off_rocketchat {
+    echo -n ''
+}
+
+function remove_user_rocketchat {
+    remove_username="$1"
+
+    "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp rocketchat
+}
+
+function add_user_rocketchat {
+    new_username="$1"
+    new_user_password="$2"
+
+    "${PROJECT_NAME}-pass" -u "$new_username" -a rocketchat -p "$new_user_password"
+    echo '0'
+}
+
+function install_interactive_rocketchat {
+    if [ ! "$ONION_ONLY" ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ "$ONION_ONLY" != "no" ]]; then
+        ROCKETCHAT_DOMAIN_NAME='rocketchat.local'
+        write_config_param "ROCKETCHAT_DOMAIN_NAME" "$ROCKETCHAT_DOMAIN_NAME"
+    else
+        interactive_site_details "rocketchat" "ROCKETCHAT_DOMAIN_NAME" "ROCKETCHAT_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function change_password_rocketchat {
+    curr_username="$1"
+    new_user_password="$2"
+
+    read_config_param 'ROCKETCHAT_DOMAIN_NAME'
+
+    "${PROJECT_NAME}-pass" -u "$curr_username" -a rocketchat -p "$new_user_password"
+}
+
+function reconfigure_rocketchat {
+    # This is used if you need to switch identity. Dump old keys and generate new ones
+    echo -n ''
+}
+
+function upgrade_rocketchat {
+    echo -n ''
+}
+
+function backup_local_rocketchat {
+    ROCKETCHAT_DOMAIN_NAME='rocketchat'
+    if grep -q "rocketchat domain" "$COMPLETION_FILE"; then
+        ROCKETCHAT_DOMAIN_NAME=$(get_completion_param "rocketchat domain")
+    fi
+
+    source_directory=/var/snap/rocketchat-server
+
+    suspend_site "${ROCKETCHAT_DOMAIN_NAME}"
+
+    systemctl stop rocketchat
+
+    dest_directory=rocketchat
+    backup_directory_to_usb "$source_directory" $dest_directory
+
+    restart_site
+    systemctl start rocketchat
+}
+
+function restore_local_rocketchat {
+    if ! grep -q "rocketchat domain" "$COMPLETION_FILE"; then
+        return
+    fi
+    ROCKETCHAT_DOMAIN_NAME=$(get_completion_param "rocketchat domain")
+    if [ ! "$ROCKETCHAT_DOMAIN_NAME" ]; then
+        return
+    fi
+    suspend_site "${ROCKETCHAT_DOMAIN_NAME}"
+    systemctl stop rocketchat
+
+    temp_restore_dir=/root/temprocketchat
+    rocketchat_dir=/var/snap/rocketchat-server
+
+    restore_directory_from_usb $temp_restore_dir rocketchat
+    if [ -d $temp_restore_dir ]; then
+        if [ -d "$temp_restore_dir$rocketchat_dir" ]; then
+            cp -rp "$temp_restore_dir$rocketchat_dir"/* "$rocketchat_dir"/
+        else
+            if [ ! -d "$rocketchat_dir" ]; then
+                mkdir "$rocketchat_dir"
+            fi
+            cp -rp "$temp_restore_dir"/* "$rocketchat_dir"/
+        fi
+        rm -rf $temp_restore_dir
+    fi
+    systemctl start rocketchat
+
+    restart_site
+}
+
+function backup_remote_rocketchat {
+    ROCKETCHAT_DOMAIN_NAME='rocketchat'
+    if grep -q "rocketchat domain" "$COMPLETION_FILE"; then
+        ROCKETCHAT_DOMAIN_NAME=$(get_completion_param "rocketchat domain")
+    fi
+
+    source_directory=/var/snap/rocketchat-server
+
+    suspend_site "${ROCKETCHAT_DOMAIN_NAME}"
+    systemctl stop rocketchat
+
+    dest_directory=rocketchat
+    backup_directory_to_friend "$source_directory" $dest_directory
+
+    systemctl start rocketchat
+
+    restart_site
+}
+
+function restore_remote_rocketchat {
+    if ! grep -q "rocketchat domain" "$COMPLETION_FILE"; then
+        return
+    fi
+    ROCKETCHAT_DOMAIN_NAME=$(get_completion_param "rocketchat domain")
+    if [ ! "$ROCKETCHAT_DOMAIN_NAME" ]; then
+        return
+    fi
+    suspend_site "${ROCKETCHAT_DOMAIN_NAME}"
+    systemctl stop rocketchat
+
+    temp_restore_dir=/root/temprocketchat
+    rocketchat_dir=/var/snap/rocketchat-server
+
+    restore_directory_from_friend $temp_restore_dir rocketchat
+    if [ -d $temp_restore_dir ]; then
+        if [ -d "$temp_restore_dir$rocketchat_dir" ]; then
+            cp -rp "$temp_restore_dir$rocketchat_dir"/* "$rocketchat_dir"/
+        else
+            if [ ! -d "$rocketchat_dir" ]; then
+                mkdir "$rocketchat_dir"
+            fi
+            cp -rp $temp_restore_dir/* "$rocketchat_dir"/
+        fi
+        rm -rf $temp_restore_dir
+    fi
+    systemctl start rocketchat
+
+    restart_site
+}
+
+function remove_rocketchat {
+    nginx_dissite "$ROCKETCHAT_DOMAIN_NAME"
+    remove_certs "$ROCKETCHAT_DOMAIN_NAME"
+
+    remove_nodejs rocketchat
+
+    if [ -d "/var/www/$ROCKETCHAT_DOMAIN_NAME" ]; then
+        rm -rf "/var/www/$ROCKETCHAT_DOMAIN_NAME"
+    fi
+    if [ -f "/etc/nginx/sites-available/$ROCKETCHAT_DOMAIN_NAME" ]; then
+        rm "/etc/nginx/sites-available/$ROCKETCHAT_DOMAIN_NAME"
+    fi
+    remove_onion_service rocketchat "${ROCKETCHAT_ONION_PORT}"
+    if grep -q "rocketchat" /etc/crontab; then
+        sed -i "/rocketchat/d" /etc/crontab
+    fi
+    remove_app rocketchat
+    remove_completion_param install_rocketchat
+    sed -i '/rocketchat/d' "$COMPLETION_FILE"
+
+    remove_ddns_domain "$ROCKETCHAT_DOMAIN_NAME"
+
+    remove_snap rocketchat-server
+}
+
+function install_rocketchat {
+    install_snap rocketchat-server
+
+    install_nodejs rocketchat
+    if [ ! "$ROCKETCHAT_DOMAIN_NAME" ]; then
+        echo $'No domain name was given'
+        exit 3568356
+    fi
+
+    if [ -d "/var/www/$ROCKETCHAT_DOMAIN_NAME/htdocs" ]; then
+        rm -rf "/var/www/$ROCKETCHAT_DOMAIN_NAME/htdocs"
+    fi
+    mkdir -p "/var/www/$ROCKETCHAT_DOMAIN_NAME/htdocs"
+
+    chmod g+w "/var/www/$ROCKETCHAT_DOMAIN_NAME/htdocs"
+    chown -R www-data:www-data "/var/www/$ROCKETCHAT_DOMAIN_NAME/htdocs"
+
+    add_ddns_domain "$ROCKETCHAT_DOMAIN_NAME"
+
+    ROCKETCHAT_ONION_HOSTNAME=$(add_onion_service rocketchat 80 "${ROCKETCHAT_ONION_PORT}")
+
+    rocketchat_nginx_site=/etc/nginx/sites-available/$ROCKETCHAT_DOMAIN_NAME
+    if [[ "$ONION_ONLY" == "no" ]]; then
+        nginx_http_redirect "$ROCKETCHAT_DOMAIN_NAME" "index index.html"
+        { echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $ROCKETCHAT_DOMAIN_NAME;";
+          echo ''; } >> "$rocketchat_nginx_site"
+        nginx_compress "$ROCKETCHAT_DOMAIN_NAME"
+        echo '' >> "$rocketchat_nginx_site"
+        echo '  # Security' >> "$rocketchat_nginx_site"
+        nginx_ssl "$ROCKETCHAT_DOMAIN_NAME"
+
+        nginx_security_options "$ROCKETCHAT_DOMAIN_NAME"
+
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '  # Logs';
+          echo '  access_log /dev/null;';
+          echo '  error_log /dev/null;';
+          echo '';
+          echo '  # Root';
+          echo "  root /var/www/$ROCKETCHAT_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  index index.html;';
+          echo '  # Location';
+          echo '  location / {'; } >> "$rocketchat_nginx_site"
+        nginx_limits "$ROCKETCHAT_DOMAIN_NAME" '15m'
+        { echo "    proxy_pass http://localhost:$ROCKETCHAT_PORT_INTERNAL;";
+          echo '    proxy_http_version 1.1;';
+          echo "    proxy_set_header Upgrade \$http_upgrade;";
+          echo "    proxy_set_header Connection \"upgrade\";"
+          echo "    proxy_set_header Host \$http_host;"
+          echo '';
+          echo "    proxy_set_header X-Real-IP \$remote_addr;";
+          echo "    proxy_set_header X-Forward-For \$proxy_add_x_forwarded_for;";
+          echo '    proxy_set_header X-Forward-Proto http;';
+          echo '    proxy_set_header X-Nginx-Proxy true;';
+          echo '';
+          echo '    proxy_redirect off;';
+          echo '  }';
+          echo '}'; } >> "$rocketchat_nginx_site"
+    else
+        echo -n '' > "$rocketchat_nginx_site"
+    fi
+    { echo 'server {';
+      echo "    listen 127.0.0.1:$ROCKETCHAT_ONION_PORT default_server;";
+      echo "    server_name $ROCKETCHAT_ONION_HOSTNAME;";
+      echo ''; } >> "$rocketchat_nginx_site"
+    nginx_compress "$ROCKETCHAT_DOMAIN_NAME"
+    echo '' >> "$rocketchat_nginx_site"
+    nginx_security_options "$ROCKETCHAT_DOMAIN_NAME"
+    { echo '';
+      echo '  # Logs';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  # Root';
+      echo "  root /var/www/$ROCKETCHAT_DOMAIN_NAME/htdocs;";
+      echo '';
+      echo '  index index.html;';
+      echo '  # Location';
+      echo '  location / {'; } >> "$rocketchat_nginx_site"
+    nginx_limits "$ROCKETCHAT_DOMAIN_NAME" '15m'
+    { echo "    proxy_pass http://localhost:$ROCKETCHAT_PORT_INTERNAL;";
+      echo '    proxy_http_version 1.1;';
+      echo "    proxy_set_header Upgrade \$http_upgrade;";
+      echo "    proxy_set_header Connection \"upgrade\";"
+      echo "    proxy_set_header Host \$http_host;"
+      echo '';
+      echo "    proxy_set_header X-Real-IP \$remote_addr;";
+      echo "    proxy_set_header X-Forward-For \$proxy_add_x_forwarded_for;";
+      echo '    proxy_set_header X-Forward-Proto http;';
+      echo '    proxy_set_header X-Nginx-Proxy true;';
+      echo '';
+      echo '    proxy_redirect off;';
+      echo '  }';
+      echo '}'; } >> "$rocketchat_nginx_site"
+
+    # If content security is enabled then the https site won't load
+    sed -i 's|add_header Content-Security-Policy|#add_header Content-Security-Policy|g' "$rocketchat_nginx_site"
+
+    create_site_certificate "$ROCKETCHAT_DOMAIN_NAME" 'yes'
+
+    nginx_ensite "$ROCKETCHAT_DOMAIN_NAME"
+
+    systemctl restart nginx
+
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a rocketchat -p "$ROCKETCHAT_ADMIN_PASSWORD"
+    set_completion_param "rocketchat domain" "$ROCKETCHAT_DOMAIN_NAME"
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately there is no "exit 0"

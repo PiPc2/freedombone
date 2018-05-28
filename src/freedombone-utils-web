@@ -430,25 +430,80 @@ function install_web_server_access_control {
     fi
 }
 
+function upgrade_inadyn_config {
+    if [ ! -f "${INADYN_CONFIG_FILE}" ]; then
+        return
+    fi
+
+    if [ ! -f /usr/sbin/inadyn ]; then
+        return
+    fi
+
+    if grep -q "{" "${INADYN_CONFIG_FILE}"; then
+        return
+    fi
+
+    read_config_param DDNS_PROVIDER
+    read_config_param DDNS_USERNAME
+    read_config_param DDNS_PASSWORD
+    read_config_param DEFAULT_DOMAIN_NAME
+
+    grep "alias " "${INADYN_CONFIG_FILE}" | sed 's| alias ||g' > ~/.inadyn_existing_sites
+
+    if [[ "$DDNS_PROVIDER" == "default@freedns.afraid.org" ]]; then
+        DDNS_PROVIDER='freedns'
+        write_config_param DDNS_PROVIDER "$DDNS_PROVIDER"
+    fi
+
+    { echo 'period          = 300';
+      echo '';
+      echo "provider $DDNS_PROVIDER {";
+      echo "    ssl            = true";
+      echo "    username       = $DDNS_USERNAME";
+      echo "    password       = $DDNS_PASSWORD";
+      echo '    wildcard       = true';
+      echo "    hostname       = $DEFAULT_DOMAIN_NAME";
+      echo '}'; } > "${INADYN_CONFIG_FILE}"
+}
+
 function install_dynamicdns {
     if [[ $SYSTEM_TYPE == "mesh"* ]]; then
         return
     fi
+
     if [[ $ONION_ONLY != "no" ]]; then
         return
     fi
 
-    CURR_INADYN_COMMIT=$(get_completion_param "inadyn commit")
-    if [[ "${CURR_INADYN_COMMIT}" == "${INADYN_COMMIT}" ]]; then
-        return
+    if grep -q "INADYN_REPO" "$CONFIGURATION_FILE"; then
+        sed -i '/INADYN_REPO/d' "$CONFIGURATION_FILE"
+    fi
+    if grep -q "INADYN_COMMIT" "$CONFIGURATION_FILE"; then
+        sed -i '/INADYN_COMMIT/d' "$CONFIGURATION_FILE"
     fi
 
-    # update to the next commit
-    function_check set_repo_commit
-    set_repo_commit "$INSTALL_DIR/inadyn" "inadyn commit" "$INADYN_COMMIT" "$INADYN_REPO"
+    if [ -f /usr/local/sbin/inadyn ]; then
+        if grep -q "inadyn commit" "$COMPLETION_FILE"; then
+            sed -i '/inadyn commit/d' "$COMPLETION_FILE"
+        fi
+    else
+        CURR_INADYN_COMMIT=$(get_completion_param "inadyn commit")
+        if [[ "${CURR_INADYN_COMMIT}" == "${INADYN_COMMIT}" ]]; then
+            return
+        fi
+    fi
 
-    if [[ $(is_completed "${FUNCNAME[0]}") == "1" ]]; then
-        return
+    if [ -f /usr/local/sbin/inadyn ]; then
+        if [ -d "$INSTALL_DIR/inadyn" ]; then
+            rm -rf "$INSTALL_DIR/inadyn"
+        fi
+        if [ -d /repos/inadyn ]; then
+            rm -rf /repos/inadyn
+        fi
+    else
+        # update to the next commit
+        function_check set_repo_commit
+        set_repo_commit "$INSTALL_DIR/inadyn" "inadyn commit" "$INADYN_COMMIT" "$INADYN_REPO"
     fi
 
     # Here we compile from source because the current package
@@ -458,6 +513,8 @@ function install_dynamicdns {
     # https version 1.99.8
 
     apt-get -yq install build-essential curl libgnutls28-dev automake1.11
+    apt-get -yq install gnutls-dev libconfuse-dev pkg-config libtool
+
     if [ ! -d "$INSTALL_DIR/inadyn" ]; then
         if [ -d /repos/inadyn ]; then
             mkdir "$INSTALL_DIR/inadyn"
@@ -477,49 +534,51 @@ function install_dynamicdns {
     git checkout "$INADYN_COMMIT" -b "$INADYN_COMMIT"
     set_completion_param "inadyn commit" "$INADYN_COMMIT"
 
-    #./autogen.sh
-    if ! ./configure; then
+    ./autogen.sh
+
+    if ! ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var; then
         exit 74890
     fi
-    if ! USE_OPENSSL=1 make; then
+    if ! make -j5; then
         exit 74858
     fi
-    if ! make install; then
+    if ! make install-strip; then
         exit 3785
     fi
 
-    # create an unprivileged user
-    #chmod 600 /etc/shadow
-    #chmod 600 /etc/gshadow
-    #useradd -r -s /bin/false debian-inadyn
-    #chmod 0000 /etc/shadow
-    #chmod 0000 /etc/gshadow
-
     # create a configuration file
-    { echo 'background';
-      echo 'verbose        1';
-      echo 'period         300';
-      echo 'startup-delay  60';
-      echo 'cache-dir      /run/inadyn';
-      echo 'logfile        /dev/null'; } > /etc/inadyn.conf
-    chmod 600 /etc/inadyn.conf
+    if [ ! -f "${INADYN_CONFIG_FILE}" ]; then
+        { echo 'period          = 300';
+          echo ''; } > "${INADYN_CONFIG_FILE}"
+    fi
+    chmod 600 "${INADYN_CONFIG_FILE}"
 
     { echo '[Unit]';
-      echo 'Description=inadyn (DynDNS updater)';
-      echo 'After=network.target';
+      echo 'Description=Internet Dynamic DNS Client';
+      echo 'Documentation=man:inadyn';
+      echo 'Documentation=man:inadyn.conf';
+      echo 'Documentation=https://github.com/troglobit/inadyn';
+      echo 'ConditionPathExists=/etc/inadyn.conf';
+      echo 'After=network-online.target';
+      echo 'Requires=network-online.target';
       echo '';
       echo '[Service]';
-      echo 'ExecStart=/usr/local/sbin/inadyn --config /etc/inadyn.conf';
-      echo 'Restart=always';
-      echo 'Type=forking';
+      echo 'Type=simple';
+      echo "ExecStart=/usr/sbin/inadyn -C -n -s --loglevel=err --config ${INADYN_CONFIG_FILE}";
+      echo 'Restart=on-failure';
+      echo 'RestartSec=10';
       echo '';
       echo '[Install]';
       echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/inadyn.service
+    systemctl daemon-reload
     systemctl enable inadyn
     systemctl start inadyn
-    systemctl daemon-reload
 
-    mark_completed "${FUNCNAME[0]}"
+    # Remove old version of inadyn
+    if [ -f /usr/local/sbin/inadyn ]; then
+        rm /usr/local/sbin/inadyn
+        upgrade_inadyn_config
+    fi
 }
 
 function update_default_search_engine {
@@ -1084,23 +1143,88 @@ function install_web_local_user_interface {
     # similar to Plinth or the yunohost admin interface
     local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
-    mkdir -p "/var/www/${local_hostname}/htdocs"
+    if [ ! -d "/var/www/${local_hostname}/htdocs" ]; then
+        mkdir -p "/var/www/${local_hostname}/htdocs"
+    fi
+
     { echo '<html>';
       echo '  <body>';
-      echo "  This is a test on $local_hostname";
+      echo "  This is a test on ${local_hostname}";
       echo '  </body>';
       echo '</html>'; } > "/var/www/${local_hostname}/htdocs/index.html"
-    chown -R www-data:www-data "/var/www/${local_hostname}/htdocs"
 
     nginx_file=/etc/nginx/sites-available/$local_hostname
     { echo 'server {';
-      echo '  listen 80;';
-      echo '  listen [::]:80;';
+      echo '  listen 80 default_server;';
+      echo '  #listen [::]:80;';
       echo "  server_name ${local_hostname};";
       echo "  root /var/www/${local_hostname}/htdocs;";
       echo '  index index.html;';
-      echo '}'; } > "$nginx_file"
-    nginx_ensite "$local_hostname"
+      echo '';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  location /icons {';
+      echo '    autoindex on;';
+      echo '    break;';
+      echo '  }';
+      echo '';
+      echo '  rewrite ^/plinth/(.*)$ /api.json last;';
+      echo '';
+      echo '  location / {';
+      echo "    root /var/www/${local_hostname}/htdocs/plinth;";
+      echo '    index api.json /api.json;';
+      echo "    error_page 405 = \$uri;";
+      echo '  }';
+      echo '}';
+      echo '';
+      echo 'server {';
+      echo '  listen 443 default_server ssl;';
+      echo '  #listen [::]:443 ssl;';
+      echo "  server_name ${local_hostname};";
+      echo "  root /var/www/${local_hostname}/htdocs;";
+      echo '  index index.html;';
+      echo '';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo ''; } > "$nginx_file"
+
+    nginx_ssl "${local_hostname}"
+    nginx_security_options "${local_hostname}"
+
+    { echo '  add_header Strict-Transport-Security max-age=0;';
+      echo '';
+      echo '  location /icons {';
+      echo '    autoindex on;';
+      echo '    break;';
+      echo '  }';
+      echo '';
+      echo '  rewrite ^/plinth/(.*)$ /api.json last;';
+      echo '';
+      echo '  location / {';
+      echo "    root /var/www/${local_hostname}/htdocs/plinth;";
+      echo '    index api.json /api.json;';
+      echo "    error_page 405 = \$uri;";
+      echo '  }';
+      echo '}'; } >> "$nginx_file"
+
+    if [ ! -f "/etc/ssl/certs/${local_hostname}.crt" ]; then
+        "${PROJECT_NAME}-addcert" -h "${local_hostname}" --dhkey "${DH_KEYLENGTH}"
+    fi
+
+    sed -i "s|ssl_certificate .*|ssl_certificate /etc/ssl/certs/${local_hostname}.crt;|g" "$nginx_file"
+    sed -i "s|ssl_certificate_key .*|ssl_certificate_key /etc/ssl/private/${local_hostname}.key;|g" "$nginx_file"
+
+    nginx_ensite "${local_hostname}"
+
+    # Compatibility with FreedomBox android app
+    # The installed apps get published to a json file called api.json
+    # in this directory
+    if [ ! -d "/var/www/${local_hostname}/htdocs/plinth" ]; then
+        mkdir -p "/var/www/${local_hostname}/htdocs/plinth"
+    fi
+
+    chown -R www-data:www-data "/var/www/${local_hostname}/htdocs"
 }
 
 # NOTE: deliberately no exit 0

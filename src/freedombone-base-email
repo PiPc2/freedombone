@@ -1663,6 +1663,20 @@ function refresh_gpg_keys {
     fi
 }
 
+function prevent_mail_process_overrun {
+    # This prevents any large buildup of exim processes, perhaps due to
+    # Tor unavailability, from disabling the server
+    { echo '#!/bin/bash';
+      echo "exim_ctr=\$(pgrep \"exim4\" | wc -l)";
+      echo "if [ \"\$exim_ctr\" -gt 5 ]; then";
+      echo '    systemctl stop exim4';
+      echo '    exim -bp | exiqgrep -i | xargs exim -Mrm 2> /dev/null';
+      echo '    systemctl start exim4';
+      echo 'fi'; } > /usr/bin/exim_check
+    chmod +x /usr/bin/exim_check
+    cron_add_mins 5 '/usr/bin/exim_check'
+}
+
 function install_email {
     if [[ $SYSTEM_TYPE == "mesh"* ]]; then
         return
@@ -1675,8 +1689,39 @@ function install_email {
     check_email_address_exists
     install_email_basic
     configure_email_onion
+    prevent_mail_process_overrun
 
     mark_completed "${FUNCNAME[0]}"
+}
+
+function remove_ip_addresses_from_email_logs {
+    { echo '#!/bin/bash';
+      echo '';
+      echo 'if grep -q "= /dev/null" /etc/php/7.0/fpm/php-fpm.conf; then';
+      echo '    if [ -f /var/log/exim4/mainlog ]; then';
+      echo '        rm /var/log/exim4/mainlog';
+      echo '    fi';
+      echo '    if [ -f /var/log/exim4/rejectlog ]; then';
+      echo '        rm /var/log/exim4/rejectlog';
+      echo '    fi';
+      echo 'else';
+      echo '    if [ -f /var/log/exim4/mainlog ]; then';
+      echo "        if grep -q '\\[' /var/log/exim4/mainlog; then";
+      echo "            tail -n 50 /var/log/exim4/mainlog | sed 's/\\[[^][]*\\]//g' > /tmp/.exim4_mainlog";
+      echo '            chown Debian-exim:adm /tmp/.exim4_mainlog';
+      echo '            mv /tmp/.exim4_mainlog /var/log/exim4/mainlog';
+      echo '        fi';
+      echo '    fi';
+      echo '    if [ -f /var/log/exim4/rejectlog ]; then';
+      echo "        if grep -q '\\[' /var/log/exim4/rejectlog; then";
+      echo "            tail -n 50 /var/log/exim4/rejectlog | sed 's/\\[[^][]*\\]//g' > /tmp/.exim4_rejectlog";
+      echo '            chown Debian-exim:adm /tmp/.exim4_rejectlog';
+      echo '            mv /tmp/.exim4_rejectlog /var/log/exim4/rejectlog';
+      echo '        fi';
+      echo '    fi';
+      echo 'fi'; } > /usr/bin/exim_log_tidy
+    chmod +x /usr/bin/exim_log_tidy
+    cron_add_mins 1 '/usr/bin/exim_log_tidy'
 }
 
 # NOTE: deliberately no exit 0

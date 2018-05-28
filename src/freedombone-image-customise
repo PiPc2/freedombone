@@ -137,7 +137,7 @@ BMX6_REPO="https://github.com/bmx-routing/bmx6"
 BMX6_COMMIT='39dd1f2d99ac5a3fa28e92f8173c15039132e181'
 
 BMX7_REPO="https://github.com/bmx-routing/bmx7"
-BMX7_COMMIT='0a82c7c10fef44b259b35e77ab33632aa132d219'
+BMX7_COMMIT='66c853f529662873d1420d39461c75be6eb88b45'
 
 CONTINUOUS_INTEGRATION=
 
@@ -945,7 +945,7 @@ initialise_mesh() {
     install_avahi
     install_batman
     install_bmx6
-    #install_bmx7
+    install_bmx7
     install_olsr2
     install_babel
     mesh_shutdown_script
@@ -1049,11 +1049,13 @@ mesh_client_startup_applications() {
       echo 'dconf write /org/mate/power-manager/lock-hibernate false';
       echo 'dconf write /org/mate/power-manager/lock-keyring-hibernate false';
       echo 'dconf write /org/mate/desktop/peripherals/touchpad/scroll-method 2';
+      echo '#dconf write /org/mate/desktop.a11y.applications/screen-reader-enabled true';
+      echo '#dconf write /org/mate/interface/accessibility true';
+      echo '#dconf write /org/mate/applications-at-visual/startup true';
       echo "touch /home/$MY_USERNAME/.dbus/Xdbus";
       echo "chmod 600 /home/$MY_USERNAME/.dbus/Xdbus";
       echo "env | grep DBUS_SESSION_BUS_ADDRESS > /home/$MY_USERNAME/.dbus/Xdbus";
       echo "echo 'export DBUS_SESSION_BUS_ADDRESS' >> /home/$MY_USERNAME/.dbus/Xdbus";
-
       echo '';
       echo "amixer set 'Master' unmute";
       echo "amixer set 'Master' 50%";
@@ -1166,6 +1168,10 @@ configure_user_interface() {
 
     # for gtk dialog entry
     chroot "$rootdir" apt-get -yq install zenity
+
+    # accessibility
+    #chroot "$rootdir" apt-get -yq -t stretch-backports install gnome-orca
+    #chroot "$rootdir" apt-get -yq install festival
 
     # Produce a text file on the desktop listing users on the mesh
     cat <<EOF > "$rootdir/usr/bin/list-tox-users"
@@ -1661,6 +1667,7 @@ image_install_inadyn() {
         mkdir -p "$rootdir/root/build"
     fi
     chroot "$rootdir" apt-get -yq install build-essential curl libgnutls28-dev automake1.11 libconfuse-dev
+    chroot "$rootdir" apt-get -yq install gnutls-dev libconfuse-dev pkg-config libtool
 
     if [ -d /repos/inadyn ]; then
         mkdir "$rootdir/root/build/inadyn"
@@ -1681,34 +1688,36 @@ image_install_inadyn() {
     cd "$rootdir/root/build/inadyn" || exit 24682464628
     { echo '#!/bin/bash';
       echo 'cd ~/build/inadyn';
-      echo '#./autogen.sh';
-      echo './configure';
-      echo 'USE_OPENSSL=1 make';
-      echo 'make install'; } > "$rootdir/root/build/build_inadyn.sh"
+      echo './autogen.sh';
+      echo './configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var';
+      echo 'make -j5';
+      echo 'make install-strip'; } > "$rootdir/root/build/build_inadyn.sh"
     chmod +x "$rootdir/root/build/build_inadyn.sh"
     chroot "$rootdir" /root/build/build_inadyn.sh
-    if [ ! -f "$rootdir/usr/local/sbin/inadyn" ]; then
+    if [ ! -f "$rootdir/usr/sbin/inadyn" ]; then
         echo 'Failed to build inadyn'
         exit 6209356
     fi
 
     # create a configuration file
-    { echo 'background';
-      echo 'verbose        1';
-      echo 'period         300';
-      echo 'startup-delay  60';
-      echo 'cache-dir      /run/inadyn';
-      echo 'logfile        /dev/null'; } > "$rootdir/etc/inadyn.conf"
+    { echo 'period          = 300';
+      echo ''; } > "$rootdir/etc/inadyn.conf"
     chmod 600 "$rootdir/etc/inadyn.conf"
 
     { echo '[Unit]';
-      echo 'Description=inadyn (DynDNS updater)';
-      echo 'After=network.target';
+      echo 'Description=Internet Dynamic DNS Client';
+      echo 'Documentation=man:inadyn';
+      echo 'Documentation=man:inadyn.conf';
+      echo 'Documentation=https://github.com/troglobit/inadyn';
+      echo 'ConditionPathExists=/etc/inadyn.conf';
+      echo 'After=network-online.target';
+      echo 'Requires=network-online.target';
       echo '';
       echo '[Service]';
-      echo 'ExecStart=/usr/local/sbin/inadyn --config /etc/inadyn.conf';
-      echo 'Restart=always';
-      echo 'Type=forking';
+      echo 'Type=simple';
+      echo "ExecStart=/usr/sbin/inadyn -C -n -s --loglevel=err --config ${INADYN_CONFIG_FILE}";
+      echo 'Restart=on-failure';
+      echo 'RestartSec=10';
       echo '';
       echo '[Install]';
       echo 'WantedBy=multi-user.target'; } > "$rootdir/etc/systemd/system/inadyn.service"
@@ -1988,10 +1997,9 @@ image_preinstall_repos() {
     git clone "$PRIVATEBIN_REPO" "$rootdir/repos/privatebin"
     git clone "$EDITH_REPO" "$rootdir/repos/edith"
     git clone "$BDSMAIL_REPO" "$rootdir/repos/bdsmail"
+    git clone "$SMOLRSS_REPO" "$rootdir/repos/smolrss"
     #git clone "$WEKAN_REPO" "$rootdir/repos/wekan"
     #git clone "$FLOW_ROUTER_REPO" "$rootdir/repos/flowrouter"
-    #git clone "$METEOR_USERACCOUNTS_REPO" "$rootdir/repos/meteoruseraccounts"
-    #git clone "$METEOR_REPO" "$rootdir/repos/meteor"
     #git clone "$ZERONET_REPO" "$rootdir/repos/zeronet"
     #git clone "$QTOX_REPO" "$rootdir/repos/qtox"
 }

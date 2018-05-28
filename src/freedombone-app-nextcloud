@@ -38,8 +38,13 @@ NEXTCLOUD_CODE=
 NEXTCLOUD_ONION_PORT=8112
 NEXTCLOUD_REPO="https://github.com/nextcloud/server"
 # Stable 13 branch
-NEXTCLOUD_COMMIT='b16824db31cd00e26e72216bf995d52389b9c93c'
+NEXTCLOUD_COMMIT='edd5712c6ead5b09fa4f996cfda66fc4e18ba597'
 NEXTCLOUD_ADMIN_PASSWORD=
+NEXTCLOUD_SERVER_SIDE_ENCRYPTION=1
+
+NEXTCLOUD_SHORT_DESCRIPTION=$'File storage and sync'
+NEXTCLOUD_DESCRIPTION=$'File storage and sync'
+NEXTCLOUD_MOBILE_APP_URL='https://f-droid.org/packages/com.nextcloud.client'
 
 nextcloud_variables=(ONION_ONLY
                      NEXTCLOUD_DOMAIN_NAME
@@ -83,6 +88,16 @@ function install_interactive_nextcloud {
         ONION_ONLY='no'
     fi
 
+    dialog --title $"Enable NextCloud server side encryption" \
+           --backtitle $"Freedombone Configuration" \
+           --yesno $"\\nDo you want to enable server side encryption. On ARM or older x86 systems, especially without HRNG, this may make performance excessively slow?" 10 60
+    sel=$?
+    case $sel in
+        1) NEXTCLOUD_SERVER_SIDE_ENCRYPTION=
+           ;;
+        255) return;;
+    esac
+
     if [[ $ONION_ONLY != "no" ]]; then
         NEXTCLOUD_DOMAIN_NAME='nextcloud.local'
     else
@@ -90,7 +105,7 @@ function install_interactive_nextcloud {
         while [ ! $NEXTCLOUD_DETAILS_COMPLETE ]
         do
             data=$(mktemp 2>/dev/null)
-            if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+            if [[ "$DDNS_PROVIDER" == *"freedns"* ]]; then
                 dialog --backtitle $"Freedombone Configuration" \
                        --title $"NextCloud Configuration" \
                        --form $"\\nPlease enter your NextCloud details.\\n\\nIMPORTANT: This should be a domain name which is supported by Let's Encrypt:" 13 65 3 \
@@ -119,7 +134,7 @@ function install_interactive_nextcloud {
                     NEXTCLOUD_DOMAIN_NAME=
                     dialog --title $"Domain name validation" --msgbox "$TEST_DOMAIN_NAME" 15 50
                 else
-                    if [[ $DDNS_PROVIDER == "default@freedns.afraid.org" ]]; then
+                    if [[ "$DDNS_PROVIDER" == *"freedns"* ]]; then
                         NEXTCLOUD_CODE=$(sed -n 2p < "$data")
                         validate_freedns_code "$NEXTCLOUD_CODE"
                         if [ ! "$VALID_CODE" ]; then
@@ -668,12 +683,14 @@ function install_nextcloud_main {
     sudo -u www-data ./occ check
     sudo -u www-data ./occ status
     sudo -u www-data ./occ app:list
-    sudo -u www-data ./occ app:enable encryption
-    if ! sudo -u www-data ./occ encryption:enable; then
-        echo $'Encryption not enabled'
-        exit 73527
+    if [ $NEXTCLOUD_SERVER_SIDE_ENCRYPTION ]; then
+        sudo -u www-data ./occ app:enable encryption
+        if ! sudo -u www-data ./occ encryption:enable; then
+            echo $'Encryption not enabled'
+            exit 73527
+        fi
+        sudo -u www-data ./occ encryption:status
     fi
-    sudo -u www-data ./occ encryption:status
     sudo -u www-data ./occ config:system:set appstoreenabled --value=false
     chmod g+w "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs/config/config.php"
     chown -R www-data:www-data "/var/www/${NEXTCLOUD_DOMAIN_NAME}/htdocs"
