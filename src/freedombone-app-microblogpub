@@ -1,0 +1,461 @@
+#!/bin/bash
+#
+#  _____               _           _
+# |   __|___ ___ ___ _| |___ _____| |_ ___ ___ ___
+# |   __|  _| -_| -_| . | . |     | . | . |   | -_|
+# |__|  |_| |___|___|___|___|_|_|_|___|___|_|_|___|
+#
+#                              Freedom in the Cloud
+#
+# License
+# =======
+#
+# Copyright (C) 2018 Bob Mottram <bob@freedombone.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VARIANTS='full full-vim'
+
+IN_DEFAULT_INSTALL=0
+SHOW_ON_ABOUT=1
+
+MICROBLOGPUB_DOMAIN_NAME=
+MICROBLOGPUB_CODE=
+MICROBLOGPUB_ONION_PORT=9261
+MICROBLOGPUB_REPO="https://github.com/tsileo/microblog.pub"
+MICROBLOGPUB_COMMIT='848b8b23a8765d86bab2830c8d65d6b37337d03b'
+MICROBLOGPUB_PORT_INTERNAL=5005
+
+# These parameters are used by the FreedomBox mobile app
+MICROBLOGPUB_SHORT_DESCRIPTION=
+MICROBLOGPUB_DESCRIPTION=
+MICROBLOGPUB_MOBILE_APP_URL=
+
+microblogpub_variables=(ONION_ONLY
+                        MICROBLOGPUB_DOMAIN_NAME
+                        MICROBLOGPUB_CODE
+                        DDNS_PROVIDER
+                        MY_USERNAME)
+
+function logging_on_microblogpub {
+    echo -n ''
+}
+
+function logging_off_microblogpub {
+    echo -n ''
+}
+
+function remove_user_microblogpub {
+    remove_username="$1"
+
+    "${PROJECT_NAME}-pass" -u "$remove_username" --rmapp microblogpub
+}
+
+function add_user_microblogpub {
+    new_username="$1"
+    new_user_password="$2"
+
+    "${PROJECT_NAME}-pass" -u "$new_username" -a microblogpub -p "$new_user_password"
+    echo '0'
+}
+
+function install_interactive_microblogpub {
+    if [ ! "$ONION_ONLY" ]; then
+        ONION_ONLY='no'
+    fi
+
+    if [[ "$ONION_ONLY" != "no" ]]; then
+        MICROBLOGPUB_DOMAIN_NAME='microblogpub.local'
+        write_config_param "MICROBLOGPUB_DOMAIN_NAME" "$MICROBLOGPUB_DOMAIN_NAME"
+    else
+        interactive_site_details "microblogpub" "MICROBLOGPUB_DOMAIN_NAME" "MICROBLOGPUB_CODE"
+    fi
+    APP_INSTALLED=1
+}
+
+function change_password_microblogpub {
+    #curr_username="$1"
+    new_user_password="$2"
+
+    read_config_param 'MY_USERNAME'
+    read_config_param 'MICROBLOGPUB_DOMAIN_NAME'
+
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a microblogpub -p "$new_user_password"
+
+    { echo 'import bcrypt';
+      echo "print(bcrypt.hashpw(\"$new_user_password\", bcrypt.gensalt()).decode('utf-8'))"; } > /tmp/microblogpub
+    MICROBLOGPUB_HASHED_PASSWORD=$(python /tmp/microblogpub)
+    rm /tmp/microblogpub
+}
+
+function microblogpub_create_database {
+    if [ -f "$IMAGE_PASSWORD_FILE" ]; then
+        MICROBLOGPUB_ADMIN_PASSWORD="$(printf "%d" "$(cat "")")"
+    else
+        if [ ! "$MICROBLOGPUB_ADMIN_PASSWORD" ]; then
+            MICROBLOGPUB_ADMIN_PASSWORD=$(create_password "${MINIMUM_PASSWORD_LENGTH}")
+        fi
+    fi
+    if [ ! "$MICROBLOGPUB_ADMIN_PASSWORD" ]; then
+        return
+    fi
+
+    create_database_mongodb microblogpub "$MICROBLOGPUB_ADMIN_PASSWORD" "$MY_USERNAME"
+}
+
+function reconfigure_microblogpub {
+    # This is used if you need to switch identity. Dump old keys and generate new ones
+    echo -n ''
+}
+
+function configure_interactive_microblogpub {
+    W=(1 $"Option 1"
+       2 $"Option 2")
+
+    while true
+    do
+        # shellcheck disable=SC2068
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"microblogpub" --menu $"Choose an operation, or ESC for main menu:" 14 70 3 "${W[@]}" 3>&2 2>&1 1>&3)
+
+        if [ ! "$selection" ]; then
+            break
+        fi
+        case $selection in
+            1) # call some function for option 1
+            ;;
+            2) # call some function for option 2
+            ;;
+        esac
+    done
+}
+
+function upgrade_microblogpub {
+    CURR_MICROBLOGPUB_COMMIT=$(get_completion_param "microblogpub commit")
+    if [[ "$CURR_MICROBLOGPUB_COMMIT" == "$MICROBLOGPUB_COMMIT" ]]; then
+        return
+    fi
+
+    if grep -q "microblogpub domain" "$COMPLETION_FILE"; then
+        MICROBLOGPUB_DOMAIN_NAME=$(get_completion_param "microblogpub domain")
+    fi
+
+    # update to the next commit
+    set_repo_commit "/etc/microblogpub" "microblogpub commit" "$MICROBLOGPUB_COMMIT" "$MICROBLOGPUB_REPO"
+    chown -R microblogpub:microblogpub "/etc/microblogpub"
+    systemctl restart microblogpub
+}
+
+function backup_local_microblogpub {
+    MICROBLOGPUB_DOMAIN_NAME='microblogpub'
+    if grep -q "microblogpub domain" "$COMPLETION_FILE"; then
+        MICROBLOGPUB_DOMAIN_NAME=$(get_completion_param "microblogpub domain")
+    fi
+
+    source_directory=/etc/microblogpub
+
+    suspend_site "${MICROBLOGPUB_DOMAIN_NAME}"
+
+    systemctl stop microblogpub
+
+    dest_directory=microblogpub
+    backup_directory_to_usb "$source_directory" $dest_directory
+
+    USE_MONGODB=1
+    backup_database_to_usb microblogpub
+
+    restart_site
+    systemctl start microblogpub
+}
+
+function restore_local_microblogpub {
+    if ! grep -q "microblogpub domain" "$COMPLETION_FILE"; then
+        return
+    fi
+    MICROBLOGPUB_DOMAIN_NAME=$(get_completion_param "microblogpub domain")
+    if [ ! "$MICROBLOGPUB_DOMAIN_NAME" ]; then
+        return
+    fi
+    suspend_site "${MICROBLOGPUB_DOMAIN_NAME}"
+    systemctl stop microblogpub
+
+    temp_restore_dir=/root/tempmicroblogpub
+    microblogpub_dir=/etc/microblogpub
+
+    microblogpub_create_database
+
+    USE_MONGODB=1
+    restore_database microblogpub
+    if [ -d $temp_restore_dir ]; then
+        rm -rf $temp_restore_dir
+    fi
+
+    restore_directory_from_usb $temp_restore_dir microblogpub
+    if [ -d $temp_restore_dir ]; then
+        if [ -d "$temp_restore_dir$microblogpub_dir" ]; then
+            cp -rp "$temp_restore_dir$microblogpub_dir"/* "$microblogpub_dir"/
+        else
+            if [ ! -d "$microblogpub_dir" ]; then
+                mkdir "$microblogpub_dir"
+            fi
+            cp -rp "$temp_restore_dir"/* "$microblogpub_dir"/
+        fi
+        chown -R microblogpub:microblogpub "$microblogpub_dir"
+        rm -rf $temp_restore_dir
+    fi
+    systemctl start microblogpub
+
+    restart_site
+}
+
+function backup_remote_microblogpub {
+    MICROBLOGPUB_DOMAIN_NAME='microblogpub'
+    if grep -q "microblogpub domain" "$COMPLETION_FILE"; then
+        MICROBLOGPUB_DOMAIN_NAME=$(get_completion_param "microblogpub domain")
+    fi
+
+    source_directory=/etc/microblogpub
+
+    suspend_site "${MICROBLOGPUB_DOMAIN_NAME}"
+    systemctl stop microblogpub
+
+    dest_directory=microblogpub
+    backup_directory_to_friend "$source_directory" $dest_directory
+    USE_MONGODB=1
+    backup_database_to_friend microblogpub
+
+
+    systemctl start microblogpub
+
+    restart_site
+}
+
+function restore_remote_microblogpub {
+    if ! grep -q "microblogpub domain" "$COMPLETION_FILE"; then
+        return
+    fi
+    MICROBLOGPUB_DOMAIN_NAME=$(get_completion_param "microblogpub domain")
+    if [ ! "$MICROBLOGPUB_DOMAIN_NAME" ]; then
+        return
+    fi
+    suspend_site "${MICROBLOGPUB_DOMAIN_NAME}"
+    systemctl stop microblogpub
+
+    temp_restore_dir=/root/tempmicroblogpub
+    microblogpub_dir=/etc/microblogpub
+
+    microblogpub_create_database
+
+    USE_MONGODB=1
+    restore_database_from_friend microblogpub
+    if [ -d "$temp_restore_dir" ]; then
+        rm -rf $temp_restore_dir
+    fi
+
+    restore_directory_from_friend $temp_restore_dir microblogpub
+    if [ -d $temp_restore_dir ]; then
+        if [ -d "$temp_restore_dir$microblogpub_dir" ]; then
+            cp -rp "$temp_restore_dir$microblogpub_dir"/* "$microblogpub_dir"/
+        else
+            if [ ! -d "$microblogpub_dir" ]; then
+                mkdir "$microblogpub_dir"
+            fi
+            cp -rp $temp_restore_dir/* "$microblogpub_dir"/
+        fi
+        chown -R microblogpub:microblogpub "$microblogpub_dir"
+        rm -rf $temp_restore_dir
+    fi
+    systemctl start microblogpub
+
+    restart_site
+}
+
+function remove_microblogpub {
+    nginx_dissite "$MICROBLOGPUB_DOMAIN_NAME"
+    remove_certs "$MICROBLOGPUB_DOMAIN_NAME"
+
+    if [ -f /etc/systemd/system/microblogpub.service ]; then
+        systemctl stop microblogpub
+        systemctl disable microblogpub
+        rm /etc/systemd/system/microblogpub.service
+    fi
+    userdel -r microblogpub
+
+    if [ -d "/var/www/$MICROBLOGPUB_DOMAIN_NAME" ]; then
+        rm -rf "/var/www/$MICROBLOGPUB_DOMAIN_NAME"
+    fi
+    if [ -f "/etc/nginx/sites-available/$MICROBLOGPUB_DOMAIN_NAME" ]; then
+        rm "/etc/nginx/sites-available/$MICROBLOGPUB_DOMAIN_NAME"
+    fi
+    drop_database_mongodb microblogpub
+    remove_onion_service microblogpub "${MICROBLOGPUB_ONION_PORT}"
+    if grep -q "microblogpub" /etc/crontab; then
+        sed -i "/microblogpub/d" /etc/crontab
+    fi
+    remove_app microblogpub
+    remove_completion_param install_microblogpub
+    sed -i '/microblogpub/d' "$COMPLETION_FILE"
+
+    remove_ddns_domain "$MICROBLOGPUB_DOMAIN_NAME"
+}
+
+function install_microblogpub {
+    install_mongodb
+
+    if [ ! "$MICROBLOGPUB_DOMAIN_NAME" ]; then
+        echo $'No domain name was given'
+        exit 3568356
+    fi
+
+    if [ -d "/var/www/$MICROBLOGPUB_DOMAIN_NAME/htdocs" ]; then
+        rm -rf "/var/www/$MICROBLOGPUB_DOMAIN_NAME/htdocs"
+    fi
+    if [ -d /repos/microblogpub ]; then
+        mkdir "/var/www/$MICROBLOGPUB_DOMAIN_NAME/htdocs"
+        cp -r -p /repos/microblogpub/. "/etc/microblogpub"
+        cd "/etc/microblogpub" || exit 36487365
+        git pull
+    else
+        git_clone "$MICROBLOGPUB_REPO" "/etc/microblogpub"
+    fi
+
+    if [ ! -d "/etc/microblogpub" ]; then
+        echo $'Unable to clone microblogpub repo'
+        exit 87525
+    fi
+
+    cd "/etc/microblogpub" || exit 3463754637
+    git checkout "$MICROBLOGPUB_COMMIT" -b "$MICROBLOGPUB_COMMIT"
+    set_completion_param "microblogpub commit" "$MICROBLOGPUB_COMMIT"
+
+    pip install -r requirements.txt
+
+    { echo 'import sass';
+      echo "sass.compile(dirname=('sass', 'static/css'), output_style='compressed')"; } > generate_css.py
+    python generate_css.py
+
+    { echo "username: '$MY_USERNAME'";
+      echo "name: '$MY_NAME'";
+      echo "icon_url: 'https://$MICROBLOGPUB_DOMAIN_NAME/me.png'";
+      echo "domain: '$MICROBLOGPUB_DOMAIN_NAME'";
+      echo "summary: 'your summary'";
+      echo 'https: false'; } > config/me.yml
+
+    chmod g+w "/var/www/$MICROBLOGPUB_DOMAIN_NAME/htdocs"
+    chown -R www-data:www-data "/var/www/$MICROBLOGPUB_DOMAIN_NAME/htdocs"
+
+    microblogpub_create_database
+
+    add_ddns_domain "$MICROBLOGPUB_DOMAIN_NAME"
+
+    MICROBLOGPUB_ONION_HOSTNAME=$(add_onion_service microblogpub 80 "${MICROBLOGPUB_ONION_PORT}")
+
+    microblogpub_nginx_site=/etc/nginx/sites-available/$MICROBLOGPUB_DOMAIN_NAME
+    if [[ "$ONION_ONLY" == "no" ]]; then
+        nginx_http_redirect "$MICROBLOGPUB_DOMAIN_NAME" "index index.html"
+        { echo 'server {';
+          echo '  listen 443 ssl;';
+          echo '  #listen [::]:443 ssl;';
+          echo "  server_name $MICROBLOGPUB_DOMAIN_NAME;";
+          echo ''; } >> "$microblogpub_nginx_site"
+        nginx_compress "$MICROBLOGPUB_DOMAIN_NAME"
+        echo '' >> "$microblogpub_nginx_site"
+        echo '  # Security' >> "$microblogpub_nginx_site"
+        nginx_ssl "$MICROBLOGPUB_DOMAIN_NAME"
+
+        nginx_security_options "$MICROBLOGPUB_DOMAIN_NAME"
+
+        { echo '  add_header Strict-Transport-Security max-age=15768000;';
+          echo '';
+          echo '    access_log /dev/null;';
+          echo '    error_log /dev/null;';
+          echo '';
+          echo "    root /var/www/$MICROBLOGPUB_DOMAIN_NAME/htdocs;";
+          echo '';
+          echo '  index index.html;';
+          echo '  # Location';
+          echo '  location / {'; } >> "$microblogpub_nginx_site"
+        nginx_limits "$MICROBLOGPUB_DOMAIN_NAME" '15m'
+        { echo "    proxy_pass http://localhost:$MICROBLOGPUB_PORT_INTERNAL;";
+          echo '  }';
+          echo '}'; } >> "$microblogpub_nginx_site"
+    else
+        echo -n '' > "$microblogpub_nginx_site"
+    fi
+    { echo 'server {';
+      echo "    listen 127.0.0.1:$MICROBLOGPUB_ONION_PORT default_server;";
+      echo "    server_name $MICROBLOGPUB_ONION_HOSTNAME;";
+      echo ''; } >> "$microblogpub_nginx_site"
+    nginx_compress "$MICROBLOGPUB_DOMAIN_NAME"
+    echo '' >> "$microblogpub_nginx_site"
+    nginx_security_options "$MICROBLOGPUB_DOMAIN_NAME"
+    { echo '';
+      echo '    access_log /dev/null;';
+      echo '    error_log /dev/null;';
+      echo '';
+      echo "    root /var/www/$MICROBLOGPUB_DOMAIN_NAME/htdocs;";
+      echo '';
+      echo '  index index.html;';
+      echo '  # Location';
+      echo '  location / {'; } >> "$microblogpub_nginx_site"
+    nginx_limits "$MICROBLOGPUB_DOMAIN_NAME" '15m'
+    { echo "    proxy_pass http://localhost:$MICROBLOGPUB_PORT_INTERNAL;";
+      echo '  }';
+      echo '}'; } >> "$microblogpub_nginx_site"
+
+    adduser --system --home="/etc/microblogpub" --group microblogpub
+
+    { echo '[Unit]';
+      echo 'Description=microblogpub';
+      echo 'After=syslog.target';
+      echo 'After=network.target';
+      echo "Documentation=$MICROBLOGPUB_REPO";
+      echo '';
+      echo '[Service]';
+      echo 'Type=simple';
+      echo 'User=microblogpub';
+      echo 'Group=microblogpub';
+      echo 'WorkingDirectory=/etc/microblogpub';
+      echo "ExecStart=/usr/local/bin/flask run -p $MICROBLOGPUB_PORT_INTERNAL --with-threads";
+      echo 'Environment=USER=microblogpub';
+      echo 'Environment=FLASK_APP=app.py';
+      echo 'Environment=MICROBLOGPUB_DEBUG=1';
+      echo 'Restart=always';
+      echo 'StandardError=syslog';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } >> "/etc/systemd/system/microblogpub.service"
+    systemctl enable microblogpub
+    chown -R microblogpub:microblogpub "/etc/microblogpub"
+    systemctl start microblogpub
+
+    create_site_certificate "$MICROBLOGPUB_DOMAIN_NAME" 'yes'
+
+    nginx_ensite "$MICROBLOGPUB_DOMAIN_NAME"
+
+    systemctl restart nginx
+
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a microblogpub -p "$MICROBLOGPUB_ADMIN_PASSWORD"
+
+
+    { echo 'import bcrypt';
+      echo "print(bcrypt.hashpw(\"$MICROBLOGPUB_ADMIN_PASSWORD\", bcrypt.gensalt()).decode('utf-8'))"; } > /tmp/microblogpub
+    MICROBLOGPUB_HASHED_PASSWORD=$(python /tmp/microblogpub)
+    rm /tmp/microblogpub
+
+    set_completion_param "microblogpub domain" "$MICROBLOGPUB_DOMAIN_NAME"
+
+    APP_INSTALLED=1
+}
+
+# NOTE: deliberately there is no "exit 0"
