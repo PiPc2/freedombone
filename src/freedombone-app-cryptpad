@@ -36,7 +36,7 @@ CRYPTPAD_ONION_PORT=8119
 CRYPTPAD_PORT=9003
 CRYPTPAD_PORT2=9005
 CRYPTPAD_REPO="https://github.com/xwiki-labs/cryptpad"
-CRYPTPAD_COMMIT='cfc9ce33d6c7034a13cb0e6d606de6fba38697e0'
+CRYPTPAD_COMMIT='fe202a92b490404e3d8b7b8a2712e2e0a33a9851'
 CRYPTPAD_DIR=/etc/cryptpad
 
 cryptpad_variables=(ONION_ONLY)
@@ -103,8 +103,9 @@ function upgrade_cryptpad {
     cryptpad_create_config
     npm upgrade
     npm install
-    su -c 'echo "2" | bower update' - cryptpad
-    su -c 'bower install --config.interactive=false' - cryptpad
+    rm -rf $CRYPTPAD_DIR/.cache/bower
+    su -c './node_modules/bower/bin/bower install --config.interactive=false' - cryptpad
+    su -c './node_modules/bower/bin/bower update --config.interactive=false' - cryptpad
     cryptpad_generate_api_config
     chown -R cryptpad:cryptpad $CRYPTPAD_DIR
 
@@ -407,11 +408,19 @@ function mesh_install_cryptpad {
       echo "    try_files /customize/\$uri /customize.dist/\$uri;";
       echo '  }';
       echo '  location = /api/config {';
-      echo '    default_type text/javascript;';
-      echo '    rewrite ^.*$ /customize/api/config break;';
+      echo "    proxy_pass http://localhost:$CRYPTPAD_PORT;";
+      echo "    proxy_set_header X-Real-IP \$remote_addr;";
+      echo "    proxy_set_header Host \$host;";
+      echo "    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;";
       echo '  }';
       echo '';
       echo '  location ^~ /blob/ {';
+      echo '    add_header Cache-Control max-age=31536000;';
+      echo "    try_files \$uri =404;";
+      echo '  }';
+      echo '';
+      echo '  location ^~ /datastore/ {';
+      echo '    add_header Cache-Control max-age=0;';
       echo "    try_files \$uri =404;";
       echo '  }';
       echo '';
@@ -448,11 +457,11 @@ function mesh_install_cryptpad {
 
     cat <<EOF > "$rootdir/usr/bin/install_cryptpad"
 #!/bin/bash
-cd $CRYPTPAD_DIR
+cd $CRYPTPAD_DIR || exit 358735
 npm install --arch=$NPM_ARCH --build-from-source
-npm install --arch=$NPM_ARCH -g bower@1.8.0
+npm install --arch=$NPM_ARCH bower@1.8.4
 chown -R cryptpad:cryptpad $CRYPTPAD_DIR
-su -c 'bower install' - cryptpad
+su -c './node_modules/bower/bin/bower install --config.interactive=false' - cryptpad
 cp config.example.js config.js
 EOF
     chmod +x "$rootdir/usr/bin/install_cryptpad"
@@ -575,11 +584,19 @@ function install_cryptpad_main {
       echo "    try_files /customize/\$uri /customize.dist/\$uri;";
       echo '  }';
       echo '  location = /api/config {';
-      echo '    default_type text/javascript;';
-      echo '    rewrite ^.*$ /customize/api/config break;';
+      echo "    proxy_pass http://localhost:$CRYPTPAD_PORT;";
+      echo "    proxy_set_header X-Real-IP \$remote_addr;";
+      echo "    proxy_set_header Host \$host;";
+      echo "    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;";
       echo '  }';
       echo '';
       echo '  location ^~ /blob/ {';
+      echo '    add_header Cache-Control max-age=31536000;';
+      echo "    try_files \$uri =404;";
+      echo '  }';
+      echo '';
+      echo '  location ^~ /datastore/ {';
+      echo '    add_header Cache-Control max-age=0;';
       echo "    try_files \$uri =404;";
       echo '  }';
       echo '';
@@ -625,9 +642,10 @@ function install_cryptpad {
     cd $CRYPTPAD_DIR || exit 35483548
 
     npm install
-    npm install -g bower@1.8.0
+    npm install bower@1.8.4
     chown -R cryptpad:cryptpad $CRYPTPAD_DIR
-    su -c 'bower install' - cryptpad
+    su -c './node_modules/bower/bin/bower install --config.interactive=false' - cryptpad
+    su -c './node_modules/bower/bin/bower update --config.interactive=false' - cryptpad
     cp config.example.js config.js
     if [ ! -f config.js ]; then
         echo $'Cryptpad config file not found'
@@ -658,13 +676,13 @@ function install_cryptpad {
     systemctl daemon-reload
     systemctl start cryptpad.service
 
-    sleep 6
+    sleep 8
 
     cryptpad_generate_api_config
 
     # install again
     cd $CRYPTPAD_DIR || exit 73537453
-    su -c 'bower install' - cryptpad
+    su -c './node_modules/bower/bin/bower install --config.interactive=false' - cryptpad
 
     systemctl restart nginx
 
