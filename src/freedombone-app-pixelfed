@@ -29,7 +29,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VARIANTS=''
+VARIANTS='full full-vim'
 
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
@@ -293,6 +293,7 @@ function install_pixelfed {
     apt-get -yq install php-gettext php-curl php-gd php-mysql git curl
     apt-get -yq install memcached php-memcached php-intl exiftool libfcgi0ldbl
     apt-get -yq install redis-server php-redis autoconf imagemagick imagemagick-dev libtool
+    apt-get -yq install jpegoptim
 
     if [ ! "$PIXELFED_DOMAIN_NAME" ]; then
         echo $'No domain name was given'
@@ -320,7 +321,16 @@ function install_pixelfed {
     git checkout "$PIXELFED_COMMIT" -b "$PIXELFED_COMMIT"
     set_completion_param "pixelfed commit" "$PIXELFED_COMMIT"
 
-    install_composer
+    install_composer --no-dev
+
+    if [ ! -f "/var/www/$PIXELFED_DOMAIN_NAME/htdocs/.env.example" ]; then
+        echo $"Can't find .env.example"
+        exit 346826285
+    fi
+    cp "/var/www/$PIXELFED_DOMAIN_NAME/htdocs/.env.example" "/var/www/$PIXELFED_DOMAIN_NAME/htdocs/.env"
+
+    php artisan key:generate
+    php artisan storage:link
 
     chmod g+w "/var/www/$PIXELFED_DOMAIN_NAME/htdocs"
     chown -R www-data:www-data "/var/www/$PIXELFED_DOMAIN_NAME/htdocs"
@@ -418,6 +428,19 @@ function install_pixelfed {
     chown -R www-data:www-data "/var/www/$PIXELFED_DOMAIN_NAME/htdocs"
 
     create_site_certificate "$PIXELFED_DOMAIN_NAME" 'yes'
+
+    cd "/var/www/$PIXELFED_DOMAIN_NAME/htdocs" || exit 365845635
+
+    # hack: within vendor/laravel/framework/src/Illuminate/database/Schema/Blueprint.php
+    # change return $this->addColumn('json', $column);
+    # to return $this->addColumn('text', $column);
+    if [ -f vendor/laravel/framework/src/Illuminate/database/Schema/Blueprint.php ]; then
+        sed -i "s|\$this->addColumn('json', \$column);|\$this->addColumn('text', \$column);|g" vendor/laravel/framework/src/Illuminate/database/Schema/Blueprint.php
+    else
+        find . -name Blueprint.php
+    fi
+
+    php artisan migrate:fresh
 
     nginx_ensite "$PIXELFED_DOMAIN_NAME"
 
