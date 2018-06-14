@@ -1,4 +1,4 @@
-<img src="https://github.com/bashrc/freedombone/blob/master/img/logo.png?raw=true" width=600/>
+<img src="https://code.freedombone.net/bashrc/freedombone/raw/master/img/logo.png?raw=true" width=200/>
 
 So you want to run your own internet services? Email, chat, VoIP, web sites, file synchronisation, wikis, blogs, social networks, media hosting, backups, VPN. Freedombone is a home server system which enables you to self-host all of these things.
 
@@ -12,4 +12,4 @@ If you find bugs, or want to add a new app to this system see the [Developers Gu
 
 If you like this project and want to support continued development then [here's what to do](https://freedombone.net/support.html).
 
-<a href="https://raw.githubusercontent.com/bashrc/freedombone/master/website/EN/fdl-1.3.txt"><img src="https://github.com/bashrc/freedombone/blob/master/img/gfdl.png?raw=true" width=80/></a>
+<a href="https://code.freedombone.net/bashrc/freedombone/raw/stretch/website/EN/fdl-1.3.txt"><img src="https://code.freedombone.net/bashrc/freedombone/raw/master/img/gdfl.png?raw=true" width=80/></a>
