@@ -21,6 +21,7 @@ fi
 cp -r $lang/* $dest_dir
 cp *.css $dest_dir
 cp -r ../img/* $dest_dir/images
+cp $lang/images.txt $dest_dir
 chown -R www-data:www-data $dest_dir
 
 echo "Website deployed to $dest_dir"
