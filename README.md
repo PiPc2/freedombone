@@ -12,4 +12,6 @@ If you find bugs, or want to add a new app to this system see the [Developers Gu
 
 If you like this project and want to support continued development then [here's what to do](https://freedombone.net/support.html).
 
+A dat version of the website is avalable at [dat://676db9db2e04a604ea6dbc798bb0d327a335c19b4856ac496ae4bb34e367633a/](dat://676db9db2e04a604ea6dbc798bb0d327a335c19b4856ac496ae4bb34e367633a/).
+
 <a href="https://code.freedombone.net/bashrc/freedombone/raw/stretch/website/EN/fdl-1.3.txt"><img src="https://code.freedombone.net/bashrc/freedombone/raw/master/img/gfdl.png?raw=true" width=80/></a>
