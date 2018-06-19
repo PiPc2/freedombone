@@ -36,6 +36,16 @@ No stalking, unwanted personal attention, or unwelcome revealing or speculating 
 
 In cases of sincere, good-faith curiosity about someone’s experience or identity, ask politely in a manner such that they will feel free to decline the request.
 
+## No hostile communication
+
+No insults, harassment, condescension, ad hominem, threats, or other intimidation.
+
+Condescension means treating others as inferior. Subtle condescension still violates the Code of Conduct even if not blatantly demeaning.
+
+No stereotyping of or promoting prejudice or discrimination against particular groups or classes of people.
+
+In cases where criticism of ideology or culture remains on-topic, respectfully discuss the ideas.
+
 ## In case of problems
 
 While this code of conduct should be adhered to by participants, we recognize that sometimes people may have a bad day, or be unaware of some of the guidelines in this code of conduct. When that happens, you may reply to them and point out this code of conduct. Such messages may be in public or in private, whatever is most appropriate. However, regardless of whether the message is public or not, it should still adhere to the relevant parts of this code of conduct; in particular, it should not be abusive or disrespectful. Assume good faith; it is more likely that participants are unaware of their bad behaviour than that they intentionally try to degrade the quality of the discussion.
