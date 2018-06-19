@@ -44,6 +44,87 @@ ROUTER_IP_ADDRESS="192.168.1.254"
 
 MESH_INSTALL_DIR=/var/lib
 
+# For Beaglebone Black network reboot daemon
+BBBRTC_REPO="https://code.freedombone.net/bashrc/bbbrtc"
+PHYREG_REPO="https://code.freedombone.net/bashrc/phyreg"
+
+function bbb_network_restart_daemon {
+    rdir="$1"
+
+    # This checks if there is an ethernet boot fault
+    # and if so it reboots and tries again
+    # https://github.com/bigjosh/bbbphyfix
+
+    if [ ! -d "$rdir$INSTALL_DIR" ]; then
+        mkdir -p "$rdir$INSTALL_DIR"
+    fi
+
+    #first install the bbbrtc command that we will need
+    cd "$rdir$INSTALL_DIR" || exit 357893563
+    git clone $BBBRTC_REPO "$rdir$INSTALL_DIR/bbbrtc"
+    cd "$rdir$INSTALL_DIR/bbbrtc" || exit 357893563
+    if ! make; then
+        exit 3568735
+    fi
+
+    #next install the bbbphyreg command that we will need
+    cd "$rdir$INSTALL_DIR" || exit 357893563
+    git clone $PHYREG_REPO "$rdir$INSTALL_DIR/phyreg"
+    cd "$rdir$INSTALL_DIR/phyreg" || exit 54789786
+    make clean
+    if ! make; then
+        exit 46879275
+    fi
+    make install
+
+    { echo '#!/bin/bash';
+      echo '';
+      echo 'sleep 30';
+      echo '';
+      echo "if [[ \$(phyreg test 18 13) == \"1\" ]]; then";
+      echo '';
+      echo '    sleep 1';
+      echo '';
+      echo "    NOW=\$(bbbrtc now)";
+      echo "    echo \"chkphy:Rebooting NOW=\$NOW\" >/dev/kmsg";
+      echo "    echo \"Rebooting\" >>/var/tmp/chkphy.log";
+      echo '    # make sure that log message actually gets written before we pull the plug';
+      echo '    sync';
+      echo '    i2cset -f -y 0 0x24 0x0a 0x00';
+      echo '    bbbrtc now 130';
+      echo '    bbbrtc wake 110';
+      echo '    bbbrtc sleep 102';
+      echo '    bbbrtc now 100';
+      echo '    while true;';
+      echo '    do echo waiting to reboot';
+      echo '        sleep 10';
+      echo '    done';
+      echo '    fi';
+      echo '';
+      echo "echo \"chkphy:eth0 good\" >/dev/kmsg"; } > "${rdir}/usr/bin/chkphy"
+    chmod +x "${rdir}/usr/bin/chkphy"
+
+    { echo '[Unit]';
+      echo "Description=Beaglebone Black Network Restart Daemon";
+      echo 'After=syslog.target';
+      echo 'After=network.target';
+      echo '';
+      echo '[Service]';
+      echo 'Type=simple';
+      echo 'User=root';
+      echo 'Group=root';
+      echo 'WorkingDirectory=/root';
+      echo 'ExecStart=/usr/bin/chkphy';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } > "${rdir}/etc/systemd/system/bbbnetwork.service"
+    if [ ! "${rdir}" ]; then
+        systemctl enable bbbnetwork
+    else
+        chroot "$rdir" systemctl enable bbbnetwork
+    fi
+}
+
 function get_app_icann_address {
     app_name="$1"
     if grep -q "${app_name} domain" "$COMPLETION_FILE"; then
