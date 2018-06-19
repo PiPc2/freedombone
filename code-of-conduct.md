@@ -30,6 +30,12 @@ This applies to messages for help, too; not only is a public support request muc
 
 Posting of adverts or other off-topic content in Matrix/XMPP or other public systems used by the project will be considered a violation of the code of conduct.
 
+## Respect others’ privacy
+
+No stalking, unwanted personal attention, or unwelcome revealing or speculating about personal details of others.
+
+In cases of sincere, good-faith curiosity about someone’s experience or identity, ask politely in a manner such that they will feel free to decline the request.
+
 ## In case of problems
 
 While this code of conduct should be adhered to by participants, we recognize that sometimes people may have a bad day, or be unaware of some of the guidelines in this code of conduct. When that happens, you may reply to them and point out this code of conduct. Such messages may be in public or in private, whatever is most appropriate. However, regardless of whether the message is public or not, it should still adhere to the relevant parts of this code of conduct; in particular, it should not be abusive or disrespectful. Assume good faith; it is more likely that participants are unaware of their bad behaviour than that they intentionally try to degrade the quality of the discussion.
