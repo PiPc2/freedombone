@@ -52,7 +52,9 @@ This is a Free Software project and there is no intention to support or endorse 
 
 This is not a big project and so there is no division of labor or special enforcement committee or bureaucratic process.
 
-Complaints should be made in private to bob@freedombone.net, preferably via XMPP/Conversations with OMEMO enabled but you can also use the same address for email correspondence. If you're using email and have GPG capability the public key [can be found here](./support.html). XMPP messages are likely to get the quickest response.
+If your concern is something which is suitable for public discussion then raise it in one of the chat rooms mentioned above. Be mindful to do so in a polite and considerate manner. Hostile communication towards anyone raising concerns publicly will be considered a code of conduct violation.
+
+Private complaints should be sent to bob@freedombone.net, preferably via XMPP/Conversations with OMEMO enabled but you can also use the same address for email correspondence. If you're using email and have GPG capability the public key [can be found here](./support.html). XMPP messages are likely to get the quickest response.
 
 ## In case of violations
 
