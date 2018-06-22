@@ -48,10 +48,18 @@ In cases where criticism of ideology or culture remains on-topic, respectfully d
 
 This is a Free Software project and there is no intention to support or endorse any software which is proprietary, including that which may be running on client devices. For example, supporting iThings or Windows users is out of scope of the project. It's possible that Freedombone may work with those systems, but if there are problems it's not within the scope of this project to resolve compatibility issues with proprietary browsers or platforms.
 
-## In case of problems
+## Raising concerns
 
-While this code of conduct should be adhered to by participants, we recognize that sometimes people may have a bad day, or be unaware of some of the guidelines in this code of conduct. When that happens, you may reply to them and point out this code of conduct. Such messages may be in public or in private, whatever is most appropriate. However, regardless of whether the message is public or not, it should still adhere to the relevant parts of this code of conduct; in particular, it should not be abusive or disrespectful. Assume good faith; it is more likely that participants are unaware of their bad behaviour than that they intentionally try to degrade the quality of the discussion.
+This is not a big project and so there is no division of labor or special enforcement committee or bureaucratic process.
 
-Serious or persistent offenders will be kicked from chat rooms and any of their subsequent patches will be unlikely to be upstreamed. In this context "serious" means that someone is causing others to feel unsafe or be unable to contribute, for whatever reason.
+Complaints should be made in private to bob@freedombone.net, preferably via XMPP/Conversations with OMEMO enabled but you can also use the same address for email correspondence. If you're using email and have GPG capability the public key [can be found here](./support.html). XMPP messages are likely to get the quickest response.
 
-This is not a big project and so there is no division of labor or special enforcement committee or bureaucratic process. Complaints should be made (in private) to the maintainer or chat room admin. The typical email address can be found in the source code headers. Preferably use GPG if you can, or XMPP with OpenPGP/OMEMO to bob@freedombone.net. XMPP messages are likely to get a quicker response.
+## In case of violations
+
+Violators of this code of conduct will:
+
+ * Be removed from the Matrix and/or XMPP chat rooms
+ * Will not have pending or future patches or pull requests merged
+ * If they have a user account on *code.freedombone.net* it will be removed
+
+This applies regardless of past levels of commitment or technical abilities.
