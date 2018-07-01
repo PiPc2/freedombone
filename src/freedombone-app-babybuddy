@@ -239,12 +239,15 @@ function remove_babybuddy {
 
     remove_nodejs babybuddy
 
-
     if [ -d "/var/www/$BABYBUDDY_DOMAIN_NAME" ]; then
         rm -rf "/var/www/$BABYBUDDY_DOMAIN_NAME"
     fi
     if [ -f "/etc/nginx/sites-available/$BABYBUDDY_DOMAIN_NAME" ]; then
         rm "/etc/nginx/sites-available/$BABYBUDDY_DOMAIN_NAME"
+    fi
+    if [ -f /etc/uwsgi/apps-available/babybuddy.ini ]; then
+        rm /etc/uwsgi/apps-available/babybuddy.ini
+        systemctl restart uwsgi
     fi
     remove_onion_service babybuddy "${BABYBUDDY_ONION_PORT}"
     if grep -q "babybuddy" /etc/crontab; then
@@ -363,15 +366,19 @@ function install_babybuddy {
         exit 3568353
     fi
 
+    mv "$pipenv_value" "/var/www/$BABYBUDDY_DOMAIN_NAME/base"
+    chown -R www-data:www-data "/var/www/$BABYBUDDY_DOMAIN_NAME/base"
+
     { echo '[uwsgi]';
       echo 'plugins = python3';
       echo 'project = babybuddy';
       echo "base_dir = /var/www/$BABYBUDDY_DOMAIN_NAME";
       echo '';
-      echo "virtualenv = $pipenv_value";
+      echo 'virtualenv = %(base_dir)/base';
       echo 'chdir = %(base_dir)/htdocs';
       echo 'module =  %(project).wsgi:application';
       echo 'env = DJANGO_SETTINGS_MODULE=%(project).settings.production';
+      echo 'env = PYTHONPATH=/usr/lib/python3.5/dist-packages:/usr/local/lib/python3.5/dist-packages';
       echo 'master = True';
       echo 'vacuum = True'; } > /etc/uwsgi/apps-available/babybuddy.ini
 
@@ -384,7 +391,7 @@ function install_babybuddy {
     if [[ "$ONION_ONLY" == "no" ]]; then
         nginx_http_redirect "$BABYBUDDY_DOMAIN_NAME" "index index.html"
         { echo 'upstream babybuddy {';
-          echo '    server unix:///var/run/uwsgi/app/babybuddy/socket;';
+          echo '    server unix:///run/uwsgi/app/babybuddy/socket;';
           echo '}';
           echo '';
           echo 'server {';
@@ -416,7 +423,7 @@ function install_babybuddy {
           echo '}'; } >> "$babybuddy_nginx_site"
     else
         { echo 'upstream babybuddy {';
-          echo '    server unix:///var/run/uwsgi/app/babybuddy/socket;';
+          echo '    server unix:///run/uwsgi/app/babybuddy/socket;';
           echo '}';
           echo ''; } > "$babybuddy_nginx_site"
     fi
