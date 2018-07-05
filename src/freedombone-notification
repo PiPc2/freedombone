@@ -85,7 +85,28 @@ if [ -d /etc/prosody ]; then
     notification_user_password=$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 30 ; echo -n '')
     prosodyctl deluser "notification@$HOSTNAME" 2> /dev/null
     if prosodyctl register "notification" "$HOSTNAME" "$notification_user_password" 2> /dev/null; then
-        curl http://localhost:5280/msg/user -u "notification@$HOSTNAME:$notification_user_password" -H "Content-Type: text/plain" -d "$MESSAGE" 2> /dev/null
+        { echo '#!/usr/bin/python2';
+          echo 'import sys,os,xmpp,time';
+          echo 'tojid = sys.argv[1]';
+          echo 'data = sys.stdin.readlines()';
+          echo "msg = ' '.join(data)";
+          echo "username = 'notification@$HOSTNAME'";
+          echo "password = '$notification_user_password'";
+          echo 'jid=xmpp.protocol.JID(username)';
+          echo 'cl=xmpp.Client(jid.getDomain(),debug=[])';
+          echo 'con=cl.connect()';
+          echo 'if not con:';
+          echo '    sys.exit()';
+          echo 'auth=cl.auth(jid.getNode(),password,resource=jid.getResource())';
+          echo 'if not auth:';
+          echo '    sys.exit()';
+          echo 'id=cl.send(xmpp.protocol.Message(tojid, msg))';
+          echo 'time.sleep(1)';
+          echo 'cl.disconnect()'; } > /tmp/xsend
+        chmod +x /tmp/xsend
+
+        echo "$MESSAGE" | /tmp/xsend "$ADMIN_EMAIL_ADDRESS"
+        rm /tmp/xsend
         prosodyctl deluser "notification@$HOSTNAME" 2> /dev/null
     fi
 fi
