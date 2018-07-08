@@ -500,6 +500,7 @@ function upgrade_xmpp {
     xmpp_onion_addresses /etc/prosody/prosody.cfg.lua
     xmpp_contact_info /etc/prosody/prosody.cfg.lua
     xmpp_broadcast /etc/prosody/prosody.cfg.lua
+    xmpp_server_blacklist /etc/prosody/prosody.cfg.lua
 
     if grep -q "/etc/ssl/certs/xmpp.dhparam" /etc/prosody/prosody.cfg.lua; then
         cp /etc/ssl/certs/xmpp.dhparam /etc/prosody/xmpp.dhparam
@@ -775,10 +776,10 @@ function xmpp_modules {
       echo '  "pep"; -- Personal Eventing Protocol (to support OMEMO)';
       echo '  "omemo_all_access"; -- Fix for PEP with OMEMO';
       echo '  "vcard"; -- Personal Eventing Protocol (to support OMEMO)';
-      echo '  "vcard_muc"; -- Avatars for chat rooms';
       echo '  "e2e_policy"; -- To support OMEMO';
       echo '  "pep_vcard_avatar"; -- Personal Eventing Protocol (to support OMEMO)';
       echo '  "blocklist"; -- Privacy lists';
+      echo '  "s2s_blacklist"; -- Blacklist particular servers';
       echo '  "privacy_lists"; -- Privacy lists';
       echo '  "blocking"; -- Blocking command';
       echo '  "block_strangers"; -- Dont allow messages from strangers';
@@ -850,6 +851,30 @@ function xmpp_broadcast {
     fi
 }
 
+function xmpp_server_blacklist {
+    filename="$1"
+
+    blacklisted_domains=
+
+    while read -r blocked; do
+        if [[ "$blocked" == *"."* && "$blocked" != *"@"* ]]; then
+            if [ ${#blocked} -gt 4 ]; then
+                if [ "$blacklisted_domains" ]; then
+                    blacklisted_domains="${blacklisted_domains}, \"$blocked\""
+                else
+                    blacklisted_domains="\"$blocked\""
+                fi
+            fi
+        fi
+    done <"$FIREWALL_DOMAINS"
+
+    if ! grep -q "s2s_blacklist" "$filename"; then
+        echo "s2s_blacklist = { $blacklisted_domains }" >> "$filename"
+    else
+        sed -i "s|s2s_blacklist =.*|s2s_blacklist = { $blacklisted_domains }|g" "$filename"
+    fi
+}
+
 function xmpp_create_config {
     echo "admins = { \"$MY_USERNAME@$DEFAULT_DOMAIN_NAME\", \"notification@$DEFAULT_DOMAIN_NAME\" }" > /etc/prosody/prosody.cfg.lua
     echo 'plugin_paths = { "/var/lib/prosody/prosody-modules" }' >> /etc/prosody/prosody.cfg.lua
@@ -858,7 +883,8 @@ function xmpp_create_config {
     echo '' >> /etc/prosody/prosody.cfg.lua
     xmpp_onion_addresses /etc/prosody/prosody.cfg.lua
     xmpp_contact_info /etc/prosody/prosody.cfg.lua
-    xmpp_broadcast  /etc/prosody/prosody.cfg.lua
+    xmpp_broadcast /etc/prosody/prosody.cfg.lua
+    xmpp_server_blacklist /etc/prosody/prosody.cfg.lua
     { echo '';
       echo 'allow_registration = false;';
       echo '';
@@ -967,6 +993,7 @@ function xmpp_create_config {
       echo '        "muc_log";';
       echo '        "mam_muc";';
       echo '        "vcard_muc";';
+      echo '        "s2s_blacklist";';
       echo '        "muc_log_http";';
       echo '    }';
       echo 'storage = { muc_log = "sql"; }';
