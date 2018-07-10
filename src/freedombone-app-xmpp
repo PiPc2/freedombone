@@ -35,6 +35,9 @@ VARIANTS='full full-vim chat'
 IN_DEFAULT_INSTALL=0
 SHOW_ON_ABOUT=1
 
+# Whether to strictly enforce end-to-end security for one-to-one chat
+XMPP_E2EE=no
+
 # Directory where XMPP settings are stored
 XMPP_DIRECTORY="/var/lib/prosody"
 XMPP_PASSWORD=
@@ -62,6 +65,7 @@ xmpp_variables=(ONION_ONLY
                 XMPP_CIPHERS
                 XMPP_ECC_CURVE
                 XMPP_ECC_CURVE
+                XMPP_E2EE
                 MY_USERNAME
                 MY_EMAIL_ADDRESS
                 DEFAULT_DOMAIN_NAME
@@ -94,9 +98,17 @@ function xmpp_update_e2e_policy {
         sed -i 's|e2e_policy_muc.*|e2e_policy_muc = "none"|g' "$filename"
     fi
     if ! grep -q "e2e_policy_chat" "$filename"; then
-        echo "e2e_policy_chat = \"optional\"" >> "$filename"
+        if [[ "$XMPP_E2EE" == 'y'* || "$XMPP_E2EE" == 't'* ]]; then
+            echo "e2e_policy_chat = \"required\"" >> "$filename"
+        else
+            echo "e2e_policy_chat = \"optional\"" >> "$filename"
+        fi
     else
-        sed -i 's|e2e_policy_chat.*|e2e_policy_chat = "optional"|g' "$filename"
+        if [[ "$XMPP_E2EE" == 'y'* || "$XMPP_E2EE" == 't'* ]]; then
+            sed -i 's|e2e_policy_chat.*|e2e_policy_chat = "required"|g' "$filename"
+        else
+            sed -i 's|e2e_policy_chat.*|e2e_policy_chat = "optional"|g' "$filename"
+        fi
     fi
     if ! grep -q "e2e_policy_message_required_chat" "$filename"; then
         echo "e2e_policy_message_required_chat = \"$xmpp_encryption_warning\"" >> "$filename"
@@ -951,13 +963,18 @@ function xmpp_create_config {
         echo "    dhparam = \"/etc/ssl/certs/xmpp.dhparam\";" >> /etc/prosody/prosody.cfg.lua
     fi
 
+    e2ee_policy='optional'
+    if [[ "$XMPP_E2EE" == 'y'* || "$XMPP_E2EE" == 't'* ]]; then
+        e2ee_policy='required'
+    fi
+
     { echo '}';
       echo '';
       echo 'c2s_require_encryption = false';
       echo 's2s_require_encryption = false';
       echo '';
       echo 'e2e_policy_muc = "none"';
-      echo 'e2e_policy_chat = "optional"';
+      echo "e2e_policy_chat = \"$e2ee_policy\"";
       echo "e2e_policy_message_required_chat = \"$xmpp_encryption_warning\"";
       echo "e2e_policy_whitelist = { \"notification@${HOSTNAME}\" };";
       echo '';
