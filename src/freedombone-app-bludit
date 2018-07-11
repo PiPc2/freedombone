@@ -32,8 +32,6 @@ SHOW_ON_ABOUT=1
 BLUDIT_DOMAIN_NAME=
 BLUDIT_CODE=
 BLUDIT_ONION_PORT=9844
-BLUDIT_REPO="https://github.com/bludit/bludit"
-BLUDIT_COMMIT='0e27e31a84421b3e6bd000a77bc89c2dff3c446a'
 BLUDIT_VERSION='2.3.4'
 BLUDIT_DOWNLOAD='https://df6m0u2ovo2fu.cloudfront.net/builds'
 
@@ -97,20 +95,10 @@ function reconfigure_bludit {
     echo -n ''
 }
 
-function upgrade_bludit {
+function bludit_install_from_download {
     if [ ! "$BLUDIT_VERSION" ]; then
-        return
+        exit 3264836
     fi
-
-    CURR_BLUDIT_VERSION=$(get_completion_param "bludit version")
-    if [[ "$CURR_BLUDIT_VERSION" == "$BLUDIT_VERSION" ]]; then
-        return
-    fi
-
-    if grep -q "bludit domain" "$COMPLETION_FILE"; then
-        BLUDIT_DOMAIN_NAME=$(get_completion_param "bludit domain")
-    fi
-
     # shellcheck disable=SC2001
     bludit_path="/var/www/${BLUDIT_DOMAIN_NAME}"/bludit-$(echo "$BLUDIT_VERSION" | sed 's|\.|-|g')
     if [ -d "$bludit_path" ]; then
@@ -130,10 +118,28 @@ function upgrade_bludit {
         exit 264826
     fi
     cp -r "$bludit_path"/* "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs"
+    chmod g+w "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs"
     chown -R www-data:www-data "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs"
     rm -rf "$bludit_path"
     rm "${bludit_path}".zip
     set_completion_param "bludit version" "$BLUDIT_VERSION"
+}
+
+function upgrade_bludit {
+    if [ ! "$BLUDIT_VERSION" ]; then
+        return
+    fi
+
+    CURR_BLUDIT_VERSION=$(get_completion_param "bludit version")
+    if [[ "$CURR_BLUDIT_VERSION" == "$BLUDIT_VERSION" ]]; then
+        return
+    fi
+
+    if grep -q "bludit domain" "$COMPLETION_FILE"; then
+        BLUDIT_DOMAIN_NAME=$(get_completion_param "bludit domain")
+    fi
+
+    bludit_install_from_download
 }
 
 function backup_local_bludit {
@@ -243,7 +249,7 @@ function remove_bludit {
 }
 
 function install_bludit {
-    $INSTALL_PACKAGES php-gettext php-curl php-gd php-mysql git curl
+    $INSTALL_PACKAGES php-gettext php-curl php-gd php-mysql git curl wget unzip
     $INSTALL_PACKAGES memcached php-memcached php-intl exiftool libfcgi0ldbl
 
     if [ ! "$BLUDIT_DOMAIN_NAME" ]; then
@@ -251,30 +257,12 @@ function install_bludit {
         exit 3568356
     fi
 
-    if [ -d "/var/www/$BLUDIT_DOMAIN_NAME/htdocs" ]; then
-        rm -rf "/var/www/$BLUDIT_DOMAIN_NAME/htdocs"
+    if [ -d "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs" ]; then
+        rm -rf "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs"
     fi
-    mkdir -p "/var/www/$BLUDIT_DOMAIN_NAME"
-    if [ -d /repos/bludit ]; then
-        mkdir "/var/www/$BLUDIT_DOMAIN_NAME/htdocs"
-        cp -r -p /repos/bludit/. "/var/www/$BLUDIT_DOMAIN_NAME/htdocs"
-        cd "/var/www/$BLUDIT_DOMAIN_NAME/htdocs" || exit 324687356
-        git pull
-    else
-        git_clone $BLUDIT_REPO "/var/www/$BLUDIT_DOMAIN_NAME/htdocs"
-    fi
+    mkdir -p "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs"
 
-    if [ ! -d "/var/www/$BLUDIT_DOMAIN_NAME/htdocs" ]; then
-        echo $'Unable to clone bludit repo'
-        exit 87525
-    fi
-
-    cd "/var/www/$BLUDIT_DOMAIN_NAME/htdocs" || exit 36587356
-    git checkout $BLUDIT_COMMIT -b $BLUDIT_COMMIT
-    set_completion_param "bludit commit" "$BLUDIT_COMMIT"
-
-    chmod g+w "/var/www/$BLUDIT_DOMAIN_NAME/htdocs"
-    chown -R www-data:www-data "/var/www/$BLUDIT_DOMAIN_NAME/htdocs"
+    bludit_install_from_download
 
     add_ddns_domain "$BLUDIT_DOMAIN_NAME"
 
@@ -360,7 +348,6 @@ function install_bludit {
 
     "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a bludit -p "$BLUDIT_ADMIN_PASSWORD"
     set_completion_param "bludit domain" "$BLUDIT_DOMAIN_NAME"
-    set_completion_param "bludit version" "$BLUDIT_VERSION"
 
     APP_INSTALLED=1
 }
