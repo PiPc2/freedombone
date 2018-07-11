@@ -34,6 +34,8 @@ BLUDIT_CODE=
 BLUDIT_ONION_PORT=9844
 BLUDIT_REPO="https://github.com/bludit/bludit"
 BLUDIT_COMMIT='0e27e31a84421b3e6bd000a77bc89c2dff3c446a'
+BLUDIT_VERSION='2.3.4'
+BLUDIT_DOWNLOAD='https://df6m0u2ovo2fu.cloudfront.net/builds'
 
 BLUDIT_SHORT_DESCRIPTION=$'Markdown blogging'
 BLUDIT_DESCRIPTION=$'Simple Markdown blogging'
@@ -96,8 +98,12 @@ function reconfigure_bludit {
 }
 
 function upgrade_bludit {
-    CURR_BLUDIT_COMMIT=$(get_completion_param "bludit commit")
-    if [[ "$CURR_BLUDIT_COMMIT" == "$BLUDIT_COMMIT" ]]; then
+    if [ ! "$BLUDIT_VERSION" ]; then
+        return
+    fi
+
+    CURR_BLUDIT_VERSION=$(get_completion_param "bludit version")
+    if [[ "$CURR_BLUDIT_VERSION" == "$BLUDIT_VERSION" ]]; then
         return
     fi
 
@@ -105,9 +111,29 @@ function upgrade_bludit {
         BLUDIT_DOMAIN_NAME=$(get_completion_param "bludit domain")
     fi
 
-    # update to the next commit
-    set_repo_commit "/var/www/$BLUDIT_DOMAIN_NAME/htdocs" "bludit commit" "$BLUDIT_COMMIT" $BLUDIT_REPO
+    # shellcheck disable=SC2001
+    bludit_path="/var/www/${BLUDIT_DOMAIN_NAME}"/bludit-$(echo "$BLUDIT_VERSION" | sed 's|\.|-|g')
+    if [ -d "$bludit_path" ]; then
+        rm -rf "$bludit_path"
+    fi
+    if [ -f "$bludit_path".zip ]; then
+        rm "$bludit_path".zip
+    fi
+    # shellcheck disable=SC2001
+    url=${BLUDIT_DOWNLOAD}/bludit-$(echo "$BLUDIT_VERSION" | sed 's|\.|-|g').zip
+    cd "/var/www/${BLUDIT_DOMAIN_NAME}" || exit 36487354
+    wget "$url"
+    # shellcheck disable=SC2001,SC2046
+    unzip "${bludit_path}".zip
+    if [ ! -d "$bludit_path" ]; then
+        echo $'Unable to download or extract bludit'
+        exit 264826
+    fi
+    cp -r "$bludit_path"/* "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs"
     chown -R www-data:www-data "/var/www/${BLUDIT_DOMAIN_NAME}/htdocs"
+    rm -rf "$bludit_path"
+    rm "${bludit_path}".zip
+    set_completion_param "bludit version" "$BLUDIT_VERSION"
 }
 
 function backup_local_bludit {
@@ -334,6 +360,7 @@ function install_bludit {
 
     "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a bludit -p "$BLUDIT_ADMIN_PASSWORD"
     set_completion_param "bludit domain" "$BLUDIT_DOMAIN_NAME"
+    set_completion_param "bludit version" "$BLUDIT_VERSION"
 
     APP_INSTALLED=1
 }
