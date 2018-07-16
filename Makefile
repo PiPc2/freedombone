@@ -21,6 +21,7 @@ install:
 	mkdir -p ${DESTDIR}/usr/share/${APP}/base
 	mkdir -p ${DESTDIR}/usr/share/${APP}/apps
 	mkdir -p ${DESTDIR}/usr/share/${APP}/android-app
+	mkdir -p ${DESTDIR}/usr/share/${APP}/webadmin
 	mkdir -p ${DESTDIR}/usr/share/${APP}/utils
 	mkdir -p ${DESTDIR}/usr/share/${APP}/avatars
 	mkdir -p ${DESTDIR}/etc/${APP}
@@ -48,6 +49,7 @@ install:
 	cp man/${APP}-backup-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/backup.1.gz
 	cp man/${APP}-restore-local.1.gz ${DESTDIR}${PREFIX}/share/man/man1/restore.1.gz
 	cp img/android-app/*.png ${DESTDIR}/usr/share/${APP}/android-app
+	cp webadmin/* ${DESTDIR}/usr/share/${APP}/webadmin
 	chown -R root: /usr/share/${APP}
 	chmod -R +r /usr/share/${APP}
 #	bash -c "./translate install"
