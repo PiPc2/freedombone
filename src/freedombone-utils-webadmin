@@ -28,33 +28,21 @@
 
 function web_admin_create_installed_apps {
     local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
-    apps_template_filename="/var/www/${local_hostname}/htdocs/admin/apps_template.html"
-    apps_filename="/var/www/${local_hostname}/htdocs/admin/apps.html"
-    apps_dir="/var/www/${local_hostname}/htdocs/admin/apps"
+    appslist_template_filename="/var/www/${local_hostname}/htdocs/admin/apps_template.html"
+    app_template_filename="/var/www/${local_hostname}/htdocs/admin/app_template.html"
+    appslist_filename="/var/www/${local_hostname}/htdocs/admin/apps.html"
     icons_dir="/var/www/${local_hostname}/htdocs/admin/icons"
 
-    if [ ! -d "$apps_dir" ]; then
-        mkdir -p "$apps_dir"
-    fi
     if [ ! -d "$icons_dir" ]; then
         mkdir -p "$icons_dir"
     fi
 
-    if [ ! -f "$apps_template_filename" ]; then
+    if [ ! -f "$appslist_template_filename" ]; then
         return
     fi
-    cp "$apps_template_filename" "$apps_filename"
-    sed -i '/<\/body>/d' "$apps_filename"
-    sed -i '/<\/html>/d' "$apps_filename"
-
-    # Create a self-signed cert if needed
-    # The FreedomBox app assumes a self-signed cert
-    if [ ! -f "/etc/ssl/certs/${local_hostname}.crt" ]; then
-        install_web_admin
-        fuser -k 80/tcp
-        fuser -k 443/tcp
-        systemctl restart nginx
-    fi
+    cp "$appslist_template_filename" "$appslist_filename"
+    sed -i '/<\/body>/d' "$appslist_filename"
+    sed -i '/<\/html>/d' "$appslist_filename"
 
     installed_apps_ctr=0
     app_index=0
@@ -103,10 +91,10 @@ function web_admin_create_installed_apps {
                 fi
 
                 if [ $installed_apps_ctr -eq 0 ]; then
-                    echo '    <div class="row">' >> "$apps_filename"
+                    echo '    <div class="row">' >> "$appslist_filename"
                 fi
 
-                filename="apps/app_${app_name}.html"
+                filename="app_${app_name}.html"
 
                 { echo '      <div class="column">';
                   echo '        <div>';
@@ -115,13 +103,20 @@ function web_admin_create_installed_apps {
                   echo "            <center>${app_name}</center>";
                   echo '          </a>';
                   echo '        </div>';
-                  echo '      </div>'; } >> "$apps_filename"
+                  echo '      </div>'; } >> "$appslist_filename"
+
+                cp "$app_template_filename" "$filename"
+
+                # Replace app variables
+                sed -i "s|APPNAME|${app_name}|g" "$filename"
+                sed -i "s|APPURL|${domain_name}|g" "$filename"
+                sed -i "s|APPDESCRIPTION|${DESCRIPTION}|g" "$filename"
 
                 installed_apps_ctr=$((installed_apps_ctr+1))
 
                 # four columns per row
                 if [ $installed_apps_ctr -eq 4 ]; then
-                    echo '    </div>' >> "$apps_filename"
+                    echo '    </div>' >> "$appslist_filename"
                     installed_apps_ctr=0
                 fi
             fi
@@ -136,11 +131,11 @@ function web_admin_create_installed_apps {
         { echo '      <div class="column">';
           echo '        <div>';
           echo '        </div>';
-          echo '      </div>'; } >> "$apps_filename"
+          echo '      </div>'; } >> "$appslist_filename"
     done
 
-    echo '  </body>' >> "$apps_filename"
-    echo '</html>' >> "$apps_filename"
+    echo '  </body>' >> "$appslist_filename"
+    echo '</html>' >> "$appslist_filename"
 
     chown -R www-data:www-data "/var/www/${local_hostname}/htdocs/admin"
 }
