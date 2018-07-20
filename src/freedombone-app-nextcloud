@@ -46,11 +46,31 @@ NEXTCLOUD_SHORT_DESCRIPTION=$'File storage and sync'
 NEXTCLOUD_DESCRIPTION=$'File storage and sync'
 NEXTCLOUD_MOBILE_APP_URL='https://f-droid.org/packages/com.nextcloud.client'
 
+NEXTCLOUD_TURN_PORT=5349
+
 nextcloud_variables=(ONION_ONLY
+                     DEFAULT_DOMAIN_NAME
                      NEXTCLOUD_DOMAIN_NAME
                      NEXTCLOUD_CODE
                      DDNS_PROVIDER
                      MY_USERNAME)
+
+function setup_nextcloud_turn {
+    if [ ! -f /var/lib/turn/turnserver.conf ]; then
+        exit 793535
+    fi
+    turnkey=$(grep 'static-auth-secret' /var/lib/turn/turnserver.conf | awk -F '=' '{print $2}')
+    if [ ! "$turnkey" ]; then
+        echo $'No TURN secret found in /var/lib/turn/turnserver.conf'
+        exit 35798357
+    fi
+
+    STUN_SERVERS_STRING="[\"$DEFAULT_DOMAIN_NAME:$TURN_PORT\"]"
+    TURN_SERVERS_STRING="[{\"server\":\"$DEFAULT_DOMAIN_NAME:$TURN_PORT\",\"secret\":\"$turnkey\",\"protocols\":\"udp,tcp\"}]"
+    cd /var/www/$NEXTCLOUD_DOMAIN_NAME/htdocs || exit 3648356
+    sudo -u www-data ./occ config:app:set spreed stun_servers --value="$STUN_SERVERS_STRING" --output json
+    sudo -u www-data ./occ config:app:set spreed turn_servers --value="$TURN_SERVERS_STRING" --output json
+}
 
 function logging_on_nextcloud {
     echo -n ''
@@ -443,8 +463,8 @@ function install_nextcloud_main {
 
     # Ensure PATH is available to php
     if [ ! -f /etc/php/7.0/fpm/pool.d/www.conf ]; then
-       echo $'No php www configuration file found'
-       exit 628757
+        echo $'No php www configuration file found'
+        exit 628757
     fi
     sed -i 's|;env[PATH]|env[PATH]|g' /etc/php/7.0/fpm/pool.d/www.conf
 
@@ -722,6 +742,7 @@ function install_nextcloud {
     fi
 
     install_nextcloud_main
+    setup_nextcloud_turn
 
     APP_INSTALLED=1
 }
