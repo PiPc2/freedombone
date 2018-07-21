@@ -36,6 +36,13 @@ function generate_turn_key {
     local domain="${3}"
 
     if [[ "$domain" != *'.onion' ]]; then
+        if [ ! -f "/etc/ssl/certs/${domain}.dhparam" ]; then
+            echo $"/etc/ssl/certs/${domain}.dhparam not found when configuring turn server"
+            exit 6348563
+        fi
+        cp "/etc/ssl/certs/${domain}.dhparam" "/var/lib/turn/${domain}.dhparam"
+        chown turnserver:turnserver "/var/lib/turn/${domain}.dhparam"
+
         { echo "tls-listening-port=$TURN_PORT";
           echo 'fingerprint';
           echo 'lt-cred-mech';
@@ -47,7 +54,7 @@ function generate_turn_key {
           echo 'stale-nonce';
           echo "cert=/etc/letsencrypt/live/${domain}/fullchain.pem";
           echo "pkey=/etc/letsencrypt/live/${domain}/privkey.pem";
-          echo "dh-file=/etc/ssl/certs/${domain}.dhparam";
+          echo "dh-file=/var/lib/turn/${domain}.dhparam";
           echo 'cipher-list="ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AES:RSA+3DES:!ADH:!AECDH:!MD5"';
           echo 'no-loopback-peers';
           echo 'no-multicast-peers';
@@ -95,7 +102,6 @@ function remove_turn {
 function install_turn {
     create_default_web_site
 
-    # append the matrix server to the web site config
     turn_nginx_site=/etc/nginx/sites-available/$DEFAULT_DOMAIN_NAME
     if ! grep -q '# End of TURN Server' "$turn_nginx_site"; then
         if [[ "$ONION_ONLY" == "no" ]]; then
@@ -186,8 +192,18 @@ function install_turn {
     fi
     write_config_param TURN_KEY "$turnkey"
 
+    adduser --system --home=/var/lib/turn/ --group turnserver
+    adduser mailpile debian-tor
+    adduser mailpile www-data
+
+    if [ -d /etc/letsencrypt ]; then
+        chgrp -R ssl-cert /etc/letsencrypt
+        chmod -R g=rX /etc/letsencrypt
+        usermod -a -G ssl-cert turnserver
+    fi
+
     chmod -R 700 /var/lib/turn/turnserver.conf
-    chown -R matrix:matrix /var/lib/turn
+    chown -R turnserver:turnserver /var/lib/turn
 
     { echo '[Unit]';
       echo 'Description=TURN server';
@@ -195,9 +211,9 @@ function install_turn {
       echo '';
       echo '[Service]';
       echo 'Type=simple';
-      echo 'User=root';
+      echo 'User=turnserver';
       echo "WorkingDirectory=/var/lib/turn";
-      echo "ExecStart=/usr/bin/turnserver -c /var/lib/turn/turnserver.conf --pidfile /var/lib/matrix/homeserver.pid";
+      echo "ExecStart=/usr/bin/turnserver -c /var/lib/turn/turnserver.conf --pidfile /var/lib/turn/turnserver.pid";
       echo "Environment=REPORT_STATS=\"no\"";
       echo 'Restart=always';
       echo 'RestartSec=10';
