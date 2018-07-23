@@ -749,6 +749,48 @@ function pleroma_add_emoji {
            --msgbox $"Custom emoji :${shortcode}: has been added" 6 70
 }
 
+function pleroma_whitelist {
+    whitelist_filename=$PLEROMA_DIR/whitelist.txt
+    if [ ! -f $whitelist_filename ]; then
+        { echo '# Domain whitelist';
+          echo '';
+          echo '# If you add domains to this list then pleroma will be';
+          echo '# restricted to federating only with those domains';
+          echo ''; } > $whitelist_filename
+    fi
+
+    editor $whitelist_filename
+
+    first_line=1
+    domain_list=
+    while read -r domain; do
+        if [[ "$domain" == *'#'* || "$domain" != *'.'* ]]; then
+            continue
+        fi
+
+        if [ ! $first_line ]; then
+            domain_list="${domain_list}, \"$domain\""
+        else
+            domain_list="\"$domain\""
+        fi
+
+        first_line=
+    done <$whitelist_filename
+
+    if [ ! "$domain_list" ]; then
+        sed -i "s|accept: .*|accept: [],|g" $pleroma_secret
+    else
+        sed -i "s|accept: .*|accept: [ ${domain_list} ],|g" $pleroma_secret
+    fi
+
+    pleroma_recompile
+
+    if [ "$domain_list" ]; then
+        dialog --title $"Pleroma Whitelist" \
+               --msgbox $"You are now only federating with the whitelisted domains" 6 70
+    fi
+}
+
 function configure_interactive_pleroma {
     read_config_param PLEROMA_DOMAIN_NAME
     read_config_param PLEROMA_EXPIRE_MONTHS
@@ -772,10 +814,11 @@ function configure_interactive_pleroma {
            4 $"Add a custom emoji"
            5 $"Set post expiry period (currently $PLEROMA_EXPIRE_MONTHS months)"
            6 "$enablechatstr"
-           7 "$pleromatorstr")
+           7 "$pleromatorstr"
+           8 $'Domain whitelist')
 
         # shellcheck disable=SC2068
-        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 14 60 7 "${W[@]}" 3>&2 2>&1 1>&3)
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Pleroma" --menu $"Choose an operation, or ESC to exit:" 15 60 8 "${W[@]}" 3>&2 2>&1 1>&3)
 
         if [ ! "$selection" ]; then
             break
@@ -799,6 +842,7 @@ function configure_interactive_pleroma {
                    pleroma_enable_tor
                fi
                ;;
+            8) pleroma_whitelist;;
         esac
     done
 }
