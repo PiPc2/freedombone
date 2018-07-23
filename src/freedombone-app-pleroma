@@ -433,6 +433,62 @@ function pleroma_create_database_failed {
     run_system_query_postgresql "ALTER USER pleroma NOCREATEDB;"
 }
 
+function pleroma_create_config {
+    config_filename="$1"
+    domain=$PLEROMA_DOMAIN_NAME
+    domain_scheme='https'
+    domain_port=443
+
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        domain=$PLEROMA_ONION_HOSTNAME
+        domain_scheme='http'
+        domain_port=80
+    fi
+
+    { echo 'use Mix.Config';
+      echo '';
+      echo 'config :pleroma, Pleroma.Web.Endpoint,';
+      echo '  pubsub: [name: Pleroma.Web.PubSub, adapter: Phoenix.PubSub.PG2],';
+      echo "  secret_key_base: \"$PLEROMA_SECRET_KEY\",";
+      echo "  http: [port: $PLEROMA_PORT],";
+      echo '  protocol: "http",';
+      echo '  debug_errors: true,';
+      echo '  code_reloader: true,';
+      echo '  check_origin: false,';
+      echo '  watchers: [],';
+      echo "  url: [host: \"$domain\", scheme: \"$domain_scheme\", port: $domain_port]";
+      echo '';
+      # shellcheck disable=SC2028
+      echo "config :logger, :console, format: \"[\$level] \$message\\n\"";
+      echo '';
+      echo 'config :comeonin, :pbkdf2_rounds, 1';
+      echo '';
+      echo '# begin filtering';
+      echo 'config :pleroma, :mrf_simple,';
+      echo '  media_removal: [],';
+      echo '  media_nsfw: [],';
+      echo '  federated_timeline_removal: [],';
+      echo '  accept: [],';
+      echo '  reject: []';
+      echo '';
+      echo 'config :phoenix, :stacktrace_depth, 20';
+      echo '';
+      echo 'config :pleroma, Pleroma.Repo,';
+      echo '  adapter: Ecto.Adapters.Postgres,';
+      echo '  username: "pleroma",';
+      echo "  password: \"$PLEROMA_ADMIN_PASSWORD\",";
+      echo '  database: "pleroma",';
+      echo '  hostname: "localhost",';
+      echo '  pool_size: 10';
+      echo '';
+      echo 'try do';
+      echo '  # import_config "dev.secret.exs"';
+      echo 'rescue';
+      # shellcheck disable=SC2028
+      echo '  _-> IO.puts("!!! RUNNING IN LOCALHOST DEV MODE! !!!\nFEDERATION WONT WORK UNTIL YOU CONFIGURE A dev.secret.exs")';
+      echo 'end'; } > "$config_filename"
+}
+
 function pleroma_create_database {
     if [ -f "$IMAGE_PASSWORD_FILE" ]; then
         PLEROMA_ADMIN_PASSWORD="$(printf "%s" "$(cat "$IMAGE_PASSWORD_FILE")")"
@@ -475,27 +531,8 @@ function pleroma_create_database {
         echo $"Did not find $PLEROMA_DIR/config/dev.exs"
         exit 78923528
     fi
-    cp $PLEROMA_DIR/config/dev.exs $pleroma_secret
-    sed -i "s|username:.*|username: \"pleroma\",|g" $pleroma_secret
-    sed -i "s|password:.*|password: \"$PLEROMA_ADMIN_PASSWORD\",|g" $pleroma_secret
-    sed -i "s|database:.*|database: \"pleroma\",|g" $pleroma_secret
-    sed -i "/Pleroma.Web.Endpoint/a secret_key_base: \"$PLEROMA_SECRET_KEY\"," $pleroma_secret
-    sed -i 's|secret_key_base: |  secret_key_base: |g' $pleroma_secret
-    sed -i "/Pleroma.Web.Endpoint/a pubsub: [name: Pleroma.Web.PubSub, adapter: Phoenix.PubSub.PG2]," $pleroma_secret
-    sed -i 's|pubsub: |  pubsub: |g' $pleroma_secret
-    sed -i 's|watchers: []|watchers: [],|g' $pleroma_secret
-    if [[ $ONION_ONLY == 'no' ]]; then
-        sed -i "/watchers: []/a url: [host: \"$PLEROMA_DOMAIN_NAME\", scheme: \"https\", port: 443]" $pleroma_secret
-    else
-        sed -i "/watchers: []/a url: [host: \"$PLEROMA_ONION_HOSTNAME\", scheme: \"http\", port: 80]" $pleroma_secret
-    fi
-    sed -i 's|url: |  url: |g' $pleroma_secret
-    if ! grep -q "pbkdf2_rounds" $pleroma_secret; then
-        sed -i '/config :logger/a config :comeonin, :pbkdf2_rounds, 1' $pleroma_secret
-    else
-        sed -i 's|pbkdf2_rounds.*|pbkdf2_rounds, 1|g' $pleroma_secret
-    fi
-    sed -i 's|import_config|# import_config|g' $pleroma_secret
+
+    pleroma_create_config $pleroma_secret
 
     cd "$PLEROMA_DIR" || exit 678245245724
     chown -R pleroma:pleroma $PLEROMA_DIR/*
