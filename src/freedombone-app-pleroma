@@ -202,12 +202,12 @@ function expire_pleroma_posts {
     expire_days_files_threshold=$((expire_days_files - 1))
     { echo '#!/bin/bash';
       echo 'cd /etc/postgresql';
-      echo 'if [ -d /etc/pleroma/tempfiles ]; then';
-      echo '    rm -rf /etc/pleroma/tempfiles';
+      echo "if [ -d $PLEROMA_DIR/tempfiles ]; then";
+      echo "    rm -rf $PLEROMA_DIR/tempfiles";
       echo 'fi';
       echo '';
       echo '# make directory to temporarily store local avatars';
-      echo 'mkdir /etc/pleroma/tempfiles';
+      echo "mkdir $PLEROMA_DIR/tempfiles";
       echo '';
       echo '# get the local avatar files';
       echo "avatars=\$(sudo -u postgres psql -d pleroma -c \"select avatar->>'url' from users where avatar->>'url' like '%${domain_name}%'\")";
@@ -216,24 +216,21 @@ function expire_pleroma_posts {
       echo "arr=( \$avatars )";
       echo "for i in \${arr[@]}; do";
       echo "    if [[ \"\$i\" == *'/media/'* ]]; then";
-      echo "        imagefile=/etc/pleroma/uploads/\$(echo \$i | sed 's|\"||g' | sed 's|,||g' | awk -F '/media/' '{print \$2}');";
+      echo "        imagefile=$PLEROMA_DIR/uploads/\$(echo \$i | sed 's|\"||g' | sed 's|,||g' | awk -F '/media/' '{print \$2}');";
       echo "        if [ -f \$imagefile ]; then";
-      echo "            imagedir=/etc/pleroma/uploads/\$(echo \$i | sed 's|\"||g' | sed 's|,||g' | awk -F '/media/' '{print \$2}' | awk -F '/' '{print \$1}')";
+      echo "            imagedir=$PLEROMA_DIR/uploads/$(echo \$imagefile | awk -F '/' '{print \$5}')";
       echo "            nowdate=\$(date +%s)";
       echo "            sinceepoch=\$(date +%s -r \$imagefile)";
       echo "            daysold=\$(((\$nowdate - \$sinceepoch) / 86400))";
       echo "            if [ \$daysold -ge ${expire_days_files_threshold} ]; then";
-      echo "                if [ ! -d \$imagedir ]; then";
-      echo "                    mkdir \$imagedir";
-      echo '                fi';
-      echo "                cp -rp \$imagefile \$imagedir";
+      echo "                cp -rp \$imagedir $PLEROMA_DIR/tempfiles";
       echo '            fi';
       echo '        fi';
       echo '    fi';
       echo 'done';
       echo '';
       echo '# get the local banner files';
-      echo "banners=\$(sudo -u postgres psql -d pleroma -c \"select avatar->>'url' from users where avatar->>'url' like '%${domain_name}%'\")";
+      echo "banners=\$(sudo -u postgres psql -d pleroma -c \"select avatar->>'banner' from users where avatar->>'url' like '%${domain_name}%'\")";
       echo '';
       echo '# copy the banner files to a temporary directory';
       echo "arr=( \$banners )";
@@ -241,27 +238,24 @@ function expire_pleroma_posts {
       echo "    if [[ \"\$i\" == *'/media/'* ]]; then";
       echo "        imagefile=/etc/pleroma/uploads/\$(echo \$i | sed 's|\"||g' | sed 's|,||g' | awk -F '/media/' '{print \$2}');";
       echo "        if [ -f \$imagefile ]; then";
-      echo "            imagedir=/etc/pleroma/uploads/\$(echo \$i | sed 's|\"||g' | sed 's|,||g' | awk -F '/media/' '{print \$2}' | awk -F '/' '{print \$1}')";
+      echo "            imagedir=$PLEROMA_DIR/uploads/$(echo \$imagefile | awk -F '/' '{print \$5}')";
       echo "            nowdate=\$(date +%s)";
       echo "            sinceepoch=\$(date +%s -r \$imagefile)";
       echo "            daysold=\$(((\$nowdate - \$sinceepoch) / 86400))";
       echo "            if [ \$daysold -ge ${expire_days_files_threshold} ]; then";
-      echo "                if [ ! -d \$imagedir ]; then";
-      echo "                    mkdir \$imagedir";
-      echo '                fi';
-      echo "                cp -rp \$imagefile \$imagedir";
+      echo "                cp -rp \$imagedir $PLEROMA_DIR/tempfiles";
       echo '            fi';
       echo '        fi';
       echo '    fi';
       echo 'done';
       echo '';
       echo '# delete old files';
-      echo "find /etc/pleroma/uploads/* -mtime +${expire_days_files} -exec rm -rf {} +";
+      echo "find $PLEROMA_DIR/uploads/* -mtime +${expire_days_files} -exec rm -rf {} +";
       echo '';
       echo '# move avatar files back to uploads';
-      echo 'chown -R pleroma:pleroma /etc/pleroma/tempfiles';
-      echo 'mv /etc/pleroma/tempfiles/* /etc/pleroma/uploads';
-      echo 'rm -rf /etc/pleroma/tempfiles';
+      echo "chown -R pleroma:pleroma $PLEROMA_DIR/tempfiles";
+      echo "mv $PLEROMA_DIR/tempfiles/* $PLEROMA_DIR/uploads";
+      echo "rm -rf $PLEROMA_DIR/tempfiles";
       echo '';
       echo "$pleroma_expire_posts_script 2> /dev/null"; } > $pleroma_expire_script
     chmod +x $pleroma_expire_script
@@ -848,15 +842,8 @@ function upgrade_pleroma {
     read_config_param PLEROMA_DOMAIN_NAME
     read_config_param PLEROMA_EXPIRE_MONTHS
 
-    if ! grep -q "/media/" /etc/cron.daily/pleroma-expire; then
-        rm $pleroma_expire_posts_script
-    fi
-    if [ ! -f $pleroma_expire_posts_script ]; then
-        expire_pleroma_posts "$PLEROMA_DOMAIN_NAME" "$PLEROMA_EXPIRE_MONTHS"
-    fi
-    if [ ! -f $blocking_script_file ]; then
-        create_pleroma_blocklist
-    fi
+    expire_pleroma_posts "$PLEROMA_DOMAIN_NAME" "$PLEROMA_EXPIRE_MONTHS"
+    create_pleroma_blocklist
 
     #pleroma_enable_tor
 
