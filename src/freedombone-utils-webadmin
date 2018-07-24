@@ -47,6 +47,127 @@ function web_admin_avahi {
     systemctl restart avahi-daemon
 }
 
+function web_admin_create_add_apps {
+    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    apps_add_template_filename="/var/www/${local_hostname}/htdocs/admin/apps_add_template.html"
+    appslist_add_filename="/var/www/${local_hostname}/htdocs/admin/apps_add.html"
+    icons_dir="/var/www/${local_hostname}/htdocs/admin/icons"
+    app_add_template_filename="app_add_template.html"
+    FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*"
+
+    if [ ! -d "$icons_dir" ]; then
+        mkdir -p "$icons_dir"
+    fi
+
+    if [ ! -f "$apps_add_template_filename" ]; then
+        return
+    fi
+    cp "$apps_add_template_filename" "$appslist_add_filename"
+    sed -i '/<\/body>/d' "$appslist_add_filename"
+    sed -i '/<\/html>/d' "$appslist_add_filename"
+
+    available_apps_ctr=0
+    app_index=0
+    for filename in $FILES
+    do
+        app_name=$(echo "${filename}" | awk -F '-app-' '{print $2}')
+
+        app_index=0
+        app_is_installed=
+        # shellcheck disable=SC2068
+        for a in ${APPS_INSTALLED[@]}
+        do
+            installed_app_name=${APPS_INSTALLED_NAMES[$app_index]}
+            if [[ "$installed_app_name" == "$app_name" ]]; then
+                app_is_installed=1
+                break
+            fi
+
+            app_index=$((app_index+1))
+        done
+
+        if [ ! $app_is_installed ]; then
+            app_filename="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}"
+            if [ -f "$app_filename" ]; then
+                # get the icon for the app
+                icon_filename="/usr/share/${PROJECT_NAME}/android-app/${app_name}.png"
+                if [ -f "$icon_filename" ]; then
+                    cp "$icon_filename" "/var/www/${local_hostname}/htdocs/admin/icons/${app_name}.png"
+                else
+                    icon_filename=
+                fi
+
+                app_name_upper=$(echo "$app_name" | awk '{print toupper($0)}')
+                SHORT_DESCRIPTION=
+                DESCRIPTION=
+
+                if ! grep -q "${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename"; then
+                    app_index=$((app_index+1))
+                    continue
+                fi
+                if grep -q "#${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename"; then
+                    app_index=$((app_index+1))
+                    continue
+                fi
+                SHORT_DESCRIPTION="$(grep "${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename" | head -n 1 | sed 's|\$||g' | sed "s|'||g" | sed 's|\"||g' | awk -F '=' '{print $2}')"
+
+                if grep -q "${app_name_upper}_DESCRIPTION=" "$app_filename"; then
+                    DESCRIPTION="$(grep "${app_name_upper}_DESCRIPTION=" "$app_filename" | head -n 1 | sed 's|\$||g' | sed "s|'||g" | sed 's|\"||g' | awk -F '=' '{print $2}')"
+                fi
+
+                if [ $available_apps_ctr -eq 0 ]; then
+                    echo '    <div class="row">' >> "$appslist_add_filename"
+                fi
+
+                filename="/var/www/${local_hostname}/htdocs/admin/app_${app_name}.html"
+                if [ -f "$filename" ]; then
+                    rm "$filename"
+                fi
+
+                filename="/var/www/${local_hostname}/htdocs/admin/app_add_${app_name}.html"
+
+                { echo '      <div class="column">';
+                  echo '        <div>';
+                  echo "          <a href=\"app_${app_name}.html\">";
+                  echo "            <img src=\"icons/${app_name}.png\" style=\"width:100%\">";
+                  echo "            <center>${app_name}</center>";
+                  echo '          </a>';
+                  echo '        </div>';
+                  echo '      </div>'; } >> "$appslist_add_filename"
+
+                cp "$app_add_template_filename" "$filename"
+
+                # Replace app variables
+                sed -i "s|APPNAME|${app_name}|g" "$filename"
+                sed -i "s|APPDESCRIPTION|${DESCRIPTION}|g" "$filename"
+
+                available_apps_ctr=$((available_apps_ctr+1))
+
+                # four columns per row
+                if [ $available_apps_ctr -eq 4 ]; then
+                    echo '    </div>' >> "$appslist_add_filename"
+                    available_apps_ctr=0
+                fi
+            fi
+        fi
+    done
+
+    # Complete the rest of the four column row
+    # shellcheck disable=SC2034
+    for i in $(seq ${available_apps_ctr} 3)
+    do
+        { echo '      <div class="column">';
+          echo '        <div>';
+          echo '        </div>';
+          echo '      </div>'; } >> "$appslist_add_filename"
+    done
+
+    echo '  </body>' >> "$appslist_add_filename"
+    echo '</html>' >> "$appslist_add_filename"
+
+    chown -R www-data:www-data "/var/www/${local_hostname}/htdocs/admin"
+}
+
 function web_admin_create_installed_apps {
     local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
     appslist_template_filename="/var/www/${local_hostname}/htdocs/admin/apps_template.html"
@@ -268,6 +389,9 @@ function install_web_admin {
     if [ ! -d "/var/www/${local_hostname}/htdocs/plinth" ]; then
         mkdir -p "/var/www/${local_hostname}/htdocs/plinth"
     fi
+
+    # make list of apps which can be added
+    web_admin_create_add_apps
 
     # make the list of apps
     web_admin_create_installed_apps
