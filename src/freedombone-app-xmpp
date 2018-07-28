@@ -60,6 +60,10 @@ XMPP_SHORT_DESCRIPTION=$'Chat system'
 XMPP_DESCRIPTION=$'Chat system'
 XMPP_MOBILE_APP_URL='https://f-droid.org/packages/eu.siacs.conversations'
 
+# commandline utility for notifications
+XMPPSEND_REPO="https://code.freedombone.net/bashrc/xmppsend"
+XMPPSEND_COMMIT='dc2bf786594e94ad656acb5ff9340ed4bf286841'
+
 xmpp_variables=(ONION_ONLY
                 INSTALLED_WITHIN_DOCKER
                 XMPP_CIPHERS
@@ -542,6 +546,47 @@ function prosody_daemon_restart_script {
           echo 'fi'; } > /etc/cron.hourly/prosody
         chmod +x /etc/cron.hourly/prosody
     fi
+}
+
+function configure_xmppsend {
+    $INSTALL_PACKAGES libstrophe-dev
+
+    if [ ! -d "$INSTALL_DIR" ]; then
+        mkdir -p "$INSTALL_DIR"
+    fi
+    cd "$INSTALL_DIR" || return
+    git clone $XMPPSEND_REPO "$INSTALL_DIR/xmppsend"
+    cd "$INSTALL_DIR/xmppsend" || return
+    git checkout "$XMPPSEND_COMMIT" -b "$XMPPSEND_COMMIT"
+    if ! make; then
+        echo $'Unable to build xmppsend'
+        return
+    fi
+    make install
+
+    set_completion_param "xmppsend commit" "$XMPPSEND_COMMIT"
+}
+
+function upgrade_xmppsend {
+    CURR_XMPPSEND_COMMIT=$(get_completion_param "xmppsend commit")
+    if [[ "$CURR_XMPPSEND_COMMIT" == "$XMPPSEND_COMMIT" ]]; then
+        return
+    fi
+
+    if [ ! -d "$INSTALL_DIR/xmppsend" ]; then
+        configure_xmppsend
+    else
+        cd "$INSTALL_DIR/xmppsend" || return
+        git stash
+        git checkout master
+        git pull
+        git checkout "$XMPPSEND_COMMIT" -b "$XMPPSEND_COMMIT"
+        make
+        make install
+
+        set_completion_param "xmppsend commit" "$XMPPSEND_COMMIT"
+    fi
+
 }
 
 function upgrade_xmpp {
@@ -1385,6 +1430,8 @@ function install_xmpp {
     $PACKAGE_HOLD prosody
     systemctl restart prosody
 
+    configure_xmppsend
+
     if [[ $ONION_ONLY != 'no' ]]; then
         prosodyctl register "$MY_USERNAME" "$XMPP_ONION_HOSTNAME" "$XMPP_PASSWORD"
     else
@@ -1395,10 +1442,6 @@ function install_xmpp {
         echo ''
         echo ''
         systemctl status prosody -l
-        echo ''
-        echo ''
-        which prosody
-        which prosodyctl
         echo ''
         echo ''
         cat /etc/prosody/prosody.cfg.lua
