@@ -32,16 +32,15 @@ ADMIN_USERNAME=
 SUBJECT=
 MESSAGE=
 COMPLETION_FILE=/root/${PROJECT_NAME}-completed.txt
-notification_script=/tmp/xsend
 local_domain=$HOSTNAME
 
-function kill_xsend_process {
+function kill_xmppsend_process {
     # Sometimes the process can get stuck, so ensure that
     # it gets killed if necessary
     # shellcheck disable=SC2009
-    xsend_pid=$(ps ax | grep $notification_script | grep -v grep | awk -F ' ' '{print $1}')
-    if [ "$xsend_pid" ]; then
-        kill -9 "$xsend_pid"
+    xmppsend_pid=$(ps ax | grep /usr/local/bin/xmppsend | grep -v grep | awk -F ' ' '{print $1}')
+    if [ "$xmppsend_pid" ]; then
+        kill -9 "$xmppsend_pid"
     fi
 }
 
@@ -125,45 +124,19 @@ if [ "$SUBJECT" ]; then
 fi
 
 if [ -d /etc/prosody ]; then
-    notification_user_password=$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 30 ; echo -n '')
-    if prosodyctl register "notification" "$local_domain" "$notification_user_password"; then
-        { echo '#!/usr/bin/python2';
-          echo 'import sys,os,xmpp,time';
-          echo 'tojid = sys.argv[1]';
-          echo 'data = sys.stdin.readlines()';
-          echo "msg = ' '.join(data)";
-          echo "username = 'notification@$local_domain'";
-          echo "password = sys.argv[2]";
-          echo "subject = sys.argv[3]";
-          echo 'jid=xmpp.protocol.JID(username)';
-          echo 'cl=xmpp.Client(jid.getDomain(),debug=[])';
-          echo 'con=cl.connect()';
-          echo 'if not con:';
-          echo '    sys.exit()';
-          echo 'auth=cl.auth(jid.getNode(),password,resource=jid.getResource())';
-          echo 'if not auth:';
-          echo '    sys.exit()';
-          echo 'message = xmpp.Message(tojid, msg)';
-          echo "message.setAttr('type', 'chat')";
-          echo "message.setAttr('subject', \"\$subject\")";
-          echo 'cl.sendInitPresence(requestRoster=0)';
-          echo 'id=cl.send(message)';
-          echo 'time.sleep(1)';
-          echo 'cl.disconnect()'; } > $notification_script
-        chmod +x $notification_script
+    if [ -f /usr/local/bin/xmppsend ]; then
+        notification_user_password=$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 30 ; echo -n '')
+        if prosodyctl register "notification" "$local_domain" "$notification_user_password"; then
+            if [[ "$SUBJECT" == *' Tor '* ]]; then
+                MESSAGE="$SUBJECT"
+            fi
 
-        if [[ "$SUBJECT" == *' Tor '* ]]; then
-            MESSAGE="$SUBJECT"
+            kill_xmppsend_process
+            torsocks /usr/local/bin/xmppsend "notification@$local_domain" "$notification_user_password" "$ADMIN_EMAIL_ADDRESS" "$MESSAGE"
+
         fi
-
-        kill_xsend_process
-        echo "$MESSAGE" | python2 $notification_script "$ADMIN_EMAIL_ADDRESS" "$notification_user_password" "$SUBJECT"
-        systemctl restart prosody
-        rm $notification_script
-        #kill_xsend_process
-
+        prosodyctl deluser "notification@$local_domain"
     fi
-    prosodyctl deluser "notification@$local_domain"
 fi
 
 if [ -f $notification_image_filename ]; then
