@@ -59,71 +59,75 @@ pending_installs="/var/www/${local_hostname}/htdocs/admin/pending_installs.txt"
 
 while true
 do
-    if [ -f "$pending_installs" ]; then
-        linestr=$(head -n 1 "$pending_installs")
-        if [[ "$linestr" == "install_"* ]]; then
-            app_name=$(echo "$linestr" | awk -F '_' '{print $2}' | awk -F ' ' '{print $1}')
-            if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
-                app_domain=$(echo "$linestr" | awk -F ' ' '{print $2}')
-                app_name_upper=$(echo "$app_name" | awk '{print toupper($0)}')
-                freedns_code=$(echo "$linestr" | awk -F ' ' '{print $3}')
+    if [ -f /tmp/.upgrading ]; then
+        sleep 2
+    else
+        if [ -f "$pending_installs" ]; then
+            linestr=$(head -n 1 "$pending_installs")
+            if [[ "$linestr" == "install_"* ]]; then
+                app_name=$(echo "$linestr" | awk -F '_' '{print $2}' | awk -F ' ' '{print $1}')
+                if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
+                    app_domain=$(echo "$linestr" | awk -F ' ' '{print $2}')
+                    app_name_upper=$(echo "$app_name" | awk '{print toupper($0)}')
+                    freedns_code=$(echo "$linestr" | awk -F ' ' '{print $3}')
 
-                # indicate that we are installing
-                if [[ "$linestr" != *'_running'* ]]; then
-                    sed -i "s|${app_name}|${app_name}_running|g" "$pending_installs"
-                fi
-
-                # Add domain name to the config
-                if ! grep -q "${app_name_upper}_DOMAIN_NAME=" $CONFIGURATION_FILE; then
-                    echo "${app_name_upper}_DOMAIN_NAME=${app_domain}" >> $CONFIGURATION_FILE
-                else
-                    sed -i "s|${app_name_upper}_DOMAIN_NAME=.*|${app_name_upper}_DOMAIN_NAME=${app_domain}|g" $CONFIGURATION_FILE
-                fi
-
-                # Add freedns code to the config
-                if [ "$freedns_code" ]; then
-                    # shellcheck disable=SC2086
-                    ${app_name_upper}_CODE="${freedns_code}"
-
-                    if ! grep -q "${app_name_upper}_CODE=" $CONFIGURATION_FILE; then
-                        echo "${app_name_upper}_CODE=${freedns_code}" >> $CONFIGURATION_FILE
-                    else
-                        sed -i "s|${app_name_upper}_CODE=.*|${app_name_upper}_CODE=${freedns_code}|g" $CONFIGURATION_FILE
+                    # indicate that we are installing
+                    if [[ "$linestr" != *'_running'* ]]; then
+                        sed -i "s|${app_name}|${app_name}_running|g" "$pending_installs"
                     fi
+
+                    # Add domain name to the config
+                    if ! grep -q "${app_name_upper}_DOMAIN_NAME=" $CONFIGURATION_FILE; then
+                        echo "${app_name_upper}_DOMAIN_NAME=${app_domain}" >> $CONFIGURATION_FILE
+                    else
+                        sed -i "s|${app_name_upper}_DOMAIN_NAME=.*|${app_name_upper}_DOMAIN_NAME=${app_domain}|g" $CONFIGURATION_FILE
+                    fi
+
+                    # Add freedns code to the config
+                    if [ "$freedns_code" ]; then
+                        # shellcheck disable=SC2086
+                        ${app_name_upper}_CODE="${freedns_code}"
+
+                        if ! grep -q "${app_name_upper}_CODE=" $CONFIGURATION_FILE; then
+                            echo "${app_name_upper}_CODE=${freedns_code}" >> $CONFIGURATION_FILE
+                        else
+                            sed -i "s|${app_name_upper}_CODE=.*|${app_name_upper}_CODE=${freedns_code}|g" $CONFIGURATION_FILE
+                        fi
+                    fi
+
+                    /usr/local/bin/${PROJECT_NAME}-addremove add "${app_name}"
                 fi
-
-                /usr/local/bin/${PROJECT_NAME}-addremove add "${app_name}"
+                # remove the line
+                sed -i "/$linestr/d" "$pending_installs"
+            else
+                # if any unusual line is found then remove the file
+                rm "$pending_installs"
             fi
-            # remove the line
-            sed -i "/$linestr/d" "$pending_installs"
-        else
-            # if any unusual line is found then remove the file
-            rm "$pending_installs"
         fi
-    fi
 
-    sleep 1
+        sleep 1
 
-    if [ -f "$pending_removes" ]; then
-        linestr=$(head -n 1 "$pending_removes")
-        if [[ "$linestr" == "remove_"* ]]; then
-            app_name=$(echo "$linestr" | awk -F '_' '{print $2}')
-            if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
-                # indicate that we are removing
-                if [[ "$linestr" != *'_running'* ]]; then
-                    sed -i "s|${app_name}|${app_name}_running|g" "$pending_removes"
+        if [ -f "$pending_removes" ]; then
+            linestr=$(head -n 1 "$pending_removes")
+            if [[ "$linestr" == "remove_"* ]]; then
+                app_name=$(echo "$linestr" | awk -F '_' '{print $2}')
+                if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
+                    # indicate that we are removing
+                    if [[ "$linestr" != *'_running'* ]]; then
+                        sed -i "s|${app_name}|${app_name}_running|g" "$pending_removes"
+                    fi
+                    /usr/local/bin/${PROJECT_NAME}-addremove remove "${app_name}"
                 fi
-                /usr/local/bin/${PROJECT_NAME}-addremove remove "${app_name}"
+                # remove the line
+                sed -i "/$linestr/d" "$pending_removes"
+            else
+                # if any unusual line is found then remove the file
+                rm "$pending_removes"
             fi
-            # remove the line
-            sed -i "/$linestr/d" "$pending_removes"
-        else
-            # if any unusual line is found then remove the file
-            rm "$pending_removes"
         fi
-    fi
 
-    sleep 1
+        sleep 1
+    fi
 done
 
 exit 0
