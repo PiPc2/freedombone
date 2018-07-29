@@ -260,6 +260,7 @@ function web_admin_create_installed_apps {
     app_template_filename="/var/www/${local_hostname}/htdocs/admin/app_template.html"
     appslist_filename="/var/www/${local_hostname}/htdocs/admin/apps.html"
     icons_dir="/var/www/${local_hostname}/htdocs/admin/icons"
+    pending_removes="/var/www/${local_hostname}/htdocs/admin/pending_removes.txt"
 
     if [ ! -d "$icons_dir" ]; then
         mkdir -p "$icons_dir"
@@ -281,76 +282,88 @@ function web_admin_create_installed_apps {
         if [ "$app_name" ]; then
             app_filename="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}"
             if [ -f "$app_filename" ]; then
-                # get the icon for the app
-                icon_filename="/usr/share/${PROJECT_NAME}/android-app/${app_name}.png"
-                if [ -f "$icon_filename" ]; then
-                    cp "$icon_filename" "/var/www/${local_hostname}/htdocs/admin/icons/${app_name}.png"
-                else
-                    icon_filename=
-                fi
 
-                app_name_upper=$(echo "$app_name" | awk '{print toupper($0)}')
-                SHORT_DESCRIPTION=
-                DESCRIPTION=
-
-                if ! grep -q "${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename"; then
-                    app_index=$((app_index+1))
-                    continue
-                fi
-                if grep -q "#${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename"; then
-                    app_index=$((app_index+1))
-                    continue
-                fi
-                SHORT_DESCRIPTION="$(grep "${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename" | head -n 1 | sed 's|\$||g' | sed "s|'||g" | sed 's|\"||g' | awk -F '=' '{print $2}')"
-
-                if grep -q "${app_name_upper}_DESCRIPTION=" "$app_filename"; then
-                    DESCRIPTION="$(grep "${app_name_upper}_DESCRIPTION=" "$app_filename" | head -n 1 | sed 's|\$||g' | sed "s|'||g" | sed 's|\"||g' | awk -F '=' '{print $2}')"
-                fi
-
-                read_config_param "${app_name_upper}_DOMAIN_NAME"
-                test_domain_name="${app_name_upper}_DOMAIN_NAME"
-                domain_name=${!test_domain_name}
-                if [ "$domain_name" ]; then
-                    if [[ "$domain_name" != *'.onion' ]]; then
-                        domain_name="https://${!test_domain_name}"
-                    else
-                        domain_name="http://${!test_domain_name}"
+                # check if the app is being removed
+                app_being_removed=
+                if [ -f "$pending_removes" ]; then
+                    if grep -q "remove_${app_name}" "$pending_removes"; then
+                        app_being_removed=1
                     fi
                 fi
 
-                if [ $installed_apps_ctr -eq 0 ]; then
-                    echo '    <div class="row">' >> "$appslist_filename"
-                fi
+                if [ ! $app_being_removed ]; then
+                    # get the icon for the app
+                    icon_filename="/usr/share/${PROJECT_NAME}/android-app/${app_name}.png"
+                    if [ -f "$icon_filename" ]; then
+                        cp "$icon_filename" "/var/www/${local_hostname}/htdocs/admin/icons/${app_name}.png"
+                    else
+                        icon_filename=
+                    fi
 
-                filename="/var/www/${local_hostname}/htdocs/admin/app_add_${app_name}.html"
-                if [ -f "$filename" ]; then
-                    rm "$filename"
-                fi
+                    app_name_upper=$(echo "$app_name" | awk '{print toupper($0)}')
+                    SHORT_DESCRIPTION=
+                    DESCRIPTION=
 
-                filename="/var/www/${local_hostname}/htdocs/admin/app_${app_name}.html"
+                    if ! grep -q "${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename"; then
+                        app_index=$((app_index+1))
+                        continue
+                    fi
+                    if grep -q "#${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename"; then
+                        app_index=$((app_index+1))
+                        continue
+                    fi
+                    SHORT_DESCRIPTION="$(grep "${app_name_upper}_SHORT_DESCRIPTION=" "$app_filename" | head -n 1 | sed 's|\$||g' | sed "s|'||g" | sed 's|\"||g' | awk -F '=' '{print $2}')"
 
-                { echo '      <div class="column">';
-                  echo '        <div>';
-                  echo "          <a href=\"app_${app_name}.html\">";
-                  echo "            <img src=\"icons/${app_name}.png\" style=\"width:100%\">";
-                  echo "            <center>${app_name}</center>";
-                  echo '          </a>';
-                  echo '        </div>';
-                  echo '      </div>'; } >> "$appslist_filename"
+                    if grep -q "${app_name_upper}_DESCRIPTION=" "$app_filename"; then
+                        DESCRIPTION="$(grep "${app_name_upper}_DESCRIPTION=" "$app_filename" | head -n 1 | sed 's|\$||g' | sed "s|'||g" | sed 's|\"||g' | awk -F '=' '{print $2}')"
+                    fi
 
-                cp "$app_template_filename" "$filename"
+                    read_config_param "${app_name_upper}_DOMAIN_NAME"
+                    test_domain_name="${app_name_upper}_DOMAIN_NAME"
+                    domain_name=${!test_domain_name}
+                    if [ "$domain_name" ]; then
+                        if [[ "$domain_name" != *'.onion' ]]; then
+                            domain_name="https://${!test_domain_name}"
+                        else
+                            domain_name="http://${!test_domain_name}"
+                        fi
+                    fi
 
-                # Replace app variables
-                sed -i "s|APPNAME|${app_name}|g" "$filename"
-                sed -i "s|APPURL|${domain_name}|g" "$filename"
-                sed -i "s|APPDESCRIPTION|${DESCRIPTION}|g" "$filename"
+                    if [ $installed_apps_ctr -eq 0 ]; then
+                        echo '    <div class="row">' >> "$appslist_filename"
+                    fi
 
-                installed_apps_ctr=$((installed_apps_ctr+1))
+                    filename="/var/www/${local_hostname}/htdocs/admin/app_add_${app_name}.html"
+                    if [ -f "$filename" ]; then
+                        rm "$filename"
+                    fi
 
-                # four columns per row
-                if [ $installed_apps_ctr -eq 4 ]; then
-                    echo '    </div>' >> "$appslist_filename"
-                    installed_apps_ctr=0
+                    filename="/var/www/${local_hostname}/htdocs/admin/app_${app_name}.html"
+
+                    { echo '      <div class="column">';
+                      echo '        <div>';
+                      echo "          <a href=\"app_${app_name}.html\">";
+                      echo "            <img src=\"icons/${app_name}.png\" style=\"width:100%\">";
+                      echo "            <center>${app_name}</center>";
+                      echo '          </a>';
+                      echo '        </div>';
+                      echo '      </div>'; } >> "$appslist_filename"
+
+                    cp "$app_template_filename" "$filename"
+
+                    # Replace app variables
+                    sed -i "s|HOSTNAME|$(hostname)|g" "$filename"
+                    sed -i "s|APPNAME|${app_name}|g" "$filename"
+                    sed -i "s|APPURL|${domain_name}|g" "$filename"
+                    sed -i "s|APPDESCRIPTION|${DESCRIPTION}|g" "$filename"
+
+                    installed_apps_ctr=$((installed_apps_ctr+1))
+
+                    # four columns per row
+                    if [ $installed_apps_ctr -eq 4 ]; then
+                        echo '    </div>' >> "$appslist_filename"
+                        installed_apps_ctr=0
+                    fi
                 fi
             fi
         fi
