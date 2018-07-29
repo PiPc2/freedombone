@@ -57,6 +57,8 @@ done
 
 # End including files
 
+install_is_interactive=1
+
 function mark_unselected_apps_as_removed {
     # Initially mark the apps not chosen on first install as being removed
     # otherwise they may be automatically installed on the next update
@@ -98,6 +100,23 @@ function app_expected_to_be_installed {
         fi
     fi
     echo "1"
+}
+
+# Select a particular app to be added or removed
+function select_specific_app {
+    app_name="$1"
+    app_is_chosen="$1"
+
+    app_index=0
+    # shellcheck disable=SC2068
+    for a in ${APPS_AVAILABLE[@]}
+    do
+        if [[ "$a" == "$app_name" ]]; then
+            APPS_CHOSEN[$app_index]="$app_is_chosen"
+            break
+        fi
+        app_index=$((app_index+1))
+    done
 }
 
 function show_apps {
@@ -165,24 +184,26 @@ function remove_apps_selected {
         return
     fi
 
-    if [ -f /tmp/.upgrading ]; then
-        dialog --title $"Cannot remove apps" \
-               --msgbox $"A system upgrade is happening, so apps cannot be removed at this time" 6 60
-        return
+    if [ $install_is_interactive ]; then
+        if [ -f /tmp/.upgrading ]; then
+            dialog --title $"Cannot remove apps" \
+                   --msgbox $"A system upgrade is happening, so apps cannot be removed at this time" 6 60
+            return
+        fi
+
+        # ask for confirmation
+        dialog --title $"Remove applications" \
+               --backtitle $"Freedombone" \
+               --defaultno \
+               --yesno $"\\nYou have chosen to remove $n apps.\\n\\n    $removals\\n\\nIf you choose 'yes' then this will remove both the applications and their data/messages. If you don't have a backup then you will not be able to recover the data for these applications.\\n\\nAre you sure that you wish to continue?" 15 60
+        sel=$?
+        case $sel in
+            1) return;;
+            255) return;;
+        esac
+
+        clear
     fi
-
-    # ask for confirmation
-    dialog --title $"Remove applications" \
-           --backtitle $"Freedombone" \
-           --defaultno \
-           --yesno $"\\nYou have chosen to remove $n apps.\\n\\n    $removals\\n\\nIf you choose 'yes' then this will remove both the applications and their data/messages. If you don't have a backup then you will not be able to recover the data for these applications.\\n\\nAre you sure that you wish to continue?" 15 60
-    sel=$?
-    case $sel in
-        1) return;;
-        255) return;;
-    esac
-
-    clear
 
     # remove the apps
     read_configuration
@@ -217,38 +238,45 @@ function install_apps_selected {
         return
     fi
 
-    if [[ "$select_all_apps" != "add-all" ]]; then
-        if [ -f /tmp/.upgrading ]; then
-            dialog --title $"Cannot install apps" \
-                   --msgbox $"A system upgrade is happening, so apps cannot be installed at this time" 6 60
-            return
+    if [ $install_is_interactive ]; then
+        if [[ "$select_all_apps" != "add-all" ]]; then
+            if [ -f /tmp/.upgrading ]; then
+                dialog --title $"Cannot install apps" \
+                       --msgbox $"A system upgrade is happening, so apps cannot be installed at this time" 6 60
+                return
+            fi
+
+            # ask for confirmation
+            if [ $n -eq 1 ]; then
+                dialog --title $"$installs" \
+                       --backtitle $"Freedombone" \
+                       --defaultno \
+                       --yesno $"\\nThis will install the $installs app\\n\\nProceed?" 9 40
+            else
+                dialog_height=$((15 + "$n"))
+                dialog --title $"Add applications" \
+                       --backtitle $"Freedombone" \
+                       --defaultno \
+                       --yesno $"\\nYou have chosen to install $n apps\\n\\n    $installs\\n\\nProceed?" $dialog_height 60
+            fi
+            sel=$?
+            case $sel in
+                1) return;;
+                255) return;;
+            esac
         fi
 
-        # ask for confirmation
-        if [ $n -eq 1 ]; then
-            dialog --title $"$installs" \
-                   --backtitle $"Freedombone" \
-                   --defaultno \
-                   --yesno $"\\nThis will install the $installs app\\n\\nProceed?" 9 40
-        else
-            dialog_height=$((15 + "$n"))
-            dialog --title $"Add applications" \
-                   --backtitle $"Freedombone" \
-                   --defaultno \
-                   --yesno $"\\nYou have chosen to install $n apps\\n\\n    $installs\\n\\nProceed?" $dialog_height 60
-        fi
-        sel=$?
-        case $sel in
-            1) return;;
-            255) return;;
-        esac
+        clear
+
+        # install the apps
+        read_configuration
+        install_apps interactive
+    else
+        # install the apps
+        read_configuration
+        install_apps
     fi
 
-    clear
-
-    # install the apps
-    read_configuration
-    install_apps interactive
     if [ ! "$APP_INSTALLED_SUCCESS" ]; then
         echo $'One or more apps failed to install'
     fi
@@ -267,15 +295,33 @@ if [[ ${#APPS_AVAILABLE[@]} == 0 ]]; then
     exit 1
 fi
 
-show_apps "$1"
-mark_unselected_apps_as_removed "$1"
+args="$1"
 
-clear
+if [ "$2" ]; then
+    if [[ "$args" == "add" || "$args" == "remove" ]]; then
+        if [[ "$args" == "add" ]]; then
+            select_specific_app "$2" "1"
+        else
+            select_specific_app "$2" "0"
+        fi
+        install_is_interactive=
+    else
+        show_apps "$args"
+    fi
+else
+    show_apps "$args"
+fi
+
+mark_unselected_apps_as_removed "$args"
+
+if [ $install_is_interactive ]; then
+    clear
+fi
 
 remove_apps_selected
 
-if [[ "$1" == "add-all" ]]; then
-    install_apps_selected add-all
+if [[ "$args" == "add-all" ]]; then
+    install_apps_selected "$args"
 else
     install_apps_selected
 fi

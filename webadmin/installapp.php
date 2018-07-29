@@ -5,6 +5,7 @@ $output_filename = "apps_add.html";
 if (isset($_POST['install'])) {
     $app_name = htmlspecialchars($_POST['app_name']);
     $install_domain = $_POST['install_domain'];
+    $freedns_code = $_POST['freedns_code'];
 
     $continue_install=true;
     if(file_exists("pending_removes.txt")) {
@@ -29,7 +30,7 @@ if (isset($_POST['install'])) {
 
         if(! exec('grep '.escapeshellarg("install_".$app_name).' ./pending_installs.txt')) {
             $pending_installs = fopen("pending_installs.txt", "a") or die("Unable to append to installs file");
-            fwrite($pending_installs, "install_".$app_name."\n");
+            fwrite($pending_installs, "install_".$app_name." ".$install_domain." ".$freedns_code."\n");
             fclose($pending_installs);
             $output_filename = "app_installing.html";
         }
