@@ -31,6 +31,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+WEBADMIN_LOGIN_TEXT=$"Welcome to ${PROJECT_NAME}"
+
 function web_admin_configure_installer_daemon {
     if [ -f /etc/systemd/system/webadmin.service ]; then
         return
@@ -451,19 +453,37 @@ function web_admin_onion_only {
 }
 
 function web_admin_setup_login {
+    if [ ! -f /usr/bin/htpasswd ]; then
+        $INSTALL_PACKAGES apache2-utils
+    fi
+
     read_config_param MY_USERNAME
     webadmin_password=$("${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a webadmin)
     if [ ! "$webadmin_password" ]; then
         webadmin_password="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
         "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a webadmin -p "$webadmin_password"
+
+        # create a password for users
+        if [ ! -f /etc/nginx/.webadminpasswd ]; then
+            touch /etc/nginx/.webadminpasswd
+        fi
+        if grep -q "$MY_USERNAME:" /etc/nginx/.webadminpasswd; then
+            sed -i "/$MY_USERNAME:/d" /etc/nginx/.webadminpasswd
+        fi
+
+        echo -n "$webadmin_password" | htpasswd -i -s -c /etc/nginx/.webadminpasswd "$MY_USERNAME"
+        if [ ! -f /etc/nginx/.webadminpasswd ]; then
+            echo $'/etc/nginx/.webadminpasswd not found'
+            exit 5637653
+        fi
+
+        #echo -n "$webadmin_password" > "/var/www/${local_hostname}/htdocs/admin/initiallogin.txt"
     fi
 }
 
 function install_web_admin {
     # This is intended as an admin web user interface
     # similar to Plinth or the yunohost
-
-    web_admin_setup_login
 
     language_subdir=$(web_admin_get_language_subdir)
 
@@ -513,6 +533,8 @@ function install_web_admin {
       echo '  error_log /dev/null;';
       echo '';
       echo '  location ^~ /admin {';
+      echo "    #auth_basic \"${WEBADMIN_LOGIN_TEXT}\";";
+      echo '    #auth_basic_user_file /etc/nginx/.webadminpasswd;';
       echo "    root /var/www/${local_hostname}/htdocs;";
       echo '    index index.html;';
       echo "    error_page 405 = \$uri;";
@@ -554,6 +576,8 @@ function install_web_admin {
     { echo '  add_header Strict-Transport-Security max-age=0;';
       echo '';
       echo '  location ^~ /admin {';
+      echo "    #auth_basic \"${WEBADMIN_LOGIN_TEXT}\";";
+      echo '    #auth_basic_user_file /etc/nginx/.webadminpasswd;';
       echo "    root /var/www/${local_hostname}/htdocs;";
       echo '    index index.html;';
       echo "    error_page 405 = \$uri;";
@@ -601,6 +625,8 @@ function install_web_admin {
 
     # make the list of apps
     web_admin_create_installed_apps
+
+    web_admin_setup_login
 
     chown -R www-data:www-data "/var/www/${local_hostname}/htdocs"
 
