@@ -11,7 +11,7 @@ if (isset($_POST['uninstall'])) {
         if(exec('grep '.escapeshellarg("install_".$app_name).' ./pending_installs.txt')) {
             if(! exec('grep '.escapeshellarg("install_".$app_name).'_running ./pending_installs.txt')) {
                 // Not installing yet so remove from schedule
-                exec('sed -i "/'.escapeshellarg("install_".$app_name).'/d');
+                exec('sed -i "/'.escapeshellarg("install_".$app_name).'/d ./pending_installs.txt');
             }
             else {
                 // Installing so don't continue

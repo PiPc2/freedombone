@@ -4,20 +4,35 @@ $output_filename = "apps_add.html";
 
 if (isset($_POST['install'])) {
     $app_name = htmlspecialchars($_POST['app_name']);
-    $install_domain = $_POST['install_domain'];
-    $freedns_code = $_POST['freedns_code'];
+    $install_domain = '';
+    $freedns_code = '';
+
+    // Note that this value can be changed by install_web_admin
+    $onion_only=false;
 
     $continue_install=true;
-    if(file_exists("pending_removes.txt")) {
-        // Is this app in the pending_removes list?
-        if(exec('grep '.escapeshellarg("remove_".$app_name).' ./pending_removes.txt')) {
-            if(! exec('grep '.escapeshellarg("remove_".$app_name).'_running ./pending_removes.txt')) {
-                // Not Removing yet so remove from schedule
-                exec('sed -i "/'.escapeshellarg("remove_".$app_name).'/d');
-            }
-            else {
-                // Removing so don't continue
-                $continue_install=false;
+
+    if(! $onion_only) {
+        $install_domain = $_POST['install_domain'];
+        if (!strpos($install_domain, '.')) {
+            // No domain was provided
+            $continue_install=false;
+        }
+        $freedns_code = $_POST['freedns_code'];
+    }
+
+    if($continue_install) {
+        if(file_exists("pending_removes.txt")) {
+            // Is this app in the pending_removes list?
+            if(exec('grep '.escapeshellarg("remove_".$app_name).' ./pending_removes.txt')) {
+                if(! exec('grep '.escapeshellarg("remove_".$app_name).'_running ./pending_removes.txt')) {
+                    // Not Removing yet so remove from schedule
+                    exec('sed -i "/'.escapeshellarg("remove_".$app_name).'/d ./pending_removes.txt');
+                }
+                else {
+                    // Removing so don't continue
+                    $continue_install=false;
+                }
             }
         }
     }
@@ -30,7 +45,7 @@ if (isset($_POST['install'])) {
 
         if(! exec('grep '.escapeshellarg("install_".$app_name).' ./pending_installs.txt')) {
             $pending_installs = fopen("pending_installs.txt", "a") or die("Unable to append to installs file");
-            fwrite($pending_installs, "install_".$app_name." ".$install_domain." ".$freedns_code."\n");
+            fwrite($pending_installs, "install_".$app_name.",".$install_domain.",".$freedns_code."\n");
             fclose($pending_installs);
             $output_filename = "app_installing.html";
         }
