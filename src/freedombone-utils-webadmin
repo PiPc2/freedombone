@@ -457,27 +457,37 @@ function web_admin_setup_login {
         $INSTALL_PACKAGES apache2-utils
     fi
 
-    read_config_param MY_USERNAME
-    webadmin_password=$("${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a webadmin)
-    if [ ! "$webadmin_password" ]; then
+    # if an nginx password file has not been created for web admin
+    if [ ! -f /etc/nginx/.webadminpasswd ]; then
         webadmin_password="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
-        "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a webadmin -p "$webadmin_password"
 
         # create a password for users
         if [ ! -f /etc/nginx/.webadminpasswd ]; then
             touch /etc/nginx/.webadminpasswd
         fi
-        if grep -q "$MY_USERNAME:" /etc/nginx/.webadminpasswd; then
-            sed -i "/$MY_USERNAME:/d" /etc/nginx/.webadminpasswd
+        if grep -q "admin:" /etc/nginx/.webadminpasswd; then
+            sed -i "/admin:/d" /etc/nginx/.webadminpasswd
         fi
 
-        echo -n "$webadmin_password" | htpasswd -i -s -c /etc/nginx/.webadminpasswd "$MY_USERNAME"
+        # create a password file used by nginx
+        echo -n "$webadmin_password" | htpasswd -i -s -c /etc/nginx/.webadminpasswd "admin"
         if [ ! -f /etc/nginx/.webadminpasswd ]; then
             echo $'/etc/nginx/.webadminpasswd not found'
-            exit 5637653
+            exit 2428956
         fi
 
-        #echo -n "$webadmin_password" > "/var/www/${local_hostname}/htdocs/admin/initiallogin.txt"
+        # create a setup page with the initial password inserted
+        # and copy it to the index
+        cp "$webadmin_install_dir/index.html" "$webadmin_install_dir/index.prev"
+        cp "$webadmin_install_dir/setup.html" "$webadmin_install_dir/setup.prev"
+        sed -i "s|WEBADMINPASSWORD|${webadmin_password}|g" "$webadmin_install_dir/setup.prev"
+        cp "$webadmin_install_dir/setup.prev" "$webadmin_install_dir/index.html"
+
+        # if initial setup has not yet happened then create
+        # a password file
+        if ! grep -q 'install_final' "$COMPLETION_FILE"; then
+            echo -n "$webadmin_password" > /root/login.txt
+        fi
     fi
 }
 
@@ -485,20 +495,41 @@ function install_web_admin {
     # This is intended as an admin web user interface
     # similar to Plinth or the yunohost
 
+    # get the language subdirectory name
+    # This is usually EN
     language_subdir=$(web_admin_get_language_subdir)
 
+    # get the local name (usually freedombone.local) from avahi config
     local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    # where the web admin files are
+    webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
 
-    if [ ! -d "/var/www/${local_hostname}/htdocs/admin" ]; then
-        mkdir -p "/var/www/${local_hostname}/htdocs/admin"
+    # whether or not to add authentication to freedombone.local
+    basic_auth_str='#auth_basic'
+    if grep -q 'install_final' "$COMPLETION_FILE"; then
+        # initial installation has completed
+        if [ -f /etc/nginx/.webadminpasswd ]; then
+            # a password was created
+            basic_auth_str='auth_basic'
+        fi
+    fi
+
+    if [ ! -d "$webadmin_install_dir" ]; then
+        mkdir -p "$webadmin_install_dir"
     fi
 
     web_admin_installed=
     if [ -d "/usr/share/${PROJECT_NAME}/webadmin" ]; then
         if [ -d "/usr/share/${PROJECT_NAME}/webadmin/${language_subdir}" ]; then
-            cp -r "/usr/share/${PROJECT_NAME}/webadmin"/* "/var/www/${local_hostname}/htdocs/admin"
-            cp "/usr/share/${PROJECT_NAME}/webadmin/${language_subdir}"/*.html "/var/www/${local_hostname}/htdocs/admin"
+            cp -r "/usr/share/${PROJECT_NAME}/webadmin"/* "$webadmin_install_dir"
+            cp "/usr/share/${PROJECT_NAME}/webadmin/${language_subdir}"/*.html "$webadmin_install_dir"
 
+            if [ -f "$webadmin_install_dir/setup.prev" ]; then
+                # We are still waiting for initial setup to happen
+                cp "$webadmin_install_dir/setup.prev" "$webadmin_install_dir/index.html"
+            fi
+
+            # if this is an onion only install then modify some php scripts
             read_config_param ONION_ONLY
             if [[ "$ONION_ONLY" != 'no' ]]; then
                 web_admin_onion_only
@@ -518,7 +549,7 @@ function install_web_admin {
           echo '  <body>';
           echo "  ${placeholderstr}";
           echo '  </body>';
-          echo '</html>'; } > "/var/www/${local_hostname}/htdocs/admin/index.html"
+          echo '</html>'; } > "$webadmin_install_dir/index.html"
     fi
 
     nginx_file=/etc/nginx/sites-available/$local_hostname
@@ -533,8 +564,8 @@ function install_web_admin {
       echo '  error_log /dev/null;';
       echo '';
       echo '  location ^~ /admin {';
-      echo "    #auth_basic \"${WEBADMIN_LOGIN_TEXT}\";";
-      echo '    #auth_basic_user_file /etc/nginx/.webadminpasswd;';
+      echo "    ${basic_auth_str} \"${WEBADMIN_LOGIN_TEXT}\";";
+      echo "    ${basic_auth_str}_user_file /etc/nginx/.webadminpasswd;";
       echo "    root /var/www/${local_hostname}/htdocs;";
       echo '    index index.html;';
       echo "    error_page 405 = \$uri;";
@@ -576,8 +607,8 @@ function install_web_admin {
     { echo '  add_header Strict-Transport-Security max-age=0;';
       echo '';
       echo '  location ^~ /admin {';
-      echo "    #auth_basic \"${WEBADMIN_LOGIN_TEXT}\";";
-      echo '    #auth_basic_user_file /etc/nginx/.webadminpasswd;';
+      echo "    ${basic_auth_str} \"${WEBADMIN_LOGIN_TEXT}\";";
+      echo "    ${basic_auth_str}_user_file /etc/nginx/.webadminpasswd;";
       echo "    root /var/www/${local_hostname}/htdocs;";
       echo '    index index.html;';
       echo "    error_page 405 = \$uri;";

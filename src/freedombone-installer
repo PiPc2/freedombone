@@ -33,80 +33,166 @@ export TEXTDOMAIN=${PROJECT_NAME}-installer
 export TEXTDOMAINDIR="/usr/share/locale"
 
 CONFIGURATION_FILE="/root/${PROJECT_NAME}.cfg"
+COMPLETION_FILE="/root/${PROJECT_NAME}-completed.txt"
 
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
-pending_removes="/var/www/${local_hostname}/htdocs/admin/pending_removes.txt"
-pending_installs="/var/www/${local_hostname}/htdocs/admin/pending_installs.txt"
+webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+setup_file="$webadmin_install_dir/setup.txt"
+pending_removes="$webadmin_install_dir/pending_removes.txt"
+pending_installs="$webadmin_install_dir/pending_installs.txt"
 
 while true
 do
     if [ -f /tmp/.upgrading ]; then
         sleep 2
     else
-        if [ -f "$pending_installs" ]; then
-            linestr=$(head -n 1 "$pending_installs")
-            if [[ "$linestr" == "install_"* ]]; then
-                app_name=$(echo "$linestr" | awk -F '_' '{print $2}' | awk -F ',' '{print $1}')
-                if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
-                    app_domain=$(echo "$linestr" | awk -F ',' '{print $2}')
-                    app_name_upper=$(echo "$app_name" | awk '{print toupper($0)}')
-                    freedns_code=$(echo -n "$linestr" | awk -F ',' '{print $3}')
+        if [ -f "$setup_file" ]; then
+            if ! grep -q 'install_final' "$COMPLETION_FILE"; then
+                # initial setup has not yet completed
 
-                    # indicate that we are installing
-                    if [[ "$linestr" != *'_running'* ]]; then
-                        sed -i "s|${app_name}|${app_name}_running|g" "$pending_installs"
-                    fi
+                cp "/usr/share/${PROJECT_NAME}/webadmin/setup_installing.html" "$webadmin_install_dir/index.html"
 
-                    if grep -q 'ONION_ONLY=no' $CONFIGURATION_FILE; then
-                        # Add domain name to the config
-                        if ! grep -q "${app_name_upper}_DOMAIN_NAME=" $CONFIGURATION_FILE; then
-                            echo "${app_name_upper}_DOMAIN_NAME=${app_domain}" >> $CONFIGURATION_FILE
-                        else
-                            sed -i "s|${app_name_upper}_DOMAIN_NAME=.*|${app_name_upper}_DOMAIN_NAME=${app_domain}|g" $CONFIGURATION_FILE
-                        fi
+                # get the username and domain from the setup.txt file
+                # created by setup.php
+                MY_USERNAME=$(head -n 1 "$setup_file" | awk -F ',' '{print $1}')
+                DEFAULT_DOMAIN_NAME=$(head -n 1 "$setup_file" | awk -F ',' '{print $2}')
 
-                        # Add freedns code to the config
-                        if [ "$freedns_code" ]; then
-                            # shellcheck disable=SC2086
-                            ${app_name_upper}_CODE="${freedns_code}"
-
-                            if ! grep -q "${app_name_upper}_CODE=" $CONFIGURATION_FILE; then
-                                echo "${app_name_upper}_CODE=${freedns_code}" >> $CONFIGURATION_FILE
-                            else
-                                sed -i "s|${app_name_upper}_CODE=.*|${app_name_upper}_CODE=${freedns_code}|g" $CONFIGURATION_FILE
-                            fi
-                        fi
-                    fi
-
-                    /usr/local/bin/${PROJECT_NAME}-addremove add "${app_name}"
+                # change the username in the config file
+                if grep -q 'MY_USERNAME=' "$CONFIGURATION_FILE"; then
+                    sed -i "s|MY_USERNAME=.*|MY_USERNAME=$MY_USERNAME|g" "$CONFIGURATION_FILE"
+                else
+                    echo "MY_USERNAME=$MY_USERNAME" >> "$CONFIGURATION_FILE"
                 fi
-                # remove the line
-                sed -i "/$linestr/d" "$pending_installs"
-            else
-                # if any unusual line is found then remove the file
-                rm "$pending_installs"
+
+                # change the full name in the config file
+                if grep -q 'MY_NAME=' "$CONFIGURATION_FILE"; then
+                    sed -i "s|MY_NAME=.*|MY_USERNAME=$MY_USERNAME|g" "$CONFIGURATION_FILE"
+                else
+                    echo "MY_NAME=$MY_USERNAME" >> "$CONFIGURATION_FILE"
+                fi
+
+                # change the default domain in the config file
+                if grep -q 'DEFAULT_DOMAIN_NAME=' "$CONFIGURATION_FILE"; then
+                    sed -i "s|DEFAULT_DOMAIN_NAME=.*|DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME|g" "$CONFIGURATION_FILE"
+                else
+                    echo "DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME" >> "$CONFIGURATION_FILE"
+                fi
+
+                # ensure that minimal install is set
+                if grep -q 'MINIMAL_INSTALL=' "$CONFIGURATION_FILE"; then
+                    sed -i 's|MINIMAL_INSTALL=.*|MINIMAL_INSTALL=yes|g' "$CONFIGURATION_FILE"
+                else
+                    echo 'MINIMAL_INSTALL=yes' >> "$CONFIGURATION_FILE"
+                fi
+
+                # Do the initial setup which includes email
+                /usr/local/bin/freedombone -c "$CONFIGURATION_FILE"
             fi
-        fi
 
-        sleep 1
+            if grep -q 'install_final' "$COMPLETION_FILE"; then
+                # initial setup has completed
 
-        if [ -f "$pending_removes" ]; then
-            linestr=$(head -n 1 "$pending_removes")
-            if [[ "$linestr" == "remove_"* ]]; then
-                app_name=$(echo "$linestr" | awk -F '_' '{print $2}')
-                if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
-                    # indicate that we are removing
-                    if [[ "$linestr" != *'_running'* ]]; then
-                        sed -i "s|${app_name}|${app_name}_running|g" "$pending_removes"
-                    fi
-                    /usr/local/bin/${PROJECT_NAME}-addremove remove "${app_name}"
+                # switch on nginx authentication for freedombone.local
+                sed -i 's|#auth_basic|auth_basic|g' "/etc/nginx/sites-available/${local_hostname}"
+
+                # Show the web admin index page (not the initial setup page)
+                if [ -f "$webadmin_install_dir/index.prev" ]; then
+                    cp "$webadmin_install_dir/index.prev" "$webadmin_install_dir/index.html"
                 fi
-                # remove the line
-                sed -i "/$linestr/d" "$pending_removes"
-            else
-                # if any unusual line is found then remove the file
-                rm "$pending_removes"
+
+                # Remove the initial setup page
+                if [ -f "$webadmin_install_dir/setup.prev" ]; then
+                    rm "$webadmin_install_dir/setup.prev"
+                fi
+
+                # Replace the installing screen with the main index page when done
+                # It should reload by itself
+                if [ -f "$webadmin_install_dir/setup_installing.prev" ]; then
+                    cp "$webadmin_install_dir/index.prev" "$webadmin_install_dir/setup_installing.html"
+                fi
+
+                # set permissions for web admin site at freedombone.local
+                chown www-data:www-data "$webadmin_install_dir/index.html"
+
+                # remove the setup file created by setup.php
+                rm "$setup_file"
+
+                # restart the web server
+                systemctl restart nginx
+            fi
+
+            sleep 1
+
+        else
+            if [ ! -f "$webadmin_install_dir/setup.prev" ]; then
+                # initial setup has completed
+
+                if [ -f "$pending_installs" ]; then
+                    linestr=$(head -n 1 "$pending_installs")
+                    if [[ "$linestr" == "install_"* ]]; then
+                        app_name=$(echo "$linestr" | awk -F '_' '{print $2}' | awk -F ',' '{print $1}')
+                        if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
+                            app_domain=$(echo "$linestr" | awk -F ',' '{print $2}')
+                            app_name_upper=$(echo "$app_name" | awk '{print toupper($0)}')
+                            freedns_code=$(echo -n "$linestr" | awk -F ',' '{print $3}')
+
+                            # indicate that we are installing
+                            if [[ "$linestr" != *'_running'* ]]; then
+                                sed -i "s|${app_name}|${app_name}_running|g" "$pending_installs"
+                            fi
+
+                            if grep -q 'ONION_ONLY=no' $CONFIGURATION_FILE; then
+                                # Add domain name to the config
+                                if ! grep -q "${app_name_upper}_DOMAIN_NAME=" $CONFIGURATION_FILE; then
+                                    echo "${app_name_upper}_DOMAIN_NAME=${app_domain}" >> $CONFIGURATION_FILE
+                                else
+                                    sed -i "s|${app_name_upper}_DOMAIN_NAME=.*|${app_name_upper}_DOMAIN_NAME=${app_domain}|g" $CONFIGURATION_FILE
+                                fi
+
+                                # Add freedns code to the config
+                                if [ "$freedns_code" ]; then
+                                    # shellcheck disable=SC2086
+                                    ${app_name_upper}_CODE="${freedns_code}"
+
+                                    if ! grep -q "${app_name_upper}_CODE=" $CONFIGURATION_FILE; then
+                                        echo "${app_name_upper}_CODE=${freedns_code}" >> $CONFIGURATION_FILE
+                                    else
+                                        sed -i "s|${app_name_upper}_CODE=.*|${app_name_upper}_CODE=${freedns_code}|g" $CONFIGURATION_FILE
+                                    fi
+                                fi
+                            fi
+
+                            /usr/local/bin/${PROJECT_NAME}-addremove add "${app_name}"
+                        fi
+                        # remove the line
+                        sed -i "/$linestr/d" "$pending_installs"
+                    else
+                        # if any unusual line is found then remove the file
+                        rm "$pending_installs"
+                    fi
+                fi
+
+                sleep 1
+
+                if [ -f "$pending_removes" ]; then
+                    linestr=$(head -n 1 "$pending_removes")
+                    if [[ "$linestr" == "remove_"* ]]; then
+                        app_name=$(echo "$linestr" | awk -F '_' '{print $2}')
+                        if [ -f "/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}" ]; then
+                            # indicate that we are removing
+                            if [[ "$linestr" != *'_running'* ]]; then
+                                sed -i "s|${app_name}|${app_name}_running|g" "$pending_removes"
+                            fi
+                            /usr/local/bin/${PROJECT_NAME}-addremove remove "${app_name}"
+                        fi
+                        # remove the line
+                        sed -i "/$linestr/d" "$pending_removes"
+                    else
+                        # if any unusual line is found then remove the file
+                        rm "$pending_removes"
+                    fi
+                fi
             fi
         fi
 
