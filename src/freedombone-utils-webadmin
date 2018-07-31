@@ -33,6 +33,13 @@
 
 WEBADMIN_LOGIN_TEXT=$"Welcome to ${PROJECT_NAME}"
 
+function web_admin_get_hostname {
+    # get the local name (usually freedombone.local) from avahi config
+    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    # where the web admin files are
+    webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+}
+
 function web_admin_configure_installer_daemon {
     if [ -f /etc/systemd/system/webadmin.service ]; then
         return
@@ -81,9 +88,9 @@ function web_admin_avahi {
 
 function web_admin_create_users {
     ADMIN_USER=$(get_completion_param "Admin user")
-    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
-    users_file="/var/www/${local_hostname}/htdocs/admin/users.html"
-    cp "/var/www/${local_hostname}/htdocs/admin/users_template.html" "$users_file"
+    web_admin_get_hostname
+    users_file="$webadmin_install_dir/users.html"
+    cp "$webadmin_install_dir/users_template.html" "$users_file"
     sed -i '/users list/,/end of users/d' "$users_file"
     sed -i '/<\/body>/d' "$users_file"
     sed -i '/<\/html>/d' "$users_file"
@@ -91,12 +98,12 @@ function web_admin_create_users {
     echo "    <div class=\"row\">" >> "$users_file"
     echo "      <div class=\"column\">" >> "$users_file"
 
-    rm "/var/www/${local_hostname}/htdocs/admin/userprofile_"*
+    rm "$webadmin_install_dir/userprofile_"*
 
     for d in /home/*/ ; do
         USERNAME=$(echo "$d" | awk -F '/' '{print $3}')
         if [[ $(is_valid_user "$USERNAME") == "1" ]]; then
-            userfile="/var/www/${local_hostname}/htdocs/admin/userprofile_${USERNAME}.html"
+            userfile="$webadmin_install_dir/userprofile_${USERNAME}.html"
             useremail=${USERNAME}@${DEFAULT_DOMAIN_NAME}
             GPG_ID=$(su -c "gpg --list-keys '$useremail'" - "$USERNAME" | sed -n '2p' | sed 's/^[ \t]*//')
             if [ -f "/home/$USERNAME/.gnupg/gpg.conf" ]; then
@@ -110,7 +117,7 @@ function web_admin_create_users {
                     fi
                 fi
             fi
-            pubkey_qrcode="/var/www/${local_hostname}/htdocs/admin/images/userprofile_${USERNAME}.png"
+            pubkey_qrcode="$webadmin_install_dir/images/userprofile_${USERNAME}.png"
             su -c "gpg --armor --export \"$GPG_ID\"" - "$USERNAME" | qrencode -t PNG -o "$pubkey_qrcode"
 
             { echo '        <div class="chip">';
@@ -120,7 +127,7 @@ function web_admin_create_users {
               echo '          </a>';
               echo '        </div>'; } >> "$users_file"
 
-            cp "/var/www/${local_hostname}/htdocs/admin/userprofile.html" "$userfile"
+            cp "$webadmin_install_dir/userprofile.html" "$userfile"
             sed -i "s|USERNAME|${USERNAME}|g" "$userfile"
             if [[ "$USERNAME" == "$ADMIN_USER" ]]; then
                 sed -i "s|USERTYPE|Admin|g" "$userfile"
@@ -152,12 +159,12 @@ function web_admin_create_users {
 
 function web_admin_create_add_apps {
     read_config_param DDNS_PROVIDER
-    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
-    apps_add_template_filename="/var/www/${local_hostname}/htdocs/admin/apps_add_template.html"
-    appslist_add_filename="/var/www/${local_hostname}/htdocs/admin/apps_add.html"
-    pending_installs="/var/www/${local_hostname}/htdocs/admin/pending_installs.txt"
-    icons_dir="/var/www/${local_hostname}/htdocs/admin/icons"
-    app_add_template_filename="/var/www/${local_hostname}/htdocs/admin/app_add_template.html"
+    web_admin_get_hostname
+    apps_add_template_filename="$webadmin_install_dir/apps_add_template.html"
+    appslist_add_filename="$webadmin_install_dir/apps_add.html"
+    pending_installs="$webadmin_install_dir/pending_installs.txt"
+    icons_dir="$webadmin_install_dir/icons"
+    app_add_template_filename="$webadmin_install_dir/app_add_template.html"
     FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*"
 
     if [ ! -d "$icons_dir" ]; then
@@ -206,7 +213,7 @@ function web_admin_create_add_apps {
                 # get the icon for the app
                 icon_filename="/usr/share/${PROJECT_NAME}/android-app/${app_name}.png"
                 if [ -f "$icon_filename" ]; then
-                    cp "$icon_filename" "/var/www/${local_hostname}/htdocs/admin/icons/${app_name}.png"
+                    cp "$icon_filename" "$webadmin_install_dir/icons/${app_name}.png"
                 else
                     icon_filename=
                     continue
@@ -232,12 +239,12 @@ function web_admin_create_add_apps {
                     echo '    <div class="row">' >> "$appslist_add_filename"
                 fi
 
-                filename="/var/www/${local_hostname}/htdocs/admin/app_${app_name}.html"
+                filename="$webadmin_install_dir/app_${app_name}.html"
                 if [ -f "$filename" ]; then
                     rm "$filename"
                 fi
 
-                filename="/var/www/${local_hostname}/htdocs/admin/app_add_${app_name}.html"
+                filename="$webadmin_install_dir/app_add_${app_name}.html"
 
                 if [ ! $app_pending_install ]; then
                     { echo '      <div class="column">';
@@ -295,16 +302,16 @@ function web_admin_create_add_apps {
     echo '  </body>' >> "$appslist_add_filename"
     echo '</html>' >> "$appslist_add_filename"
 
-    chown -R www-data:www-data "/var/www/${local_hostname}/htdocs/admin"
+    chown -R www-data:www-data "$webadmin_install_dir"
 }
 
 function web_admin_create_installed_apps {
-    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
-    appslist_template_filename="/var/www/${local_hostname}/htdocs/admin/apps_template.html"
-    app_template_filename="/var/www/${local_hostname}/htdocs/admin/app_template.html"
-    appslist_filename="/var/www/${local_hostname}/htdocs/admin/apps.html"
-    icons_dir="/var/www/${local_hostname}/htdocs/admin/icons"
-    pending_removes="/var/www/${local_hostname}/htdocs/admin/pending_removes.txt"
+    web_admin_get_hostname
+    appslist_template_filename="$webadmin_install_dir/apps_template.html"
+    app_template_filename="$webadmin_install_dir/app_template.html"
+    appslist_filename="$webadmin_install_dir/apps.html"
+    icons_dir="$webadmin_install_dir/icons"
+    pending_removes="$webadmin_install_dir/pending_removes.txt"
 
     if [ ! -d "$icons_dir" ]; then
         mkdir -p "$icons_dir"
@@ -339,7 +346,7 @@ function web_admin_create_installed_apps {
                     # get the icon for the app
                     icon_filename="/usr/share/${PROJECT_NAME}/android-app/${app_name}.png"
                     if [ -f "$icon_filename" ]; then
-                        cp "$icon_filename" "/var/www/${local_hostname}/htdocs/admin/icons/${app_name}.png"
+                        cp "$icon_filename" "$webadmin_install_dir/icons/${app_name}.png"
                     else
                         icon_filename=
                     fi
@@ -377,12 +384,12 @@ function web_admin_create_installed_apps {
                         echo '    <div class="row">' >> "$appslist_filename"
                     fi
 
-                    filename="/var/www/${local_hostname}/htdocs/admin/app_add_${app_name}.html"
+                    filename="$webadmin_install_dir/app_add_${app_name}.html"
                     if [ -f "$filename" ]; then
                         rm "$filename"
                     fi
 
-                    filename="/var/www/${local_hostname}/htdocs/admin/app_${app_name}.html"
+                    filename="$webadmin_install_dir/app_${app_name}.html"
 
                     { echo '      <div class="column">';
                       echo '        <div>';
@@ -427,7 +434,7 @@ function web_admin_create_installed_apps {
     echo '  </body>' >> "$appslist_filename"
     echo '</html>' >> "$appslist_filename"
 
-    chown -R www-data:www-data "/var/www/${local_hostname}/htdocs/admin"
+    chown -R www-data:www-data "$webadmin_install_dir"
 }
 
 function web_admin_get_language_subdir {
@@ -447,9 +454,22 @@ function web_admin_get_language_subdir {
 function web_admin_onion_only {
     # In onion only mode domain names or ddns codes
     # don't need to be provided
-    sed -i '/freedns_code/d' "/var/www/${local_hostname}/htdocs/admin/app_add_template.html"
-    sed -i '/install_domain/d' "/var/www/${local_hostname}/htdocs/admin/app_add_template.html"
-    sed -i 's|onion_only=false;|onion_only=true;|g' "/var/www/${local_hostname}/htdocs/admin/installapp.php"
+    web_admin_get_hostname
+    sed -i '/freedns_code/d' "$webadmin_install_dir/app_add_template.html"
+    sed -i '/install_domain/d' "$webadmin_install_dir/app_add_template.html"
+    sed -i 's|onion_only=false;|onion_only=true;|g' "$webadmin_install_dir/installapp.php"
+}
+
+function web_admin_reset {
+    web_admin_get_hostname
+
+    # reset the box back to the setup screen
+    if [ -f /etc/nginx/.webadminpasswd ]; then
+        rm /etc/nginx/.webadminpasswd
+    fi
+    touch "$webadmin_install_dir/.setupscreenactive"
+
+    install_web_admin
 }
 
 function web_admin_setup_login {
@@ -505,10 +525,7 @@ function install_web_admin {
     # This is usually EN
     language_subdir=$(web_admin_get_language_subdir)
 
-    # get the local name (usually freedombone.local) from avahi config
-    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
-    # where the web admin files are
-    webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+    web_admin_get_hostname
 
     # whether or not to add authentication to freedombone.local
     basic_auth_str='#auth_basic'
