@@ -10,7 +10,7 @@ if (isset($_POST['setup'])) {
         if(!file_exists(".temp_setup.txt")) {
             $setup_file = fopen(".temp_setup.txt", "w") or die("Unable to create setup file");
             fwrite($setup_file, $my_username.",".$default_domain_name."\n");
-            fclose($);
+            fclose($setup_file);
         }
 
         $output_filename = "setup_confirm.html";
