@@ -7,11 +7,8 @@ if (isset($_POST['setupconfirmsubmit'])) {
         $confirm = htmlspecialchars($_POST['setupconfirm']);
 
         if($confirm == "1") {
-            if(file_exists(".temp_setup.txt")) {
-                exec('mv .temp_setup.txt setup.txt');
-            }
             if(file_exists("setup.txt")) {
-                $output_filename = "setup_installing.html";
+                $output_filename = "setup_domain.html";
             }
         }
     }
