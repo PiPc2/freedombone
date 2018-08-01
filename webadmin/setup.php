@@ -8,7 +8,7 @@ if (isset($_POST['setup'])) {
 
         if(!file_exists(".temp_setup.txt")) {
             $setup_file = fopen(".temp_setup.txt", "w") or die("Unable to create setup file");
-            fwrite($setup_file, $my_username."\n");
+            fwrite($setup_file, $my_username);
             fclose($setup_file);
         }
 
