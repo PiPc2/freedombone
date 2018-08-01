@@ -7,7 +7,7 @@ if (isset($_POST['setupconfirmsubmit'])) {
         $confirm = htmlspecialchars($_POST['setupconfirm']);
 
         if($confirm == "1") {
-            if(file_exists("setup.txt")) {
+            if(file_exists(".temp_setup.txt")) {
                 // This gets changed by web_admin_onion_only
                 $output_filename = "setup_domain.html";
             }
