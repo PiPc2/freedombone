@@ -43,7 +43,6 @@ domain_file="$webadmin_install_dir/.temp_domain.txt"
 pending_removes="$webadmin_install_dir/pending_removes.txt"
 pending_installs="$webadmin_install_dir/pending_installs.txt"
 INSTALL_DIR=/root/build
-install_command_was_run=
 
 function enable_webadmin_login {
     # switch on nginx authentication for freedombone.local
@@ -97,15 +96,15 @@ function remove_temporary_setup_files {
 
     # if the file indicating that the freedombone command is running
     # is still present then remove it
-    if [ -f "$webadmin_install_dir/.running_install_command" ]; then
-        rm "$webadmin_install_dir/.running_install_command"
+    if [ -f /root/.running_install_command ]; then
+        rm /root/.running_install_command
     fi
 }
 
 function restore_webadmin_files {
     # restore files which were removed for the initial setup
     if [ -d "$INSTALL_DIR/tempwebadmin" ]; then
-        if [ ! $install_command_was_run ]; then
+        if [ ! -f /root/.finished_install_command ]; then
             mv "$INSTALL_DIR/tempwebadmin"/* "$webadmin_install_dir"
         fi
         rm -rf "$INSTALL_DIR/tempwebadmin"
@@ -118,78 +117,114 @@ function set_webadmin_permissions {
 }
 
 function run_setup_command {
+    installer_script=/root/.installer.sh
+    { echo '#!/bin/bash';
+      echo '';
+      echo '#set -e';
+      echo '#set -x';
+      echo '';
+      echo 'if [ -f /root/.finished_install_command ]; then';
+      echo '    rm /root/.finished_install_command';
+      echo 'fi';
+      echo '';
+      echo 'if [ -f /root/.running_install_command ]; then';
+      echo '    touch /root/.running_install_command';
+      echo 'fi';
+      echo '';
+      echo "if ! /usr/local/bin/freedombone -c \"$CONFIGURATION_FILE\" > /root/.install_progress; then";
+      echo '    rm /root/.running_install_command';
+      echo '    exit 364873';
+      echo 'fi';
+      echo '';
+      echo 'if [ -f /root/.running_install_command ]; then';
+      echo '    rm /root/.running_install_command';
+      echo 'fi';
+      echo '';
+      echo 'if [ ! -f /root/.finished_install_command ]; then';
+      echo '    exit 79623';
+      echo 'fi';
+      echo '';
+      echo "exit 0"; } > $installer_script
+    chmod +x $installer_script
+
+    # run in a separate process
+    ./$installer_script &
+
     # Do the initial setup which includes email
-    touch "$webadmin_install_dir/.running_install_command"
-    /usr/local/bin/freedombone -c "$CONFIGURATION_FILE"
-    install_command_was_run=1
-    rm "$webadmin_install_dir/.running_install_command"
+    #touch /root/.running_install_command
+    #/usr/local/bin/freedombone -c "$CONFIGURATION_FILE"
+    #rm /root/.running_install_command
 }
 
 function before_setup_runs {
-    install_command_was_run=
-    if ! grep -q 'install_final' "$COMPLETION_FILE"; then
-        # initial setup has not yet completed
-
-        cp "/usr/share/${PROJECT_NAME}/webadmin/setup_installing.html" "$webadmin_install_dir/index.html"
-
-        # get the username and domain from the setup.txt file
-        # created by setup.php
-        MY_USERNAME=$(cat "$setup_file")
-        DEFAULT_DOMAIN_NAME=${local_hostname}
-
-        if [ -f "$domain_file" ]; then
-            DEFAULT_DOMAIN_NAME=$(cat "$domain_file")
-        fi
-
-        # change the username in the config file
-        if grep -q 'MY_USERNAME=' "$CONFIGURATION_FILE"; then
-            if ! grep -Fxq "MY_USERNAME=$MY_USERNAME" "$CONFIGURATION_FILE"; then
-                sed -i "s|MY_USERNAME=.*|MY_USERNAME=$MY_USERNAME|g" "$CONFIGURATION_FILE"
-            fi
-        else
-            echo "MY_USERNAME=$MY_USERNAME" >> "$CONFIGURATION_FILE"
-        fi
-
-        # change the full name in the config file
-        if grep -q 'MY_NAME=' "$CONFIGURATION_FILE"; then
-            if ! grep -Fxq "MY_NAME=$MY_USERNAME" "$CONFIGURATION_FILE"; then
-                sed -i "s|MY_NAME=.*|MY_USERNAME=$MY_USERNAME|g" "$CONFIGURATION_FILE"
-            fi
-        else
-            echo "MY_NAME=$MY_USERNAME" >> "$CONFIGURATION_FILE"
-        fi
-
-        # change the default domain in the config file
-        if grep -q 'DEFAULT_DOMAIN_NAME=' "$CONFIGURATION_FILE"; then
-            if ! grep -Fxq "DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME" "$CONFIGURATION_FILE"; then
-                sed -i "s|DEFAULT_DOMAIN_NAME=.*|DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME|g" "$CONFIGURATION_FILE"
-            fi
-        else
-            echo "DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME" >> "$CONFIGURATION_FILE"
-        fi
-
-        # ensure that minimal install is set
-        if grep -q 'MINIMAL_INSTALL=' "$CONFIGURATION_FILE"; then
-            if ! grep -q "MINIMAL_INSTALL=yes" "$CONFIGURATION_FILE"; then
-                sed -i 's|MINIMAL_INSTALL=.*|MINIMAL_INSTALL=yes|g' "$CONFIGURATION_FILE"
-            fi
-        else
-            echo 'MINIMAL_INSTALL=yes' >> "$CONFIGURATION_FILE"
-        fi
-
-        run_setup_command
+    if [ -f /root/.running_install_command ]; then
+        return
     fi
+
+    if grep -q 'install_final' "$COMPLETION_FILE"; then
+        return
+    fi
+
+    cp "/usr/share/${PROJECT_NAME}/webadmin/setup_installing.html" "$webadmin_install_dir/index.html"
+
+    # get the username and domain from the setup.txt file
+    # created by setup.php
+    MY_USERNAME=$(cat "$setup_file")
+    DEFAULT_DOMAIN_NAME=${local_hostname}
+
+    if [ -f "$domain_file" ]; then
+        DEFAULT_DOMAIN_NAME=$(cat "$domain_file")
+    fi
+
+    # change the username in the config file
+    if grep -q 'MY_USERNAME=' "$CONFIGURATION_FILE"; then
+        if ! grep -Fxq "MY_USERNAME=$MY_USERNAME" "$CONFIGURATION_FILE"; then
+            sed -i "s|MY_USERNAME=.*|MY_USERNAME=$MY_USERNAME|g" "$CONFIGURATION_FILE"
+        fi
+    else
+        echo "MY_USERNAME=$MY_USERNAME" >> "$CONFIGURATION_FILE"
+    fi
+
+    # change the full name in the config file
+    if grep -q 'MY_NAME=' "$CONFIGURATION_FILE"; then
+        if ! grep -Fxq "MY_NAME=$MY_USERNAME" "$CONFIGURATION_FILE"; then
+            sed -i "s|MY_NAME=.*|MY_USERNAME=$MY_USERNAME|g" "$CONFIGURATION_FILE"
+        fi
+    else
+        echo "MY_NAME=$MY_USERNAME" >> "$CONFIGURATION_FILE"
+    fi
+
+    # change the default domain in the config file
+    if grep -q 'DEFAULT_DOMAIN_NAME=' "$CONFIGURATION_FILE"; then
+        if ! grep -Fxq "DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME" "$CONFIGURATION_FILE"; then
+            sed -i "s|DEFAULT_DOMAIN_NAME=.*|DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME|g" "$CONFIGURATION_FILE"
+        fi
+    else
+        echo "DEFAULT_DOMAIN_NAME=$DEFAULT_DOMAIN_NAME" >> "$CONFIGURATION_FILE"
+    fi
+
+    # ensure that minimal install is set
+    if grep -q 'MINIMAL_INSTALL=' "$CONFIGURATION_FILE"; then
+        if ! grep -q "MINIMAL_INSTALL=yes" "$CONFIGURATION_FILE"; then
+            sed -i 's|MINIMAL_INSTALL=.*|MINIMAL_INSTALL=yes|g' "$CONFIGURATION_FILE"
+        fi
+    else
+        echo 'MINIMAL_INSTALL=yes' >> "$CONFIGURATION_FILE"
+    fi
+
+    run_setup_command
 }
 
 function after_setup_has_finished {
-    if grep -q 'install_final' "$COMPLETION_FILE"; then
-        enable_webadmin_login
-        remove_initial_setup_page
-        set_webadmin_permissions
-        remove_temporary_setup_files
-        restore_webadmin_files
-        systemctl restart nginx
+    if ! grep -q 'install_final' "$COMPLETION_FILE"; then
+        return
     fi
+    enable_webadmin_login
+    remove_initial_setup_page
+    set_webadmin_permissions
+    remove_temporary_setup_files
+    restore_webadmin_files
+    systemctl restart nginx
 }
 
 function install_apps_from_webadmin {
@@ -259,6 +294,25 @@ function remove_apps_from_webadmin {
         fi
     fi
 }
+
+if [ -f /root/.finished_install_command ]; then
+    rm /root/.finished_install_command
+fi
+if [ -f /root/.running_install_command ]; then
+    rm /root/.running_install_command
+fi
+
+# If the freedombone command is already running then kill its process
+#shellcheck disable=SC2009
+install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | head -n 1)
+if [ "$install_process" ]; then
+    if [[ "$install_process" != *'grep'* ]]; then
+        install_pid=$(echo "$install_process" | awk -F ' ' '{print $1}')
+        if [ "$install_pid" ]; then
+            pkill -9 "$install_pid"
+        fi
+    fi
+fi
 
 while true
 do
