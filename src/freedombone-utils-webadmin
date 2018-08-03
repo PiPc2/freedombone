@@ -34,8 +34,14 @@
 WEBADMIN_LOGIN_TEXT=$"Welcome to ${PROJECT_NAME}"
 
 function web_admin_get_hostname {
-    # get the local name (usually freedombone.local) from avahi config
-    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    # shellcheck disable=SC2154
+    if [ ! "$rootdir" ]; then
+        # get the local name (usually freedombone.local) from avahi config
+        local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    else
+        local_hostname=${PROJECT_NAME}.local
+    fi
+
     # where the web admin files are
     webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
 }
@@ -498,10 +504,11 @@ function web_admin_onion_only {
     # In onion only mode domain names or ddns codes
     # don't need to be provided
     web_admin_get_hostname
-    sed -i '/freedns_code/d' "$webadmin_install_dir/app_add_template.html"
-    sed -i '/install_domain/d' "$webadmin_install_dir/app_add_template.html"
-    sed -i 's|onion_only=false;|onion_only=true;|g' "$webadmin_install_dir/installapp.php"
-    sed -i 's|setup_domain.html|setup_installing.html|g' "$webadmin_install_dir/setupconfirm.php"
+    # shellcheck disable=SC2154
+    sed -i '/freedns_code/d' "$rootdir$webadmin_install_dir/app_add_template.html"
+    sed -i '/install_domain/d' "$rootdir$webadmin_install_dir/app_add_template.html"
+    sed -i 's|onion_only=false;|onion_only=true;|g' "$rootdir$webadmin_install_dir/installapp.php"
+    sed -i 's|setup_domain.html|setup_installing.html|g' "$rootdir$webadmin_install_dir/setupconfirm.php"
 }
 
 function web_admin_reset {
@@ -564,6 +571,81 @@ function web_admin_setup_login {
     if ! grep -q 'install_final' "$COMPLETION_FILE"; then
         echo -n "$webadmin_password" > /root/login.txt
     fi
+}
+
+function image_install_web_admin {
+    if [ "$INSTALLING_MESH" ]; then
+        return
+    fi
+    language_subdir=$(web_admin_get_language_subdir)
+    web_admin_get_hostname
+    # shellcheck disable=SC2154
+    mkdir -p "$rootdir$webadmin_install_dir"
+    cp -r "$rootdir/usr/share/${PROJECT_NAME}/webadmin"/* "$rootdir$webadmin_install_dir"
+    cp "$rootdir/usr/share/${PROJECT_NAME}/webadmin/${language_subdir}"/*.html "$rootdir$webadmin_install_dir"
+    cp "$rootdir$webadmin_install_dir"/index.html "$rootdir$webadmin_install_dir"/index.prev
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        web_admin_onion_only
+    fi
+    touch "$rootdir$webadmin_install_dir/setup.txt"
+    touch "$rootdir$webadmin_install_dir/.setupscreenactive"
+
+    nginx_file=${rootdir}/etc/nginx/sites-available/${local_hostname}
+    { echo 'server {';
+      echo '  listen 80 default_server;';
+      echo '  #listen [::]:80;';
+      echo "  server_name ${local_hostname};";
+      echo "  root /var/www/${local_hostname}/htdocs;";
+      echo '  index index.html;';
+      echo '';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  location ^~ /admin {';
+      echo "    #auth_basic \"${WEBADMIN_LOGIN_TEXT}\";";
+      echo "    #auth_basic_user_file /etc/nginx/.webadminpasswd;";
+      echo "    root /var/www/${local_hostname}/htdocs;";
+      echo '    index index.html;';
+      echo "    error_page 405 = \$uri;";
+      echo '    location ~ \.php {';
+      echo '      include snippets/fastcgi-php.conf;';
+      echo '      fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+      echo '      fastcgi_read_timeout 30;';
+      echo '    }';
+      echo '  }';
+      echo '';
+      echo '  location /icons {';
+      echo '    autoindex on;';
+      echo '    break;';
+      echo '  }';
+      echo '';
+      echo '  rewrite ^/plinth/(.*)$ /api.json last;';
+      echo '';
+      echo '  location / {';
+      echo "    root /var/www/${local_hostname}/htdocs/plinth;";
+      echo '    index api.json /api.json;';
+      echo "    error_page 405 = \$uri;";
+      echo '  }';
+      echo '}'; } > "$nginx_file"
+    chroot "$rootdir" nginx_ensite "${local_hostname}"
+    chroot "$rootdir" chown -R www-data:www-data "/etc/nginx/sites-available/${local_hostname}"
+
+    { echo '[Unit]';
+      echo 'Description=Installer daemon for web admin';
+      echo 'After=network.target';
+      echo '';
+      echo '[Service]';
+      echo 'User=root';
+      echo "ExecStart=/usr/local/bin/${PROJECT_NAME}-installer";
+      echo "ExecReload=/bin/kill \$MAINPID";
+      echo 'KillMode=process';
+      echo 'Restart=always';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target';
+      echo 'Alias=pleroma.service'; } > "$rootdir/etc/systemd/system/webadmin.service"
+
+    chroot "$rootdir" systemctl enable webadmin
 }
 
 function install_web_admin {
