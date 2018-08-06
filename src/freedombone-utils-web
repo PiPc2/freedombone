@@ -667,6 +667,133 @@ function image_install_web_server {
         echo $'Unable to install web server'
         exit 346825
     fi
+
+    # Turn off logs by default
+    sed -i 's|access_log.*|access_log = /dev/null;|g' "$rootdir/etc/nginx/nginx.conf"
+    sed -i 's|error_log.*|error_log = /dev/null;|g' "$rootdir/etc/nginx/nginx.conf"
+
+    # limit the number of php processes
+    sed -i 's/; process.max =.*/process.max = 32/g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    #sed -i 's/;process_control_timeout =.*/process_control_timeout = 300/g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    sed -i 's|;systemd_interval.*|systemd_interval = 10|g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    sed -i 's|;emergency_restart_threshold.*|emergency_restart_threshold = 2|g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    sed -i 's|emergency_restart_threshold.*|emergency_restart_threshold = 2|g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    sed -i 's|;emergency_restart_interval.*|emergency_restart_interval = 1m|g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    sed -i 's|emergency_restart_interval.*|emergency_restart_interval = 1m|g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    sed -i 's|;process_control_timeout.*|process_control_timeout = 10s|g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    sed -i 's|process_control_timeout.*|process_control_timeout = 10s|g' "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+
+    if ! grep -q "pm.max_children" "$rootdir/etc/php/7.0/fpm/php-fpm.conf"; then
+        { echo 'pm = static';
+          echo 'pm.max_children = 10';
+          echo 'pm.start_servers = 2';
+          echo 'pm.min_spare_servers = 2';
+          echo 'pm.max_spare_servers = 5';
+          echo 'pm.max_requests = 10'; } >> "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    fi
+    if ! grep -q "request_terminate_timeout" "$rootdir/etc/php/7.0/fpm/php-fpm.conf"; then
+        echo 'request_terminate_timeout = 30' >> "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    else
+        sed -i 's|request_terminate_timeout =.*|request_terminate_timeout = 30|g'  >> "$rootdir/etc/php/7.0/fpm/php-fpm.conf"
+    fi
+    sed -i 's|max_execution_time =.*|max_execution_time = 30|g' "$rootdir/etc/php/7.0/fpm/php.ini"
+
+    if [ ! -d "$rootdir/etc/nginx" ]; then
+        echo $"ERROR: nginx does not appear to have installed. $CHECK_MESSAGE"
+        exit 51
+    fi
+
+    # Nginx settings
+    { echo 'user www-data;';
+      #echo "worker_processes; $CPU_CORES";
+      echo 'pid /run/nginx.pid;';
+      echo '';
+      echo 'events {';
+      echo '        worker_connections 50;';
+      echo '        # multi_accept on;';
+      echo '}';
+      echo '';
+      echo 'http {';
+      echo '        # limit the number of connections per single IP';
+      echo "        limit_conn_zone \$binary_remote_addr zone=conn_limit_per_ip:10m;";
+      echo '';
+      echo '        # limit the number of requests for a given session';
+      echo "        limit_req_zone \$binary_remote_addr zone=req_limit_per_ip:10m rate=140r/s;";
+      echo '';
+      echo '        # if the request body size is more than the buffer size, then the entire (or partial) request body is written into a temporary file';
+      echo '        client_body_buffer_size  128k;';
+      echo '';
+      echo '        # headerbuffer size for the request header from client, its set for testing purpose';
+      echo '        client_header_buffer_size 3m;';
+      echo '';
+      echo '        # maximum number and size of buffers for large headers to read from client request';
+      echo '        large_client_header_buffers 4 256k;';
+      echo '';
+      echo '        # read timeout for the request body from client, its set for testing purpose';
+      echo '        client_body_timeout   3m;';
+      echo '';
+      echo '        # how long to wait for the client to send a request header, its set for testing purpose';
+      echo '        client_header_timeout 3m;';
+      echo '';
+      echo '        ##';
+      echo '        # Basic Settings';
+      echo '        ##';
+      echo '';
+      echo '        sendfile on;';
+      echo '        tcp_nopush on;';
+      echo '        tcp_nodelay on;';
+      echo '        keepalive_timeout 65;';
+      echo '        types_hash_max_size 2048;';
+      echo '        server_tokens off;';
+      echo '';
+      echo '        # server_names_hash_bucket_size 64;';
+      echo '        # server_name_in_redirect off;';
+      echo '';
+      echo '        include /etc/nginx/mime.types;';
+      echo '        default_type application/octet-stream;';
+      echo '';
+      echo '        ##';
+      echo '        # Logging Settings';
+      echo '        ##';
+      echo '';
+      echo '        access_log /dev/null;';
+      echo '        error_log /dev/null;';
+      echo '';
+      echo '        ###';
+      echo '        # Gzip Settings';
+      echo '        ##';
+      echo '        gzip on;';
+      echo '        gzip_disable "msie6";';
+      echo '';
+      echo '        # gzip_vary on;';
+      echo '        # gzip_proxied any;';
+      echo '        # gzip_comp_level 6;';
+      echo '        # gzip_buffers 16 8k;';
+      echo '        # gzip_http_version 1.1;';
+      echo '        # gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;';
+      echo '';
+      echo '        ##';
+      echo '        # Virtual Host Configs';
+      echo '        ##';
+      echo '';
+      echo '        include /etc/nginx/conf.d/*.conf;';
+      echo '        include /etc/nginx/sites-enabled/*;';
+      echo '}'; } > "$rootdir/etc/nginx/nginx.conf"
+
+    # install a script to easily enable and disable nginx virtual hosts
+    if [ ! -d "$rootdir$INSTALL_DIR" ]; then
+        mkdir "$rootdir$INSTALL_DIR"
+    fi
+    git clone "$NGINX_ENSITE_REPO" "$rootdir$INSTALL_DIR/nginx_ensite"
+    cd "$rootdir$INSTALL_DIR/nginx_ensite" || exit 2468748223
+    git checkout "$NGINX_ENSITE_COMMIT" -b "$NGINX_ENSITE_COMMIT"
+
+    chroot "$rootdir" make install
+    chroot "$rootdir" nginx_dissite default
+
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    chroot "$rootdir" iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+    chroot "$rootdir" iptables-save > /etc/firewall.conf
 }
 
 function install_web_server {
