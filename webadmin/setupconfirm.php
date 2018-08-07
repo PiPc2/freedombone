@@ -14,6 +14,7 @@ if (isset($_POST['setupconfirmsubmit'])) {
             if($output_filename == "setup_installing.html") {
                 if(file_exists(".temp_setup.txt")) {
                     exec('mv .temp_setup.txt setup.txt');
+                    exec('cp setup_installing.html index.html');
                 }
             }
         }
