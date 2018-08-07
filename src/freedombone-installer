@@ -44,6 +44,7 @@ pending_removes="$webadmin_install_dir/pending_removes.txt"
 pending_installs="$webadmin_install_dir/pending_installs.txt"
 INSTALL_DIR=/root/build
 webadmin_user='admin'
+webadmin_temp_password_file=/root/.temp_webadmin_password
 
 function wait_for_enough_entropy {
     # Wait indefinitely until enough entropy is available to
@@ -91,9 +92,13 @@ function web_admin_setup_login {
         touch "$webadmin_install_dir/.setupscreenactive"
     fi
 
-    wait_for_enough_entropy
-
-    webadmin_password="$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n '')"
+    if [ ! -f $webadmin_temp_password_file ]; then
+        wait_for_enough_entropy
+        webadmin_password="$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n '')"
+        echo -n "$webadmin_password" > $webadmin_temp_password_file
+    else
+        webadmin_password=$(cat $webadmin_temp_password_file)
+    fi
 
     web_admin_create_user "$webadmin_user" "$webadmin_password"
 
@@ -283,7 +288,8 @@ function before_setup_runs {
         MY_USERNAME="$webadmin_user"
     else
         if [[ "$MY_USERNAME" != "$webadmin_user" ]]; then
-            web_admin_create_user "$webadmin_user" "$webadmin_password"
+            temp_webadmin_password=$(cat $webadmin_temp_password_file)
+            web_admin_create_user "$webadmin_user" "$temp_webadmin_password"
             webadmin_user="$MY_USERNAME"
 
         fi
@@ -345,6 +351,9 @@ function after_setup_has_finished {
     set_webadmin_permissions
     remove_temporary_setup_files
     restore_webadmin_files
+    if [ -f $webadmin_temp_password_file ]; then
+        rm $webadmin_temp_password_file
+    fi
     systemctl restart nginx
     if [ -f /root/.finished_install_command ]; then
         systemctl reboot -i
