@@ -43,6 +43,67 @@ domain_file="$webadmin_install_dir/.temp_domain.txt"
 pending_removes="$webadmin_install_dir/pending_removes.txt"
 pending_installs="$webadmin_install_dir/pending_installs.txt"
 INSTALL_DIR=/root/build
+webadmin_user='admin'
+
+function wait_for_enough_entropy {
+    # Wait indefinitely until enough entropy is available to
+    # generate the webadmin login password
+    while true
+    do
+        ENTROPY=$(cat /proc/sys/kernel/random/entropy_avail)
+        # shellcheck disable=SC2086
+        if [ $ENTROPY -gt 500 ]; then
+            break
+        fi
+        sleep 2
+    done
+}
+
+function web_admin_setup_login {
+    # if an nginx password file has not been created for web admin
+    if [ -f /etc/nginx/.webadminpasswd ]; then
+        return
+    fi
+
+    # this file indicates that the setup screen is active
+    # and gets removed by freedombone-installer
+    if [ ! -f "$webadmin_install_dir/.setupscreenactive" ]; then
+        touch "$webadmin_install_dir/.setupscreenactive"
+    fi
+
+    wait_for_enough_entropy
+
+    webadmin_password="$(openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n '')"
+
+    # create a password for users
+    if [ ! -f /etc/nginx/.webadminpasswd ]; then
+        touch /etc/nginx/.webadminpasswd
+    fi
+
+    # create a password file used by nginx
+    echo -n "$webadmin_password" | htpasswd -i -s -c /etc/nginx/.webadminpasswd "$webadmin_user"
+    if ! grep -q "${webadmin_user}:" /etc/nginx/.webadminpasswd; then
+        echo $"/etc/nginx/.webadminpasswd password not created for $webadmin_user"
+        if [ -f /etc/nginx/.webadminpasswd ]; then
+            rm /etc/nginx/.webadminpasswd
+        fi
+        return
+    fi
+
+    # create a setup page with the initial password inserted
+    # and copy it to the index
+    cp "$webadmin_install_dir"/setup.html "$webadmin_install_dir"/setup.prev
+    cp "$webadmin_install_dir"/setup_confirm_template.html "$webadmin_install_dir"/setup_confirm.html
+    sed -i "s|WEBADMINPASSWORD|${webadmin_password}|g" "$webadmin_install_dir/setup.prev"
+    sed -i "s|WEBADMINPASSWORD|${webadmin_password}|g" "$webadmin_install_dir/setup_confirm.html"
+    cp "$webadmin_install_dir"/setup.prev "$webadmin_install_dir"/index.html
+
+    # if initial setup has not yet happened then create
+    # a password file
+    if ! grep -q 'install_final' "$COMPLETION_FILE"; then
+        echo -n "$webadmin_password" > /root/login.txt
+    fi
+}
 
 function enable_webadmin_login {
     # switch on nginx authentication for freedombone.local
@@ -173,6 +234,10 @@ function web_admin_get_language_subdir {
 }
 
 function before_setup_runs {
+    if [ ! -f /etc/nginx/.webadminpasswd ]; then
+        return
+    fi
+
     if [ -f /root/.running_install_command ]; then
         return
     fi
@@ -192,6 +257,9 @@ function before_setup_runs {
     # get the username and domain from the setup.txt file
     # created by setup.php
     MY_USERNAME=$(cat "$setup_file")
+    if [ ! "$MY_USERNAME" ]; then
+        MY_USERNAME="$webadmin_user"
+    fi
     DEFAULT_DOMAIN_NAME=${local_hostname}
 
     if [ -f "$domain_file" ]; then
@@ -227,7 +295,7 @@ function before_setup_runs {
 
     # ensure that minimal install is set
     if grep -q 'MINIMAL_INSTALL=' "$CONFIGURATION_FILE"; then
-        if ! grep -q "MINIMAL_INSTALL=yes" "$CONFIGURATION_FILE"; then
+        if ! grep -Fxq "MINIMAL_INSTALL=yes" "$CONFIGURATION_FILE"; then
             sed -i 's|MINIMAL_INSTALL=.*|MINIMAL_INSTALL=yes|g' "$CONFIGURATION_FILE"
         fi
     else
@@ -364,6 +432,7 @@ do
     if [ -f /tmp/.upgrading ]; then
         sleep 2
     else
+        web_admin_setup_login
         if [ -d "$webadmin_install_dir" ]; then
             if [ -f "$setup_file" ]; then
                 update_progress_bar
