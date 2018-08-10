@@ -22,36 +22,13 @@ if (isset($_POST['install'])) {
     }
 
     if($continue_install) {
-        if(file_exists("pending_removes.txt")) {
-            // Is this app in the pending_removes list?
-            if(exec('grep '.escapeshellarg("remove_".$app_name).' ./pending_removes.txt')) {
-                if(! exec('grep '.escapeshellarg("remove_".$app_name).'_running ./pending_removes.txt')) {
-                    // Not Removing yet so remove from schedule
-                    exec('sed -i "/'.escapeshellarg("remove_".$app_name).'/d ./pending_removes.txt');
-                }
-                else {
-                    // Removing so don't continue
-                    $continue_install=false;
-                }
-            }
-        }
-    }
-
-    if($continue_install) {
-        if(! file_exists("pending_installs.txt")) {
-            $pending_installs = fopen("pending_installs.txt", "w") or die("Unable to create installs file");
-            fclose($pending_installs);
-        }
-
-        if(! exec('grep '.escapeshellarg("install_".$app_name).' ./pending_installs.txt')) {
-            $pending_installs = fopen("pending_installs.txt", "a") or die("Unable to append to installs file");
-            fwrite($pending_installs, "install_".$app_name.",".$install_domain.",".$freedns_code."\n");
-            fclose($pending_installs);
-            $output_filename = "app_installing.html";
-        }
-        else {
-            // The app is already scheduled for installation
-            $output_filename = "app_scheduled.html";
+        // create the confirm screen populated with details for the app
+        exec('cp add_app_confirm_template.html add_app_confirm.html');
+        if(file_exists("add_app_confirm.html")) {
+            exec('sed -i "s|APPNAME|'.$app_name.'|g" add_app_confirm.html');
+            exec('sed -i "s|APPDOMAIN|'.$install_domain.'|g" add_app_confirm.html');
+            exec('sed -i "s|APPCODE|'.$freedns_code.'|g" add_app_confirm.html');
+            $output_filename = "add_app_confirm.html";
         }
     }
 }
