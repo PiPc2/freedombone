@@ -57,6 +57,17 @@ webadmin_user='admin'
 webadmin_temp_password_file=/root/.temp_webadmin_password
 installer_script=/root/.fbone_installer.sh
 
+# Used to initiate automatic backups
+webadmin_prev_hour=99
+
+# temporary backup and restore scripts
+backup_script=/root/.webadmin_backup.sh
+restore_script=/root/.webadmin_restore.sh
+
+# Files used to initiate backup or restore manually from the web UI
+backup_file="$webadmin_install_dir/.start_backup"
+restore_file="$webadmin_install_dir/.start_restore"
+
 function web_admin_create_add_apps {
     appslist_add_filename="$webadmin_install_dir/apps_add.html"
 
@@ -477,7 +488,7 @@ function run_setup_command {
       echo "echo \"Beginning install $(date)\" > $webadmin_install_dir/log.txt";
       echo "chown www-data:www-data $webadmin_install_dir/log.txt";
       echo '';
-      echo "/usr/local/bin/freedombone -c \"$CONFIGURATION_FILE\" > $webadmin_install_dir/log.txt;";
+      echo "/usr/local/bin/freedombone -c \"$CONFIGURATION_FILE\" >> $webadmin_install_dir/log.txt;";
 
       echo "if ! grep -q 'install_final' \"$COMPLETION_FILE\"; then";
       echo "    chown www-data:www-data $webadmin_install_dir/log.txt";
@@ -767,6 +778,106 @@ function update_progress_bar {
     sed -i "s|<div class=\"w3-container.*|<div class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:$progress_percent%\">$progress_percent%</div>|g" "$webadmin_install_dir/index.html"
 }
 
+function initiate_automatic_backup {
+    backup_hour=3
+    if grep -q "BACKUP_HOUR=" "$CONFIGURATION_FILE"; then
+        backup_hour=$(grep "BACKUP_HOUR=" "$CONFIGURATION_FILE" | awk -F '=' '{print $2}')
+    else
+        echo "BACKUP_HOUR=$backup_hour" >> "$CONFIGURATION_FILE"
+    fi
+
+    curr_hour=$(date +%H)
+    if [[ "$curr_hour" == "$backup_hour" ]]; then
+        if [[ "$webadmin_prev_hour" != "$backup_hour" ]]; then
+            touch "$backup_file"
+        fi
+    fi
+    webadmin_prev_hour=$curr_hour
+}
+
+function backup_and_restore {
+    initiate_automatic_backup
+
+    if [ -f "$restore_file" ]; then
+        rm "$restore_file"
+        { echo '#!/bin/bash';
+          echo '';
+          echo '# ensure that there are no other running backups';
+          echo "backup_process=\$(ps a | grep 'webadmin_backup.sh' | grep -v 'grep')";
+          echo "if [ \"\$backup_process\" ]; then";
+          echo "    if [[ \"\$backup_process\" != *'grep'* ]]; then";
+          echo "        backup_pid=\$(echo \"\$backup_process\" | awk -F ' ' '{print \$1}')";
+          echo "        if [ \"\$backup_pid\" ]; then";
+          echo "            exit 0";
+          echo '        fi';
+          echo '    fi';
+          echo 'fi';
+          echo '';
+          echo '# ensure that there are no other running restores';
+          echo "restore_process=\$(ps a | grep 'webadmin_restore.sh' | grep -v 'grep')";
+          echo "if [ \"\$restore_process\" ]; then";
+          echo "    if [[ \"\$restore_process\" != *'grep'* ]]; then";
+          echo "        restore_pid=\$(echo \"\$restore_process\" | awk -F ' ' '{print \$1}')";
+          echo "        if [ \"\$restore_pid\" ]; then";
+          echo "            exit 0";
+          echo '        fi';
+          echo '    fi';
+          echo 'fi';
+          echo '';
+          echo "echo \"Beginning webadmin restore $(date)\" > $webadmin_install_dir/restore.txt";
+          echo "chown www-data:www-data $webadmin_install_dir/restore.txt";
+          echo '';
+          echo "/usr/local/bin/freedombone-restore-local simple >> $webadmin_install_dir/restore.txt;";
+
+          echo ''
+          echo "exit 0"; } > $restore_script
+        chmod +x $restore_script
+
+        # run in a separate process
+        ./$restore_script &
+    else
+        if [ -f "$backup_file" ]; then
+            rm "$backup_file"
+
+            { echo '#!/bin/bash';
+              echo '';
+              echo '# ensure that there are no other running backups';
+              echo "backup_process=\$(ps a | grep 'webadmin_backup.sh' | grep -v 'grep')";
+              echo "if [ \"\$backup_process\" ]; then";
+              echo "    if [[ \"\$backup_process\" != *'grep'* ]]; then";
+              echo "        backup_pid=\$(echo \"\$backup_process\" | awk -F ' ' '{print \$1}')";
+              echo "        if [ \"\$backup_pid\" ]; then";
+              echo "            exit 0";
+              echo '        fi';
+              echo '    fi';
+              echo 'fi';
+              echo '';
+              echo '# ensure that there are no other running restores';
+              echo "restore_process=\$(ps a | grep 'webadmin_restore.sh' | grep -v 'grep')";
+              echo "if [ \"\$restore_process\" ]; then";
+              echo "    if [[ \"\$restore_process\" != *'grep'* ]]; then";
+              echo "        restore_pid=\$(echo \"\$restore_process\" | awk -F ' ' '{print \$1}')";
+              echo "        if [ \"\$restore_pid\" ]; then";
+              echo "            exit 0";
+              echo '        fi';
+              echo '    fi';
+              echo 'fi';
+              echo '';
+              echo "echo \"Beginning webadmin backup $(date)\" > $webadmin_install_dir/backup.txt";
+              echo "chown www-data:www-data $webadmin_install_dir/backup.txt";
+              echo '';
+              echo "/usr/local/bin/freedombone-backup-local simple >> $webadmin_install_dir/backup.txt;";
+
+              echo ''
+              echo "exit 0"; } > $backup_script
+            chmod +x $backup_script
+
+            # run in a separate process
+            ./$backup_script &
+        fi
+    fi
+}
+
 # If the freedombone command is already running then kill its process
 #shellcheck disable=SC2009
 install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | grep -v 'grep')
@@ -823,6 +934,7 @@ do
                 sleep 1
             else
                 if [ $install_state -eq $INSTALL_STATE_COMMAND_SUCCESS ]; then
+                    backup_and_restore
                     install_apps_from_webadmin
                     sleep 1
                     remove_apps_from_webadmin
