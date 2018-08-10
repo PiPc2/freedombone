@@ -31,18 +31,40 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-format
 export TEXTDOMAINDIR="/usr/share/locale"
 
+source "/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-backup"
+
+format_progress_file=/root/.format_progress.txt
+
 if [ ! "$1" ]; then
-   echo $'Specify a drive, such as sdb, sdc, etc'
-   exit 1
+    echo $'Specify a drive, such as sdb, sdc, etc'
+    echo $'Or "simple" to try to autodetect the backup drive'
+    exit 1
 fi
 
-USB_DRIVE_SHORT=${1}
-if [[ "$1" == "/dev/"* ]]; then
-    USB_DRIVE=$1
+echo '1' > $format_progress_file
+
+simple_format=
+drive_device="$1"
+if [[ "$drive_device" == 'simple' ]]; then
+    drive_device=$(detect_connected_drives)
+    if [[ "$drive_device" != 'sd'* ]]; then
+        echo $'Drive not detected'
+        exit 2
+    fi
+    simple_format=1
+fi
+
+echo '2' > $format_progress_file
+
+USB_DRIVE_SHORT=${drive_device}
+if [[ "$drive_device" == "/dev/"* ]]; then
+    USB_DRIVE=${drive_device}
     USB_DRIVE_SHORT=$(echo "$USB_DRIVE" | awk -F '/' '{print $3}' | sed 's|1||g' | sed 's|2||g' | sed 's|3||g')
 else
-    USB_DRIVE=/dev/${1}1
+    USB_DRIVE=/dev/${drive_device}1
 fi
+
+echo '3' > $format_progress_file
 
 LABEL="${PROJECT_NAME}"
 
@@ -62,24 +84,31 @@ a
 w
 " | fdisk "/dev/${USB_DRIVE_SHORT}";mkfs.ext4 -L "$LABEL" "/dev/${USB_DRIVE_SHORT}1"
 
-echo $"Formatting $USB_DRIVE as LUKS"
-if ! cryptsetup -y -v luksFormat "${USB_DRIVE}"; then
-    echo $"Failed to format $USB_DRIVE as LUKS"
-    exit 36823
-fi
-if ! cryptsetup open --type luks "${USB_DRIVE}" encrypted_usb; then
-    echo $"Failed to open LUKS formatted drive $USB_DRIVE"
-    exit 37232
-fi
-if ! mkfs.ext4 /dev/mapper/encrypted_usb -L "$LABEL"; then
+echo '4' > $format_progress_file
+
+if [ ! $simple_format ]; then
+    echo $"Formatting $USB_DRIVE as LUKS"
+    if ! cryptsetup -y -v luksFormat "${USB_DRIVE}"; then
+        echo $"Failed to format $USB_DRIVE as LUKS"
+        exit 36823
+    fi
+    if ! cryptsetup open --type luks "${USB_DRIVE}" encrypted_usb; then
+        echo $"Failed to open LUKS formatted drive $USB_DRIVE"
+        exit 37232
+    fi
+    if ! mkfs.ext4 /dev/mapper/encrypted_usb -L "$LABEL"; then
+        cryptsetup close encrypted_usb
+        echo $'Format of drive $USB_DRIVE failed'
+        exit 73218
+    fi
+    sleep 2
     cryptsetup close encrypted_usb
-    echo $'Format of drive $USB_DRIVE failed'
-    exit 73218
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
 fi
-sleep 2
-cryptsetup close encrypted_usb
-if [ -f /dev/mapper/encrypted_usb ]; then
-    rm -rf /dev/mapper/encrypted_usb
-fi
+
+echo '5' > $format_progress_file
+
 echo $'Format completed'
 exit 0

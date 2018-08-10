@@ -63,14 +63,17 @@ webadmin_prev_hour=99
 # temporary backup and restore scripts
 backup_script=/root/.webadmin_backup.sh
 restore_script=/root/.webadmin_restore.sh
+format_script=/root/.webadmin_format.sh
 
 # Files used to initiate backup or restore manually from the web UI
 backup_file="$webadmin_install_dir/.start_backup"
 restore_file="$webadmin_install_dir/.start_restore"
+format_file="$webadmin_install_dir/.start_format"
 
 # These files contain the percentage progress
 backup_progress_file=/root/.backup_progress.txt
 restore_progress_file=/root/.backup_progress.txt
+format_progress_file=/root/.format_progress.txt
 
 function web_admin_create_add_apps {
     appslist_add_filename="$webadmin_install_dir/apps_add.html"
@@ -858,6 +861,35 @@ function update_restore_progress_bar {
     sed -i "s|<div class=\"w3-container.*|<div class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:$progress_percent%\">$progress_percent%</div>|g" "$progress_page"
 }
 
+function update_format_progress_bar {
+    if [ ! -f "$format_progress_file" ]; then
+        return
+    fi
+    format_process_exists=
+    format_process=$(pgrep 'webadmin_format.sh' | grep -v 'grep')
+    if [ "$format_process" ]; then
+        if [[ "$format_process" != *'grep'* ]]; then
+            format_pid=$(echo "$format_process" | awk -F ' ' '{print $1}')
+            if [ "$format_pid" ]; then
+                format_process_exists=1
+            fi
+        fi
+    fi
+
+    if [ ! $format_process_exists ]; then
+        return
+    fi
+
+    max_counter=5
+    progress_page="$webadmin_install_dir/format_progress.html"
+    progress_counter=$(cat $format_progress_file)
+    progress_percent=$((progress_counter * max_counter / 100))
+    if [ $progress_percent -gt 100 ]; then
+        progress_percent=100
+    fi
+    sed -i "s|<div class=\"w3-container.*|<div class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:$progress_percent%\">$progress_percent%</div>|g" "$progress_page"
+}
+
 function backup_and_restore {
     if [ -f "$backup_progress_file" ]; then
         cp "$backup_progress_file" "$webadmin_install_dir/backup_progress.txt"
@@ -870,12 +902,24 @@ function backup_and_restore {
 
     update_backup_progress_bar
     update_restore_progress_bar
+    update_format_progress_bar
 
     initiate_automatic_backup
 
     if [ -f "$restore_file" ]; then
         rm "$restore_file"
         { echo '#!/bin/bash';
+          echo '';
+          echo '# ensure that there is no format in progress';
+          echo "format_process=\$(ps a | grep 'webadmin_format.sh' | grep -v 'grep')";
+          echo "if [ \"\$format_process\" ]; then";
+          echo "    if [[ \"\$format_process\" != *'grep'* ]]; then";
+          echo "        format_pid=\$(echo \"\$format_process\" | awk -F ' ' '{print \$1}')";
+          echo "        if [ \"\$format_pid\" ]; then";
+          echo "            exit 0";
+          echo '        fi';
+          echo '    fi';
+          echo 'fi';
           echo '';
           echo '# ensure that there are no other running backups';
           echo "backup_process=\$(ps a | grep 'webadmin_backup.sh' | grep -v 'grep')";
@@ -927,6 +971,17 @@ function backup_and_restore {
 
             { echo '#!/bin/bash';
               echo '';
+              echo '# ensure that there is no format in progress';
+              echo "format_process=\$(ps a | grep 'webadmin_format.sh' | grep -v 'grep')";
+              echo "if [ \"\$format_process\" ]; then";
+              echo "    if [[ \"\$format_process\" != *'grep'* ]]; then";
+              echo "        format_pid=\$(echo \"\$format_process\" | awk -F ' ' '{print \$1}')";
+              echo "        if [ \"\$format_pid\" ]; then";
+              echo "            exit 0";
+              echo '        fi';
+              echo '    fi';
+              echo 'fi';
+              echo '';
               echo '# ensure that there are no other running backups';
               echo "backup_process=\$(ps a | grep 'webadmin_backup.sh' | grep -v 'grep')";
               echo "if [ \"\$backup_process\" ]; then";
@@ -971,6 +1026,60 @@ function backup_and_restore {
 
             # run in a separate process
             ./$backup_script &
+        else
+            if [ -f "$format_file" ]; then
+                rm "$format_file"
+
+                { echo '#!/bin/bash';
+                  echo '';
+                  echo '# ensure that there is no format in progress';
+                  echo "format_process=\$(ps a | grep 'webadmin_format.sh' | grep -v 'grep')";
+                  echo "if [ \"\$format_process\" ]; then";
+                  echo "    if [[ \"\$format_process\" != *'grep'* ]]; then";
+                  echo "        format_pid=\$(echo \"\$format_process\" | awk -F ' ' '{print \$1}')";
+                  echo "        if [ \"\$format_pid\" ]; then";
+                  echo "            exit 0";
+                  echo '        fi';
+                  echo '    fi';
+                  echo 'fi';
+                  echo '';
+                  echo '# ensure that there are no other running backups';
+                  echo "backup_process=\$(ps a | grep 'webadmin_backup.sh' | grep -v 'grep')";
+                  echo "if [ \"\$backup_process\" ]; then";
+                  echo "    if [[ \"\$backup_process\" != *'grep'* ]]; then";
+                  echo "        backup_pid=\$(echo \"\$backup_process\" | awk -F ' ' '{print \$1}')";
+                  echo "        if [ \"\$backup_pid\" ]; then";
+                  echo "            exit 0";
+                  echo '        fi';
+                  echo '    fi';
+                  echo 'fi';
+                  echo '';
+                  echo '# ensure that there are no other running restores';
+                  echo "restore_process=\$(ps a | grep 'webadmin_restore.sh' | grep -v 'grep')";
+                  echo "if [ \"\$restore_process\" ]; then";
+                  echo "    if [[ \"\$restore_process\" != *'grep'* ]]; then";
+                  echo "        restore_pid=\$(echo \"\$restore_process\" | awk -F ' ' '{print \$1}')";
+                  echo "        if [ \"\$restore_pid\" ]; then";
+                  echo "            exit 0";
+                  echo '        fi';
+                  echo '    fi';
+                  echo 'fi';
+                  echo '';
+                  echo "if /usr/local/bin/${PROJECT_NAME}-format simple; then";
+                  echo "    cp $webadmin_install_dir/format_complete.html $webadmin_install_dir/format_progress.html";
+                  echo 'else';
+                  echo "    cp $webadmin_install_dir/backup.html $webadmin_install_dir/format_progress.html";
+                  echo 'fi';
+                  echo "chown www-data:www-data $webadmin_install_dir/format_progress.html";
+                  echo '';
+                  echo "rm $format_progress_file";
+                  echo '';
+                  echo "exit 0"; } > $format_script
+                chmod +x $format_script
+
+                # run in a separate process
+                ./$format_script &
+            fi
         fi
     fi
 }
