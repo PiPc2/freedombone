@@ -1,5 +1,12 @@
 <?php
 
+// This receives the yes/no confirmation when installing
+// an app and then begins the install
+//
+// Apps are installed by adding them to the pending_installs.txt
+// file and the webadmin daemon (freedombone-installer) then
+// does the actual installation in the background
+
 $output_filename = "apps_add.html";
 
 if (isset($_POST['installconfirmsubmit'])) {

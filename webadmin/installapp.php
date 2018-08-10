@@ -1,5 +1,10 @@
 <?php
 
+// This is used to begin installing an app.
+//
+// It creates the confirm screen, populates the variables
+// in it and then opens it.
+
 $output_filename = "apps_add.html";
 
 if (isset($_POST['install'])) {

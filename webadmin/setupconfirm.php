@@ -1,5 +1,9 @@
 <?php
 
+// This receives the yes/no confirmation on initial setup
+// of the system and creates the setup.txt file which is
+// then detected by the webadmin daemon (freedombone-installer)
+
 $output_filename = "index.html";
 
 if (isset($_POST['setupconfirmsubmit'])) {

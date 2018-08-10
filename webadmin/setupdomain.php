@@ -1,5 +1,9 @@
 <?php
 
+// For clearnet setup this receives the preferred domain name
+// and then begins the install by creating the setup.txt file
+// which is detected by the webadmin daemon (freedombone-installer)
+
 $output_filename = "index.html";
 
 if (isset($_POST['setupdomain'])) {

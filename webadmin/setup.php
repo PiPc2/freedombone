@@ -1,5 +1,10 @@
 <?php
 
+// From the initial setup screen when the box is first booted
+// this stores the preferred username within a temporary
+// version of setup.txt, which will later be used by the webadmin
+// daemon (freedombone-installer)
+
 $output_filename = "index.html";
 
 if (isset($_POST['setup'])) {
