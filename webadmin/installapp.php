@@ -13,12 +13,12 @@ if (isset($_POST['install'])) {
     $continue_install=true;
 
     if(! $onion_only) {
-        $install_domain = $_POST['install_domain'];
+        $install_domain = htmlspecialchars($_POST['install_domain']);
         if (!strpos($install_domain, '.')) {
             // No domain was provided
             $continue_install=false;
         }
-        $freedns_code = $_POST['freedns_code'];
+        $freedns_code = htmlspecialchars($_POST['freedns_code']);
     }
 
     if($continue_install) {
