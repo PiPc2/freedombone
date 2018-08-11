@@ -11,9 +11,9 @@ if (isset($_POST['submitnewuser'])) {
         $output_filename = "new_user_invalid.html";
     }
     else {
-        $domain_file = fopen(".new_user.txt", "w") or die("Unable to write to new_user file");
-        fwrite($domain_file, $username);
-        fclose($domain_file);
+        $new_user_file = fopen(".new_user.txt", "w") or die("Unable to write to new_user file");
+        fwrite($new_user_file, $username);
+        fclose($new_user_file);
 
         $output_filename = "new_user_confirm.html";
     }
