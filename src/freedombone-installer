@@ -51,6 +51,8 @@ setup_file="$webadmin_install_dir/setup.txt"
 domain_file="$webadmin_install_dir/.temp_domain.txt"
 pending_removes="$webadmin_install_dir/pending_removes.txt"
 pending_installs="$webadmin_install_dir/pending_installs.txt"
+new_user_file="$webadmin_install_dir/.new_user.txt"
+remove_user_file="$webadmin_install_dir/.remove_user.txt"
 install_state_file="/root/.install_state.txt"
 INSTALL_DIR=/root/build
 webadmin_user='admin'
@@ -64,6 +66,8 @@ webadmin_prev_hour=99
 backup_script=/root/.webadmin_backup.sh
 restore_script=/root/.webadmin_restore.sh
 format_script=/root/.webadmin_format.sh
+new_user_script=/root/.webadmin_new_user.sh
+remove_user_script=/root/.webadmin_remove_user.sh
 
 # Files used to initiate backup or restore manually from the web UI
 backup_file="$webadmin_install_dir/.start_backup"
@@ -496,6 +500,8 @@ function check_for_existing_processes {
       echo 'exit_if_process_is_running webadmin_format.sh';
       echo 'exit_if_process_is_running webadmin_backup.sh';
       echo 'exit_if_process_is_running webadmin_restore.sh';
+      echo 'exit_if_process_is_running webadmin_new_user.sh';
+      echo 'exit_if_process_is_running webadmin_remove_user.sh';
       echo ''; } > "$script_name"
 }
 
@@ -989,6 +995,69 @@ function backup_and_restore {
     fi
 }
 
+function is_valid_user {
+    USRNAME="$1"
+    if [[ "$USRNAME" != "turtl" && "$USRNAME" != "znc" && "$USRNAME" != "pihole" && "$USRNAME" != "fbone" && "$USRNAME" != "go" && "$USRNAME" != "gogs" && "$USRNAME" != "git" && "$USRNAME" != "sync" && "$USRNAME" != "tahoelafs" ]]; then
+        echo "1"
+    else
+        echo "0"
+    fi
+}
+
+function valid_username_characters {
+  local re='^[[:lower:]_][[:lower:][:digit:]_-]{2,15}$'
+  (( ${#1} > 16 )) && return 1
+  [[ $1 =~ $re ]] # return value of this comparison is used for the function
+}
+
+function add_remove_users {
+    if [ -f "$new_user_file" ]; then
+        new_username=$(cat "$new_user_file")
+
+        if [ ${#new_username} -ge 3 ]; then
+            if [ ${#new_username} -le 32 ]; then
+                if valid_username_characters "$new_username"; then
+                    if [ ! -d "/home/$new_username" ]; then
+                        if [[ $(is_valid_user "$new_username") == "1" ]]; then
+                            check_for_existing_processes $new_user_script
+                            { echo "/usr/local/bin/${PROJECT_NAME}-adduser $new_username > $webadmin_install_dir/log.txt";
+                              echo "exit 0"; } >> $new_user_script
+                            chmod +x $new_user_script
+
+                            # run in a separate process
+                            ./$new_user_script &
+                        fi
+                    fi
+                fi
+            fi
+        fi
+
+        rm "$new_user_file"
+    fi
+
+    if [ -f "$remove_user_file" ]; then
+        remove_username=$(cat "$remove_user_file")
+
+        if [ ${#remove_username} -ge 3 ]; then
+            if [ ${#remove_username} -le 32 ]; then
+                if valid_username_characters "$remove_username"; then
+                    if [ -d "/home/$remove_username" ]; then
+                        check_for_existing_processes $remove_user_script
+                        { echo "/usr/local/bin/${PROJECT_NAME}-rmuser $remove_username > $webadmin_install_dir/log.txt";
+                          echo "exit 0"; } >> $remove_user_script
+                        chmod +x $remove_user_script
+
+                        # run in a separate process
+                        ./$remove_user_script &
+                    fi
+                fi
+            fi
+        fi
+
+        rm "$remove_user_file"
+    fi
+}
+
 # If the freedombone command is already running then kill its process
 #shellcheck disable=SC2009
 install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | grep -v 'grep')
@@ -1046,6 +1115,7 @@ do
             else
                 if [ $install_state -eq $INSTALL_STATE_COMMAND_SUCCESS ]; then
                     backup_and_restore
+                    add_remove_users
                     install_apps_from_webadmin
                     sleep 1
                     remove_apps_from_webadmin
