@@ -31,6 +31,8 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-keydrive
 export TEXTDOMAINDIR="/usr/share/locale"
 
+source "/usr/share/${PROJECT_NAME}/utils/${PROJECT_NAME}-utils-backup"
+
 USB_DRIVE=/dev/sdb1
 USB_MOUNT=/mnt/usb
 KEY_FRAGMENTS=3
@@ -38,6 +40,7 @@ FRAGMENTS_DIR=$USB_MOUNT/.gnupg_fragments
 MY_USERNAME=$USER
 MASTER_DRIVE="no"
 FORMAT="no"
+simple_backup=
 
 function show_help {
     echo ''
@@ -60,10 +63,18 @@ do
             ;;
         -d|--dev)
             shift
-            if [[ "${1}" != '/dev/'* ]]; then
-                USB_DRIVE=/dev/${1}1
+            backup_device="$1"
+            if [[ "$backup_device" == 'simple' || "$backup_device" == 'auto'* ]]; then
+                backup_device=$(detect_connected_drives)
+                if [ ! "$backup_device" ]; then
+                    exit 358635
+                fi
+                simple_backup=1
+            fi
+            if [[ "$backup_device" != '/dev/'* ]]; then
+                USB_DRIVE=/dev/${backup_device}1
             else
-                USB_DRIVE=${1}
+                USB_DRIVE=${backup_device}
             fi
             ;;
         -m|--master)
@@ -116,8 +127,10 @@ if [[ $FORMAT == "yes" ]]; then
     fi
 fi
 
-if cryptsetup open --type luks "$USB_DRIVE" encrypted_usb; then
-    USB_DRIVE=/dev/mapper/encrypted_usb
+if [ ! $simple_backup ]; then
+    if cryptsetup open --type luks "$USB_DRIVE" encrypted_usb; then
+        USB_DRIVE=/dev/mapper/encrypted_usb
+    fi
 fi
 if ! mount $USB_DRIVE $USB_MOUNT; then
     echo $"There was a problem mounting the USB drive to $USB_MOUNT"
