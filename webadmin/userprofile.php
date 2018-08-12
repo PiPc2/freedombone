@@ -25,12 +25,13 @@ if (isset($_POST['submitchangepassword'])) {
 
     // Don't rely on php PRNG
     $newpassword = exec("openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n ''");
+    if ((preg_match('/[^A-Za-z0-9]/', $newpassword)) && (strlen($newpassword)>9)) {
+        exec('cp password_confirm_template.html password_confirm.html');
+        exec('sed -i "s|USERNAME|'.$username.'|g" password_confirm.html');
+        exec('sed -i "s|NEWPASSWORD|'.$newpassword.'|g" password_confirm.html');
 
-    exec('cp password_confirm_template.html password_confirm.html');
-    exec('sed -i "s|USERNAME|'.$username.'|g" password_confirm.html');
-    exec('sed -i "s|NEWPASSWORD|'.$newpassword.'|g" password_confirm.html');
-
-    $output_filename = "password_confirm.html";
+        $output_filename = "password_confirm.html";
+    }
 }
 
 $htmlfile = fopen("$output_filename", "r") or die("Unable to open $output_filename");
