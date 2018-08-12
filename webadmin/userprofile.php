@@ -22,7 +22,15 @@ if (isset($_POST['submitremoveuser'])) {
 
 if (isset($_POST['submitchangepassword'])) {
     $username = htmlspecialchars($_POST['myuser']);
-    // TODO
+
+    // Don't rely on php PRNG
+    $newpassword = exec("openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n ''");
+
+    exec('cp password_confirm_template.html password_confirm.html');
+    exec('sed -i "s|USERNAME|'.$username.'|g" password_confirm.html');
+    exec('sed -i "s|NEWPASSWORD|'.$newpassword.'|g" password_confirm.html');
+
+    $output_filename = "password_confirm.html";
 }
 
 $htmlfile = fopen("$output_filename", "r") or die("Unable to open $output_filename");

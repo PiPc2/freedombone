@@ -53,6 +53,7 @@ pending_removes="$webadmin_install_dir/pending_removes.txt"
 pending_installs="$webadmin_install_dir/pending_installs.txt"
 new_user_file="$webadmin_install_dir/.new_user.txt"
 remove_user_file="$webadmin_install_dir/.remove_user.txt"
+change_password_file="$webadmin_install_dir/changepassword.dat"
 install_state_file="/root/.install_state.txt"
 INSTALL_DIR=/root/build
 webadmin_user='admin'
@@ -70,6 +71,7 @@ restore_keys_script=/root/.webadmin_restore_keys.sh
 format_script=/root/.webadmin_format.sh
 new_user_script=/root/.webadmin_new_user.sh
 remove_user_script=/root/.webadmin_remove_user.sh
+change_password_script=/root/.webadmin_change_password.sh
 
 # Files used to initiate backup or restore manually from the web UI
 backup_file="$webadmin_install_dir/.start_backup"
@@ -1123,6 +1125,41 @@ function add_remove_users {
     fi
 }
 
+function webadmin_change_password {
+    if [ ! -f "$change_password_file" ]; then
+        return
+    fi
+
+    temp_password_file=$(cat "$change_password_file")
+    if [ -f "$temp_password_file" ]; then
+        curr_username=$(awk -F ',' '{print $1}' < "$temp_password_file")
+        if [ ${#curr_username} -ge 3 ]; then
+            if [[ $(is_valid_user "$curr_username") == "1" ]]; then
+                if [ -d "/home/$curr_username" ]; then
+                    new_password=$(awk -F ',' '{print $2}' < "$temp_password_file")
+
+                    admin_username=$(grep 'MY_USERNAME=' "$CONFIGURATION_FILE" | head -n 1 | awk -F '=' '{print $2}')
+
+                    # change the webadmin login
+                    if [[ "$curr_username" == "$admin_username" ]]; then
+                        if [ -f /etc/nginx/.webadminpasswd ]; then
+                            sed -i "/${curr_username}:/d" /etc/nginx/.webadminpasswd
+                        fi
+                        echo -n "$new_password" | htpasswd -i -s -c /etc/nginx/.webadminpasswd "$curr_username"
+                    fi
+
+                    # change the login for the user
+                    echo "${curr_username}:${new_password}"|chpasswd
+
+                    # TODO change passwords for each app
+                fi
+            fi
+        fi
+        rm "$temp_password_file"
+    fi
+    rm "$change_password_file"
+}
+
 # If the freedombone command is already running then kill its process
 #shellcheck disable=SC2009
 install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | grep -v 'grep')
@@ -1179,6 +1216,7 @@ do
                 sleep 1
             else
                 if [ $install_state -eq $INSTALL_STATE_COMMAND_SUCCESS ]; then
+                    webadmin_change_password
                     backup_and_restore
                     backup_and_restore_keys
                     add_remove_users
