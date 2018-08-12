@@ -11,10 +11,15 @@ if (isset($_POST['submitnewuser'])) {
         $output_filename = "new_user_invalid.html";
     }
     else {
+        // Don't rely on php PRNG
+        $newpassword = exec("openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n ''");
+
         $new_user_file = fopen(".new_user.txt", "w") or die("Unable to write to new_user file");
-        fwrite($new_user_file, $username);
+        fwrite($new_user_file, $username.",".$newpassword);
         fclose($new_user_file);
 
+        exec('cp new_user_confirm_template.html new_user_confirm.html');
+        exec('sed -i "s|NEWPASSWORD|'.$newpassword.'|g" new_user_confirm.html');
         $output_filename = "new_user_confirm.html";
     }
 }
