@@ -50,6 +50,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+dynamic_dns_file="$webadmin_install_dir/.dynamicdns.txt"
 reset_file="$webadmin_install_dir/.reset.txt"
 shutdown_file="$webadmin_install_dir/.shutdown.txt"
 setup_file="$webadmin_install_dir/setup.txt"
@@ -1218,6 +1219,29 @@ function regenerate_blocklist {
     fi
 }
 
+function regenerate_dynamic_dns {
+    ddns="$1"
+    ddns_username="$2"
+    ddns_password="$3"
+
+    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+    if [ -f "$webadmin_install_dir/dynamicdns_template.html" ]; then
+        cp "$webadmin_install_dir/dynamicdns_template.html" "$webadmin_install_dir/dynamicdns.html"
+        if [[ "$ddns" == 'default@freedns.afraid.org' ]]; then
+            ddns='freedns'
+        fi
+        if [[ "$ddns" == 'dyn.com' ]]; then
+            ddns='dyn'
+        fi
+        sed -i "s|\"$ddns\"|\"$ddns\" selected|g" "$webadmin_install_dir/dynamicdns.html"
+        sed -i "s|DDNS_USERNAME|$ddns_username|g" "$webadmin_install_dir/dynamicdns.html"
+        # Note: For security don't populate the password
+        #sed -i "s|DDNS_PASSWORD|$ddns_password|g" "$webadmin_install_dir/dynamicdns.html"
+        chown www-data:www-data "$webadmin_install_dir/dynamicdns.html"
+    fi
+}
+
 function update_blocklist {
     if [ -f "$blocklist_file" ]; then
 
@@ -1287,6 +1311,36 @@ function update_blocklist {
     fi
 }
 
+function update_dynamic_dns {
+    if [ -f "$dynamic_dns_file" ]; then
+        ddns=$(awk -F ',' '{print $1}' < "$dynamic_dns_file")
+        ddns_username=$(awk -F ',' '{print $2}' < "$dynamic_dns_file")
+        ddns_password=$(awk -F ',' '{print $3}' < "$dynamic_dns_file")
+
+        ddns_is_valid=
+        if [ "$ddns_username" ]; then
+            if [ "$ddns_password" ]; then
+                if [ ${#ddns_username} -gt 2 ]; then
+                    if [ ${#ddns_username} -lt 512 ]; then
+                        if [ ${#ddns_password} -gt 2 ]; then
+                            if [ ${#ddns_password} -lt 512 ]; then
+                                ddns_is_valid=1
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+        fi
+
+        if [ $ddns_is_valid ]; then
+            /usr/local/bin/${PROJECT_NAME}-ddns "$ddns" "$ddns_username" "$ddns_password"
+            regenerate_dynamic_dns "$ddns" "$ddns_username" "$ddns_password"
+        fi
+
+        rm "$dynamic_dns_file"
+    fi
+}
+
 # If the freedombone command is already running then kill its process
 #shellcheck disable=SC2009
 install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | grep -v 'grep')
@@ -1346,6 +1400,7 @@ do
                     reset_shutdown
                     webadmin_change_password
                     update_blocklist
+                    update_dynamic_dns
                     backup_and_restore
                     backup_and_restore_keys
                     add_remove_users
