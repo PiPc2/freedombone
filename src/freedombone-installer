@@ -44,6 +44,9 @@ install_state=$INSTALL_STATE_FIRST_BOOT
 CONFIGURATION_FILE="/root/${PROJECT_NAME}.cfg"
 COMPLETION_FILE="/root/${PROJECT_NAME}-completed.txt"
 
+# contains the blocked users and domains
+FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
+
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
@@ -57,6 +60,7 @@ new_user_file="$webadmin_install_dir/.new_user.txt"
 remove_user_file="$webadmin_install_dir/.remove_user.txt"
 change_password_file="$webadmin_install_dir/changepassword.dat"
 install_state_file="/root/.install_state.txt"
+blocklist_file="$webadmin_install_dir/.blocklist.txt"
 INSTALL_DIR=/root/build
 webadmin_user='admin'
 webadmin_temp_password_file=/root/.temp_webadmin_password
@@ -73,7 +77,6 @@ restore_keys_script=/root/.webadmin_restore_keys.sh
 format_script=/root/.webadmin_format.sh
 new_user_script=/root/.webadmin_new_user.sh
 remove_user_script=/root/.webadmin_remove_user.sh
-change_password_script=/root/.webadmin_change_password.sh
 
 # Files used to initiate backup or restore manually from the web UI
 backup_file="$webadmin_install_dir/.start_backup"
@@ -731,6 +734,8 @@ function after_setup_has_finished {
         rm $installer_script
     fi
 
+    regenerate_blocklist
+
     systemctl reboot -i
 }
 
@@ -1198,6 +1203,85 @@ function reset_shutdown {
     fi
 }
 
+function regenerate_blocklist {
+    if [ ! -f "$FIREWALL_DOMAINS" ]; then
+        touch "$FIREWALL_DOMAINS"
+    fi
+    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+    if [ -f "$webadmin_install_dir/blocking_template.html" ]; then
+        cp "$webadmin_install_dir/blocking_template.html" "$webadmin_install_dir/blocking.html"
+        blockedlist=$(cat "$FIREWALL_DOMAINS")
+        sed -i "s|BLOCKEDLIST|$blockedlist|g" "$webadmin_install_dir/blocking.html"
+        chown www-data:www-data "$webadmin_install_dir/blocking.html"
+    fi
+}
+
+function update_blocklist {
+    if [ -f "$blocklist_file" ]; then
+
+        if [ -f "${FIREWALL_DOMAINS}.new" ]; then
+            rm "${FIREWALL_DOMAINS}.new"
+        fi
+        touch "${FIREWALL_DOMAINS}.new"
+
+        blocked_lines_ctr=0
+        while read -r line; do
+            if [ $blocked_lines_ctr -gt 1024 ]; then
+                # This prevents someone copy-pasting a giant amount of text
+                # into the blocklist. If you're legitimately blocking more
+                # than this number then you probably have other problems to
+                # think about and should consider whitelisting instead
+                break
+            fi
+            blocked_lines_ctr=$((blocked_lines_ctr + 1))
+
+            if [ "$line" ]; then
+                # remove leading and trailing spaces
+                newline="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                line="$newline"
+                if [[ "$line" == *'@'* ]]; then
+                    # blocked user
+                    # remove leading @
+                    if [[ "$line" == '@'* ]]; then
+                        newline=${line:1}
+                        line="$newline"
+                    fi
+                    blocked_username=$(echo "$line" | awk -F '@' '{print $1}')
+                    if valid_username_characters "$blocked_username"; then
+                        blocked_domain=$(echo "$line" | awk -F '@' '{print $2}')
+                        if [[ "$blocked_domain" == *'.'* ]]; then
+                            test_domain=$(echo "$blocked_domain" | tr -dc a-z0-9.-)
+                            if [[ "$blocked_domain" == "$test_domain" ]]; then
+                                blocked_address="${blocked_username}@${blocked_domain}"
+                                if ! grep -q "$blocked_address" "${FIREWALL_DOMAINS}.new"; then
+                                    echo "${blocked_username}@${blocked_domain}" >> "${FIREWALL_DOMAINS}.new"
+                                fi
+                            fi
+                        fi
+                    fi
+                else
+                    # blocked domain
+                    if [[ "$line" == *'.'* ]]; then
+                        blocked_domain="$line"
+                        test_domain=$(echo "$blocked_domain" | tr -dc a-z0-9.-)
+                        if [[ "$blocked_domain" == "$test_domain" ]]; then
+                            if ! grep -q "$blocked_domain" "${FIREWALL_DOMAINS}.new"; then
+                                echo "$blocked_domain" >> "${FIREWALL_DOMAINS}.new"
+                            fi
+                        fi
+                    fi
+                fi
+            fi
+        done < "$blocklist_file"
+
+        mv "${FIREWALL_DOMAINS}" "${FIREWALL_DOMAINS}.backup"
+        mv "${FIREWALL_DOMAINS}.new" "${FIREWALL_DOMAINS}"
+        rm "$blocklist_file"
+        regenerate_blocklist
+    fi
+}
+
 # If the freedombone command is already running then kill its process
 #shellcheck disable=SC2009
 install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | grep -v 'grep')
@@ -1256,6 +1340,7 @@ do
                 if [ $install_state -eq $INSTALL_STATE_COMMAND_SUCCESS ]; then
                     reset_shutdown
                     webadmin_change_password
+                    update_blocklist
                     backup_and_restore
                     backup_and_restore_keys
                     add_remove_users
