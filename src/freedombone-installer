@@ -50,6 +50,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+system_monitor_file="$webadmin_install_dir/.system_monitor.txt"
 dynamic_dns_file="$webadmin_install_dir/.dynamicdns.txt"
 reset_file="$webadmin_install_dir/.reset.txt"
 shutdown_file="$webadmin_install_dir/.shutdown.txt"
@@ -1341,6 +1342,38 @@ function update_dynamic_dns {
     fi
 }
 
+function update_system_monitor {
+    if [ -f "$system_monitor_file" ]; then
+        rm "$system_monitor_file"
+
+        disk_use=$(df -h | grep /dev/sda1)
+        disk_use_percent=0
+        if [[ "$disk_use" == *'/dev/sda1'* ]]; then
+            disk_use_percent=$(df -h | grep /dev/sda1 | awk -F ' ' '{print $5}')
+        else
+            disk_use_percent=$(df -h | grep /dev/mmcblk0p1 | awk -F ' ' '{print $5}')
+        fi
+
+        used_memory=$(free -m | grep "Mem:" | awk -F ' ' '{print $3}')
+        total_memory=$(free -m | grep "Mem:" | awk -F ' ' '{print $2}')
+        used_memory_percent=$((used_memory * 100 / total_memory))
+
+        local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+        webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+        if [ -f "$webadmin_install_dir/system_monitor_template.html" ]; then
+            cp "$webadmin_install_dir/system_monitor_template.html" "$webadmin_install_dir/system_monitor.html"
+
+            if [[ "$disk_use_percent" == *'%'* ]]; then
+                sed -i "s|<div name=\"diskspace\" class=\"w3-container.*|<div name=\"diskspace\" class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:$disk_use_percent\">$disk_use_percent</div>|g" "$webadmin_install_dir/system_monitor.html"
+            fi
+
+            sed -i "s|<div name=\"memory\" class=\"w3-container.*|<div name=\"memory\" class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:$used_memory_percent\">$used_memory_percent</div>|g" "$webadmin_install_dir/system_monitor.html"
+
+            chown www-data:www-data "$webadmin_install_dir/system_monitor.html"
+        fi
+    fi
+}
+
 # If the freedombone command is already running then kill its process
 #shellcheck disable=SC2009
 install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | grep -v 'grep')
@@ -1401,6 +1434,7 @@ do
                     webadmin_change_password
                     update_blocklist
                     update_dynamic_dns
+                    update_system_monitor
                     backup_and_restore
                     backup_and_restore_keys
                     add_remove_users
