@@ -50,6 +50,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+language_file="$webadmin_install_dir/.language.txt"
 system_monitor_file="$webadmin_install_dir/.system_monitor.txt"
 dynamic_dns_file="$webadmin_install_dir/.dynamicdns.txt"
 reset_file="$webadmin_install_dir/.reset.txt"
@@ -1342,6 +1343,47 @@ function update_dynamic_dns {
     fi
 }
 
+function change_language {
+    if [ -f "$language_file" ]; then
+        language=$(cat "$language_file")
+        local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+        webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+        if [ -f "$webadmin_install_dir/language_template.html" ]; then
+            if grep -q "\"$language\"" "$webadmin_install_dir/language_template.html"; then
+                cp "$webadmin_install_dir/language_template.html" "$webadmin_install_dir/language.html"
+                sed -i "s|\"$language\"|\"$language\" selected|g" "$webadmin_install_dir/language.html"
+                chown www-data:www-data "$webadmin_install_dir/language.html"
+
+                config_language=$(grep "DEFAULT_LANGUAGE=" "$CONFIGURATION_FILE" | awk -F '=' '{print $2}')
+                if [[ "$config_language" != "$language" ]]; then
+                    curr_language=$(web_admin_get_language_subdir)
+                    if [ -d "/usr/share/${PROJECT_NAME}/webadmin/${curr_language}" ]; then
+                        # copy files for the new language
+                        cp -r "/usr/share/${PROJECT_NAME}/webadmin/${curr_language}/*" "/usr/share/${PROJECT_NAME}/webadmin/"
+
+                        # recreate some screens from templates
+                        regenerate_blocklist
+                        touch "$system_monitor_file"
+                        update_system_monitor
+                    fi
+
+                    chown -R www-data:www-data "$webadmin_install_dir/*"
+
+                    sed -i "s|DEFAULT_LANGUAGE=.*|DEFAULT_LANGUAGE=$language|g" "$CONFIGURATION_FILE"
+                    locale-gen "${language}"
+                    update-locale LANG="${language}"
+                    update-locale LANGUAGE="${language}"
+                    update-locale LC_MESSAGES="${language}"
+                    update-locale LC_ALL="${language}"
+                    update-locale LC_CTYPE="${language}"
+                fi
+            fi
+        fi
+
+        rm "$language_file"
+    fi
+}
+
 function update_system_monitor {
     if [ -f "$system_monitor_file" ]; then
         rm "$system_monitor_file"
@@ -1435,6 +1477,7 @@ do
                     update_blocklist
                     update_dynamic_dns
                     update_system_monitor
+                    change_language
                     backup_and_restore
                     backup_and_restore_keys
                     add_remove_users

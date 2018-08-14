@@ -9,7 +9,7 @@ if (isset($_POST['submitddns'])) {
     $ddns_username = htmlspecialchars($_POST['ddns_username']);
     $ddns_password = htmlspecialchars($_POST['ddns_password']);
 
-    $ddns_file = fopen(".dynamicdns.txt", "w") or die("Unable to create setup file");
+    $ddns_file = fopen(".dynamicdns.txt", "w") or die("Unable to create dynamicdns file");
     fwrite($ddns_file, $ddns.','.$ddns_username.','.$ddns_password);
     fclose($ddns_file);
 }
