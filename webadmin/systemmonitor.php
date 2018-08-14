@@ -6,8 +6,9 @@ $output_filename = "settings.html";
 
 if (isset($_POST['submitsystemmonitor'])) {
     $system_monitor_file = fopen(".system_monitor.txt", "w") or die("Unable to create system monitor file");
-    fwrite($system_monitor_file, " ");
+    fwrite($system_monitor_file, "update");
     fclose($system_monitor_file);
+    sleep(3);
     $output_filename = "system_monitor.html";
 }
 
