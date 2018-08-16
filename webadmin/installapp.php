@@ -19,7 +19,7 @@ if (isset($_POST['submitappinstall'])) {
 
     if(! $onion_only) {
         $install_domain = htmlspecialchars($_POST['install_domain']);
-        if (!strpos($install_domain, '.')) {
+        if (strpos($install_domain, '.') === false) {
             // No domain was provided
             $continue_install=false;
         }
