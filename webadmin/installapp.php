@@ -7,7 +7,7 @@
 
 $output_filename = "apps_add.html";
 
-if (isset($_POST['install'])) {
+if (isset($_POST['submitinstall'])) {
     $app_name = htmlspecialchars($_POST['app_name']);
     $install_domain = '';
     $freedns_code = '';
