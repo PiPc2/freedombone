@@ -25,7 +25,7 @@ if (isset($_POST['submitchangepassword'])) {
 
     // Don't rely on php PRNG
     $newpassword = exec("openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n ''");
-    if ((preg_match('/[^A-Za-z0-9]/', $newpassword)) && (strlen($newpassword)>9)) {
+    if ((preg_match('/^[a-z\d_]$/i', $newpassword)) && (strlen($newpassword)>9)) {
         exec('cp password_confirm_template.html password_confirm.html');
         exec('sed -i "s|USERNAME|'.$username.'|g" password_confirm.html');
         exec('sed -i "s|NEWPASSWORD|'.$newpassword.'|g" password_confirm.html');
