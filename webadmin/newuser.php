@@ -13,7 +13,7 @@ if (isset($_POST['submitnewuser'])) {
     else {
         // Don't rely on php PRNG
         $newpassword = exec("openssl rand -base64 32 | tr -dc A-Za-z0-9 | head -c 10 ; echo -n ''");
-        if ((preg_match('/^[a-z\d_]$/i', $newpassword)) && (strlen($newpassword)>9)) {
+        if (preg_match('/^[a-z\d_]{8,32}$/i', $newpassword)) {
             $new_user_file = fopen(".new_user.txt", "w") or die("Unable to write to new_user file");
             fwrite($new_user_file, $username.",".$newpassword);
             fclose($new_user_file);

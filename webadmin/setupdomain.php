@@ -9,7 +9,7 @@ $output_filename = "index.html";
 if (isset($_POST['setupdomain'])) {
     $install_domain = htmlspecialchars($_POST['default_domain_name']);
 
-    if ((preg_match('/[^a-z0-9\.]/', $install_domain)) && (strlen($install_domain)>4) && (strlen($install_domain)<128) {
+    if (preg_match('/^[a-z\d_\.\-]{4,128}$/i', $install_domain)) {
         $domain_file = fopen(".temp_domain.txt", "w") or die("Unable to write to domain file");
         fwrite($domain_file, $install_domain);
         fclose($domain_file);
