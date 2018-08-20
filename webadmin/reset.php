@@ -4,8 +4,16 @@
 
 $output_filename = "settings.html";
 
+if (isset($_POST['submitupgrade'])) {
+    $reset_file = fopen(".upgrade.txt", "w") or die("Unable to write to upgrade file");
+    fwrite($reset_file, "upgrade");
+    fclose($reset_file);
+
+    $output_filename = "upgrade.html";
+}
+
 if (isset($_POST['submitreset'])) {
-    $reset_file = fopen(".reset.txt", "w") or die("Unable to write to domain file");
+    $reset_file = fopen(".reset.txt", "w") or die("Unable to write to reset file");
     fwrite($reset_file, "reset");
     fclose($reset_file);
 
@@ -13,7 +21,7 @@ if (isset($_POST['submitreset'])) {
 }
 
 if (isset($_POST['submitshutdown'])) {
-    $shutdown_file = fopen(".shutdown.txt", "w") or die("Unable to write to domain file");
+    $shutdown_file = fopen(".shutdown.txt", "w") or die("Unable to write to shutdown file");
     fwrite($shutdown_file, "shutdown");
     fclose($shutdown_file);
 
