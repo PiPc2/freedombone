@@ -20,6 +20,10 @@ if (isset($_POST['submitreset'])) {
     $output_filename = "restarting.html";
 }
 
+if (isset($_POST['submitfactoryreset'])) {
+    $output_filename = "factory_reset_confirm.html";
+}
+
 if (isset($_POST['submitshutdown'])) {
     $shutdown_file = fopen(".shutdown.txt", "w") or die("Unable to write to shutdown file");
     fwrite($shutdown_file, "shutdown");
