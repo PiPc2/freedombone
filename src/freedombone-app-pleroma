@@ -66,6 +66,95 @@ pleroma_variables=(ONION_ONLY
                    MY_EMAIL_ADDRESS
                    MY_USERNAME)
 
+function pleroma_setting_emoji {
+    shortcode="$1"
+    image_url="$2"
+    if [ ! "$shortcode" ]; then
+        return
+    fi
+    if [[ "$shortcode" == *' '* || "$shortcode" == *':'* ]]; then
+        return
+    fi
+    if [ ${#shortcode} -gt 32 ]; then
+        return
+    fi
+    if [[ "$image_url" != 'http'* ]]; then
+        return
+    fi
+    if [ ${#image_url} -gt 256 ]; then
+        return
+    fi
+
+    image_extension=
+    if [[ "$image_url" == *'.jpg' || "$image_url" == *'.jpeg' ]]; then
+        image_extension='jpg'
+    fi
+    if [[ "$image_url" == *'.gif' ]]; then
+        image_extension='gif'
+    fi
+    if [[ "$image_url" == *'.png' ]]; then
+        image_extension='png'
+    fi
+    if [ ! $image_extension ]; then
+        return
+    fi
+
+    if [ ! -d $PLEROMA_DIR/priv/static/emoji ]; then
+        mkdir -p $PLEROMA_DIR/priv/static/emoji
+    fi
+
+    image_filename=$PLEROMA_DIR/priv/static/emoji/${shortcode}.${image_extension}
+    wget "$image_url" -O "$image_filename"
+    if [ ! -f "$image_filename" ]; then
+        return
+    fi
+
+    if [[ "$image_url" == *'.jpg' || "$image_url" == *'.jpeg' || "$image_url" == *'.gif' ]]; then
+        convert "$image_filename" -resize "$emoji_resolution" "$PLEROMA_DIR/priv/static/emoji/${shortcode}.png"
+        if [ ! -f "$PLEROMA_DIR/priv/static/emoji/${shortcode}.png" ]; then
+            return
+        fi
+
+        # remove the original
+        rm "$image_filename"
+
+        image_extension='png'
+        image_filename=$PLEROMA_DIR/priv/static/emoji/${shortcode}.${image_extension}
+    else
+        convert "$image_filename" -resize "$emoji_resolution" "$image_filename"
+    fi
+
+    if ! grep -q "${shortcode}," $PLEROMA_DIR/config/emoji.txt; then
+        echo "${shortcode}, /emoji/${shortcode}.${image_extension}" >> $PLEROMA_DIR/config/emoji.txt
+    else
+        sed -i "s|${shortcode},.*|${shortcode}, /emoji/${shortcode}.${image_extension}|g" $PLEROMA_DIR/config/emoji.txt
+    fi
+
+    chown -R pleroma:pleroma $PLEROMA_DIR
+    systemctl stop pleroma
+    pleroma_recompile
+}
+
+function pleroma_setting_registration {
+    allow_registration="$1"
+
+    if [[ "$allow_registration" == '0' ]]; then
+        sed -i 's|registrations_open: false|registrations_open: true|g' $PLEROMA_DIR/config/config.exs
+        sed -i 's|registrations_open: False|registrations_open: true|g' $PLEROMA_DIR/config/config.exs
+        sed -i 's|"registrationOpen": false|"registrationOpen": true|g' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|"registrationOpen": False|"registrationOpen": true|g' $PLEROMA_DIR/priv/static/static/config.json
+        pleroma_recompile
+    fi
+
+    if [[ "$allow_registration" == '1' ]]; then
+        sed -i 's|registrations_open: true|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+        sed -i 's|registrations_open: True|registrations_open: false|g' $PLEROMA_DIR/config/config.exs
+        sed -i 's|"registrationOpen": true|"registrationOpen": false|g' $PLEROMA_DIR/priv/static/static/config.json
+        sed -i 's|"registrationOpen": True|"registrationOpen": false|g' $PLEROMA_DIR/priv/static/static/config.json
+        pleroma_recompile
+    fi
+}
+
 function pleroma_enable_chat {
     if [[ "$1" == 't'* || "$1" == 'y'* || "$1" == 'T'* || "$1" == 'Y'* ]]; then
         sed -i 's|"chatDisabled":.*|"chatDisabled": false,|g' $PLEROMA_DIR/priv/static/static/config.json

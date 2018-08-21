@@ -52,6 +52,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+appsettings_file="$webadmin_install_dir/.appsettings.txt"
 factoryreset_file="$webadmin_install_dir/.factoryreset.txt"
 upgrade_file="$webadmin_install_dir/.upgrade.txt"
 language_file="$webadmin_install_dir/.language.txt"
@@ -98,6 +99,14 @@ format_file="$webadmin_install_dir/.start_format"
 backup_progress_file=/root/.backup_progress.txt
 restore_progress_file=/root/.backup_progress.txt
 format_progress_file=/root/.format_progress.txt
+
+# load apps so that we can call settings menu functions
+APP_FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*"
+for f in $APP_FILES
+do
+    source "$f"
+done
+
 
 function webadmin_update_version {
     local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
@@ -1614,6 +1623,30 @@ function update_system_monitor {
     fi
 }
 
+function update_app_settings {
+    if [ ! -f "$appsettings_file" ]; then
+        return
+    fi
+    if grep -q ',' "$appsettings_file"; then
+        app_name=$(awk -F ',' '{print $1}' < "$appsettings_file")
+        if [ "$app_name" ]; then
+            app_filename="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-${app_name}"
+            if [ -f "$app_filename" ]; then
+                app_function=$(awk -F ',' '{print $2}' < "$appsettings_file")
+                if [ "$app_function" ]; then
+                    if grep -q "function setting_${app_function} {" "$app_filename"; then
+                        app_value=$(awk -F ',' '{print $3}' < "$appsettings_file")
+
+                        # shellcheck disable=SC2086
+                        ${app_name}_setting_${app_function} $app_value
+                    fi
+                fi
+            fi
+        fi
+    fi
+    rm "$appsettings_file"
+}
+
 # If the freedombone command is already running then kill its process
 #shellcheck disable=SC2009
 install_process=$(ps a | grep '/usr/local/bin/freedombone -c' | grep -v 'grep')
@@ -1680,6 +1713,7 @@ do
                     backup_and_restore
                     backup_and_restore_keys
                     add_remove_users
+                    update_app_settings
                     webadmin_upgrade
                     install_apps_from_webadmin
                     sleep 1
