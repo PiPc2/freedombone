@@ -18,6 +18,11 @@ if (isset($_POST['uninstall'])) {
     }
 }
 
+if (isset($_POST['submitappsettings'])) {
+    $app_name = htmlspecialchars($_POST['app_name']);
+    $output_filename = "settings_".$app_name."html";
+}
+
 $htmlfile = fopen("$output_filename", "r") or die("Unable to open $output_filename");
 echo fread($htmlfile,filesize("$output_filename"));
 fclose($htmlfile);
