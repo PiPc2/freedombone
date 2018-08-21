@@ -87,6 +87,7 @@ restore_keys_script=/root/.webadmin_restore_keys.sh
 format_script=/root/.webadmin_format.sh
 new_user_script=/root/.webadmin_new_user.sh
 remove_user_script=/root/.webadmin_remove_user.sh
+appsettings_script=/root/.webadmin_appsettings.sh
 
 # Files used to initiate backup or restore manually from the web UI
 backup_file="$webadmin_install_dir/.start_backup"
@@ -99,14 +100,6 @@ format_file="$webadmin_install_dir/.start_format"
 backup_progress_file=/root/.backup_progress.txt
 restore_progress_file=/root/.backup_progress.txt
 format_progress_file=/root/.format_progress.txt
-
-# load apps so that we can call settings menu functions
-APP_FILES="/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*"
-for f in $APP_FILES
-do
-    source "$f"
-done
-
 
 function webadmin_update_version {
     local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
@@ -588,6 +581,7 @@ function check_for_existing_processes {
       echo '';
       echo 'exit_if_process_is_running fbone_installer.sh';
       echo 'exit_if_process_is_running webadmin_factory_reset.sh';
+      echo 'exit_if_process_is_running webadmin_appsettings.sh';
       echo 'exit_if_process_is_running webadmin_upgrade.sh';
       echo 'exit_if_process_is_running webadmin_format.sh';
       echo 'exit_if_process_is_running webadmin_backup.sh';
@@ -1622,6 +1616,8 @@ function update_app_settings {
     if [ ! -f "$appsettings_file" ]; then
         return
     fi
+    echo 'update_app_settings' > "$webadmin_install_dir/appsettings.txt"
+    cat "$appsettings_file" >> "$webadmin_install_dir/appsettings.txt"
     if grep -q ',' "$appsettings_file"; then
         app_name=$(awk -F ',' '{print $1}' < "$appsettings_file")
         if [ "$app_name" ]; then
@@ -1632,9 +1628,28 @@ function update_app_settings {
                     if grep -q "function setting_${app_function} {" "$app_filename"; then
                         app_value=$(awk -F ',' '{print $3}' < "$appsettings_file")
 
-                        # shellcheck disable=SC2086
-                        ${app_name}_setting_${app_function} $app_value > "$webadmin_install_dir/applog.txt"
-                        chown www-data:www-data "$webadmin_install_dir/applog.txt"
+                        check_for_existing_processes $appsettings_script
+                        { echo "echo \"Beginning webadmin ${app_name} app settings change \$(date)\" > $webadmin_install_dir/appsettings.txt";
+                          echo "function: $app_function";
+                          echo "values:   $app_value";
+                          echo "chown www-data:www-data $webadmin_install_dir/appsettings.txt";
+                          echo '';
+                          echo "PROJECT_NAME=$PROJECT_NAME";
+                          echo "APP_FILES=\"/usr/share/${PROJECT_NAME}/apps/${PROJECT_NAME}-app-*\"";
+                          echo "for f in \$APP_FILES";
+                          echo 'do';
+                          echo "    source \"\$f\"";
+                          echo 'done';
+                          echo '';
+                          echo "${app_name}_setting_${app_function} $app_value";
+                          echo "chown www-data:www-data $webadmin_install_dir/appsettings.txt";
+                          echo '';
+                          echo "exit 0"; } >> $appsettings_script
+                        chmod +x $appsettings_script
+
+                        # run in a separate process
+                        ./$appsettings_script >> "$webadmin_install_dir/appsettings.txt" &
+                        chown www-data:www-data "$webadmin_install_dir/appsettings.txt"
                     fi
                 fi
             fi
