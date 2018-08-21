@@ -7,8 +7,8 @@ $output_filename = "settings_pleroma.html";
 if (isset($_POST['submitallowregistrations'])) {
     $confirm = htmlspecialchars($_POST['allowregistrations']);
     $settings_file = fopen(".appsettings.txt", "w") or die("Unable to write to appsettings file");
-    fwrite($setting_file, "pleroma,registration,".$confirm);
-    fclose($setting_file);
+    fwrite($settings_file, "pleroma,registration,".$confirm);
+    fclose($settings_file);
 }
 
 if (isset($_POST['submitemoji'])) {
@@ -17,8 +17,8 @@ if (isset($_POST['submitemoji'])) {
         $url = htmlspecialchars($_POST['emoji_url']);
         if (strpos($url, ' ') === false) {
             $settings_file = fopen(".appsettings.txt", "w") or die("Unable to write to appsettings file");
-            fwrite($setting_file, "pleroma,emoji,".$shortcode.' '.$url);
-            fclose($setting_file);
+            fwrite($settings_file, "pleroma,emoji,".$shortcode.' '.$url);
+            fclose($settings_file);
         }
     }
 }
