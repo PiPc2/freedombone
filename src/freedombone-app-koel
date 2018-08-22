@@ -51,6 +51,59 @@ koel_variables=(ONION_ONLY
                 MY_EMAIL_ADDRESS
                 MY_USERNAME)
 
+function koel_upload_from_syncthing {
+    if [ ! -d /music ]; then
+        mkdir /music
+    fi
+
+    { echo '#!/bin/bash';
+      echo '';
+      echo "syncdir=/home/$MY_USERNAME/Sync/music_upload";
+      echo '';
+      echo 'while true';
+      echo 'do';
+      echo "    if [ -d \$syncdir ]; then";
+      echo "        cd /home/$MY_USERNAME/Sync";
+      echo "        if [ ! \"\$syncdir_base\" ]; then";
+      echo "            syncdir_base=\$(ls -ld music_upload/*)";
+      echo '        fi';
+      echo '';
+      echo '        while read -r line; do';
+      echo "            curr_dir=\$(echo \"\$line\" | awk -F '/' '{print \$2}')";
+      echo "            if [ -d \$syncdir/\$curr_dir ]; then";
+      echo "                if [ ! -d /music/\$curr_dir ]; then";
+      echo "                    mv \$syncdir/\$curr_dir /music";
+      echo '                fi';
+      echo '            fi';
+      echo "        done <<< \"\$syncdir_base\"";
+      echo '';
+      echo "        syncdir_base=\$(ls -ld music_upload/*)";
+      echo '    fi';
+      echo '    sleep 10';
+      echo 'done'; } > /usr/bin/koelsync
+    chmod +x /usr/bin/koelsync
+
+    if [ ! -f /etc/systemd/system/koel_syncthing.service ]; then
+        { echo '[Unit]';
+          echo 'Description=Koel integration with syncthing';
+          echo 'After=syslog.target';
+          echo 'After=network.target';
+          echo '';
+          echo '[Service]';
+          echo 'Type=simple';
+          echo 'User=root';
+          echo "WorkingDirectory=/music";
+          echo "ExecStart=/usr/bin/koelsync";
+          echo 'Restart=on-failure';
+          echo '';
+          echo '[Install]';
+          echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/koel_syncthing.service
+        systemctl enable koel_syncthing.service
+        systemctl daemon-reload
+    fi
+    systemctl restart koel_syncthing.service
+}
+
 function koel_setting_upload {
     music_file="$1"
 
@@ -333,6 +386,8 @@ function configure_interactive_koel {
 }
 
 function upgrade_koel {
+    koel_upload_from_syncthing
+
     if grep -q "koel domain" "$COMPLETION_FILE"; then
         KOEL_DOMAIN_NAME=$(get_completion_param "koel domain")
     fi
@@ -478,6 +533,11 @@ function remove_koel {
     if [ -f /etc/systemd/system/koel.service ]; then
         rm /etc/systemd/system/koel.service
     fi
+    if [ -f /etc/systemd/system/koel_syncthing.service ]; then
+        systemctl stop koel_syncthing
+        systemctl disable koel_syncthing
+        rm /etc/systemd/system/koel_syncthing.service
+    fi
     systemctl daemon-reload
 
     function_check remove_nodejs
@@ -503,6 +563,10 @@ function remove_koel {
     remove_completion_param install_koel
     sed -i '/koel/d' "$COMPLETION_FILE"
     remove_backup_database_local koel
+
+    if [ -f /usr/bin/koelsync ]; then
+        rm /usr/bin/koelsync
+    fi
 
     function_check remove_ddns_domain
     remove_ddns_domain "$KOEL_DOMAIN_NAME"
@@ -800,6 +864,7 @@ function install_koel {
 
     systemctl restart mariadb
     systemctl restart nginx
+    koel_upload_from_syncthing
 
     APP_INSTALLED=1
 }

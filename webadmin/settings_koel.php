@@ -1,11 +1,12 @@
 <?php
 
 // Koel settings menu
-
 $output_filename = "app_koel.html";
 
 if (isset($_POST['submitmusic'])) {
-    $musicfile = htmlspecialchars($_POST['musicfile']);
+    $target_dir = "uploads/";
+    $musicfile = $target_dir . basename($_FILES["musicfile"]["name"]);
+
     if(file_exists($musicfile)) {
         $settings_file = fopen(".appsettings.txt", "w") or die("Unable to write to appsettings file");
         fwrite($settings_file, "koel,upload,".$musicfile);
