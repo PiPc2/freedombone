@@ -52,6 +52,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+syncthing_file="$webadmin_install_dir/.syncthing.txt"
 appsettings_file="$webadmin_install_dir/.appsettings.txt"
 factoryreset_file="$webadmin_install_dir/.factoryreset.txt"
 upgrade_file="$webadmin_install_dir/.upgrade.txt"
@@ -1403,6 +1404,56 @@ function regenerate_dynamic_dns {
     fi
 }
 
+function syncthing_update_settings_template {
+    # Creates the syncthing settings screen within webadmin
+    # shellcheck disable=SC2154
+    app_settings_screen_template="$webadmin_install_dir/settings_syncthing_template.html"
+    app_settings_screen="$webadmin_install_dir/settings_syncthing.html"
+    cp "$app_settings_screen_template" "$app_settings_screen"
+    syncthinglist=$(sed 's@[/\&]@\\&@g;s/$/\\/' "/home/$MY_USERNAME/.syncthingids"; echo .)
+    syncthinglist=${syncthinglist%.}
+    sed -i "s|SYNCTHINGIDS|$syncthinglist|g" "$app_settings_screen"
+    chown www-data:www-data "$app_settings_screen"
+}
+
+function update_syncthing {
+    if [ -f "$syncthing_file" ]; then
+
+        MY_USERNAME=$(grep 'MY_USERNAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+
+        syncthingids_new="/home/$MY_USERNAME/.syncthingids.webadmin"
+
+        if [ -f "$syncthingids_new" ]; then
+            rm "$syncthingids_new"
+        fi
+        touch "$syncthingids_new"
+
+        syncthing_lines_ctr=0
+        while read -r line; do
+            if [ $syncthing_lines_ctr -gt 1024 ]; then
+                # This prevents someone copy-pasting a giant amount of text
+                # into the syncthing ids.
+                break
+            fi
+            syncthing_lines_ctr=$((syncthing_lines_ctr + 1))
+
+            if [ "$line" ]; then
+                # remove leading and trailing spaces
+                newline="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                echo "$newline" >> "$syncthingids_new"
+            fi
+        done < "$syncthing_file"
+
+        mv "/home/$MY_USERNAME/.syncthingids" "/home/$MY_USERNAME/.syncthingids.backup"
+        mv "$syncthingids_new" "/home/$MY_USERNAME/.syncthingids"
+        chown "$MY_USERNAME":"$MY_USERNAME" "/home/$MY_USERNAME/.syncthingids"
+        rm "$syncthing_file"
+        syncthing_update_settings_template
+        touch "/home/$MY_USERNAME/.syncthing-update"
+        chown "$MY_USERNAME":"$MY_USERNAME" "/home/$MY_USERNAME/.syncthing-update"
+    fi
+}
+
 function update_blocklist {
     if [ -f "$blocklist_file" ]; then
 
@@ -1727,6 +1778,7 @@ do
                     backup_and_restore_keys
                     add_remove_users
                     update_app_settings
+                    update_syncthing
                     webadmin_upgrade
                     install_apps_from_webadmin
                     sleep 1
