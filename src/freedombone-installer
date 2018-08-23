@@ -52,6 +52,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+smolrss_file="$webadmin_install_dir/.rssfeeds.txt"
 syncthing_file="$webadmin_install_dir/.syncthing.txt"
 appsettings_file="$webadmin_install_dir/.appsettings.txt"
 factoryreset_file="$webadmin_install_dir/.factoryreset.txt"
@@ -1416,6 +1417,18 @@ function syncthing_update_settings_template {
     chown www-data:www-data "$app_settings_screen"
 }
 
+function smolrss_update_settings_template {
+    # Creates rss feeds list within the web UI
+    # shellcheck disable=SC2154
+    app_settings_screen_template="$webadmin_install_dir/settings_smolrss_template.html"
+    app_settings_screen="$webadmin_install_dir/settings_smolrss.html"
+    cp "$app_settings_screen_template" "$app_settings_screen"
+    feedslist=$(sed 's@[/\&]@\\&@g;s/$/\\/' "/var/www/$SMOLRSS_DOMAIN_NAME/htdocs/feeds.txt"; echo .)
+    feedslist=${feedslist%.}
+    sed -i "s|RSSFEEDS|$feedslist|g" "$app_settings_screen"
+    chown www-data:www-data "$app_settings_screen"
+}
+
 function update_syncthing {
     if [ -f "$syncthing_file" ]; then
 
@@ -1451,6 +1464,43 @@ function update_syncthing {
         syncthing_update_settings_template
         touch "/home/$MY_USERNAME/.syncthing-update"
         chown "$MY_USERNAME":"$MY_USERNAME" "/home/$MY_USERNAME/.syncthing-update"
+    fi
+}
+
+function update_smolrss {
+    if [ -f "$smolrss_file" ]; then
+
+        SMOLRSS_DOMAIN_NAME=$(grep 'SMOLRSS_DOMAIN_NAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+
+        cd "/var/www/$SMOLRSS_DOMAIN_NAME/htdocs" || return
+
+        if [ -f "feeds.new" ]; then
+            rm "feeds.new"
+        fi
+        touch "feeds.new"
+
+        feeds_lines_ctr=0
+        while read -r line; do
+            if [ $feeds_lines_ctr -gt 1024 ]; then
+                # This prevents someone copy-pasting a giant amount of text
+                # into the rss feeds
+                break
+            fi
+            feeds_lines_ctr=$((feeds_lines_ctr + 1))
+
+            if [ "$line" ]; then
+                # remove leading and trailing spaces
+                newline="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                echo "$newline" >> "feeds.new"
+            fi
+        done < "$smolrss_file"
+
+        mv "feeds.new" feeds.txt
+        ./create_feeds feeds.txt > feeds.xml
+        chown www-data:www-data feeds.txt
+
+        rm "$smolrss_file"
+        smolrss_update_settings_template
     fi
 }
 
@@ -1779,6 +1829,7 @@ do
                     add_remove_users
                     update_app_settings
                     update_syncthing
+                    update_smolrss
                     webadmin_upgrade
                     install_apps_from_webadmin
                     sleep 1
