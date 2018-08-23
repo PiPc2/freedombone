@@ -55,6 +55,90 @@ fedwiki_variables=(FEDWIKI_DOMAIN_NAME
                    MY_USERNAME
                    MY_EMAIL_ADDRESS)
 
+function fedwiki_setting_password {
+    # change the password via the web UI
+    new_password="$1"
+
+    if [ ${#new_password} -lt 8 ]; then
+        return
+    fi
+    if [[ "$new_password" == *' '* || "$new_password" == *'"'* ]]; then
+        return
+    fi
+
+    MY_USERNAME=$(grep 'MY_USERNAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+    sed -i "s|--cookieSecret .*|--cookieSecret '${new_password}'|g" /etc/systemd/system/fedwiki.service
+
+    fedwiki_auth_file=${FEDWIKI_DATA}/status/owner.json
+    { echo '{';
+      echo "  \"name\": \"${MY_USERNAME}\",";
+      echo '  "friend": {';
+      echo "    \"secret\": \"${new_password}\"";
+      echo '  }';
+      echo '}'; } > $fedwiki_auth_file
+
+    chown fedwiki:fedwiki $fedwiki_auth_file
+
+    systemctl daemon-reload
+    systemctl restart fedwiki
+}
+
+function fedwiki_setting_favicon {
+    # change the favicon via the web UI
+    image_url="$1"
+
+    if [[ "$image_url" != 'http'* ]]; then
+        return
+    fi
+    if [ ${#image_url} -gt 256 ]; then
+        return
+    fi
+
+    image_extension=
+    if [[ "$image_url" == *'.jpg' || "$image_url" == *'.jpeg' ]]; then
+        image_extension='jpg'
+    fi
+    if [[ "$image_url" == *'.gif' ]]; then
+        image_extension='gif'
+    fi
+    if [[ "$image_url" == *'.png' ]]; then
+        image_extension='png'
+    fi
+    if [ ! $image_extension ]; then
+        echo $'Invalid image type'
+        return
+    fi
+
+    image_filename=$FEDWIKI_DATA/status/favicon.${image_extension}
+    if [ -f "$image_filename" ]; then
+        mv "$image_filename" "${image_filename}.prev"
+    fi
+    wget "$image_url" -O "$image_filename"
+    if [ ! -f "$image_filename" ]; then
+        if [ -f "${image_filename}.prev" ]; then
+            mv "${image_filename}.prev" "${image_filename}"
+        fi
+        return
+    fi
+    rm "${image_filename}.prev"
+
+    if [[ "$image_url" == *'.jpg' || "$image_url" == *'.jpeg' || "$image_url" == *'.gif' ]]; then
+        convert "$image_filename" -resize "32x32" "$FEDWIKI_DATA/status/favicon.png"
+        if [ ! -f "$FEDWIKI_DATA/status/favicon.png" ]; then
+            return
+        fi
+
+        # remove the original
+        rm "$image_filename"
+
+        image_extension='png'
+        image_filename="$FEDWIKI_DATA/status/favicon.png"
+    else
+        convert "$image_filename" -resize "32x32" "$image_filename"
+    fi
+    chown fedwiki:fedwiki "$image_filename"
+}
+
 function fedwiki_remove_bad_links {
     if [[ $ONION_ONLY == 'no' ]]; then
         sed -i "s|link\\[href='https://maxcdn.bootstrapcdn.com.*|link\\[href='https://${FEDWIKI_DOMAIN_NAME}/fonts-font-awesome/css/font-awesome.min.css']\").length) {|g" /var/lib/wiki/node_modules/wiki-security-friends/client/security.js
