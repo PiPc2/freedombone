@@ -19,6 +19,9 @@ if (isset($_POST['submitbackuppassword'])) {
                     exec('touch .start_backup');
                 }
                 exec('cp backup_progress_template.html backup_progress.html');
+                $host  = $_SERVER['HTTP_HOST'];
+                $uri   = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+                header("Location: $host$uri/backup_progress.html");
                 $output_filename = "backup_progress.html";
             }
             else {
@@ -43,6 +46,9 @@ if (isset($_POST['submitrestorepassword'])) {
                 exec('touch .start_restore');
             }
             exec('cp restore_progress_template.html restore_progress.html');
+            $host  = $_SERVER['HTTP_HOST'];
+            $uri   = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+            header("Location: $host$uri/restore_progress.html");
             $output_filename = "restore_progress.html";
         }
         else {
