@@ -11,7 +11,7 @@ if (isset($_POST['submitbackuppassword'])) {
     if ($pass === $pass_confirm) {
         if (strpos($pass, ' ') === false) {
             if (preg_match('/^[a-z\A-Z\d_]{8,512}$/', $pass)) {
-                $settings_file = fopen("/tmp/backup_password.txt", "w") or die("Unable to write to appsettings file");
+                $settings_file = fopen("/tmp/backup_password.txt", "w") or die("Unable to write to backup file");
                 fwrite($settings_file, $pass);
                 fclose($settings_file);
             }
@@ -22,6 +22,23 @@ if (isset($_POST['submitbackuppassword'])) {
         else {
             $output_filename = "invalid_backup_password.html";
         }
+    }
+}
+
+if (isset($_POST['submitrestorepassword'])) {
+    $pass = trim(htmlspecialchars($_POST['backup_password']));
+    if (strpos($pass, ' ') === false) {
+        if (preg_match('/^[a-z\A-Z\d_]{8,512}$/', $pass)) {
+            $settings_file = fopen("/tmp/restore_password.txt", "w") or die("Unable to write to restore file");
+            fwrite($settings_file, $pass);
+            fclose($settings_file);
+        }
+        else {
+            $output_filename = "invalid_backup_password.html";
+        }
+    }
+    else {
+        $output_filename = "invalid_backup_password.html";
     }
 }
 
