@@ -36,6 +36,12 @@ ENABLE_BACKUP_VERIFICATION="no"
 export TEXTDOMAIN=${PROJECT_NAME}-backup-local
 export TEXTDOMAINDIR="/usr/share/locale"
 
+# In simple backup mode the USB drive is auto-detected
+# and the backup keys are also stored on the drive,
+# symmetrically encrypted with a password
+simple_backup=
+simple_backup_password=
+
 PROJECT_INSTALL_DIR=/usr/local/bin
 if [ -f /usr/bin/${PROJECT_NAME} ]; then
     PROJECT_INSTALL_DIR=/usr/bin
@@ -371,6 +377,27 @@ function backup_postgresql {
     backup_directory_to_usb $temp_backup_dir postgresql
 }
 
+function simple_store_backup_keys {
+    if [ ! "$simple_backup_password" ]; then
+        return
+    fi
+    ADMIN_USERNAME=$(grep 'MY_USERNAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+    if [ ! "$ADMIN_USERNAME" ]; then
+        return
+    fi
+    simple_keys_file=/root/simplebackupkeys.tar.gz
+    cd "/home/${ADMIN_USERNAME}" || return
+    tar -czvf $simple_keys_file .gnupg
+    if [ ! -f $simple_keys_file ]; then
+        return
+    fi
+
+    echo -n "$simple_backup_password" | gpg --batch --passphrase-fd 0 --output $USB_MOUNT/config.dat --symmetric --armor $simple_keys_file
+
+    rm $simple_keys_file
+    simple_backup_password=
+}
+
 backup_device="$1"
 
 # has the remove option been set ?
@@ -378,11 +405,12 @@ remove_option="$2"
 if [[ "$backup_device" == "remove" ]]; then
     remove_option=$1
 fi
-simple_backup=
+
 if [[ "$backup_device" == "simple" || "$backup_device" == "detect" || "$backup_device" == "auto"* ]]; then
     if [[ "$backup_device" == "simple" ]]; then
         # shellcheck disable=SC2034
         simple_backup=1
+        simple_backup_password="$2"
     fi
     backup_device=$(detect_connected_drives)
     if [[ "$backup_device" != 'sd'* ]]; then
@@ -405,6 +433,9 @@ make_backup_directory
 
 increment_backup_progress
 check_storage_space_remaining
+
+increment_backup_progress
+simple_store_backup_keys
 
 increment_backup_progress
 backup_users
