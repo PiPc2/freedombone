@@ -8,7 +8,14 @@ if (isset($_POST['submitsystemmonitor'])) {
     $system_monitor_file = fopen(".system_monitor.txt", "w") or die("Unable to create system monitor file");
     fwrite($system_monitor_file, "update");
     fclose($system_monitor_file);
+
+    # remain on this screen after clicking update
+    $host  = $_SERVER['HTTP_HOST'];
+    $uri   = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+    header("Location: http://$host$uri/system_monitor.html");
+
     sleep(3);
+
     $output_filename = "system_monitor.html";
 }
 
