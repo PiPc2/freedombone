@@ -784,6 +784,28 @@ function image_install_web_admin {
     chroot "$rootdir" systemctl enable webadmin
 }
 
+function regenerate_bridges {
+    if [ ! -f "/root/.webadmin_torbridges" ]; then
+        touch "/root/.webadmin_torbridges"
+    fi
+    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+
+    # onion version of the webadmin settings screen
+    read_config_param ONION_ONLY
+    if [[ "$ONION_ONLY" != 'no' ]]; then
+        cp "$webadmin_install_dir/settings_onion.html" "$webadmin_install_dir/settings.html"
+    fi
+
+    if [ -f "$webadmin_install_dir/bridges_template.html" ]; then
+        cp "$webadmin_install_dir/bridges_template.html" "$webadmin_install_dir/bridges.html"
+        bridgeslist=$(sed 's@[/\&]@\\&@g;s/$/\\/' /root/.webadmin_torbridges; echo .)
+        bridgeslist=${bridgeslist%.}
+        sed -i "s|TORBRIDGES|$bridgeslist|g" "$webadmin_install_dir/bridges.html"
+        chown www-data:www-data "$webadmin_install_dir/bridges.html"
+    fi
+}
+
 function regenerate_webadmin_dynamic_dns {
     read_config_param DDNS_PROVIDER
     read_config_param DDNS_USERNAME
@@ -1081,6 +1103,8 @@ function install_web_admin {
     regenerate_webadmin_blocklist
 
     regenerate_webadmin_dynamic_dns
+
+    regenerate_bridges
 
     webadmin_update_system_monitor
 

@@ -71,6 +71,7 @@ remove_user_file="$webadmin_install_dir/.remove_user.txt"
 change_password_file="$webadmin_install_dir/changepassword.dat"
 install_state_file="/root/.install_state.txt"
 blocklist_file="$webadmin_install_dir/.blocklist.txt"
+bridgeslist_file="$webadmin_install_dir/.bridgeslist.txt"
 INSTALL_DIR=/root/build
 webadmin_user='admin'
 webadmin_temp_password_file=/root/.temp_webadmin_password
@@ -1413,6 +1414,21 @@ function regenerate_blocklist {
     fi
 }
 
+function regenerate_bridges {
+    if [ ! -f "/root/.webadmin_torbridges" ]; then
+        touch "/root/.webadmin_torbridges"
+    fi
+    local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
+    webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+    if [ -f "$webadmin_install_dir/bridges_template.html" ]; then
+        cp "$webadmin_install_dir/bridges_template.html" "$webadmin_install_dir/bridges.html"
+        bridgeslist=$(sed 's@[/\&]@\\&@g;s/$/\\/' /root/.webadmin_torbridges; echo .)
+        bridgeslist=${bridgeslist%.}
+        sed -i "s|TORBRIDGES|$bridgeslist|g" "$webadmin_install_dir/bridges.html"
+        chown www-data:www-data "$webadmin_install_dir/bridges.html"
+    fi
+}
+
 function regenerate_dynamic_dns {
     ddns="$1"
     ddns_username="$2"
@@ -1601,6 +1617,60 @@ function update_blocklist {
         mv "${FIREWALL_DOMAINS}.new" "${FIREWALL_DOMAINS}"
         rm "$blocklist_file"
         regenerate_blocklist
+    fi
+}
+
+function update_bridges {
+    if [ -f "$bridgeslist_file" ]; then
+
+        if [ -f "/root/.webadmin_torbridges" ]; then
+            rm "/root/.webadmin_torbridges"
+        fi
+        touch "/root/.webadmin_torbridges"
+
+        if [ ! -f /usr/bin/obfs4proxy ]; then
+            apt-get -yq install obfs4proxy
+        fi
+
+        bridge_type='obfs4'
+        { echo 'ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy managed';
+          echo 'UseBridges 1'; } > /etc/torrc.d/bridges
+
+        bridges_lines_ctr=0
+        while read -r line; do
+            if [ $bridges_lines_ctr -gt 1024 ]; then
+                # This prevents someone copy-pasting a giant amount of text
+                # into the bridges list.
+                break
+            fi
+            bridges_lines_ctr=$((bridges_lines_ctr + 1))
+
+            if [ "$line" ]; then
+                # remove leading and trailing spaces
+                newline="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                line="$newline"
+                if [ ${#line} -gt 10 ]; then
+                    if [[ "$line" == '#'* ]]; then
+                        echo "$line" >> "/root/.webadmin_torbridges"
+                    else
+                        bridge_ip_address=$(echo "$line" | awk -F ':' '{print $1}')
+                        bridge_port=$(echo "$line" | awk -F ':' '{print $2}' | awk -F ' ' '{print $1}')
+                        bridge_key=$(echo "$line" | awk -F ' ' '{print $2}')
+                        if [[ "${bridge_ip_address}" == *"."* ]]; then
+                            if ! grep -q "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}" /etc/torrc.d/bridges; then
+                                echo "Bridge $bridge_type ${bridge_ip_address}:${bridge_port} ${bridge_key}" >> /etc/torrc.d/bridges
+                                echo "${bridge_ip_address}:${bridge_port} ${bridge_key}" >> "/root/.webadmin_torbridges"
+                            fi
+                        fi
+                    fi
+               fi
+            fi
+        done < "$bridgeslist_file"
+
+        rm "$bridgeslist_file"
+        regenerate_bridges
+
+        systemctl restart tor
     fi
 }
 
