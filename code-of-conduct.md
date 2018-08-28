@@ -36,7 +36,7 @@ In cases of sincere, good-faith curiosity about someone’s experience or identi
 
 ## No hostile communication
 
-No insults, harassment (sexual or otherwise), condescension, ad hominem, threats, or other intimidation.
+No insults, harassment (sexual or otherwise), condescension, ad hominem, threats, or other intimidation. Claims that such communications were intended as "ironic" or humerous will also be considered a code of conduct violation.
 
 Condescension means treating others as inferior. Subtle condescension still violates the Code of Conduct even if not blatantly demeaning.
 
