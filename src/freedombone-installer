@@ -32,6 +32,8 @@ PROJECT_NAME='freedombone'
 export TEXTDOMAIN=${PROJECT_NAME}-installer
 export TEXTDOMAINDIR="/usr/share/locale"
 
+SSH_PORT=2222
+
 INSTALL_STATE_FIRST_BOOT=0
 INSTALL_STATE_WEBADMIN_PASSWORD_CTEATED=1
 INSTALL_STATE_RUNNING_COMMAND=2
@@ -60,6 +62,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+ssh_file="$webadmin_install_dir/.ssh.txt"
 smolrss_file="$webadmin_install_dir/.rssfeeds.txt"
 syncthing_file="$webadmin_install_dir/.syncthing.txt"
 appsettings_file="$webadmin_install_dir/.appsettings.txt"
@@ -1652,6 +1655,51 @@ function update_smolrss {
     fi
 }
 
+function update_enable_ssh {
+    if [ -f "$ssh_file" ]; then
+        SSH_CONFIG='/etc/ssh/sshd_config'
+        if ! grep -q 'PasswordAuthentication' $SSH_CONFIG; then
+            echo 'PasswordAuthentication no' >> $SSH_CONFIG
+        fi
+        if grep -q '#PasswordAuthentication' $SSH_CONFIG; then
+            sed -i "s|#PasswordAuthentication|PasswordAuthentication|g" $SSH_CONFIG
+        fi
+        if ! grep -q 'PasswordAuthentication no' $SSH_CONFIG; then
+            sed -i "s|PasswordAuthentication.*|PasswordAuthentication no|g" $SSH_CONFIG
+        fi
+
+        ssh_active=$(cat "$ssh_file" | awk -F ',' '{print $1}')
+        ADMIN_USERNAME=$(grep 'MY_USERNAME=' "$CONFIGURATION_FILE" | head -n 1 | awk -F '=' '{print $2}')
+        if [[ "$ssh_active" != '1' ]]; then
+            # disable ssh access
+            if [ -f "/home/$ADMIN_USERNAME/.ssh/authorized_keys" ]; then
+                rm "/home/$ADMIN_USERNAME/.ssh/authorized_keys"
+            fi
+            iptables -D INPUT -p udp --dport "${SSH_PORT}" -j ACCEPT
+            iptables -D INPUT -p tcp --dport "${SSH_PORT}" -j ACCEPT
+        else
+            # enable ssh access
+            ssh_public_key=$(cat "$ssh_file" | awk -F ',' '{print $2}')
+
+            if [ ${#ssh_public_key} -gt 20 ]; then
+                if [[ "$ssh_public_key" == "ssh-"* ]]; then
+                    if [ ! -d "/home/$ADMIN_USERNAME/.ssh" ]; then
+                        mkdir "/home/$ADMIN_USERNAME/.ssh"
+                    fi
+                    echo "$ssh_public_key" > "/home/$ADMIN_USERNAME/.ssh/authorized_keys"
+                    chown -R "$ADMIN_USERNAME":"$ADMIN_USERNAME" "/home/$ADMIN_USERNAME/.ssh"
+                    iptables -A INPUT -p udp --dport "${SSH_PORT}" -j ACCEPT
+                    iptables -A INPUT -p tcp --dport "${SSH_PORT}" -j ACCEPT
+                fi
+            fi
+        fi
+        iptables-save > /etc/firewall.conf
+        ip6tables-save > /etc/firewall6.conf
+        systemctl restart ssh
+        rm "$ssh_file"
+    fi
+fi
+
 function update_blocklist {
     if [ -f "$blocklist_file" ]; then
 
@@ -2022,6 +2070,7 @@ do
             else
                 if [ $install_state -eq $INSTALL_STATE_COMMAND_SUCCESS ]; then
                     reset_shutdown
+                    update_enable_ssh
                     webadmin_factory_reset
                     webadmin_change_password
                     update_blocklist
