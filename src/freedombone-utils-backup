@@ -144,17 +144,6 @@ function configure_backup_key {
     mark_completed "${FUNCNAME[0]}"
 }
 
-function backup_to_friends_servers {
-    # update crontab
-    { echo '#!/bin/bash';
-      echo "if [ -f /usr/local/bin/${PROJECT_NAME}-backup-remote ]; then";
-      echo "    /usr/local/bin/${PROJECT_NAME}-backup-remote";
-      echo 'else';
-      echo "    /usr/bin/${PROJECT_NAME}-backup-remote";
-      echo 'fi'; } > /etc/cron.daily/backuptofriends
-    chmod +x /etc/cron.daily/backuptofriends
-}
-
 function backup_mount_drive {
     if [ "$1" ]; then
         if [[ "$1" == "/dev/"* ]]; then
@@ -388,27 +377,6 @@ function restore_directory_from_usb {
     increment_restore_progress
 }
 
-function restore_directory_from_friend_duplicity {
-    create_backups_temp_directory
-    PASSPHRASE="$BACKUP_DUMMY_PASSWORD" duplicity restore --gpg-options "$BACKUP_GPG_OPTIONS" --tempdir "$BACKUP_TEMP_DIRECTORY" --force "file://$SERVER_DIRECTORY/backup/${2}" "${1}"
-    remove_backups_temp_directory
-}
-
-function restore_directory_from_friend {
-    if [ ! "${1}" ]; then
-        echo $'No restore destination given'
-        return
-    fi
-    if [ ! "${2}" ]; then
-        echo $'No restore source given'
-        return
-    fi
-    if [ ! -d "${1}" ]; then
-        mkdir "${1}"
-    fi
-    restore_directory_from_friend_duplicity "${1}" "${2}"
-}
-
 function backup_database_to_usb {
     database_name=$1
     local_database_dir=/root/temp${1}data
@@ -431,57 +399,6 @@ function set_user_permissions {
             chown -R "$USERNAME":"$USERNAME" "/home/$USERNAME"
         fi
     done
-}
-
-function backup_directory_to_friend_duplicity {
-    create_backups_temp_directory
-    echo "$BACKUP_DUMMY_PASSWORD" | duplicity full --use-agent --gpg-options "$BACKUP_GPG_OPTIONS" --tempdir "$BACKUP_TEMP_DIRECTORY" --ssh-askpass --encrypt-key "${ADMIN_BACKUP_KEY_ID}" --full-if-older-than 4W --exclude-other-filesystems "${1}" "$SERVER_DIRECTORY/backup/${2}"
-    # shellcheck disable=SC2181
-    if [ ! "$?" = "0" ]; then
-        if [[ "${1}" == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-            rm -rf "${1}"
-        fi
-        function_check restart_site
-        restart_site
-        remove_backups_temp_directory
-        exit 5293526
-    fi
-    if [[ $ENABLE_BACKUP_VERIFICATION == "yes" ]]; then
-        echo "$BACKUP_DUMMY_PASSWORD" | duplicity verify --use-agent --gpg-options "$BACKUP_GPG_OPTIONS" --tempdir "$BACKUP_TEMP_DIRECTORY" --ssh-askpass --encrypt-key "${ADMIN_BACKUP_KEY_ID}" --full-if-older-than 4W --exclude-other-filesystems "${1}" "$SERVER_DIRECTORY/backup/${2}"
-        # shellcheck disable=SC2181
-        if [ ! "$?" = "0" ]; then
-            if [[ "${1}" == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-                rm -rf "${1}"
-            fi
-            function_check restart_site
-            restart_site
-            remove_backups_temp_directory
-            exit 683252
-        fi
-    fi
-    remove_backups_temp_directory
-}
-
-function backup_directory_to_friend {
-    BACKUP_KEY_EXISTS=$(gpg --list-keys "$ADMIN_NAME (backup key)")
-    # shellcheck disable=SC2181
-    if [ ! "$?" = "0" ]; then
-        echo $"Backup key could not be found"
-        function_check restart_site
-        restart_site
-        exit 43382
-    fi
-
-    ADMIN_BACKUP_KEY_ID=$(gpg --list-keys "$ADMIN_NAME (backup key)" | sed -n '2p' | sed 's/^[ \t]*//')
-    if [ ! -d "$SERVER_DIRECTORY/backup/${2}" ]; then
-        mkdir -p "$SERVER_DIRECTORY/backup/${2}"
-    fi
-
-    backup_directory_to_friend_duplicity "${1}" "${2}"
-
-    if [[ "${1}" == "/root/temp"* || ${1} == *"tempbackup" ]]; then
-        rm -rf "/root/temp${2}"
-    fi
 }
 
 function backup_database_remote {
@@ -548,12 +465,6 @@ function backup_database_remote {
     fi
 }
 
-function backup_database_to_friend {
-    database_name=$1
-    backup_database_remote "$database_name"
-    backup_directory_to_friend "/root/temp${database_name}data" "${database_name}data"
-}
-
 function backup_apps {
     localremote=$1
 
@@ -603,102 +514,6 @@ function restore_apps {
             echo $"Restored ${app_name}"
         fi
     done
-}
-
-function restore_database_from_friend {
-    DATABASE_PASSWORD=
-    RESTORE_SUBDIR="root"
-
-    if [ -d "$SERVER_DIRECTORY/backup/${1}data" ]; then
-        database_file_extension='sql'
-        if [ $USE_MONGODB ]; then
-            database_file_extension='mdb'
-            USE_POSTGRESQL=
-        fi
-        echo $"Restoring ${1} database"
-        local_database_dir=/root/temp${1}data
-        restore_directory_from_friend "${local_database_dir}" "${1}data"
-        database_file="${local_database_dir}/${RESTORE_SUBDIR}/temp${restore_app_name}data/${restore_app_name}.${database_file_extension}"
-        if [ ! -f "$database_file" ]; then
-            database_file="${local_database_dir}/${restore_app_name}.${database_file_extension}"
-        fi
-        if [ ! -f "$database_file" ]; then
-            echo $"Unable to restore ${1} database"
-            rm -rf "${local_database_dir}"
-            exit 5289252
-        fi
-        if [ ! $USE_POSTGRESQL ]; then
-            if [ ! $USE_MONGODB ]; then
-                USE_MONGODB=
-                USE_POSTGRESQL=
-                keep_database_running
-                mysqlsuccess=$(mysql -u root --password="$DATABASE_PASSWORD" "${restore_app_name}" -o < "${database_file}")
-            else
-                USE_MONGODB=
-                USE_POSTGRESQL=
-                mongorestore --gzip --archive="${database_file}" --db "${restore_app_name}"
-            fi
-        else
-            USE_MONGODB=
-            USE_POSTGRESQL=
-            cd /etc/postgresql || exit 23784634
-            mysqlsuccess=$(sudo -u postgres pg_restore "${database_file}")
-        fi
-        # shellcheck disable=SC2181
-        if [ ! "$?" = "0" ]; then
-            echo "$mysqlsuccess"
-            exit 8735271
-        fi
-        if [ -d "${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data" ]; then
-            rm "${local_database_dir}/${RESTORE_SUBDIR}/temp${1}data/"*
-        else
-            rm "${local_database_dir}/*.${database_file_extension}"
-        fi
-        rm -rf "${local_database_dir}"
-        echo $"Restoring ${1} installation"
-        restore_directory_from_friend "/root/temp${1}" "${1}"
-        RESTORE_SUBDIR="var"
-        if [ "${1}" ]; then
-            # create directory to restore to
-            if [ ! -d "/var/www/${2}/htdocs" ]; then
-                mkdir -p "/var/www/${2}/htdocs"
-                chown www-data:www-data "/var/www/${2}/htdocs"
-            fi
-
-            if [ -d "/var/www/${2}/htdocs" ]; then
-                restore_from_dir="/root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs"
-                if [ ! -d "/root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs" ]; then
-                    restore_from_dir="/root/temp${1}"
-                fi
-
-                if [ -d "$restore_from_dir" ]; then
-                    if [ -d "/root/temp${1}/${RESTORE_SUBDIR}/www/${2}/htdocs" ]; then
-                        rm -rf "/var/www/${2}/htdocs"
-                        # shellcheck disable=SC2086
-                        mv $restore_from_dir /var/www/${2}/
-                    else
-                        cp -r "$restore_from_dir/"* "/var/www/${2}/htdocs/"
-                    fi
-                    # shellcheck disable=SC2181
-                    if [ ! "$?" = "0" ]; then
-                        exit 78352682
-                    fi
-                    if [ -d "/etc/letsencrypt/live/${2}" ]; then
-                        ln -s "/etc/letsencrypt/live/${2}/privkey.pem" "/etc/ssl/private/${2}.key"
-                        ln -s "/etc/letsencrypt/live/${2}/fullchain.pem" "/etc/ssl/certs/${2}.pem"
-                    else
-                        # Ensure that the bundled SSL cert is being used
-                        if [ -f "/etc/ssl/certs/${2}.bundle.crt" ]; then
-                            sed -i "s|${2}.crt|${2}.bundle.crt|g" "/etc/nginx/sites-available/${2}"
-                        fi
-                    fi
-                fi
-            fi
-        fi
-    else
-        echo $"No database backup found for ${1}"
-        exit 6239353
-    fi
 }
 
 function restore_database {
@@ -852,8 +667,6 @@ function backup_extra_directories {
             if [[ $(valid_backup_destination "$destination_dir") == "yes" ]]; then
                 if [[ $backup_type == "local" ]]; then
                     backup_directory_to_usb "$backup_dir" "$destination_dir"
-                else
-                    backup_directory_to_friend "$backup_dir" "$destination_dir"
                 fi
             else
                 echo $"WARNING: The backup directory $destination_dir is already used."
