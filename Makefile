@@ -35,7 +35,6 @@ install:
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup
 	cp src/${APP}-backup-local ${DESTDIR}${PREFIX}/bin/backup2friends
 	cp src/${APP}-restore-local ${DESTDIR}${PREFIX}/bin/restore
-	cp src/${APP}-restore-remote ${DESTDIR}${PREFIX}/bin/restorefromfriend
 	rm -f ${DESTDIR}/usr/share/${APP}/base/*
 	rm -f ${DESTDIR}/usr/share/${APP}/apps/*
 	rm -f ${DESTDIR}/usr/share/${APP}/utils/*
