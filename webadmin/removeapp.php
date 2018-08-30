@@ -23,6 +23,11 @@ if (isset($_POST['submitappsettings'])) {
     $output_filename = "settings_".$app_name.".html";
 }
 
+if (isset($_POST['submithelp'])) {
+    $app_name = htmlspecialchars($_POST['app_name']);
+    $output_filename = "help_".$app_name.".html";
+}
+
 $htmlfile = fopen("$output_filename", "r") or die("Unable to open $output_filename");
 echo fread($htmlfile,filesize("$output_filename"));
 fclose($htmlfile);
