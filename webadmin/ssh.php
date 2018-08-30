@@ -19,6 +19,9 @@ if (isset($_POST['submitssh'])) {
             fwrite($ssh_file, '1,'.$publickey);
             fclose($ssh_file);
 
+            $host=gethostname();
+            exec('sed -i "s|HOSTNAME|'.$host.'|g" ssh_enabled.html');
+
             $output_filename = "ssh_enabled.html";
         }
         else {
