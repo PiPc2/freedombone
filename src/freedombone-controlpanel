@@ -898,20 +898,42 @@ function create_keydrive_fragment {
 }
 
 function backup_data {
-    dialog --title $"Backup data to USB" \
+    dialog --title $"Backup data to USB drive" \
            --msgbox $"Plug in a USB drive now" 6 40
-    clear
-    detect_usb_drive
-    echo ''
-    echo $"Detected USB drive $USB_DRIVE"
-    echo ''
-    echo $'Enter the passphrase for your LUKS encrypted backup drive:'
-    if "${PROJECT_NAME}-backup-local"; then
-        ${PROJECT_NAME}-notification -m $"Backup completed successfully" -s "Backup status"
-    else
-        ${PROJECT_NAME}-notification -m $"Backup failed" -s "Backup status"
-    fi
-    any_key
+
+    backup_password=$(${PROJECT_NAME}-pass -u "$ADMIN_USER" -a simplebackup)
+
+    # get password with the --insecure option
+    data=$(mktemp 2>/dev/null)
+    dialog --title "Backup Drive Password" \
+           --clear \
+           --insecure \
+           --passwordbox "Enter a password which will be used to encrypt the backup" 10 30 "$backup_password" 2> "$data"
+
+    ret=$?
+
+    # make decison
+    case $ret in
+        0)  backup_password=$(cat "$data")
+            rm "$data"
+            if [ "$backup_password" ]; then
+                if [ ${#backup_password} -ge 8 ]; then
+                    # shellcheck disable=SC2086
+                    if /usr/bin/timeout $BACKUP_TIMEOUT_SEC /usr/local/bin/${PROJECT_NAME}-backup-local simple "$backup_password"; then
+                        dialog --title $"Backup" \
+                               --msgbox $"The backup succeeded" 6 40
+                    else
+                        any_key
+                    fi
+                else
+                    dialog --title $"Backup" \
+                           --msgbox $"Password is too short. Make it at least 8 characters" 6 40
+                fi
+            fi
+            return
+            ;;
+    esac
+    rm "$data"
 }
 
 function restore_data_from_storage {
@@ -1058,11 +1080,40 @@ function restore_data_from_storage {
 
 function restore_data {
     dialog --title $"Restore data from USB" \
-           --msgbox $"Plug in your backup USB drive" 6 40
-    clear
-    echo ' '
-    echo $'Enter the passphrase for your LUKS encrypted backup drive:'
-    restore_data_from_storage local
+           --msgbox $"Plug in your backup USB drive now" 6 40
+
+    backup_password=$(${PROJECT_NAME}-pass -u "$ADMIN_USER" -a simplebackup)
+
+    data=$(mktemp 2>/dev/null)
+    dialog --title "Backup drive Password" \
+           --clear \
+           --insecure \
+           --passwordbox "Enter the password for the backup drive" 10 30 "$backup_password" 2> "$data"
+
+    ret=$?
+
+    # make decison
+    case $ret in
+        0)  backup_password=$(cat "$data")
+            rm "$data"
+            if [ "$backup_password" ]; then
+                if [ ${#backup_password} -ge 8 ]; then
+                    # shellcheck disable=SC2086
+                    if /usr/bin/timeout $BACKUP_TIMEOUT_SEC /usr/local/bin/${PROJECT_NAME}-restore-local simple "$backup_password"; then
+                        dialog --title $"Restore" \
+                               --msgbox $"Restore from backup succeeded" 6 40
+                    else
+                        any_key
+                    fi
+                else
+                    dialog --title $"Restore" \
+                           --msgbox $"Password is too short. Make it at least 8 characters" 6 40
+                fi
+            fi
+            return
+            ;;
+    esac
+    rm "$data"
 }
 
 function restore_data_remote {
