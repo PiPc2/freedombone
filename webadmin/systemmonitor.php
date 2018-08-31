@@ -12,7 +12,12 @@ if (isset($_POST['submitsystemmonitor'])) {
     # remain on this screen after clicking update
     $host  = $_SERVER['HTTP_HOST'];
     $uri   = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
-    header("Location: http://$host$uri/system_monitor.html");
+    if (endsWith($uri, 'admin')) {
+        header("Location: http://$host$uri/system_monitor.html");
+    }
+    else {
+        header("Location: http://$host$uri/admin/system_monitor.html");
+    }
 
     sleep(3);
 
