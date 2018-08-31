@@ -33,6 +33,8 @@
 
 WEBADMIN_LOGIN_TEXT=$"Welcome to ${PROJECT_NAME}"
 
+WEBADMIN_ONION_PORT=5783
+
 function web_admin_get_hostname {
     # shellcheck disable=SC2154
     if [ ! "$rootdir" ]; then
@@ -1009,6 +1011,8 @@ function install_web_admin {
           echo '</html>'; } > "$webadmin_install_dir/index.html"
     fi
 
+    WEBADMIN_ONION_HOSTNAME=$(add_onion_service webadmin 80 ${WEBADMIN_ONION_PORT})
+
     nginx_file=/etc/nginx/sites-available/$local_hostname
     { echo 'server {';
       echo '  listen 80 default_server;';
@@ -1090,6 +1094,31 @@ function install_web_admin {
       echo '    index api.json /api.json;';
       echo "    error_page 405 = \$uri;";
       echo '  }';
+      echo '}';
+      echo '';
+      echo 'server {';
+      echo "  listen 127.0.0.1:${WEBADMIN_ONION_PORT} default_server;";
+      echo '  port_in_redirect off;';
+      echo "  server_name ${WEBADMIN_ONION_HOSTNAME};";
+      echo "  root /var/www/${local_hostname}/htdocs;";
+      echo '  index index.html;';
+      echo '';
+      echo '  access_log /dev/null;';
+      echo '  error_log /dev/null;';
+      echo '';
+      echo '  location ^~ /admin {';
+      echo '    client_max_body_size 200m;';
+      echo "    ${basic_auth_str} \"${WEBADMIN_LOGIN_TEXT}\";";
+      echo "    ${basic_auth_str}_user_file /etc/nginx/.webadminpasswd;";
+      echo "    root /var/www/${local_hostname}/htdocs;";
+      echo '    index index.html;';
+      echo "    error_page 405 = \$uri;";
+      echo '    location ~ \.php {';
+      echo '      include snippets/fastcgi-php.conf;';
+      echo '      fastcgi_pass unix:/var/run/php/php7.0-fpm.sock;';
+      echo '      fastcgi_read_timeout 30;';
+      echo '    }';
+      echo '  }';
       echo '}'; } >> "$nginx_file"
 
     if [ ! -f "/etc/ssl/certs/${local_hostname}.crt" ]; then
@@ -1137,6 +1166,8 @@ function install_web_admin {
     webadmin_change_language
 
     webadmin_update_version
+
+    sed -i "s|WEBADMINONIONADDRESS|$WEBADMIN_ONION_HOSTNAME|g" "/var/www/${local_hostname}/htdocs/admin/about.html"
 }
 
 # NOTE: deliberately no exit 0
