@@ -121,6 +121,69 @@ format_progress_file=/root/.format_progress.txt
 
 # whether an automatically scheduled backup is running
 running_auto_backup=
+backup_drive_mounted=
+USB_MOUNT=/mnt/usb
+
+function backup_mount_drive {
+    backup_drive_mounted=
+    if [ "$1" ]; then
+        if [[ "$1" == "/dev/"* ]]; then
+            USB_DRIVE="$1"
+        else
+            USB_DRIVE=/dev/${1}1
+        fi
+    fi
+
+    # check that the backup destination is available
+    if [ ! -b "$USB_DRIVE" ]; then
+        return
+    fi
+
+    # unmount if already mounted
+    umount -f "$USB_MOUNT"
+    if [ ! -d "$USB_MOUNT" ]; then
+        mkdir "$USB_MOUNT"
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
+    cryptsetup close encrypted_usb
+
+    if ! mount "$USB_DRIVE" "$USB_MOUNT"; then
+        rm -rf "$USB_MOUNT"
+        return
+    fi
+    backup_drive_mounted=1
+}
+
+function backup_unmount_drive {
+    if ! umount "$USB_MOUNT"; then
+        echo $"Unable to unmount the drive."
+        rm -rf "$USB_MOUNT"
+        return
+    fi
+    rm -rf "$USB_MOUNT"
+    if [[ $USB_DRIVE == /dev/mapper/encrypted_usb ]]; then
+        echo $"Unmount encrypted USB"
+        cryptsetup close encrypted_usb
+    fi
+    if [ -f /dev/mapper/encrypted_usb ]; then
+        rm -rf /dev/mapper/encrypted_usb
+    fi
+    backup_drive_mounted=
+}
+
+function detect_connected_drives {
+    if [ ! -f $DRIVES_BASELINE_FILE ]; then
+        # shellcheck disable=SC2012
+        ls -gA /dev/sd* | awk -F '/dev/' '{print $2}' > $DRIVES_BASELINE_FILE
+        return
+    fi
+    # shellcheck disable=SC2012
+    ls -gA /dev/sd* | awk -F '/dev/' '{print $2}' > /tmp/.drives_current
+
+    diff /tmp/.drives_current ${DRIVES_BASELINE_FILE} | awk -F '< ' '{print $2}'  | sed '/^$/d'  | sed 's/[0-9]*//g' | uniq | head -n 1
+}
 
 function app_not_on_onion_only {
     app_name="$1"
@@ -1937,6 +2000,22 @@ function update_system_monitor {
             disk_use_percent=$(df -h | grep $test_drive | tail -n 1 | awk -F ' ' '{print $5}')
         fi
 
+        backup_disk_use_percent=
+        if [ -f "$DRIVES_BASELINE_FILE" ]; then
+            backup_device=$(detect_connected_drives)
+            if [ "$backup_device" ]; then
+                backup_mount_drive "$backup_device"
+                if [ $backup_drive_mounted ]; then
+                    backup_disk_use=$(df -h | grep "$backup_device")
+                    backup_disk_use_percent='0%'
+                    if [[ "$backup_disk_use" == *"$backup_device"* ]]; then
+                        backup_disk_use_percent=$(df -h | grep "$backup_device" | tail -n 1 | awk -F ' ' '{print $5}')
+                    fi
+                fi
+                backup_unmount_drive
+            fi
+        fi
+
         used_memory=$(free -m | grep "Mem:" | awk -F ' ' '{print $3}')
         total_memory=$(free -m | grep "Mem:" | awk -F ' ' '{print $2}')
         used_memory_percent=$((used_memory * 100 / total_memory))
@@ -1987,6 +2066,10 @@ function update_system_monitor {
 
             if [ "$disk_use_percent" ]; then
                 sed -i "s|<div name=\"diskspace\" class=\"w3-container.*|<div name=\"diskspace\" class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:$disk_use_percent\">$disk_use_percent</div>|g" "$webadmin_install_dir/system_monitor.html"
+            fi
+
+            if [ "$backup_disk_use_percent" ]; then
+                sed -i "s|<div name=\"backupspace\" class=\"w3-container.*|<div name=\"backupspace\" class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:$backup_disk_use_percent\">$backup_disk_use_percent</div>|g" "$webadmin_install_dir/system_monitor.html"
             fi
 
             sed -i "s|<div name=\"memory\" class=\"w3-container.*|<div name=\"memory\" class=\"w3-container w3-blue w3-round-xlarge\" style=\"width:${used_memory_percent}%\">${used_memory_percent}%</div>|g" "$webadmin_install_dir/system_monitor.html"
