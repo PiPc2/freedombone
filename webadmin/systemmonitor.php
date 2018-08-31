@@ -1,5 +1,15 @@
 <?php
 
+function endsWith($haystack, $needle)
+{
+    $length = strlen($needle);
+    if ($length == 0) {
+        return true;
+    }
+
+    return (substr($haystack, -$length) === $needle);
+}
+
 // Updates values for the system monitor screen
 
 $output_filename = "settings.html";
