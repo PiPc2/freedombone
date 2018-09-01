@@ -66,6 +66,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+settings_updates_file="$webadmin_install_dir/.settingsupdates.txt"
 ssh_file="$webadmin_install_dir/.ssh.txt"
 smolrss_file="$webadmin_install_dir/.rssfeeds.txt"
 syncthing_file="$webadmin_install_dir/.syncthing.txt"
@@ -998,22 +999,22 @@ function install_apps_from_webadmin {
                 fi
 
                 # Add domain name to the config
-                if ! grep -q "${app_name_upper}_DOMAIN_NAME=" $CONFIGURATION_FILE; then
-                    echo "${app_name_upper}_DOMAIN_NAME=${app_domain}" >> $CONFIGURATION_FILE
+                if ! grep -q "${app_name_upper}_DOMAIN_NAME=" "$CONFIGURATION_FILE"; then
+                    echo "${app_name_upper}_DOMAIN_NAME=${app_domain}" >> "$CONFIGURATION_FILE"
                 else
-                    sed -i "s|${app_name_upper}_DOMAIN_NAME=.*|${app_name_upper}_DOMAIN_NAME=${app_domain}|g" $CONFIGURATION_FILE
+                    sed -i "s|${app_name_upper}_DOMAIN_NAME=.*|${app_name_upper}_DOMAIN_NAME=${app_domain}|g" "$CONFIGURATION_FILE"
                 fi
 
-                if grep -q 'ONION_ONLY=no' $CONFIGURATION_FILE; then
+                if grep -q 'ONION_ONLY=no' "$CONFIGURATION_FILE"; then
                     # Add freedns code to the config
                     if [ "$freedns_code" ]; then
                         # shellcheck disable=SC2086
                         ${app_name_upper}_CODE="${freedns_code}"
 
-                        if ! grep -q "${app_name_upper}_CODE=" $CONFIGURATION_FILE; then
-                            echo "${app_name_upper}_CODE=${freedns_code}" >> $CONFIGURATION_FILE
+                        if ! grep -q "${app_name_upper}_CODE=" "$CONFIGURATION_FILE"; then
+                            echo "${app_name_upper}_CODE=${freedns_code}" >> "$CONFIGURATION_FILE"
                         else
-                            sed -i "s|${app_name_upper}_CODE=.*|${app_name_upper}_CODE=${freedns_code}|g" $CONFIGURATION_FILE
+                            sed -i "s|${app_name_upper}_CODE=.*|${app_name_upper}_CODE=${freedns_code}|g" "$CONFIGURATION_FILE"
                         fi
                     fi
                 fi
@@ -1227,7 +1228,7 @@ function backup_and_restore {
     if [ -f "$restore_file" ]; then
         rm "$restore_file"
 
-        ADMIN_USERNAME=$(grep 'MY_USERNAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+        ADMIN_USERNAME=$(grep 'MY_USERNAME=' "$CONFIGURATION_FILE" | awk -F '=' '{print $2}')
 
         restore_title=$'Restore status'
         restore_failed_message=$"Restore failed. See http://${HOSTNAME}/admin/restore.txt for details"
@@ -1272,7 +1273,7 @@ function backup_and_restore {
         if [ -f "$backup_file" ]; then
             rm "$backup_file"
 
-            ADMIN_USERNAME=$(grep 'MY_USERNAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+            ADMIN_USERNAME=$(grep 'MY_USERNAME=' "$CONFIGURATION_FILE" | awk -F '=' '{print $2}')
 
             backup_title=$'Backup status'
             backup_failed_message=$"Backup failed. See http://${HOSTNAME}/admin/backup.txt for details"
@@ -1666,7 +1667,7 @@ function smolrss_update_settings_template {
 function update_syncthing {
     if [ -f "$syncthing_file" ]; then
 
-        MY_USERNAME=$(grep 'MY_USERNAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+        MY_USERNAME=$(grep 'MY_USERNAME=' "$CONFIGURATION_FILE" | awk -F '=' '{print $2}')
 
         syncthingids_new="/home/$MY_USERNAME/.syncthingids.webadmin"
 
@@ -1704,7 +1705,7 @@ function update_syncthing {
 function update_smolrss {
     if [ -f "$smolrss_file" ]; then
 
-        SMOLRSS_DOMAIN_NAME=$(grep 'SMOLRSS_DOMAIN_NAME=' "/root/${PROJECT_NAME}.cfg" | awk -F '=' '{print $2}')
+        SMOLRSS_DOMAIN_NAME=$(grep 'SMOLRSS_DOMAIN_NAME=' "$CONFIGURATION_FILE" | awk -F '=' '{print $2}')
 
         cd "/var/www/$SMOLRSS_DOMAIN_NAME/htdocs" || return
 
@@ -1735,6 +1736,63 @@ function update_smolrss {
 
         rm "$smolrss_file"
         smolrss_update_settings_template
+    fi
+}
+
+function change_updates_settings {
+    if [ -f "$settings_updates_file" ]; then
+        updates_enabled=$(awk -F ',' '{print $1}' < "$settings_updates_file")
+        if [[ "$updates_enabled" != '0' && "$updates_enabled" != '1' ]]; then
+            rm "$settings_updates_file"
+            return
+        fi
+
+        updates_repo=$(awk -F ',' '{print $2}' < "$settings_updates_file")
+        if [[ "$updates_repo" != *'.'* || "$updates_repo" != 'http'* || "$updates_repo" == *' '* || "$updates_repo" == *'$'* || "$updates_repo" == *'`'* ]]; then
+            rm "$settings_updates_file"
+            return
+        fi
+
+        updates_branch=$(awk -F ',' '{print $3}' < "$settings_updates_file")
+        if [[ "$updates_branch" == 'http'* || "$updates_branch" == *' '* || "$updates_branch" == *'$'* || "$updates_branch" == *'`'* ]]; then
+            rm "$settings_updates_file"
+            return
+        fi
+
+        PROJECT_REPO='none'
+        if [ "$updates_repo" ]; then
+            PROJECT_REPO="$updates_repo"
+        fi
+        if grep -q 'PROJECT_REPO=' "$CONFIGURATION_FILE"; then
+            sed -i "s|PROJECT_REPO=.*|PROJECT_REPO=$PROJECT_REPO|g" "$CONFIGURATION_FILE"
+        else
+            echo "PROJECT_REPO=$PROJECT_REPO" >> "$CONFIGURATION_FILE"
+        fi
+
+        STABLE_BRANCH=
+        if [ "$updates_branch" ]; then
+            STABLE_BRANCH="$updates_branch"
+        fi
+        if grep -q 'STABLE_BRANCH=' "$CONFIGURATION_FILE"; then
+            sed -i "s|STABLE_BRANCH=.*|STABLE_BRANCH=$STABLE_BRANCH|g" "$CONFIGURATION_FILE"
+        else
+            echo "STABLE_BRANCH=$STABLE_BRANCH" >> "$CONFIGURATION_FILE"
+        fi
+
+        # change default checked state for radio button
+        if [[ "$updates_enabled" == '1' ]]; then
+            sed -i "s|value=\"1\">|value=\"1\" checked>|g" "$webadmin_install_dir/settings_updates.html"
+            sed -i "s|value=\"0\" checked>|value=\"0\">|g" "$webadmin_install_dir/settings_updates.html"
+        else
+            sed -i "s|value=\"0\">|value=\"0\" checked>|g" "$webadmin_install_dir/settings_updates.html"
+            sed -i "s|value=\"1\" checked>|value=\"1\">|g" "$webadmin_install_dir/settings_updates.html"
+        fi
+
+        # update variables within updates settings screen
+        sed -i "s|name=\"updates_repo\".*|name=\"updates_repo\" value=\"$PROJECT_REPO\">|g" "$webadmin_install_dir/settings_updates.html"
+        sed -i "s|name=\"updates_branch\".*|name=\"updates_branch\" value=\"$STABLE_BRANCH\">|g" "$webadmin_install_dir/settings_updates.html"
+
+        rm "$settings_updates_file"
     fi
 }
 
@@ -2193,6 +2251,7 @@ do
             else
                 if [ $install_state -eq $INSTALL_STATE_COMMAND_SUCCESS ]; then
                     reset_shutdown
+                    change_updates_settings
                     update_enable_ssh
                     webadmin_factory_reset
                     webadmin_change_password
