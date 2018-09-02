@@ -50,6 +50,8 @@ This is a Free Software project and there is no intention to support or endorse 
 
 ## Raising concerns
 
+If you're raising concerns about something or someone, there must be demonstrable evidence that the thing exists or that the event occurred. That means having something to show or link to. Concerns not based upon observable evidence will be considered spurious.
+
 This is not a big project and so there is no division of labor or special enforcement committee or bureaucratic process.
 
 If your concern is something which is suitable for public discussion then raise it in one of the chat rooms mentioned above. Be mindful to do so in a polite and considerate manner. Hostile communication towards anyone raising concerns publicly will be considered a code of conduct violation.
