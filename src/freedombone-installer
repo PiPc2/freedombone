@@ -66,6 +66,7 @@ FIREWALL_DOMAINS=/root/${PROJECT_NAME}-firewall-domains.cfg
 local_hostname=$(grep 'host-name' /etc/avahi/avahi-daemon.conf | awk -F '=' '{print $2}').local
 
 webadmin_install_dir="/var/www/${local_hostname}/htdocs/admin"
+datlinks_file="$webadmin_install_dir/.datlinks.txt"
 settings_updates_file="$webadmin_install_dir/.settingsupdates.txt"
 ssh_file="$webadmin_install_dir/.ssh.txt"
 smolrss_file="$webadmin_install_dir/.rssfeeds.txt"
@@ -1664,6 +1665,18 @@ function smolrss_update_settings_template {
     chown www-data:www-data "$app_settings_screen"
 }
 
+function datserver_update_settings_template {
+    # Creates dat links list within the web UI
+    # shellcheck disable=SC2154
+    app_settings_screen_template="$webadmin_install_dir/settings_datserver_template.html"
+    app_settings_screen="$webadmin_install_dir/settings_datserver.html"
+    cp "$app_settings_screen_template" "$app_settings_screen"
+    datlinks=$(sed 's@[/\&]@\\&@g;s/$/\\/' "/etc/datserver/datlinks.txt"; echo .)
+    datlinks=${datlinks%.}
+    sed -i "s|DATLINKS|$datlinks|g" "$app_settings_screen"
+    chown www-data:www-data "$app_settings_screen"
+}
+
 function update_syncthing {
     if [ -f "$syncthing_file" ]; then
 
@@ -1736,6 +1749,44 @@ function update_smolrss {
 
         rm "$smolrss_file"
         smolrss_update_settings_template
+    fi
+}
+
+function update_dat_links {
+    if [ -f "$datlinks_file" ]; then
+
+        cd "/etc/datserver" || return
+
+        if [ -f "feeds.new" ]; then
+            rm "feeds.new"
+        fi
+        touch "feeds.new"
+
+        datlinks_lines_ctr=0
+        while read -r line; do
+            if [ $datlinks_lines_ctr -gt 1024 ]; then
+                # This prevents someone copy-pasting a giant amount of text
+                # into the dat links
+                break
+            fi
+            datlinks_lines_ctr=$((datlinks_lines_ctr + 1))
+
+            if [ "$line" ]; then
+                # remove leading and trailing spaces
+                newline="$(echo -e "${line}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+                if [[ "$newline" == 'dat://'* ]]; then
+                    echo "$newline" >> "feeds.new"
+                fi
+            fi
+        done < "$datlinks_file"
+
+        mv "feeds.new" feeds
+
+        rm "$datlinks_file"
+        datserver_update_settings_template
+
+        chown -R datserver:datserver /etc/datserver/feeds
+        systemctl restart datserver
     fi
 }
 
@@ -2273,6 +2324,7 @@ do
                     update_app_settings
                     update_syncthing
                     update_smolrss
+                    update_dat_links
                     webadmin_upgrade
                     install_apps_from_webadmin
                     sleep 1
