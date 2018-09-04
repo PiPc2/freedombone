@@ -24,12 +24,15 @@ if (isset($_POST['installconfirmsubmit'])) {
             $continue_install=true;
 
             if(! $onion_only) {
-                $install_domain = htmlspecialchars($_POST['install_domain']);
-                if (strpos($install_domain, '.') === false) {
-                    // No domain was provided
-                    $continue_install=false;
+                $no_domain = htmlspecialchars($_POST['no_domain']);
+                if ($no_domain === '0') {
+                    $install_domain = htmlspecialchars($_POST['install_domain']);
+                    if (strpos($install_domain, '.') === false) {
+                        // No domain was provided
+                        $continue_install=false;
+                    }
+                    $freedns_code = htmlspecialchars($_POST['freedns_code']);
                 }
-                $freedns_code = htmlspecialchars($_POST['freedns_code']);
             }
 
             if($continue_install) {

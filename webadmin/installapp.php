@@ -11,6 +11,7 @@ if (isset($_POST['submitappinstall'])) {
     $app_name = htmlspecialchars($_POST['app_name']);
     $install_domain = '';
     $freedns_code = '';
+    $no_domain='0';
 
     // Note that this value can be changed by install_web_admin
     $onion_only=false;
@@ -36,6 +37,7 @@ if (isset($_POST['submitappinstall'])) {
             exec('sed -i "s|APPNAME|'.$app_name.'|g" add_app_confirm.html');
             exec('sed -i "s|APPDOMAIN|'.$install_domain.'|g" add_app_confirm.html');
             exec('sed -i "s|APPCODE|'.$freedns_code.'|g" add_app_confirm.html');
+            exec('sed -i "s|NODOMAIN|'.$no_domain.'|g" add_app_confirm.html');
             $output_filename = "add_app_confirm.html";
         }
     }
