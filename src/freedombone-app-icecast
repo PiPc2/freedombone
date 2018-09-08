@@ -63,10 +63,30 @@ icecast_variables=(MY_USERNAME
                    DEFAULT_LANGUAGE)
 
 function icecast_liquidsoap {
-    $INSTALL_PACKAGES liquidsoap liquidsoap-plugin-icecast
-    $INSTALL_PACKAGES liquidsoap-plugin-lame liquidsoap-plugin-flac
-    $INSTALL_PACKAGES liquidsoap-plugin-ogg liquidsoap-plugin-vorbis
-    $INSTALL_PACKAGES liquidsoap-plugin-opus
+    # https://www.linuxjournal.com/content/creating-internet-radio-station-icecast-and-liquidsoap
+    #$INSTALL_PACKAGES liquidsoap liquidsoap-plugin-icecast
+    #$INSTALL_PACKAGES liquidsoap-plugin-lame liquidsoap-plugin-flac
+    #$INSTALL_PACKAGES liquidsoap-plugin-ogg liquidsoap-plugin-vorbis
+    #$INSTALL_PACKAGES liquidsoap-plugin-opus
+
+    $INSTALL_PACKAGES opam
+
+    useradd -c "liquidsoap system account" -d /etc/liquidsoapuser -m -r -g icecast liquidsoapuser
+    gpasswd -a liquidsoapuser sudo
+    su -c 'opam init -y' - liquidsoapuser
+    # shellcheck disable=SC2016
+    su -c 'eval `opam config env`' - liquidsoapuser
+    su -c 'opam install depext' - liquidsoapuser
+    chmod 755 /etc/sudoers
+    echo 'liquidsoapuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+    chmod 0440 /etc/sudoers
+    su -c 'opam depext -y taglib mad lame vorbis cry ssl samplerate magic opus liquidsoap' - liquidsoapuser
+    su -c 'opam install -y taglib mad lame vorbis cry ssl samplerate magic opus liquidsoap' - liquidsoapuser
+    if [ ! -f /etc/liquidsoapuser/.opam/system/bin/liquidsoap ]; then
+        echo $'liquidsoap was not installed via opam'
+        exit 356835683
+    fi
+    cp /etc/liquidsoapuser/.opam/system/bin/liquidsoap /usr/bin/liquidsoap
 
     if [ ! -d $ICECAST_DIR ]; then
         mkdir $ICECAST_DIR
@@ -88,14 +108,15 @@ function icecast_liquidsoap {
 
     { echo '#Settings';
       echo '';
+      echo 'set("log.file.path", "/etc/liquidsoapuser/liquidsoap.log")';
       echo 'set("server.telnet", false)';
       echo 'set("harbor.bind_addr","0.0.0.0")';
       echo '';
       echo '# Music playlists';
-      echo "music1 = nrj(playlist(\"$ICECAST_DIR\"))";
+      echo "music1 = nrj(playlist.safe(\"$ICECAST_DIR\"))";
       echo '';
       echo '# Some jingles';
-      echo "jingles = nrj(playlist(\"$ICECAST_JINGLES\"))";
+      echo "jingles = nrj(playlist.safe(\"$ICECAST_JINGLES\"))";
       echo '';
       echo '# If something goes wrong, well play this';
       echo 'security = single("/etc/icecast2/default.ogg")';
@@ -110,14 +131,14 @@ function icecast_liquidsoap {
       echo 'radio = random(weights = [1, 7], [jingles, radio])';
       echo '';
       echo '# Add a skip command for the music stream';
-      echo 'server.register(';
-      echo 'usage="skip",';
-      echo 'description="Skip the current song.",';
-      echo '"skip",';
-      echo 'fun(_) -> begin source.skip(radio) "Done!" end';
+      echo '#server.register(';
+      echo '#usage="skip",';
+      echo '#description="Skip the current song.",';
+      echo '#"skip",';
+      echo '#fun(_) -> begin source.skip(radio) "Done!" end';
       echo '';
       echo '# Talk over stream using microphone mount.';
-      echo "mic=input.harbor(\"mic\",port=8080,password=\"$ICECAST_USER_PASSWORD\",buffer=1.0)";
+      echo "mic = input.harbor(\"mic\",port=8080,password=\"$ICECAST_USER_PASSWORD\",buffer=1.0)";
       echo 'radio = smooth_add(delay=0.8, p=0.15, normal=radio, special=mic)';
       echo '';
       echo '#Add support for live streams.';
@@ -142,8 +163,8 @@ function icecast_liquidsoap {
       echo '';
       echo "output.icecast(%vorbis, host=\"localhost\", port=$ICECAST_PORT, password=\"$ICECAST_SOURCE_PASSWORD\", mount=\"stream.ogg\", name=\"$ICECAST_TITLE_MAIN\", description=\"$ICECAST_TITLE_MAIN\",full)";
       echo '';
-      echo "output.icecast(%opus(vbr=\"unconstrained\",bitrate=60), description=\"$ICECAST_TITLE_MAIN\", host=\"localhost\", port=$ICECAST_PORT, password=\"$ICECAST_SOURCE_PASSWORD\", mount=\"stream.opus\", full)"; } > /etc/icecast2/radio.liq
-    chown icecast2:icecast /etc/icecast2/radio.liq
+      echo "output.icecast(%opus(vbr=\"unconstrained\",bitrate=60), description=\"$ICECAST_TITLE_MAIN\", host=\"localhost\", port=$ICECAST_PORT, password=\"$ICECAST_SOURCE_PASSWORD\", mount=\"stream.opus\", full)"; } > /etc/liquidsoapuser/radio.liq
+    chown icecast2:icecast /etc/liquidsoapuser/radio.liq
 
     { echo '[Unit]';
       echo 'Description=Radio Liquidsoap daemon';
@@ -151,10 +172,10 @@ function icecast_liquidsoap {
       echo 'Documentation=http://liquidsoap.fm/';
       echo '';
       echo '[Service]';
-      echo 'Type=forking';
-      echo 'User=icecast2';
-      echo 'WorkingDirectory=/etc/icecast2';
-      echo 'ExecStart=/usr/bin/liquidsoap /etc/icecast2/radio.liq';
+      echo 'Type=simple';
+      echo 'User=liquidsoapuser';
+      echo 'WorkingDirectory=/etc/liquidsoapuser/.opam/system/bin';
+      echo 'ExecStart=/etc/liquidsoapuser/.opam/system/bin/liquidsoap /etc/liquidsoapuser/radio.liq';
       echo 'Restart=always';
       echo '';
       echo '[Install]';
@@ -237,10 +258,12 @@ function change_password_icecast {
 
 function logging_on_icecast {
     sed -i 's|<loglevel>.*|<loglevel>4</loglevel>|g' /etc/icecast2/icecast.xml
+    sed -i 's|set("log.file.path".*|set("log.file.path", "/etc/liquidsoapuser/liquidsoap.log")|g' /etc/liquidsoapuser/radio.liq
 }
 
 function logging_off_icecast {
     sed -i 's|<loglevel>.*|<loglevel>1</loglevel>|g' /etc/icecast2/icecast.xml
+    sed -i 's|set("log.file.path".*|set("log.file.path", "/dev/null")|g' /etc/liquidsoapuser/radio.liq
 }
 
 function reconfigure_icecast {
@@ -566,6 +589,11 @@ function remove_icecast {
     fi
 
     $REMOVE_PACKAGES_PURGE icecast2
+
+    userdel -r liquidsoapuser
+    if [ -d /etc/liquidsoapuser ]; then
+        rm -rf /etc/liquidsoapuser
+    fi
 
     if [ -d /etc/icecast2 ]; then
         rm -rf /etc/icecast2
