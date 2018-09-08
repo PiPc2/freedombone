@@ -71,18 +71,31 @@ function icecast_update_daemon {
     fi
 
     { echo '#!/bin/sh';
-      echo "kill \$(pidof ices2)";
+      echo "stop_pid=\$(pidof ices2)";
+      echo "if [ \"\$stop_pid\" ]; then";
+      echo "    kill \$stop_pid";
+      echo 'fi';
       echo 'systemctl stop icecast2'; } > /usr/bin/stop_icecast
     chmod +x /usr/bin/stop_icecast
 
     # Note that the sleep here actually is important
     { echo '#!/bin/bash';
+      echo 'icecast_restarted=';
+      echo '';
+      echo "isrunning=\$(ps aux | grep icecast2)";
+      echo "if [[ \"\$isrunning\" != *\"/usr/bin/icecast2\"* ]]; then";
+      echo '    systemctl restart icecast2';
+      echo '    icecast_restarted=1';
+      echo 'fi';
+      echo '';
       echo "isrunning=\$(ps aux | grep ices2)";
       echo "if [[ \"\$isrunning\" != *\"ices-playlist\"* ]]; then";
-      echo '    systemctl start icecast2';
-      echo '    sleep 3';
+      echo "    if [ ! \$icecast_restarted ]; then";
+      echo '        systemctl restart icecast2';
+      echo '        sleep 3';
+      echo '    fi';
       echo '    cd /etc/ices2';
-      echo '    ices2 ices-playlist.xml';
+      echo '    sudo -u icecast2 ices2 ices-playlist.xml';
       echo 'fi'; } > /usr/bin/start_icecast
     chmod +x /usr/bin/start_icecast
 
@@ -133,10 +146,12 @@ function change_password_icecast {
 
 function logging_on_icecast {
     sed -i 's|<loglevel>.*|<loglevel>4</loglevel>|g' /etc/ices2/ices-playlist.xml
+    sed -i 's|<loglevel>.*|<loglevel>4</loglevel>|g' /etc/icecast2/icecast.xml
 }
 
 function logging_off_icecast {
-    sed -i 's|<loglevel>.*|<loglevel>0</loglevel>|g' /etc/ices2/ices-playlist.xml
+    sed -i 's|<loglevel>.*|<loglevel>1</loglevel>|g' /etc/ices2/ices-playlist.xml
+    sed -i 's|<loglevel>.*|<loglevel>1</loglevel>|g' /etc/icecast2/icecast.xml
 }
 
 function reconfigure_icecast {
@@ -535,7 +550,7 @@ function install_icecast {
 
     debconf-set-selections <<< "icecast2 icecast2/icecast-setup boolean false"
     $INSTALL_PACKAGES icecast2
-    $INSTALL_PACKAGES ices2 ffmpeg apache2-utils
+    $INSTALL_PACKAGES ices2 ffmpeg apache2-utils vorbis-tools
 
     if [ ! -f /etc/icecast2/icecast.xml ]; then
         echo $'Icecast not installed'
@@ -549,19 +564,21 @@ function install_icecast {
             ICECAST_PASSWORD="$(create_password "${MINIMUM_PASSWORD_LENGTH}")"
         fi
     fi
+    ICECAST_SOURCE_PASSWORD="$(create_password 30)"
+    ICECAST_RELAY_PASSWORD="$(create_password 30)"
 
     ICECAST_ONION_HOSTNAME=$(add_onion_service icecast 80 ${ICECAST_ONION_PORT})
 
-    sed -i  -e "s|<source-password>[^<]*</source-password>|<source-password>$ICECAST_PASSWORD</source-password>|" \
-        -e "s|<relay-password>[^<]*</relay-password>|<relay-password>$ICECAST_PASSWORD</relay-password>|" \
+    sed -i  -e "s|<source-password>[^<]*</source-password>|<source-password>$ICECAST_SOURCE_PASSWORD</source-password>|" \
+        -e "s|<relay-password>[^<]*</relay-password>|<relay-password>$ICECAST_RELAY_PASSWORD</relay-password>|" \
         -e "s|<admin-password>[^<]*</admin-password>|<admin-password>$ICECAST_PASSWORD</admin-password>|" \
-        -e "s|<hostname>[^<]*</hostname>|<hostname>$ICECAST_ONION_HOSTNAME</hostname>|" \
+        -e "s|<hostname>[^<]*</hostname>|<hostname>localhost</hostname>|" \
         /etc/icecast2/icecast.xml
 
     sed -i "s|<clients>.*|<clients>10</clients>|g" /etc/icecast2/icecast.xml
     sed -i "s|<port>.*|<port>$ICECAST_PORT</port>|g" /etc/icecast2/icecast.xml
     sed -i "s|<admin-user>.*|<admin-user>$MY_USERNAME</admin-user>|g" /etc/icecast2/icecast.xml
-    sed -i "s|<admin>.*|<admin>$MY_EMAIL_ADDRESS</admin>|g" /etc/icecast2/icecast.xml
+    sed -i "s|<admin>.*|<admin>$MY_USERNAME@localhost</admin>|g" /etc/icecast2/icecast.xml
     sed -i "s|<location>.*|<location>The Interwebs</location>|g" /etc/icecast2/icecast.xml
     #sed -i 's|<!-- <bind-address>.*|<bind-address>127.0.0.1</bind-address>|g' /etc/icecast2/icecast.xml
 
@@ -614,34 +631,19 @@ function install_icecast {
 
     { echo '<?xml version="1.0"?>';
       echo '<ices>';
-      echo '    <!-- run in background -->';
       echo '    <background>1</background>';
-      echo '    <!-- where logs, etc go. -->';
-      echo '    <logpath>/var/log/ices</logpath>';
+      echo '    <logpath>/etc/ices2</logpath>';
       echo '    <logfile>ices.log</logfile>';
       echo '    <!-- 1=error,2=warn,3=info,4=debug -->';
       echo '    <loglevel>0</loglevel>';
-      echo '    <!-- set this to 1 to log to the console instead of to the file above -->';
       echo '    <consolelog>0</consolelog>';
       echo '';
-      echo '    <!-- optional filename to write process id to -->';
-      echo '    <!-- <pidfile>/home/ices/ices.pid</pidfile> -->';
-      echo '';
       echo '    <stream>';
-      echo '        <!-- metadata used for stream listing (not currently used) -->';
       echo '        <metadata>';
       echo '            <name>Example stream name</name>';
       echo '            <genre>Example genre</genre>';
       echo '            <description>A short description of your stream</description>';
       echo '        </metadata>';
-      echo '';
-      echo '        <!-- input module';
-      echo '';
-      echo '            The module used here is the playlist module - it has ';
-      echo '            "submodules" for different types of playlist. There are';
-      echo '            two currently implemented, "basic", which is a simple';
-      echo '            file-based playlist, and "script" which invokes a command';
-      echo '            to returns a filename to start playing. -->';
       echo '';
       echo '        <input>';
       echo '            <module>playlist</module>';
@@ -655,55 +657,17 @@ function install_icecast {
       echo '            <param name="once">0</param>';
       echo '        </input>';
       echo '';
-      echo '            <!-- Stream instance';
-      echo '            You may have one or more instances here. This allows you to ';
-      echo '            send the same input data to one or more servers (or to different';
-      echo '            mountpoints on the same server). Each of them can have different';
-      echo '            parameters. This is primarily useful for a) relaying to multiple';
-      echo '            independent servers, and b) encoding/reencoding to multiple';
-      echo '            bitrates.';
-      echo '            If one instance fails (for example, the associated server goes';
-      echo '            down, etc), the others will continue to function correctly.';
-      echo '            This example defines two instances as two mountpoints on the';
-      echo '            same server.  -->';
       echo '        <instance>';
-      echo '            <!-- Server details:';
-      echo '                You define hostname and port for the server here, along with';
-      echo '                the source password and mountpoint.  -->';
       echo '            <hostname>localhost</hostname>';
       echo "            <port>$ICECAST_PORT</port>";
-      echo "            <password>$ICECAST_PASSWORD</password>";
+      echo "            <password>$ICECAST_SOURCE_PASSWORD</password>";
       echo '            <mount>';
       echo '                <mount-name>/stream.ogg</mount-name>';
       echo '            </mount>';
-      echo '            <!-- Reconnect parameters:';
-      echo '                When something goes wrong (e.g. the server crashes, or the';
-      echo '                network drops) and ices disconnects from the server, these';
-      echo '                control how often it tries to reconnect, and how many times';
-      echo '                it tries to reconnect. Delay is in seconds.';
-      echo '                If you set reconnectattempts to -1, it will continue ';
-      echo '                indefinately. Suggest setting reconnectdelay to a large value';
-      echo '                if you do this.';
-      echo '            -->';
       echo '            <reconnectdelay>2</reconnectdelay>';
       echo '            <reconnectattempts>5</reconnectattempts> ';
-      echo '';
-      echo '            <!-- maxqueuelength:';
-      echo '                This describes how long the internal data queues may be. This';
-      echo '                basically lets you control how much data gets buffered before';
-      echo '                ices decides it cant send to the server fast enough, and ';
-      echo '                either shuts down or flushes the queue (dropping the data)';
-      echo '                and continues. ';
-      echo '                For advanced users only.';
-      echo '            -->';
       echo '            <maxqueuelength>80</maxqueuelength>';
       echo '';
-      echo '            <!-- Live encoding/reencoding:';
-      echo '                Currrently, the parameters given here for encoding MUST';
-      echo '                match the input data for channels and sample rate. That ';
-      echo '                restriction will be relaxed in the future.';
-      echo '                Remove this section if you dont want your files getting reencoded.';
-      echo '            -->';
       echo '            <encode>  ';
       echo '                <nominal-bitrate>64000</nominal-bitrate>';
       echo '                <samplerate>22050</samplerate>';
@@ -715,6 +679,8 @@ function install_icecast {
       echo '</ices>'; } > /etc/ices2/ices-playlist.xml
 
     sed -i 's|ENABLE=.*|ENABLE=true|g' /etc/default/icecast2
+    sed -i 's|<!-- <bind-address>.*|<bind-address>127.0.0.1</bind-address>|g' /etc/icecast2/icecast.xml
+    sed -i 's|<!--<bind-address>.*|<bind-address>127.0.0.1</bind-address>|g' /etc/icecast2/icecast.xml
 
     if [ ! -d $ICECAST_DIR ]; then
         mkdir $ICECAST_DIR
@@ -734,6 +700,8 @@ function install_icecast {
     fi
 
     "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecast -p "$ICECAST_PASSWORD"
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecastsource -p "$ICECAST_SOURCE_PASSWORD"
+    "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecastrelay -p "$ICECAST_RELAY_PASSWORD"
     "${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecastuser -p "$ICECAST_USER_PASSWORD"
 
     groupadd icecast
