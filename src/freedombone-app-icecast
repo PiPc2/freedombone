@@ -41,27 +41,141 @@ ICECAST_CODE=
 ICECAST_PORT=8005
 ICECAST_ONION_PORT=8146
 ICECAST_DIR=/icestream
-ICECAST_PLAYLIST_FILE=/etc/ices2/playlist.txt
+ICECAST_JINGLES=/jingles
 ICECAST_LOGIN_TEXT=$"Icecast login"
 
 ICECAST_SHORT_DESCRIPTION=$'Media broadcast'
 ICECAST_DESCRIPTION=$'Media broadcast'
 ICECAST_MOBILE_APP_URL=
 
+ICECAST_TITLE=$'Music Service'
+ICECAST_TITLE_MAIN=$'Music Service main'
+ICECAST_DESCRIPTION=$"This is the myStation music stream. Add some information about your station's automated programming."
+
 icecast_variables=(MY_USERNAME
                    MY_EMAIL_ADDRESS
                    ONION_ONLY
                    ICECAST_DOMAIN_NAME
                    ICECAST_CODE
+                   ICECAST_TITLE
+                   ICECAST_TITLE_MAIN
+                   ICECAST_DESCRIPTION
                    DEFAULT_LANGUAGE)
 
-function icecast_rescan {
-    if [ -d $ICECAST_DIR ]; then
-        if [ -f $ICECAST_PLAYLIST_FILE ]; then
-            rm $ICECAST_PLAYLIST_FILE
-        fi
-        icecast_add_file_to_playlist $ICECAST_DIR
+function icecast_liquidsoap {
+    $INSTALL_PACKAGES liquidsoap liquidsoap-plugin-icecast
+    $INSTALL_PACKAGES liquidsoap-plugin-lame liquidsoap-plugin-flac
+    $INSTALL_PACKAGES liquidsoap-plugin-ogg liquidsoap-plugin-vorbis
+    $INSTALL_PACKAGES liquidsoap-plugin-opus
+
+    if [ ! -d $ICECAST_DIR ]; then
+        mkdir $ICECAST_DIR
     fi
+    if [ ! -d $ICECAST_JINGLES ]; then
+        mkdir $ICECAST_JINGLES
+    fi
+    chown -R icecast2:icecast $ICECAST_DIR
+    chown -R icecast2:icecast $ICECAST_JINGLES
+
+    read_config_param ICECAST_TITLE
+    read_config_param ICECAST_TITLE_MAIN
+    read_config_param ICECAST_DESCRIPTION
+
+    ICECAST_PASSWORD=$("${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecast)
+    ICECAST_SOURCE_PASSWORD=$("${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecastsource)
+    ICECAST_RELAY_PASSWORD=$("${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecastrelay)
+    ICECAST_USER_PASSWORD=$("${PROJECT_NAME}-pass" -u "$MY_USERNAME" -a icecastuser)
+
+    { echo '#Settings';
+      echo '';
+      echo 'set("server.telnet", false)';
+      echo 'set("harbor.bind_addr","0.0.0.0")';
+      echo '';
+      echo '# Music playlists';
+      echo "music1 = nrj(playlist(\"$ICECAST_DIR\"))";
+      echo '';
+      echo '# Some jingles';
+      echo "jingles = nrj(playlist(\"$ICECAST_JINGLES\"))";
+      echo '';
+      echo '# If something goes wrong, well play this';
+      echo 'security = single("/etc/icecast2/default.ogg")';
+      echo '';
+      echo '# Start building the feed with music';
+      echo 'radio = random([music1])';
+      echo '';
+      echo '# Add the security, requests and smart crossfade';
+      echo 'radio = fallback(track_sensitive = false,[smart_crossfade(fallback([request.queue(id="request"),radio])), security])';
+      echo '';
+      echo '# Now add some jingles. This plays a jingle once every approximately seven songs';
+      echo 'radio = random(weights = [1, 7], [jingles, radio])';
+      echo '';
+      echo '# Add a skip command for the music stream';
+      echo 'server.register(';
+      echo 'usage="skip",';
+      echo 'description="Skip the current song.",';
+      echo '"skip",';
+      echo 'fun(_) -> begin source.skip(radio) "Done!" end';
+      echo '';
+      echo '# Talk over stream using microphone mount.';
+      echo "mic=input.harbor(\"mic\",port=8080,password=\"$ICECAST_USER_PASSWORD\",buffer=1.0)";
+      echo 'radio = smooth_add(delay=0.8, p=0.15, normal=radio, special=mic)';
+      echo '';
+      echo '#Add support for live streams.';
+      echo "live = audio_to_stereo(input.harbor(\"live\", port=8080, password=\"$ICECAST_USER_PASSWORD\", buffer=1.0))";
+      echo 'full = fallback(track_sensitive=false, [live,radio])';
+      echo '';
+      echo '# Stream it out';
+      echo 'output.icecast(%mp3.vbr,';
+      echo "host = \"localhost\", port = $ICECAST_PORT, password = \"$ICECAST_SOURCE_PASSWORD\", mount = \"music.mp3\", name=\"$ICECAST_TITLE\", description=\"$ICECAST_DESCRIPTION\",radio)";
+      echo '';
+      echo 'output.icecast(%vorbis,';
+      echo "host = \"localhost\", port = $ICECAST_PORT,";
+      echo "password = \"$ICECAST_SOURCE_PASSWORD\", mount = \"music.ogg\",";
+      echo "name=\"$ICECAST_TITLE\", description=\"$ICECAST_DESCRIPTION\",radio)";
+      echo '';
+      echo 'output.icecast(%opus(vbr="unconstrained",bitrate=60),';
+      echo "host = \"localhost\", port = $ICECAST_PORT,";
+      echo "password = \"$ICECAST_SOURCE_PASSWORD\", mount = \"music.opus\",";
+      echo "name=\"$ICECAST_TITLE\", description=\"$ICECAST_DESCRIPTION\",radio)";
+      echo '';
+      echo "output.icecast(%mp3.vbr, host = \"localhost\", port = $ICECAST_PORT, password = \"$ICECAST_SOURCE_PASSWORD\", mount = \"stream.mp3\", name=\"$ICECAST_TITLE_MAIN\", description=\"$ICECAST_TITLE_MAIN\", full)";
+      echo '';
+      echo "output.icecast(%vorbis, host=\"localhost\", port=$ICECAST_PORT, password=\"$ICECAST_SOURCE_PASSWORD\", mount=\"stream.ogg\", name=\"$ICECAST_TITLE_MAIN\", description=\"$ICECAST_TITLE_MAIN\",full)";
+      echo '';
+      echo "output.icecast(%opus(vbr=\"unconstrained\",bitrate=60), description=\"$ICECAST_TITLE_MAIN\", host=\"localhost\", port=$ICECAST_PORT, password=\"$ICECAST_SOURCE_PASSWORD\", mount=\"stream.opus\", full)"; } > /etc/icecast2/radio.liq
+    chown icecast2:icecast /etc/icecast2/radio.liq
+
+    { echo '[Unit]';
+      echo 'Description=Radio Liquidsoap daemon';
+      echo 'After=network.target';
+      echo 'Documentation=http://liquidsoap.fm/';
+      echo '';
+      echo '[Service]';
+      echo 'Type=forking';
+      echo 'User=icecast2';
+      echo 'WorkingDirectory=/etc/icecast2';
+      echo 'ExecStart=/usr/bin/liquidsoap /etc/icecast2/radio.liq';
+      echo 'Restart=always';
+      echo '';
+      echo '[Install]';
+      echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/radio.service
+    systemctl enable radio.service
+    systemctl daemon-reload
+    systemctl restart radio.service
+}
+
+function icecast_rescan {
+    # move default file
+    if [ -f $ICECAST_DIR/default.ogg ]; then
+        mv $ICECAST_DIR/default.ogg /etc/icecast2/default.ogg
+        chown icecast2:icecast /etc/icecast2/default.ogg
+    fi
+
+    # move jingles
+    mv $ICECAST_DIR/jingle* $ICECAST_JINGLES
+
+    # restart the radio daemon
+    systemctl restart radio
 }
 
 function icecast_update_daemon {
@@ -71,32 +185,14 @@ function icecast_update_daemon {
     fi
 
     { echo '#!/bin/sh';
-      echo "stop_pid=\$(pidof ices2)";
-      echo "if [ \"\$stop_pid\" ]; then";
-      echo "    kill \$stop_pid";
-      echo 'fi';
-      echo 'systemctl stop icecast2'; } > /usr/bin/stop_icecast
+      echo "systemctl stop radio";
+      echo "systemctl stop icecast2"; } > /usr/bin/stop_icecast
     chmod +x /usr/bin/stop_icecast
 
     # Note that the sleep here actually is important
     { echo '#!/bin/bash';
-      echo 'icecast_restarted=';
-      echo '';
-      echo "isrunning=\$(ps aux | grep icecast2)";
-      echo "if [[ \"\$isrunning\" != *\"/usr/bin/icecast2\"* ]]; then";
-      echo '    systemctl restart icecast2';
-      echo '    icecast_restarted=1';
-      echo 'fi';
-      echo '';
-      echo "isrunning=\$(ps aux | grep ices2)";
-      echo "if [[ \"\$isrunning\" != *\"ices-playlist\"* ]]; then";
-      echo "    if [ ! \$icecast_restarted ]; then";
-      echo '        systemctl restart icecast2';
-      echo '        sleep 3';
-      echo '    fi';
-      echo '    cd /etc/ices2';
-      echo '    sudo -u icecast2 ices2 ices-playlist.xml';
-      echo 'fi'; } > /usr/bin/start_icecast
+      echo 'systemctl restart icecast2';
+      echo 'systemctl restart radio'; } > /usr/bin/start_icecast
     chmod +x /usr/bin/start_icecast
 
     { echo '[Unit]';
@@ -108,14 +204,12 @@ function icecast_update_daemon {
       echo 'User=icecast2';
       echo 'Group=icecast';
       echo 'ExecStart=/usr/bin/icecast2 -c /etc/icecast2/icecast.xml';
-      echo 'ExecStop=/usr/bin/killall ices2';
       echo 'Restart=on-failure';
       echo 'RestartSec=10';
       echo '';
       echo '[Install]';
       echo 'WantedBy=multi-user.target'; } > /etc/systemd/system/icecast2.service
 
-    chown -R icecast2:icecast /etc/ices2
     chown -R icecast2:icecast /etc/icecast2
     systemctl daemon-reload
     systemctl enable icecast2
@@ -142,54 +236,15 @@ function change_password_icecast {
 }
 
 function logging_on_icecast {
-    sed -i 's|<loglevel>.*|<loglevel>4</loglevel>|g' /etc/ices2/ices-playlist.xml
     sed -i 's|<loglevel>.*|<loglevel>4</loglevel>|g' /etc/icecast2/icecast.xml
 }
 
 function logging_off_icecast {
-    sed -i 's|<loglevel>.*|<loglevel>1</loglevel>|g' /etc/ices2/ices-playlist.xml
     sed -i 's|<loglevel>.*|<loglevel>1</loglevel>|g' /etc/icecast2/icecast.xml
 }
 
 function reconfigure_icecast {
     echo -n ''
-}
-
-function icecast_convert_files {
-    clear
-    cd "${1}" || exit 2346824648
-
-    echo $'Converting any mp3 files to oga format'
-    find . -type f -name '*.mp3' -exec bash -c 'ffmpeg -i "$0" -c:a libvorbis -ar 44100 "${0/%mp3/oga}"' '{}' \;
-    find . -name "*.mp3" -print0 | xargs -0 rm -f
-
-    echo $'Converting any mp4 files to oga format'
-    find . -type f -name '*.mp4' -exec bash -c 'ffmpeg -i "$0" -c:a libvorbis -ar 44100 "${0/%mp3/oga}"' '{}' \;
-    find . -name "*.mp4" -print0 | xargs -0 rm -f
-
-    # replace spaces with underscores
-    # shellcheck disable=SC2046
-    for file in *.oga; do mv "$file" $(echo "$file" | tr ' ' '_') ; done
-
-    chown -R icecast2:icecast $ICECAST_DIR
-}
-
-function icecast_add_file_to_playlist {
-    files_dir="${1}"
-    if [ ! -d "$files_dir" ]; then
-        return
-    fi
-
-    echo $'Adding ogg files to playlist'
-    find "$files_dir" -type f -name '*.ogg' -print0 | while read -r -d $'\0' file; do
-        if ! grep -q "$file" $ICECAST_PLAYLIST_FILE; then
-            echo "$file" >> $ICECAST_PLAYLIST_FILE
-        fi
-    done
-
-    chown icecast2:icecast $ICECAST_PLAYLIST_FILE
-    stop_icecast
-    start_icecast
 }
 
 function icecast_import_from_directory {
@@ -227,12 +282,9 @@ function icecast_import_from_directory {
         mkdir -p $ICECAST_DIR
     fi
 
-    dest_dir=$(basename "$selected_dir")
     # shellcheck disable=SC2086
-    mv $selected_dir $ICECAST_DIR
-
-    icecast_convert_files "$ICECAST_DIR/$dest_dir"
-    icecast_add_file_to_playlist "$ICECAST_DIR/$dest_dir"
+    mv $selected_dir/* $ICECAST_DIR
+    icecast_rescan
 
     dialog --title $"Import stream files directory into Icecast" \
            --msgbox $"Import success" 6 40
@@ -253,8 +305,8 @@ function icecast_import_from_usb {
         backup_unmount_drive "${USB_DRIVE}"
     fi
     cp -ru "$USB_MOUNT$ICECAST_DIR/"* $ICECAST_DIR
+    icecast_rescan
     backup_unmount_drive "${USB_DRIVE}"
-    icecast_convert_files $ICECAST_DIR
     dialog --title $"Import stream files from USB drive" --msgbox $'Import complete. You may now remove the USB drive' 6 50
 }
 
@@ -298,12 +350,6 @@ function icecast_format_drive {
     echo ''
     "${PROJECT_NAME}-format" "$USB_DRIVE"
     dialog --title $"Format USB drive $USB_DRIVE for stream file storage" --msgbox $'Format complete. You may now export stream files or remove the USB drive' 6 50
-}
-
-function icecast_edit_playlist {
-    editor $ICECAST_PLAYLIST_FILE
-    stop_icecast
-    start_icecast
 }
 
 function icecast_change_login {
@@ -357,12 +403,15 @@ function icecast_enable_login {
 }
 
 function icecast_set_stream_name {
+    read_config_param ICECAST_TITLE
+    read_config_param ICECAST_DESCRIPTION
+
     data=$(mktemp 2>/dev/null)
     dialog --backtitle $"Freedombone Control Panel" \
            --title $"Change Icecast stream details" \
            --form "\\n" 8 60 4 \
-           $"Stream name:" 1 1 "Example stream name" 1 18 40 1000 \
-           $"Description:" 2 1 "A short description of your stream" 2 18 40 1000 \
+           $"Stream name:" 1 1 "$ICECAST_TITLE" 1 18 40 1000 \
+           $"Description:" 2 1 "$ICECAST_DESCRIPTION" 2 18 40 1000 \
            $"Genre:" 3 1 "Example genre" 3 18 40 1000 \
            2> "$data"
     sel=$?
@@ -372,20 +421,14 @@ function icecast_set_stream_name {
         255) rm -f "$data"
              return;;
     esac
-    stream_name=$(sed -n 1p < "$data")
-    stream_description=$(sed -n 2p < "$data")
-    stream_genre=$(sed -n 3p < "$data")
-    if [ ${#stream_name} -gt 2 ]; then
-        sed -i "s|<name>.*|<name>${stream_name}</name>|g" /etc/ices2/ices-playlist.xml
-    fi
-    if [ ${#stream_description} -gt 2 ]; then
-        sed -i "s|<description>.*|<description>${stream_description}</description>|g" /etc/ices2/ices-playlist.xml
-    fi
-    if [ ${#stream_genre} -gt 2 ]; then
-        sed -i "s|<genre>.*|<genre>${stream_genre}</genre>|g" /etc/ices2/ices-playlist.xml
-    fi
+    ICECAST_TITLE=$(sed -n 1p < "$data")
+    ICECAST_DESCRIPTION=$(sed -n 2p < "$data")
+    #stream_genre=$(sed -n 3p < "$data")
+
     rm -f "$data"
+
     stop_icecast
+    icecast_liquidsoap
     start_icecast
 }
 
@@ -420,18 +463,17 @@ function configure_interactive_icecast {
        2 $"Import stream files from USB drive"
        3 $"Format a USB drive for stream file storage"
        4 $"Export stream files to USB drive"
-       5 $"Manually edit playlist"
-       6 $"Enable login for stream visitors"
-       7 $"Change password for stream visitors"
-       8 $"Re-scan playlist"
-       9 $"Restart stream"
-       10 $"Set Stream Name/Description/Genre"
-       11 $"Set maximum number of clients/streams")
+       5 $"Enable login for stream visitors"
+       6 $"Change password for stream visitors"
+       7 $"Re-scan playlist"
+       8 $"Restart stream"
+       9 $"Set Stream Name/Description/Genre"
+       10 $"Set maximum number of clients/streams")
 
     while true
     do
         # shellcheck disable=SC2068
-        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Icecast" --menu $"Choose an operation, or ESC to exit:" 20 60 11 "${W[@]}" 3>&2 2>&1 1>&3)
+        selection=$(dialog --backtitle $"Freedombone Administrator Control Panel" --title $"Icecast" --menu $"Choose an operation, or ESC to exit:" 20 60 10 "${W[@]}" 3>&2 2>&1 1>&3)
 
         if [ ! "$selection" ]; then
             break
@@ -442,18 +484,17 @@ function configure_interactive_icecast {
             2) icecast_import_from_usb;;
             3) icecast_format_drive;;
             4) icecast_export_to_usb;;
-            5) icecast_edit_playlist;;
-            6) icecast_enable_login;;
-            7) icecast_change_login;;
-            8) clear
+            5) icecast_enable_login;;
+            6) icecast_change_login;;
+            7) clear
                echo $'Rescanning Icecast playlist'
                icecast_rescan;;
-            9) clear
+            8) clear
                echo $'Restarting Icecast stream'
                stop_icecast
                start_icecast;;
-            10) icecast_set_stream_name;;
-            11) icecast_set_maximum_streams;;
+            9) icecast_set_stream_name;;
+            10) icecast_set_maximum_streams;;
         esac
     done
 }
@@ -469,7 +510,6 @@ function backup_local_icecast {
     stop_icecast
 
     cp /etc/nginx/.icepasswd $ICECAST_DIR
-    cp /etc/ices2/ices-playlist.xml $ICECAST_DIR
 
     function_check backup_directory_to_usb
     backup_directory_to_usb $ICECAST_DIR icecast
@@ -493,10 +533,7 @@ function restore_local_icecast {
     fi
     cp $ICECAST_DIR/.icepasswd /etc/nginx/.icepasswd
     rm $ICECAST_DIR/.icepasswd
-    cp $ICECAST_DIR/ices-playlist.xml /etc/ices2
-    rm $ICECAST_DIR/ices-playlist.xml
     chown -R icecast2:icecast $ICECAST_DIR
-    chown -R icecast2:icecast /etc/ices2
 
     start_icecast
     rm -rf $temp_restore_dir
@@ -533,9 +570,6 @@ function remove_icecast {
     if [ -d /etc/icecast2 ]; then
         rm -rf /etc/icecast2
     fi
-    if [ -d /etc/ices2 ]; then
-        rm -rf /etc/ices2
-    fi
     function_check remove_onion_service
     remove_onion_service icecast ${ICECAST_ONION_PORT}
     sed -i '/icecast/d' "$COMPLETION_FILE"
@@ -547,7 +581,7 @@ function install_icecast {
 
     debconf-set-selections <<< "icecast2 icecast2/icecast-setup boolean false"
     $INSTALL_PACKAGES icecast2
-    $INSTALL_PACKAGES ices2 ffmpeg apache2-utils vorbis-tools
+    $INSTALL_PACKAGES ffmpeg apache2-utils vorbis-tools
 
     if [ ! -f /etc/icecast2/icecast.xml ]; then
         echo $'Icecast not installed'
@@ -615,65 +649,6 @@ function install_icecast {
     if [ ! -d /var/log/ices ]; then
         mkdir -p /var/log/ices
     fi
-    if [ ! -d /etc/ices2 ]; then
-        mkdir -p /etc/ices2
-    fi
-
-    # store the original config if it exists
-    if [ -f /etc/ices2/ices-playlist.xml ]; then
-        if [ ! -f /etc/ices2/ices-playlist.orig ]; then
-            mv /etc/ices2/ices-playlist.xml /etc/ices2/ices-playlist.orig
-        fi
-    fi
-
-    { echo '<?xml version="1.0"?>';
-      echo '<ices>';
-      echo '    <background>1</background>';
-      echo '    <logpath>/etc/ices2</logpath>';
-      echo '    <logfile>ices.log</logfile>';
-      echo '    <!-- 1=error,2=warn,3=info,4=debug -->';
-      echo '    <loglevel>0</loglevel>';
-      echo '    <consolelog>0</consolelog>';
-      echo '';
-      echo '    <stream>';
-      echo '        <metadata>';
-      echo '            <name>Example stream name</name>';
-      echo '            <genre>Example genre</genre>';
-      echo '            <description>A short description of your stream</description>';
-      echo '        </metadata>';
-      echo '';
-      echo '        <input>';
-      echo '            <module>playlist</module>';
-      echo '            <param name="type">basic</param>';
-      echo "            <param name=\"file\">$ICECAST_PLAYLIST_FILE</param>";
-      echo '            <!-- random play -->';
-      echo '            <param name="random">0</param>';
-      echo '            <!-- if the playlist get updated that start at the beginning -->';
-      echo '            <param name="restart-after-reread">0</param>';
-      echo '            <!-- if set to 1 , plays once through, then exits. -->';
-      echo '            <param name="once">0</param>';
-      echo '        </input>';
-      echo '';
-      echo '        <instance>';
-      echo '            <hostname>localhost</hostname>';
-      echo "            <port>$ICECAST_ONION_PORT</port>";
-      echo "            <password>$ICECAST_SOURCE_PASSWORD</password>";
-      echo '            <mount>';
-      echo '                <mount-name>/stream.ogg</mount-name>';
-      echo '            </mount>';
-      echo '            <reconnectdelay>2</reconnectdelay>';
-      echo '            <reconnectattempts>5</reconnectattempts> ';
-      echo '            <maxqueuelength>80</maxqueuelength>';
-      echo '';
-      echo '            <encode>  ';
-      echo '                <nominal-bitrate>64000</nominal-bitrate>';
-      echo '                <samplerate>22050</samplerate>';
-      echo '                <channels>1</channels>';
-      echo '            </encode>';
-      echo '        </instance>';
-      echo '';
-      echo '        </stream>';
-      echo '</ices>'; } > /etc/ices2/ices-playlist.xml
 
     sed -i 's|ENABLE=.*|ENABLE=true|g' /etc/default/icecast2
     sed -i 's|<!-- <bind-address>.*|<bind-address>127.0.0.1</bind-address>|g' /etc/icecast2/icecast.xml
@@ -704,6 +679,7 @@ function install_icecast {
     groupadd icecast
     useradd -c "Icecast system account" -d /etc/icecast2 -m -r -g icecast icecast2
 
+    icecast_liquidsoap
     icecast_update_daemon
     nginx_ensite icecast
     systemctl restart nginx
