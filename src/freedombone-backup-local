@@ -87,18 +87,50 @@ function make_backup_directory {
     fi
 }
 
-function check_storage_space_remaining {
-    # Check space remaining on the usb drive
-    used_percent=$(df -k $USB_MOUNT | tail -n 1 | awk -F ' ' '{print $5}' | awk -F '%' '{print $1}')
-    if [ "$used_percent" -gt 80 ]; then
-        echo $"Less than 20% of space remaining on backup drive"
-        if [ -d $USB_MOUNT/backup ]; then
-            echo $"Deleting existing backup directory"
-            rm -rf $USB_MOUNT/backup
+function swap_backup_directories {
+    used_bytes=$(df -k $USB_MOUNT | tail -n 1 | awk -F ' ' '{print $3}')
+    free_bytes=$(df -k $USB_MOUNT | tail -n 1 | awk -F ' ' '{print $4}')
+    total_bytes=$((used_bytes+free_bytes))
+
+    # if an existing backup has been made
+    if [ -d $USB_MOUNT/backup ]; then
+
+        # get the total backup size
+        backup_bytes=$(du -s $USB_MOUNT/backup)
+        if [ -f $USB_MOUNT/config.dat ]; then
+            keys_bytes=$(wc -c < $USB_MOUNT/config.dat)
+            new_backup_bytes=$((backup_bytes+keys_bytes))
+            backup_bytes=$new_backup_bytes
+        fi
+
+        # allow 10% increase in new backup size
+        backup_bytes_with_overhead=$((backup_bytes*11/10))
+
+        # estimated backup size if we keep the previous backup
+        estimated_backup_bytes=$((backup_bytes_with_overhead+backup_bytes))
+
+        # is there enough space?
+        if [ $estimated_backup_bytes -lt $total_bytes ]; then
+            # keep the previous backup
+            if [ -d $USB_MOUNT/backup_prev ]; then
+                rm -rf $USB_MOUNT/backup_prev
+            fi
+            mv $USB_MOUNT/backup $USB_MOUNT/backup_prev
         else
-            umount $USB_MOUNT
-            rm -rf $USB_MOUNT
-            exit 4
+            if [ $backup_bytes_with_overhead -lt $total_bytes ]; then
+                # there's enough space if we remove all previous backups
+                if [ -d $USB_MOUNT/backup_prev ]; then
+                    rm -rf $USB_MOUNT/backup_prev
+                fi
+                rm -rf $USB_MOUNT/backup
+            else
+                echo $'Not enough space on backup drive'
+                echo $"Total bytes  $total_bytes"
+                echo $"Backup bytes $backup_bytes_with_overhead"
+                umount $USB_MOUNT
+                rm -rf $USB_MOUNT
+                exit 4
+            fi
         fi
     fi
 }
@@ -444,7 +476,7 @@ increment_backup_progress
 make_backup_directory
 
 increment_backup_progress
-check_storage_space_remaining
+swap_backup_directories
 
 increment_backup_progress
 simple_store_backup_keys
