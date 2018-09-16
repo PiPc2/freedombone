@@ -2,7 +2,7 @@
 
 // Receives the list of blocked domains/users
 
-$output_filename = "settings.html";
+$output_filename = "index.html";
 
 if (isset($_POST['submitblocking'])) {
     $blockinglist = htmlspecialchars($_POST['blockinglist']);

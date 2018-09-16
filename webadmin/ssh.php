@@ -2,7 +2,7 @@
 
 // Enable or disable ssh
 
-$output_filename = "settings.html";
+$output_filename = "index.html";
 
 if (isset($_POST['submitssh'])) {
     $confirm = htmlspecialchars($_POST['sshconfirm']);

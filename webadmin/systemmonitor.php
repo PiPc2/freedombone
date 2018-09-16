@@ -12,7 +12,7 @@ function endsWith($haystack, $needle)
 
 // Updates values for the system monitor screen
 
-$output_filename = "settings.html";
+$output_filename = "index.html";
 
 if (isset($_POST['submitsystemmonitor'])) {
     $system_monitor_file = fopen(".system_monitor.txt", "w") or die("Unable to create system monitor file");
