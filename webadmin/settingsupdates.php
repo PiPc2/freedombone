@@ -2,7 +2,7 @@
 
 // Change settings for updates
 
-$output_filename = "reset.html";
+$output_filename = "index.html";
 
 if (isset($_POST['submitsettingsupdates'])) {
     $enable = htmlspecialchars($_POST['enable_updates']);

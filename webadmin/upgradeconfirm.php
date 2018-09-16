@@ -2,7 +2,7 @@
 
 // Confirm manual upgrade
 
-$output_filename = "settings.html";
+$output_filename = "index.html";
 
 if (isset($_POST['submitupgradesettings'])) {
     $output_filename = "settings_updates.html";
