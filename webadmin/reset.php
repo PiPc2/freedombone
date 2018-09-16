@@ -4,14 +4,6 @@
 
 $output_filename = "settings.html";
 
-if (isset($_POST['submitupgrade'])) {
-    $reset_file = fopen(".upgrade.txt", "w") or die("Unable to write to upgrade file");
-    fwrite($reset_file, "upgrade");
-    fclose($reset_file);
-
-    $output_filename = "upgrade.html";
-}
-
 if (isset($_POST['submitreset'])) {
     $reset_file = fopen(".reset.txt", "w") or die("Unable to write to reset file");
     fwrite($reset_file, "reset");
@@ -22,10 +14,6 @@ if (isset($_POST['submitreset'])) {
 
 if (isset($_POST['submitfactoryreset'])) {
     $output_filename = "factory_reset_confirm.html";
-}
-
-if (isset($_POST['submitupgradesettings'])) {
-    $output_filename = "settings_updates.html";
 }
 
 if (isset($_POST['submitshutdown'])) {
