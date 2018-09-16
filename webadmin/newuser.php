@@ -12,7 +12,7 @@ if (isset($_POST['submitnewuser'])) {
     }
     else {
         // Don't rely on php PRNG
-        $newpassword = exec("shuf -n3 /usr/share/dict/words | sed ".'"'."s|'||g".'"'." | tr -d '\n'");
+        $newpassword = exec('diceware');
         $new_user_file = fopen(".new_user.txt", "w") or die("Unable to write to new_user file");
         fwrite($new_user_file, $username.",".$newpassword);
         fclose($new_user_file);
