@@ -2,7 +2,7 @@
 
 // Shuts down or resets the system
 
-$output_filename = "index.html";
+$output_filename = "settings.html";
 
 if (isset($_POST['submitreset'])) {
     $reset_file = fopen(".reset.txt", "w") or die("Unable to write to reset file");

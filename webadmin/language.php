@@ -2,7 +2,7 @@
 
 // Change language
 
-$output_filename = "index.html";
+$output_filename = "settings.html";
 
 if (isset($_POST['submitlanguage'])) {
     $language = htmlspecialchars($_POST['language']);
